@@ -101,6 +101,47 @@
     }
     return s;
   }
+  function pad2(n) {
+    var v = Number(n);
+    return v < 10 ? '0' + v : String(v);
+  }
+  function monthKeyFromDateKey(dateKey) {
+    var s = String(dateKey || '');
+    return /^\d{8}$/.test(s) ? s.slice(0, 6) : '';
+  }
+  function normalizeMonthKey(monthKey) {
+    var s = String(monthKey || '');
+    if (!/^\d{6}$/.test(s)) return '';
+    var month = Number(s.slice(4, 6));
+    return month >= 1 && month <= 12 ? s : '';
+  }
+  function formatMonthLabel(monthKey) {
+    var s = normalizeMonthKey(monthKey);
+    if (!s) return '';
+    return s.slice(0, 4) + '年' + Number(s.slice(4, 6)) + '月';
+  }
+  function shiftMonthKey(monthKey, delta) {
+    var s = normalizeMonthKey(monthKey);
+    if (!s) return '';
+    var date = new Date(Date.UTC(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1 + Number(delta || 0), 1));
+    return String(date.getUTCFullYear()) + pad2(date.getUTCMonth() + 1);
+  }
+  function daysInMonth(monthKey) {
+    var s = normalizeMonthKey(monthKey);
+    if (!s) return 0;
+    return new Date(Date.UTC(Number(s.slice(0, 4)), Number(s.slice(4, 6)), 0)).getUTCDate();
+  }
+  function monthStartOffsetMondayFirst(monthKey) {
+    var s = normalizeMonthKey(monthKey);
+    if (!s) return 0;
+    var weekday = new Date(Date.UTC(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, 1)).getUTCDay();
+    return (weekday + 6) % 7;
+  }
+  function dateKeyFromMonthDay(monthKey, dayNumber) {
+    var s = normalizeMonthKey(monthKey);
+    if (!s) return '';
+    return s + pad2(dayNumber);
+  }
   function paperIdFromHref(href) {
     var s = String(href || '');
     s = s.replace(/^#\//, '').replace(/^\/+/, '');
@@ -842,6 +883,7 @@
     if (daily) {
       state.expandedGroups.daily = true;
       state.activeDailyDate = daily.dateKey;
+      state.activeDailyMonth = monthKeyFromDateKey(daily.dateKey) || state.activeDailyMonth;
       var dailyTags = paperTagLabels(daily.paper);
       if (dailyTags.indexOf(state.activeDailyTag) === -1) state.activeDailyTag = dailyTags[0] || '';
       return 'daily';
@@ -857,8 +899,64 @@
     return '';
   }
 
-  function buildDailyDateView(model, activeKey, readMap) {
+  function buildDailyCalendarView(model, activeDateKey, activeMonthKey, readMap) {
     var map = readMap || {};
+    var byDate = {};
+    var dateKeys = [];
+    (model && model.daily || []).forEach(function (day) {
+      if (!day || !/^\d{8}$/.test(String(day.dateKey || ''))) return;
+      byDate[day.dateKey] = day;
+      dateKeys.push(day.dateKey);
+    });
+    var fallbackActive = dateKeys[0] || '';
+    var active = activeDateKey && byDate[activeDateKey] ? activeDateKey : fallbackActive;
+    var month = normalizeMonthKey(activeMonthKey) || monthKeyFromDateKey(active) || monthKeyFromDateKey(fallbackActive);
+    var days = [];
+    var weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+    if (!month) {
+      return {
+        monthKey: '',
+        monthLabel: '',
+        activeDateKey: active || '',
+        prevMonthKey: '',
+        nextMonthKey: '',
+        weekdays: weekdays,
+        days: days,
+      };
+    }
+    for (var blank = 0; blank < monthStartOffsetMondayFirst(month); blank += 1) {
+      days.push({ blank: true, key: 'blank-' + blank });
+    }
+    for (var dayNumber = 1; dayNumber <= daysInMonth(month); dayNumber += 1) {
+      var dateKey = dateKeyFromMonthDay(month, dayNumber);
+      var day = byDate[dateKey] || null;
+      var papers = day ? (day.papers || []) : [];
+      var unread = countUnreadPapers(papers, map);
+      days.push({
+        blank: false,
+        dateKey: dateKey,
+        label: day && day.dateLabel || formatDateLabel(dateKey),
+        dayNumber: dayNumber,
+        totalCount: papers.length,
+        unreadCount: unread,
+        hasPapers: papers.length > 0,
+        isActive: dateKey === active,
+      });
+    }
+    return {
+      monthKey: month,
+      monthLabel: formatMonthLabel(month),
+      activeDateKey: active || '',
+      prevMonthKey: shiftMonthKey(month, -1),
+      nextMonthKey: shiftMonthKey(month, 1),
+      weekdays: weekdays,
+      days: days,
+    };
+  }
+
+  function buildDailyDateView(model, activeKey, readMap, activeMonthKey) {
+    var map = readMap || {};
+    var requestedMonth = normalizeMonthKey(activeMonthKey);
     var tabs = [];
     var seen = {};
     (model && model.daily || []).forEach(function (day) {
@@ -866,7 +964,19 @@
       seen[day.dateKey].count = (day.papers || []).length;
       seen[day.dateKey].unreadCount = countUnreadPapers(day.papers || [], map);
     });
-    var active = activeKey && seen[activeKey] ? activeKey : (tabs[0] && tabs[0].key) || '';
+    var active = '';
+    if (activeKey && seen[activeKey] && (!requestedMonth || monthKeyFromDateKey(activeKey) === requestedMonth)) {
+      active = activeKey;
+    }
+    if (!active && requestedMonth) {
+      for (var tabIndex = 0; tabIndex < tabs.length; tabIndex += 1) {
+        if (monthKeyFromDateKey(tabs[tabIndex].key) === requestedMonth) {
+          active = tabs[tabIndex].key;
+          break;
+        }
+      }
+    }
+    if (!active) active = activeKey && seen[activeKey] ? activeKey : (tabs[0] && tabs[0].key) || '';
     var groups = [];
     (model && model.daily || []).forEach(function (day) {
       if (day.dateKey !== active) return;
@@ -877,7 +987,12 @@
         unreadCount: countUnreadPapers(day.papers || [], map),
       });
     });
-    return { activeKey: active, tabs: tabs, groups: groups };
+    return {
+      activeKey: active,
+      tabs: tabs,
+      groups: groups,
+      calendar: buildDailyCalendarView(model, active, activeMonthKey, map),
+    };
   }
 
   function buildDailyTagView(model, activeKey, readMap) {
@@ -1002,8 +1117,10 @@
     expandedGroups: { conference: true, daily: true },
     collapsedAxisSections: new Set(),
     dailyViewMode: 'date',
+    dailyCalendarPlacement: 'top',
     conferenceViewMode: 'conf',
     activeDailyDate: '',
+    activeDailyMonth: '',
     activeDailyTag: '',
     activeConference: '',
     activeConferenceTag: '',
@@ -1197,8 +1314,10 @@
     return {
       expandedGroups: vs.expandedGroups || { conference: true, daily: true },
       dailyViewMode: vs.dailyViewMode === 'tag' ? 'tag' : 'date',
+      dailyCalendarPlacement: vs.dailyCalendarPlacement === 'bottom' ? 'bottom' : 'top',
       conferenceViewMode: vs.conferenceViewMode === 'tag' ? 'tag' : 'conf',
       activeDailyDate: vs.activeDailyDate || '',
+      activeDailyMonth: normalizeMonthKey(vs.activeDailyMonth) || '',
       activeDailyTag: vs.activeDailyTag || '',
       activeConference: vs.activeConference || '',
       activeConferenceTag: vs.activeConferenceTag || '',
@@ -1233,7 +1352,7 @@
     if (resultMode) return buildDailyResultView(model, resultOptions);
     return axisMode === 'tag'
       ? buildDailyTagView(model, vs.activeDailyTag, map)
-      : buildDailyDateView(model, vs.activeDailyDate, map);
+      : buildDailyDateView(model, vs.activeDailyDate, map, vs.activeDailyMonth);
   }
 
   function renderBodyHtml(model, viewState) {
@@ -1283,7 +1402,7 @@
         ? buildDailyResultView(model, resultOptions)
         : (vs.dailyViewMode === 'tag'
           ? buildDailyTagView(model, vs.activeDailyTag, vs.readMap)
-          : buildDailyDateView(model, vs.activeDailyDate, vs.readMap));
+          : buildDailyDateView(model, vs.activeDailyDate, vs.readMap, vs.activeDailyMonth));
       var dailyTotal = resultMode ? countPapersInView(dailyView) : summary.daily.papers;
       var dailyUnread = resultMode ? countUnreadInView(dailyView, vs.readMap) : summary.daily.unread;
       if (!resultMode || dailyTotal > 0) {
@@ -1293,9 +1412,10 @@
           title: '日报',
           icon: '📅',
           mode: vs.dailyViewMode,
+          dailyCalendarPlacement: vs.dailyCalendarPlacement,
           expanded: vs.expandedGroups.daily !== false,
           view: dailyView,
-          toggleLabel: vs.dailyViewMode === 'tag' ? '按日期' : '按标签',
+          toggleLabel: vs.dailyCalendarPlacement === 'top' ? '日历下置' : '日历上置',
           totalCount: dailyTotal,
           unreadCount: dailyUnread,
           collapsedAxisSections: vs.collapsedAxisSections,
@@ -1315,8 +1435,10 @@
     var viewState = {
       expandedGroups: state.expandedGroups,
       dailyViewMode: state.dailyViewMode,
+      dailyCalendarPlacement: state.dailyCalendarPlacement,
       conferenceViewMode: state.conferenceViewMode,
       activeDailyDate: state.activeDailyDate,
+      activeDailyMonth: state.activeDailyMonth,
       activeDailyTag: state.activeDailyTag,
       activeConference: state.activeConference,
       activeConferenceTag: state.activeConferenceTag,
@@ -1386,12 +1508,44 @@
     });
   }
 
+  function updateDailyCalendarUnreadMarks(readMap) {
+    if (!state.bodyEl) return;
+    var view = buildDailyDateView(state.model, state.activeDailyDate, readMap || {}, state.activeDailyMonth);
+    var daysByKey = {};
+    (view.calendar && view.calendar.days || []).forEach(function (day) {
+      if (day && day.dateKey) daysByKey[day.dateKey] = day;
+    });
+    $$('.dpr-sidebar-calendar-day[data-calendar-date]', state.bodyEl).forEach(function (dayEl) {
+      var key = dayEl.getAttribute('data-calendar-date') || '';
+      var day = daysByKey[key];
+      if (!day) return;
+      var unread = typeof day.unreadCount === 'number' ? day.unreadCount : 0;
+      var total = typeof day.totalCount === 'number' ? day.totalCount : 0;
+      dayEl.setAttribute('data-unread', unread > 0 ? '1' : '0');
+      dayEl.classList.toggle('has-unread', unread > 0);
+      dayEl.classList.toggle('is-active', key === view.activeKey);
+      var unreadEl = $('.dpr-sidebar-calendar-day-unread', dayEl);
+      var totalEl = $('.dpr-sidebar-calendar-day-total', dayEl);
+      if (unreadEl) unreadEl.textContent = String(unread);
+      if (totalEl) totalEl.textContent = String(total);
+    });
+    $$('.dpr-sidebar-daily-calendar-row .dpr-sidebar-axis-summary-count', state.bodyEl).forEach(function (countEl) {
+      var activeDay = daysByKey[view.activeKey];
+      if (!activeDay) return;
+      var unreadEl = $('.dpr-sidebar-day-unread', countEl);
+      var totalEl = $('.dpr-sidebar-day-total', countEl);
+      if (unreadEl) unreadEl.textContent = String(activeDay.unreadCount || 0);
+      if (totalEl) totalEl.textContent = String(activeDay.totalCount || 0);
+    });
+  }
+
   function syncResolvedAxisState() {
-    var dailyDate = buildDailyDateView(state.model, state.activeDailyDate);
+    var dailyDate = buildDailyDateView(state.model, state.activeDailyDate, null, state.activeDailyMonth);
     var dailyTag = buildDailyTagView(state.model, state.activeDailyTag);
     var confView = buildConferenceConfView(state.model, state.activeConference);
     var confTag = buildConferenceTagView(state.model, state.activeConferenceTag);
     state.activeDailyDate = dailyDate.activeKey;
+    state.activeDailyMonth = dailyDate.calendar && dailyDate.calendar.monthKey || monthKeyFromDateKey(dailyDate.activeKey) || '';
     state.activeDailyTag = dailyTag.activeKey;
     state.activeConference = confView.activeKey;
     state.activeConferenceTag = confTag.activeKey;
@@ -1403,6 +1557,8 @@
     var expandedClass = opts.expanded ? ' is-expanded' : '';
     var resultClass = opts.view && opts.view.resultMode ? ' is-result-mode' : '';
     var axisMode = opts.view && opts.view.resultMode ? 'results' : opts.mode;
+    var isDailyCalendar = opts.group === 'daily' && axisMode === 'date' && !(opts.view && opts.view.resultMode);
+    var calendarPlacement = opts.dailyCalendarPlacement === 'bottom' ? 'bottom' : 'top';
     var totalCount = typeof opts.totalCount === 'number' ? opts.totalCount : countPapersInView(opts.view);
     var unreadCount = typeof opts.unreadCount === 'number' ? opts.unreadCount : 0;
     html.push('<section class="dpr-sidebar-group dpr-sidebar-panel ' + groupClass + expandedClass + resultClass + '" data-panel="' + safeAttr(opts.group) + '">');
@@ -1412,10 +1568,37 @@
     html.push('    <span class="dpr-sidebar-day-counts"><span class="dpr-sidebar-day-unread">' + unreadCount + '</span>/<span class="dpr-sidebar-day-total">' + totalCount + '</span></span>');
     html.push('  </button>');
     html.push('  <div class="dpr-sidebar-panel-content">');
-    html.push(renderAxisTabs(opts.group, opts.mode, opts.view, opts.toggleLabel));
+    html.push(isDailyCalendar
+      ? renderDailyCalendarAxisRow(opts.view, opts.toggleLabel, calendarPlacement)
+      : renderAxisTabs(opts.group, opts.mode, opts.view, opts.toggleLabel));
+    if (isDailyCalendar && calendarPlacement === 'top') {
+      html.push(renderDailyCalendar(opts.view && opts.view.calendar, calendarPlacement));
+    }
     html.push(renderAxisContent(opts.group, axisMode, opts.view, opts.collapsedAxisSections, opts.readMap, opts.currentPaperId));
+    if (isDailyCalendar && calendarPlacement === 'bottom') {
+      html.push(renderDailyCalendar(opts.view && opts.view.calendar, calendarPlacement));
+    }
     html.push('  </div>');
     html.push('</section>');
+    return html.join('');
+  }
+
+  function renderDailyCalendarAxisRow(view, toggleLabel, placement) {
+    var calendar = view && view.calendar || {};
+    var activeDay = (calendar.days || []).find(function (day) {
+      return day && day.dateKey === calendar.activeDateKey;
+    }) || null;
+    var activeCount = activeDay
+      ? '<span class="dpr-sidebar-axis-summary-count"><span class="dpr-sidebar-day-unread">' + safeText(activeDay.unreadCount) + '</span>/<span class="dpr-sidebar-day-total">' + safeText(activeDay.totalCount) + '</span></span>'
+      : '';
+    var html = [];
+    html.push('<div class="dpr-sidebar-axis-row dpr-sidebar-daily-calendar-row" data-axis-group="daily" data-axis-mode="date" data-calendar-placement="' + safeAttr(placement) + '">');
+    html.push('  <button type="button" class="dpr-sidebar-axis-toggle" data-axis-toggle="daily" title="' + safeAttr(toggleLabel) + '">⇅</button>');
+    html.push('  <div class="dpr-sidebar-axis-summary">');
+    html.push('    <span class="dpr-sidebar-axis-summary-label">' + safeText(calendar.monthLabel || '日报日历') + '</span>');
+    html.push(activeCount);
+    html.push('  </div>');
+    html.push('</div>');
     return html.join('');
   }
 
@@ -1435,6 +1618,41 @@
       html.push('    <button type="button" class="dpr-sidebar-axis-tab' + active + '" data-axis-tab="' + safeAttr(group) + '" data-axis-key="' + safeAttr(tab.key) + '" data-unread="' + unreadFlag + '" title="' + safeAttr(tab.label) + '">');
       html.push('      <span class="dpr-sidebar-axis-tab-label">' + safeText(tab.label) + '</span>');
       html.push('      <span class="dpr-sidebar-axis-tab-count"><span class="dpr-sidebar-axis-tab-unread">' + safeText(unread) + '</span>/<span class="dpr-sidebar-axis-tab-total">' + safeText(tab.count) + '</span></span>');
+      html.push('    </button>');
+    });
+    html.push('  </div>');
+    html.push('</div>');
+    return html.join('');
+  }
+
+  function renderDailyCalendar(calendar, placement) {
+    var view = calendar || {};
+    var html = [];
+    html.push('<div class="dpr-sidebar-calendar is-' + safeAttr(placement || 'top') + '" data-daily-calendar data-calendar-month="' + safeAttr(view.monthKey || '') + '">');
+    html.push('  <div class="dpr-sidebar-calendar-header">');
+    html.push('    <button type="button" class="dpr-sidebar-calendar-nav" data-calendar-nav="' + safeAttr(view.prevMonthKey || '') + '" aria-label="上个月">‹</button>');
+    html.push('    <span class="dpr-sidebar-calendar-title">' + safeText(view.monthLabel || '') + '</span>');
+    html.push('    <button type="button" class="dpr-sidebar-calendar-nav" data-calendar-nav="' + safeAttr(view.nextMonthKey || '') + '" aria-label="下个月">›</button>');
+    html.push('  </div>');
+    html.push('  <div class="dpr-sidebar-calendar-weekdays" aria-hidden="true">');
+    (view.weekdays || []).forEach(function (label) {
+      html.push('    <span>' + safeText(label) + '</span>');
+    });
+    html.push('  </div>');
+    html.push('  <div class="dpr-sidebar-calendar-grid">');
+    (view.days || []).forEach(function (day) {
+      if (!day || day.blank) {
+        html.push('    <span class="dpr-sidebar-calendar-blank" aria-hidden="true"></span>');
+        return;
+      }
+      var activeClass = day.isActive ? ' is-active' : '';
+      var paperClass = day.hasPapers ? ' has-papers' : ' is-empty';
+      var unreadClass = day.unreadCount > 0 ? ' has-unread' : '';
+      var disabled = day.hasPapers ? '' : ' disabled aria-disabled="true"';
+      var unreadFlag = day.unreadCount > 0 ? '1' : '0';
+      html.push('    <button type="button" class="dpr-sidebar-calendar-day' + activeClass + paperClass + unreadClass + '" data-calendar-date="' + safeAttr(day.dateKey) + '" data-unread="' + unreadFlag + '" title="' + safeAttr(day.label) + '"' + disabled + '>');
+      html.push('      <span class="dpr-sidebar-calendar-day-number">' + safeText(day.dayNumber) + '</span>');
+      html.push('      <span class="dpr-sidebar-calendar-day-counts"><span class="dpr-sidebar-calendar-day-total">' + safeText(day.totalCount) + '</span><span class="dpr-sidebar-calendar-day-unread">' + safeText(day.unreadCount) + '</span></span>');
       html.push('    </button>');
     });
     html.push('  </div>');
@@ -1571,6 +1789,7 @@
       }
     });
     updateAxisTabUnreadMarks(readMap);
+    updateDailyCalendarUnreadMarks(readMap);
     if (state.unreadCountEl) {
       state.unreadCountEl.textContent = String(summary.total.unread);
       state.unreadCountEl.setAttribute('data-count', String(summary.total.unread));
@@ -1807,11 +2026,34 @@
       if (axisToggle) {
         var axisGroup = axisToggle.getAttribute('data-axis-toggle');
         if (axisGroup === 'daily') {
-          state.dailyViewMode = state.dailyViewMode === 'tag' ? 'date' : 'tag';
+          state.dailyViewMode = 'date';
+          state.dailyCalendarPlacement = state.dailyCalendarPlacement === 'bottom' ? 'top' : 'bottom';
         } else if (axisGroup === 'conference') {
           state.conferenceViewMode = state.conferenceViewMode === 'tag' ? 'conf' : 'tag';
         }
         rerenderSidebarBody(rerenderOptionsForAxisInteraction(axisGroup));
+        return;
+      }
+      var calendarNav = e.target.closest('.dpr-sidebar-calendar-nav');
+      if (calendarNav) {
+        var navMonth = normalizeMonthKey(calendarNav.getAttribute('data-calendar-nav') || '');
+        if (navMonth) {
+          state.dailyViewMode = 'date';
+          state.activeDailyMonth = navMonth;
+          rerenderSidebarBody(rerenderOptionsForAxisInteraction('daily'));
+        }
+        return;
+      }
+      var calendarDay = e.target.closest('.dpr-sidebar-calendar-day[data-calendar-date]');
+      if (calendarDay) {
+        if (calendarDay.disabled || calendarDay.getAttribute('aria-disabled') === 'true') return;
+        var calendarDate = calendarDay.getAttribute('data-calendar-date') || '';
+        if (calendarDate) {
+          state.dailyViewMode = 'date';
+          state.activeDailyDate = calendarDate;
+          state.activeDailyMonth = monthKeyFromDateKey(calendarDate) || state.activeDailyMonth;
+          rerenderSidebarBody(rerenderOptionsForAxisInteraction('daily'));
+        }
         return;
       }
       var axisTab = e.target.closest('.dpr-sidebar-axis-tab');
@@ -1820,7 +2062,10 @@
         var tabKey = axisTab.getAttribute('data-axis-key') || '';
         if (tabGroup === 'daily') {
           if (state.dailyViewMode === 'tag') state.activeDailyTag = tabKey;
-          else state.activeDailyDate = tabKey;
+          else {
+            state.activeDailyDate = tabKey;
+            state.activeDailyMonth = monthKeyFromDateKey(tabKey) || state.activeDailyMonth;
+          }
         } else if (tabGroup === 'conference') {
           if (state.conferenceViewMode === 'tag') state.activeConferenceTag = tabKey;
           else state.activeConference = tabKey;
@@ -2044,6 +2289,7 @@
         collectUnreadPaperIdsForSnapshot: collectUnreadPaperIdsForSnapshot,
         ensureUnreadSessionPaperIds: ensureUnreadSessionPaperIds,
         buildDailyDateView: buildDailyDateView,
+        buildDailyCalendarView: buildDailyCalendarView,
         buildDailyTagView: buildDailyTagView,
         buildDailyResultView: buildDailyResultView,
         buildConferenceConfView: buildConferenceConfView,
