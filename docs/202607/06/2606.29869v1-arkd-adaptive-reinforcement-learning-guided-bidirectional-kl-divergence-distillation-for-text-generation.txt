@@ -1,0 +1,455 @@
+Title: ARKD: Adaptive Reinforcement Learning-Guided Bidirectional KL Divergence Distillation for Text Generation
+
+URL Source: https://arxiv.org/pdf/2606.29869v1
+
+Published Time: Tue, 30 Jun 2026 01:48:36 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# ARKD: Adaptive Reinforcement Learning-Guided Bidirectional KL Divergence Distillation for Text Generation 
+
+Zilong Liu 1,* Xuewen Zhang 1,2,* Jinrui Xing 1
+
+Juyi Qiao 1 Huiyong Wang 1 Junming Jiao 11 Li Auto, Beijing, China  
+
+> 2
+
+School of Software and Microelectronics, Peking University, China 
+
+Abstract 
+
+Knowledge distillation (KD) is a key tech-nique for compressing Large Language Mod-els (LLMs), yet methods relying on a single KL objective often fail to balance primary distribution fitting with long-tail probability modeling, limiting both generation quality and generalization. To address this, we analyze the complementary roles of forward and re-verse KL divergence (FKL/RKL) in distribu-tion alignment from theoretical and empirical perspectives. We then propose a reinforcement-learning-based adaptive KL-weighted distilla-tion framework, in which a policy network dy-namically assigns weights to FKL and RKL based on teacher–student distributional charac-teristics, guided by immediate reward signals to achieve dual alignment on principal and long-tail modes. Extensive experiments demonstrate consistent improvements across Rouge-L and BertScore metrics, surpassing greedy heuris-tics by 0.4–0.6 points and outperforming other baseline methods on diverse benchmarks. 
+
+1 Introduction 
+
+As Large Language Models (LLMs) have emerged as foundational technologies in artificial intelli-gence (Zhang et al., 2024a), they demonstrate re-markable capabilities in natural language under-standing and generation (Jiang et al., 2026). How-ever, their substantial parameter counts and com-putational demands severely constrain practical deployment. Consequently, efficient model com-pression—achieving lightweight models with re-duced inference costs while maintaining robust per-formance and generalization—has become a cen-tral research focus (Zhu et al., 2024). Knowledge Distillation (KD), as an established compression paradigm (Hinton et al., 2015; Fang et al., 2026), enables student models to approximate teacher out-put distributions or hidden representations (Gou 
+
+> *Equal contribution.
+
+et al., 2021), thereby enhancing student perfor-mance while significantly reducing parameter size and hardware requirements (Acharya et al., 2024). Despite substantial progress, traditional KD ob-jectives driven by Kullback-Leibler (KL) diver-gence—particularly forward KL (FKL)—face criti-cal limitations (Yang et al., 2024a). In open-ended text generation, students are compelled to cover all modes of the teacher distribution. Given the inher-ent capacity gap, this often results in overestimated probabilities in low-confidence, long-tail regions (i.e., low-probability tokens in the teacher distribu-tion) (Zhang et al., 2024b), degrading generation quality. Additionally, reliance on in-distribution (ID) training data yields insufficient generalization to out-of-distribution (OOD) samples (Yang et al., 2023). 
+
+Figure 1: Illustration of matching a single Gaussian to a Gaussian mixture using both forward and reverse KL divergence in a toy experiment. 
+
+To mitigate these challenges, reverse KL (RKL) divergence has been introduced as an alterna-tive (Gu et al., 2024), encouraging students to focus on primary teacher modes while disregarding low-probability regions. However, this mode-seeking behavior compromises diversity and coverage. Fig-ure 1 illustrates this trade-off via a toy experiment: FKL exhibits mode-covering behavior spanning all target modes, while RKL demonstrates mode-seeking behavior concentrating on the dominant mode. Our method adaptively balances both objec-tives—jointly referred to as bidirectional KL dis-
+
+> arXiv:2606.29869v1 [cs.CL] 29 Jun 2026 Figure 2: Comparison of distillation methods. (a) Sequence-level distillation fine-tunes the student with teacher-generated data, while token-level distillation uses the teacher’s distribution at each token as supervision. (b) Our method introduces an adaptive KL-weighted distillation framework, where a policy network dynamically assigns forward and reverse KL weights based on output distributions, guided by reinforcement learning rewards. This approach achieves consistent improvements over previous methods (see Tables 1 and 2).
+
+tillation throughout this paper—to achieve better distribution alignment. These distinct characteristics highlight a fun-damental trade-off: neither FKL nor RKL alone sufficiently addresses probability alignment and generalization in knowledge distillation. Crucially, the desirable FKL/RKL balance shifts as the stu-dent–teacher gap evolves over training, which a single static interpolation coefficient cannot cap-ture. Notably, Reinforcement Learning’s mech-anisms in policy optimization, reward modeling, and distribution alignment offer promising av-enues to navigate this trade-off (Agarwal et al., 2024). By framing distillation as reward-driven optimization, RL enables adaptive focus on high-confidence regions—avoiding low-probability over-fitting—while enhancing generalization to unseen samples through policy exploration (Li et al., 2024). Building on these insights, we systematically in-vestigate the integration of reinforcement learning within knowledge distillation. We propose a novel RL-based joint optimization framework (Figure 2), where reward signals dynamically guide the student to capture both primary and long-tail modes of the teacher distribution, thereby mitigating long-tail overestimation and limited generalization inherent in static KL-based distillation. The main contribu-tions are as follows: • We theoretically analyze FKL and RKL for distribution alignment, establishing their com-plementarity and convergence consistency as the foundation for adaptive distillation. • We propose Adaptive Reinforcement Learn-ing Guided Knowledge Distillation (ARKD) ,which employs a policy network to dynami-cally weight FKL and RKL via reinforcement learning, enabling state-dependent adaptation beyond static heuristics. • Our experiments demonstrate that ARKD con-sistently improves generation quality, distribu-tion fitting, and generalization ability across multiple benchmarks and model scales. 
+
+2 Related work 
+
+2.1 KD for LLM 
+
+Knowledge distillation for LLMs can be catego-rized into black-box and white-box approaches (Xu et al., 2024). Black-box methods train student mod-els using teacher-generated outputs without access-ing internal representations (Kim and Rush, 2016; Chiang et al., 2023), while white-box methods leverage teacher logits or hidden states for token-level distribution alignment via FKL or RKL (Kim et al., 2024). White-box distillation has proven effective for LLM compression and deployment. Recent work explores adaptive teaching strategies to enhance distillation, such as token-level teaching mode adaptation (Zhong et al., 2024). This work advances white-box KD by proposing an adaptive strategy to optimally balance FKL and RKL. 
+
+2.2 Forward KL and Reverse KL 
+
+Forward KL and reverse KL exhibit fundamentally distinct distributional behaviors in knowledge dis-tillation. FKL encourages the student distribution 
+
+q to cover the entire support of teacher distribu-tion p, exhibiting mode-covering (mean-seeking) behavior. Conversely, RKL drives q to concen-trate on a single dominant mode, exhibiting mode-seeking behavior. Recent work advocates for RKL in LLM distillation to avoid overestimating long-tail variants. Gu et al. (2024) introduce MiniLLM, demonstrating RKL’s effectiveness in preventing low-probability region overestimation. Wu et al. (2025) show that despite converging to identical objectives, FKL and RKL emphasize head and tail regions differently during training, motivating adap-tive weighting strategies. Wen et al. (2023) propose f-DISTILL, a framework that formulates sequence-level KD as minimizing generalized f-divergences to balance mode averaging and mode collapsing. Jin et al. (2026) introduce entropy-aware on-policy distillation that augments reverse KL with forward KL when teacher entropy is high to preserve gen-eration diversity. While some approaches combine divergences through static weighting (Tan et al., 2023), they often neglect the dynamic nature of distributional structure evolution during training, which our approach explicitly addresses. 
+
+2.3 Combining RL and KD 
+
+Integrating RL with KD transforms teacher feed-back into quantifiable rewards (Yang et al., 2024b; Xu et al., 2026), enabling students to optimize be-havior through preference-based signals (Nguyen et al., 2025; Zhang et al., 2026). Agarwal et al. (2024) propose Generalized Knowledge Distilla-tion (GKD), which trains students on on-policy self-generated outputs guided by teacher proba-bilities to mitigate train-test discrepancy in auto-regressive models, enabling seamless integration with RL fine-tuning (e.g. RLAIF). RL frameworks enable dynamic adjustment of distillation hyper-parameters based on training performance. Prior work formulates distillation as sequential decision-making (Lee et al., 2023), where reward-guided loss adaptation improves knowledge transfer effi-ciency. Kwon et al. (2023) employ RL to dynami-cally select between FKL and RKL across training stages. Overall, RL provides adaptive and intelli-gent mechanisms for KD, representing a promising direction for LLM compression. Building on these advances, our work introduces RL-based adaptive KL divergence weighting. 
+
+3 Methodology 
+
+3.1 FKL & RKL Objective Consistency 
+
+In conditional language generation tasks, the model is required to generate a target sequence y =
+
+{yt}Tt=1 based on an input sequence x, where 
+
+yt ∈ V = {Y1, Y 2, . . . , Y V }. Traditional knowl-edge distillation methods transmit knowledge by aligning the token generation distributions between the teacher and student models. Specifically, the objective functions for FKL and RKL are defined as follows: 
+
+JFKL =
+
+> T
+
+X
+
+> t=1
+
+KL  p(yt|y<t )∥qθ(yt|y<t )
+
+=
+
+> T
+
+X
+
+> t=1
+> V
+
+X
+
+> j=1
+
+p(Yj |y<t ) log p(Yj |y<t )
+
+qθ(Yj |y<t ) , (1) 
+
+JRKL =
+
+> T
+
+X
+
+> t=1
+
+KL  qθ(yt|y<t )∥p(yt|y<t )
+
+=
+
+> T
+
+X
+
+> t=1
+> V
+
+X
+
+> j=1
+
+qθ(Yj |y<t ) log qθ(Yj |y<t )
+
+p(Yj |y<t ) . (2) Theoretical analysis shows that, due to the de-composability of the above objective functions, token-wise analysis is feasible. Let the pre-softmax logits of the teacher and student models at time step 
+
+t be denoted as zp and zq, respectively. Then, the token probability distributions can be expressed as: 
+
+p(Yj |y<t ) = exp( zpj )
+
+PVk=1 exp( zpk ) , (3) 
+
+qθ(Yj |y<t ) = exp( zqj )
+
+PVk=1 exp( zqk) . (4) By applying gradient analysis, we obtain: 
+
+∂J FKL 
+
+∂z qj
+
+= qθ(Yj |y<t ) − p(Yj |y<t ), (5) 
+
+∂J RKL 
+
+∂z qj
+
+= qθ(Yj |y<t )
+
+
+
+log qθ(Yj |y<t )
+
+p(Yj |y<t ) − JRKL 
+
+
+
+.
+
+(6) When the gradients are zero, the convergence condition for both types of KL divergence is 
+
+qθ(Yj |y<t ) = p(Yj |y<t ) (∀j), (7) which means the student model exactly replicates the output distribution of the teacher model. For RKL, zero gradient requires log( qθ/p ) = JRKL for all j; since the right-hand side is a constant, qθ/p 
+
+must be constant across j, which combined with normalization forces qθ = p. This result reveals the fundamental consistency of both forward and re-verse KL divergence with respect to the distribution matching objective, thus providing a theoretical ba-sis for designing adaptive distillation strategies. 
+
+3.2 RL-based Knowledge Distillation Framework 
+
+Building on the analysis of the consistency between FKL and RKL objectives in Section 3.1, we pro-pose an adaptive knowledge distillation framework based on RL. This approach reframes the static KL weight assignment in traditional distillation as a sequential decision-making problem, introducing a policy network as the RL agent to dynamically ad-just the weights based on statistical features of the teacher and student outputs (e.g., entropy, variance, KL divergence). A key motivation for RL-based adaptation is that knowledge distillation constitutes a sequen-tial decision process: at each step t, the weight choice αt determines the parameter update θt+1 ←
+
+θt − η∇θL(t)distil , which in turn shapes the loss land-scape (FKL t+1 , RKL t+1 ) at the next step. While greedy heuristics (e.g., αt = I[FKL t < RKL t])can incorporate state features, they rely on fixed rules that optimize immediate loss reduction with-out considering long-term consequences. Such my-opic strategies often lead to suboptimal trajecto-ries—for instance, aggressively selecting RKL in early training may yield rapid initial convergence but risks mode collapse, whereas a balanced ap-proach with temporarily higher loss can preserve diversity and improve final model quality. In con-trast, reinforcement learning addresses this limi-tation by optimizing cumulative reward over the training trajectory rather than instantaneous loss. By formulating weight selection as a Markov De-cision Process, the policy network πϕ learns from observed training dynamics to discover non-trivial state-dependent strategies that balance exploration of both KL terms with long-term performance, adaptively navigating phase transitions between FKL’s mode-covering and RKL’s mode-seeking be-haviors. This learned adaptivity, validated empiri-cally in our experiments, enables ARKD to surpass both static and greedy baselines (Algorithm 1). 
+
+Algorithm 1 RL-based Adaptive Knowledge Dis-tillation                                                                                                                               
+
+> Require: Instruction tuning datasets D
+> 1: Pre-training corpus Dp
+> 2: Fine-tuned teacher model with distribution p
+> 3: Initialized student model with distribution qθ
+> 4: Policy network πϕfor adaptive weight selection
+> Ensure: Student model parameter θafter distillation training 5: for epoch in epochs do
+> 6: for batch in Dand Dpdo
+> 7: Compute teacher and student outputs (logits and probabilities) for the batch 8: Extract state s=[HT, H S, σ 2
+> T, σ 2
+> S, L FKL , L RKL ]
+> 9: Compute adaptive weight α=πϕ(s),α∈(0 ,1)
+> 10: Compute FKL =KL( p∥qθ),RKL =KL( qθ∥p)
+> 11: Compute distillation loss 12: Lkd =α·FKL + (1 −α)·RKL
+> 13: Compute language modeling loss 14: Lpt =−P
+> d∼Dplog qθ(d)
+> 15: Compute total loss 16: L=Lkd +λ·Lpt
+> 17: Update student: θ=θ−η· ∇ θL
+> 18: Compute reward r=−Lkd .detach()
+> 19: Update EMA baseline: b←γb + (1 −γ)r
+> 20: Compute advantage A=r−band entropy
+> H(α) = −[αlog α+ (1 −α) log(1 −α)]
+> 21: Compute policy gradient loss 22: Lpolicy =−log( α)·A−βHH(α)
+> 23: Update policy net: ϕ=ϕ−β· ∇ ϕLpolicy
+> 24: end for
+> 25: end for
+> 26: return Student model parameter θ
+
+Specifically, for each training batch we form a 6-dimensional state vector 
+
+s = [HT , H S , σ 2 
+
+> T
+
+, σ 2 
+
+> S
+
+, L FKL , L RKL ] compris-ing teacher/student entropies, variances, and current FKL/RKL values; the policy network then outputs a weight α (for FKL, with 1 − α for RKL), which is used to compute the weighted distillation loss. The environment provides an immediate reward signal r, reflecting the effectiveness of the weight assignment, and both the student parameters θ and policy network parameters ϕ
+
+are optimized accordingly. This closed-loop process of state observation, action assignment, loss computation, reward feedback, and parameter update enables adaptive and efficient knowledge distillation. 
+
+3.3 Reward Signal Design 
+
+RL-based adaptive weight allocation hinges on ef-fective reward design. To enable the policy network to autonomously optimize the allocation weight α
+
+during training, we define the immediate reward as the negative distillation loss for the current batch: 
+
+r = −Ldistil (α) (8) where 
+
+Ldistil (α) = α · KL( p ∥ qθ) + (1 − α) · KL( qθ ∥ p)
+
+(9) This formulation encourages the policy network to select α values that minimize distillation loss. The optimization objective is to maximize the cumu-lative reward (i.e., minimize the total distillation loss) over training: 
+
+max  
+
+> θ
+
+Es∼S [r] = max  
+
+> θ
+
+Es∼S [−Ldistil (πθ(s))] 
+
+(10) Through dynamic adjustment, the policy network learns to adaptively select α to best enhance student model performance. 
+
+3.4 RL-enhanced Joint Optimization of FKL and RKL 
+
+Considering that, within the reinforcement learning-based knowledge distillation framework, the weight allocation strategy is dynamically deter-mined by the policy network, the overall optimiza-tion objective can be formulated as a collaborative learning process between the student network and the policy network. Accordingly, the weighted dis-tillation loss is constructed as follows: 
+
+Ldistil (θ, ϕ ) = α·KL( p ∥ qθ)+(1 −α)·KL( qθ ∥ p)
+
+(11) Considering the language modeling loss Lpt (θ)
+
+of the task, the total loss function can be formulated as: 
+
+Ltotal (θ, ϕ ) = Ldistil (θ, ϕ ) + λL pt (θ) (12) where λ > 0 is a balancing coefficient. During training, the parameter updates are per-formed in two components: 
+
+(1) Student Model Parameter Update ( θ)
+
+The optimization objective for the student network is to minimize the total loss: 
+
+θ∗ = arg min  
+
+> θ
+
+Ltotal (θ, ϕ ) (13) The corresponding gradient is given by: 
+
+∇θLtotal = α · ∇ θFKL + (1 − α) · ∇ θRKL + λ∇θLpt (θ) (14) Note that here α is determined by the current policy network parameters ϕ and is thus treated as a constant with respect to θ during the gradient computation. 
+
+(2) Policy Network Parameter Update ( ϕ)
+
+As described in Section 3.3, the policy network maximizes the immediate reward using the policy gradient method, which can be formulated as fol-lows: 
+
+r = −Ldistil (θ, ϕ ) (15) Using REINFORCE with an EMA baseline b
+
+and entropy regularization H(α) to stabilize train-ing and prevent boundary saturation, the policy loss is: 
+
+Lpolicy (ϕ) = − log( α) ( r − b) − βH H(α) (16) The gradient of the policy loss with respect to ϕ
+
+is (omitting the entropy term for brevity): 
+
+∇ϕLpolicy = −(r − b) · 1
+
+α · ∂α ∂ϕ (17) If α = σ(fϕ(s)) is parameterized via a sigmoid activation, then: 
+
+∂α ∂ϕ = α(1 − α) · ∂f ϕ(s)
+
+∂ϕ (18) As a result, the policy network is ultimately driven to output weight allocations that lead to lower distillation loss, thereby achieving adaptive weighting adjustment. 
+
+4 Experiments 
+
+4.1 Experimental Setup 
+
+To comprehensively evaluate our adaptive knowl-edge distillation approach, we conduct experiments Method GPT2 1.5B → GPT2 120M GPT2 1.5B → GPT2 340M LLaMA 13B → LLaMA 7B Rouge-L BertScore Rouge-L BertScore Rouge-L BertScore Teacher 27.1 0.842 27.1 0.858 31.3 0.891 SFT w/o KD 22.3 0.772 24.0 0.793 26.0 0.810 SeqKD 21.9 0.765 24.2 0.798 26.6 0.818 FKL 22.9 0.781 24.9 0.803 27.1 0.825 RKL 23.3 0.797 25.5 0.813 28.2 0.844 FKL+RKL 23.2 0.794 25.7 0.817 28.3 0.848 MiniLLM 24.6 — 25.4 — 29.0 —      
+
+> ARKD 24.5 0.815 26.1 0.827 29.1 0.868
+
+Table 1: In-distribution performance on DollyEval (500 test samples) for various teacher-student configurations. Bold indicates the best student model. Rouge-L numbers for MiniLLM are taken from (Gu et al., 2024); BertScore is not reported in the original work. 
+
+on instruction tuning tasks, where models generate natural language responses conditioned on given in-structions. We first fine-tune large language models on instruction–response datasets to obtain teacher models. Various distillation methods are then ap-plied on the same dataset to measure student mod-els’ instruction-following capabilities. 
+
+Teacher and Student Models Teacher and stu-dent models are chosen from mainstream large lan-guage model families of different sizes. Teacher models include GPT-2 (1.5B) and LLaMA (13B), while student models include GPT-2 (120M, 340M) and LLaMA (7B). Teacher models are fine-tuned on instruction datasets and subsequently serve as teachers for knowledge distillation. 
+
+Data Preprocessing and Training We use the databricks-dolly-15K dataset, containing 15,000 human-annotated instruction–response pairs. In-stances exceeding the maximum context length and short responses (less than 10 words) are filtered to ensure input and output quality. The dataset is randomly split into 12,000 training, 1,000 valida-tion, and 500 test examples. Detailed hyperparam-eters and training configurations are provided in Appendix B. 
+
+Evaluation Datasets and Metrics Student model performance is evaluated on a diverse set of benchmarks, including DollyEval, SelfInst (Wang et al., 2022a), SuperNatural-Instructions (Wang et al., 2022b), UnNI (Honovich et al., 2023), and VicunaEval (Chiang et al., 2023). We use two complementary metrics: Rouge-L, which re-flects sequence-level alignment with references and assesses generation quality (Lin, 2004), and BertScore (Zhang et al., 2019), which evaluates semantic similarity between generated and refer-ence texts using contextual embeddings. Higher scores on both metrics indicate better performance. DollyEval serves as our ID benchmark as models are trained on the Dolly dataset, while other bench-marks evaluate OOD generalization. 
+
+Baselines and Comparison Methods We com-pare against six baseline approaches: supervised fine-tuning without distillation (SFT w/o KD), sequence-level distillation (SeqKD), token-level distillation with forward or reverse KL (FKL/RKL), weighted combination of both (FKL+RKL), state-of-the-art RKL-based method (MiniLLM), and our proposed ARKD method. The specific descriptions are as follows. • SFT w/o KD Supervised fine-tuning with-out knowledge distillation, where the student model is directly trained on the dataset using gold references as supervision. • SeqKD Sequence-level knowledge distilla-tion, where the student is fine-tuned on data generated by the teacher model. • FKL (RKL) Forward (Reverse) KL diver-gence at the token level, where the student is fine-tuned on the dataset and supervised by the teacher’s distribution at each token step. • FKL+RKL Weighted sum of forward and reverse KL divergences with a coefficient of 0.5 for each term. • MiniLLM State-of-the-art RKL-based distil-lation method (Gu et al., 2024) that optimizes reverse KL with policy gradient fine-tuning. • ARKD Our proposed method: joint optimiza-tion of forward and reverse KL divergences via adaptive reinforcement learning. Model Params Method SelfInst VicunaEval S-NI UnNI                                                                                      
+
+> GPT-2 1.5B Teacher 15.1 16.6 27.2 31.6 SFT w/o KD 11.9 12.5 16.4 18.4 SeqKD 11.6 12.2 16.3 18.5 120M FKL 12.1 12.9 16.6 19.2 RKL 12.5 13.3 17.2 19.8 FKL+RKL 13.2 13.9 17.8 20.3
+> ARKD 13.6 14.5 19.1 21.9
+> SFT w/o KD 13.0 14.4 24.9 25.7 SeqKD 13.1 14.8 25.4 26.0 340M FKL 13.8 15.2 25.7 26.6 RKL 14.4 15.4 26.1 27.1 FKL+RKL 14.6 15.9 26.3 27.8
+> ARKD 15.0 16.1 26.8 28.4
+> LLaMA 13B Teacher 23.2 19.7 36.1 39.0 SFT w/o KD 20.6 17.5 32.4 35.8 SeqKD 20.8 18.1 33.3 36.6 7B FKL 20.5 18.3 33.8 36.5 RKL 21.0 18.6 34.1 37.1 FKL+RKL 21.8 18.9 34.7 37.5
+> ARKD 22.6 19.2 35.5 38.1
+
+Table 2: Performance on OOD datasets (SelfInst, Vi-cunaEval, S-NI, and UnNI) for various teacher-student configurations, reported as Rouge-L. Bold indicates the best student model in each block. Complete results with BertScore metrics are provided in Appendix C. 
+
+4.2 Main Results 
+
+Based on the theoretical analysis in Section 3 and the experimental setup in Section 4.1, we con-duct extensive experiments across multiple teacher-student configurations. Results are presented in Tables 1 and 2. Table 1 reports ID performance on DollyEval using both Rouge-L and BertScore, while Table 2 presents OOD results using Rouge-L. Key findings are summarized as follows: • ARKD consistently outperforms all baseline methods across teacher-student configurations and evaluation benchmarks. On DollyE-val (Table 1), ARKD achieves the highest BertScore (0.815, 0.827, 0.868) and com-petitive or superior Rouge-L scores across all three configurations, demonstrating strong performance in both semantic similarity and lexical alignment. Notably, ARKD surpasses the strong MiniLLM baseline, validating the effectiveness of our strategy. • RKL consistently outperforms FKL, and the static combination FKL+RKL yields fur-ther improvements, corroborating the com-plementary nature of FKL’s mode-covering and RKL’s mode-seeking behaviors. How-ever, ARKD’s adaptive weighting signifi-cantly outperforms the static 0.5:0.5 combina-tion, demonstrating that dynamic policy opti-mization provides substantial gains over fixed weighting schemes. • ARKD shows superior out-of-distribution gen-eralization. On non-Dolly benchmarks (Self-Inst, VicunaEval, S-NI, UnNI) in Table 2, ARKD consistently outperforms all baselines across both GPT-2 and LLaMA model fami-lies. Performance improvements remain con-sistent as model size increases, illustrating the scalability of our approach. 
+
+4.3 Ablation Study: Impact of Alpha Weighting Strategies 
+
+To evaluate the effectiveness of adaptive alpha weighting, we compare: (1) static values ( α ∈{0, 0.25 , 0.5, 0.75 , 1}), (2) linear scheduling (lin-ear_dec: 1 → 0; linear_inc: 0 → 1), (3) greedy heuristic (greedy_min: min(FKL , RKL) ), and (4) RL-based ARKD. Extended ablation results in-cluding detailed analysis of linear scheduling and additional static alpha values are provided in Ap-pendix D. Figures 3–4 reveal clear performance patterns across different alpha strategies (the correspond-ing BertScore heatmap is provided in Appendix D, Figure 7). Static weighting methods (FKL, RKL, fixed combinations) achieve limited performance (22.9–23.3 Rouge-L on 120M Dolly), as they can-not adapt to varying distributional characteristics during training. Linear scheduling shows mini-mal improvement, suggesting that simple time-based heuristics fail to capture complex align-ment dynamics. The greedy_min heuristic per-forms better (24.1) by selecting the lower-loss divergence at each step, yet remains fundamen-tally myopic—optimizing for immediate gains without long-term planning. In contrast, ARKD consistently achieves best scores: 24.5 (Dolly), 19.1 (S-NI), 21.9 (UnNI) on 120M, outperform-ing greedy_min by 0.4–0.6 points and maintaining strong performance across both ID and OOD bench-marks. Similar patterns emerge for 340M models (Figure 4), confirming scalability. Figure 5 shows ARKD’s learned adaptation pat-tern across three phases. During Exploration 
+
+(0–600 steps), the policy network conducts broad search over α space. In Convergence (600–2000 steps), the policy gradually transitions toward lower 
+
+α values as the student distribution approaches the teacher, reflecting a shift from mode-covering Figure 3: Rouge-L performance heatmap for GPT2-120M across Dolly (ID), S-NI, and UnNI (OOD) datasets under different alpha strategies. 
+
+> Figure 4: Rouge-L performance heatmap for GPT2-340M across Dolly, S-NI, and UnNI datasets.
+
+(FKL) to mode-seeking (RKL) behavior. Finally, 
+
+Stability (2000+ steps) maintains α ≈ 0.18 for precise refinement. This trajectory reveals an intel-ligent strategy: early FKL emphasis ensures broad coverage preventing mode collapse, while later RKL emphasis enables precise alignment avoiding long-tail overestimation. This non-trivial strategy emerges through RL optimization rather than man-ual design, validating that policy-based learning anticipates long-term training dynamics beyond greedy optimization.            
+
+> Figure 5: Learned αtrajectory during GPT2-120M train-ing. The RL policy explores α∈[0 .3,0.6] initially, then converges to α≈0.18 (RKL-dominant) by Epoch 3.
+
+4.4 Goal Consistency Analysis 
+
+To validate the theoretical soundness of our ap-proach, we analyze the consistency among reward, FKL, and RKL during training. According to Sec-tion 3, all three optimization objectives converge to the same solution when the student fully matches the teacher, indicating essential equivalence. We monitor these metrics throughout training; the cor-responding training curves are provided in Ap-pendix A (Figure 6). As shown, the dynamics of all three metrics are highly consistent. As training progresses, reward steadily increases (i.e., distillation loss decreases) while both FKL and RKL decrease synchronously, indicating successful distribution alignment. Im-portantly, adaptive weighting does not compromise objective consistency—whether using fixed or RL-based weights, the trends of reward, FKL, and RKL remain aligned, confirming our theoretical predic-tions. This demonstrates that despite incorporating policy networks and adaptive weighting, ARKD maintains fundamental consistency between theory and practice, providing a solid foundation for its effectiveness across diverse tasks. 
+
+5 Conclusion 
+
+This paper presents ARKD, an adaptive knowledge distillation framework that dynamically optimizes the weighting of forward and reverse KL diver-gences through reinforcement learning. By intro-ducing a state-aware policy network, ARKD adap-tively balances FKL’s mode-covering and RKL’s mode-seeking behaviors according to distributional properties of teacher and student models. Our theo-retical analysis establishes the complementary roles and convergence consistency of both KL diver-gences, providing principled foundations for adap-tive optimization. Extensive experiments demon-strate that ARKD consistently outperforms static weighting, scheduled strategies, and greedy heuris-tics across multiple benchmarks and model scales, advancing adaptive knowledge distillation for effi-cient large language model compression. 
+
+Limitations 
+
+While ARKD demonstrates strong performance across benchmarks and model scales, we view several directions as natural extensions for future work. The policy currently conditions on a hand-crafted 6-dimensional state vector with only ∼525 parameters; end-to-end learned encoders could cap-ture finer distributional structure. The immedi-ate per-batch reward could also be extended to longer-horizon signals such as validation-set gen-eration quality or task-specific preferences. The adaptive mechanism is complementary to broader 
+
+f -divergence families (e.g., TVD in f-DISTILL) and to on-policy paradigms such as GKD, both of which can be combined with ARKD. Extending it to other generation tasks and larger model scales, together with automated hyperparameter selection, are promising avenues. 
+
+References 
+
+Kamal Acharya, Alvaro Velasquez, and Houbing Her-bert Song. 2024. A survey on symbolic knowledge distillation of large language models. IEEE Transac-tions on Artificial Intelligence .Rishabh Agarwal, Nino Vieillard, Yongchao Zhou, Pi-otr Stanczyk, Sabela Ramos Garea, Matthieu Geist, and Olivier Bachem. 2024. On-policy distillation of language models: Learning from self-generated mistakes. In The Twelfth International Conference on Learning Representations .Wei-Lin Chiang, Zhuohan Li, Ziqing Lin, Ying Sheng, Zhanghao Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E Gonzalez, and 1 others. 2023. Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt quality. See https://vicuna.lmsys.org (accessed 14 April 2023) ,2(3):6. Luyang Fang, Xiaowei Yu, Jiazhang Cai, Yongkai Chen, Shushan Wu, Zhengliang Liu, Zhenyuan Yang, Hao-ran Lu, Xilin Gong, Yufang Liu, and 1 others. 2026. Knowledge distillation and dataset distillation of large language models: Emerging trends, challenges, and future directions. Artificial Intelligence Review ,59(1):17. Jianping Gou, Baosheng Yu, Stephen J Maybank, and Dacheng Tao. 2021. Knowledge distillation: Asurvey. International journal of computer vision ,129(6):1789–1819. Yuxian Gu, Li Dong, Furu Wei, and Minlie Huang. 2024. Minillm: Knowledge distillation of large language models. In International Conference on Learning Representations , volume 2024, pages 32694–32717. Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. 2015. Distilling the knowledge in a neural network. arXiv preprint arXiv:1503.02531 .Or Honovich, Thomas Scialom, Omer Levy, and Timo Schick. 2023. Unnatural instructions: Tuning lan-guage models with (almost) no human labor. In Pro-ceedings of the 61st Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 14409–14428. Juyong Jiang, Fan Wang, Jiasi Shen, Sungju Kim, and Sunghun Kim. 2026. A survey on large language models for code generation. ACM Transactions on Software Engineering and Methodology , 35(2):1–72. Woogyeol Jin, Taywon Min, Yongjin Yang, Swanand Ravindra Kadhe, Yi Zhou, Dennis Wei, Nathalie Baracaldo, and Kimin Lee. 2026. Entropy-aware on-policy distillation of language models. arXiv preprint arXiv:2603.07079 .Gyeongman Kim, Doohyuk Jang, and Eunho Yang. 2024. Promptkd: Distilling student-friendly knowl-edge for generative language models via prompt tun-ing. In Findings of the Association for Computa-tional Linguistics: EMNLP 2024 , pages 6266–6282. Yoon Kim and Alexander M Rush. 2016. Sequence-level knowledge distillation. In Proceedings of the 2016 conference on empirical methods in natural language processing , pages 1317–1327. Minae Kwon, Sang Michael Xie, Kalesha Bullard, and Dorsa Sadigh. 2023. Reward design with language models. arXiv preprint arXiv:2303.00001 .Harrison Lee, Samrat Phatale, Hassan Mansoor, Kel-lie Ren Lu, Thomas Mesnard, Johan Ferret, Colton Bishop, Ethan Hall, Victor Carbune, and Abhinav Rastogi. 2023. Rlaif: Scaling reinforcement learn-ing from human feedback with ai feedback. arXiv preprint arXiv:2309.00267 .Yixing Li, Yuxian Gu, Li Dong, Dequan Wang, Yu Cheng, and Furu Wei. 2024. Direct preference knowledge distillation for large language models. 
+
+arXiv preprint arXiv:2406.19774 .Chin-Yew Lin. 2004. Rouge: A package for automatic evaluation of summaries. In Text summarization branches out , pages 74–81. Duy A Nguyen, Rishi Kesav Mohan, Van Yang, Pritom Saha Akash, and Kevin Chen-Chuan Chang. 2025. Rl-based query rewriting with distilled llm for online e-commerce systems. arXiv preprint arXiv:2501.18056 .Shicheng Tan, Weng Lam Tam, Yuanchun Wang, Wen-wen Gong, Shu Zhao, Peng Zhang, and Jie Tang. 2023. Gkd: A general knowledge distillation frame-work for large-scale pre-trained language model. In 
+
+Proceedings of the 61st Annual Meeting of the As-sociation for Computational Linguistics (Volume 5: Industry Track) , pages 134–148. Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, Al-isa Liu, Noah A Smith, Daniel Khashabi, and Han-naneh Hajishirzi. 2022a. Self-instruct: Aligning lan-guage models with self-generated instructions. arXiv preprint arXiv:2212.10560 .Yizhong Wang, Swaroop Mishra, Pegah Alipoor-molabashi, Yeganeh Kordi, Amirreza Mirzaei, Anjana Arunkumar, Arjun Ashok, Arut Selvan Dhanasekaran, Atharva Naik, David Stap, and 1 oth-ers. 2022b. Benchmarking generalization via in-context instructions on 1,600+ language tasks. arXiv preprint arXiv:2204.07705 , 2(2). Yuqiao Wen, Zichao Li, Wenyu Du, and Lili Mou. 2023. F-divergence minimization for sequence-level knowl-edge distillation. In Proceedings of the 61st An-nual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 10817– 10834. Taiqiang Wu, Chaofan Tao, Jiahao Wang, Runming Yang, Zhe Zhao, and Ngai Wong. 2025. Rethinking kullback-leibler divergence in knowledge distillation for large language models. In Proceedings of the 31st International Conference on Computational Linguis-tics , pages 5737–5755. Shicheng Xu, Liang Pang, Yunchang Zhu, Jia Gu, Zihao Wei, Jingcheng Deng, Feiyang Pan, Huawei Shen, and Xueqi Cheng. 2026. Rlkd: Distilling llms’ rea-soning via reinforcement learning. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 40, pages 34151–34159. Xiaohan Xu, Ming Li, Chongyang Tao, Tao Shen, Reynold Cheng, Jinyang Li, Can Xu, Dacheng Tao, and Tianyi Zhou. 2024. A survey on knowledge dis-tillation of large language models. arXiv preprint arXiv:2402.13116 .Chuanpeng Yang, Yao Zhu, Wang Lu, Yidong Wang, Qian Chen, Chenlong Gao, Bingjie Yan, and Yiqiang Chen. 2024a. Survey on knowledge distillation for large language models: methods, evaluation, and ap-plication. ACM Transactions on Intelligent Systems and Technology .Kevin Yang, Dan Klein, Asli Celikyilmaz, Nanyun Peng, and Yuandong Tian. 2024b. Rlcd: Reinforcement learning from contrastive distillation for lm align-ment. In The Twelfth International Conference on Learning Representations .Linyi Yang, Yaoxian Song, Xuan Ren, Chenyang Lyu, Yidong Wang, Jingming Zhuo, Lingqiao Liu, Jin-dong Wang, Jennifer Foster, and Yue Zhang. 2023. Out-of-distribution generalization in natural language processing: Past, present, and future. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pages 4533–4559. Chaoyun Zhang, Shilin He, Jiaxu Qian, Bowen Li, Liqun Li, Si Qin, Yu Kang, Minghua Ma, Guyue Liu, Qingwei Lin, and 1 others. 2024a. Large lan-guage model-brained gui agents: A survey. arXiv preprint arXiv:2411.18279 .Songming Zhang, Xue Zhang, Zengkui Sun, Yufeng Chen, and Jinan Xu. 2024b. Dual-space knowledge distillation for large language models. In Proceed-ings of the 2024 Conference on Empirical Methods in Natural Language Processing , pages 18164–18181. Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q Weinberger, and Yoav Artzi. 2019. Bertscore: Eval-uating text generation with bert. arXiv preprint arXiv:1904.09675 .Zhaoyang Zhang, Shuli Jiang, Yantao Shen, Yuting Zhang, Dhananjay Ram, Shuo Yang, Zhuowen Tu, Wei Xia, and Stefano Soatto. 2026. Reinforcement-aware knowledge distillation for llm reasoning. arXiv preprint arXiv:2602.22495 .Qihuang Zhong, Liang Ding, Li Shen, Juhua Liu, Bo Du, and Dacheng Tao. 2024. Revisiting knowledge dis-tillation for autoregressive language models. In Pro-ceedings of the 62nd Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 10900–10913. Xunyu Zhu, Jian Li, Yong Liu, Can Ma, and Weiping Wang. 2024. A survey on model compression for large language models. Transactions of the Associa-tion for Computational Linguistics , 12:1556–1577. A Training Dynamics 
+
+Figure 6 plots three key training-time signals over optimization steps: the policy reward (Rouge-L im-provement on the validation subset), the FKL loss, and the RKL loss. The reward curve rises steadily while both KL terms decrease in sync, empirically confirming the goal-consistency analysis in Sec-tion 3.1: the policy gradient signal does not trade one KL objective off against the other but instead drives the student to better match the teacher under both directions simultaneously. 
+
+B Experimental Configuration Details 
+
+This section provides comprehensive implementa-tion details to ensure reproducibility of our experi-mental results. 
+
+B.1 Model Architecture and Training Hyperparameters Teacher and Student Models We use pre-trained GPT-2 and LLaMA models from Hugging Face. Teacher models (GPT-2 1.5B, LLaMA 13B) are first fine-tuned on the Dolly-15K dataset, then used for knowledge distillation to student models (GPT-2 120M, GPT-2 340M, LLaMA 7B). 
+
+Training Hyperparameters All experiments use the following hyperparameters: • Maximum sequence length: 512 tokens • Batch size: 16 (per GPU) • Gradient accumulation steps: 1 • Training epochs: 3 • Student learning rate: 5 × 10 −5 (AdamW op-timizer) • Policy network learning rate: 1×10 −4 (Adam optimizer) • Temperature for KL distillation: 2.0 • Language modeling loss weight ( λPT ): 0.1 • Gradient clipping: max norm 1.0 
+
+B.2 Policy Network Architecture 
+
+The policy network πϕ consists of a 3-layer feed-forward network. The input state vector s is a 6-dimensional feature representation: • HT , H S : mean entropy of teacher and student distributions • σ2 
+
+> T
+
+, σ 2 
+
+> S
+
+: mean variance of teacher and student distributions • LFKL , L RKL : current forward and reverse KL losses Table 3 presents the detailed architecture of the policy network.                                   
+
+> Layer Operation Input Dim Output Dim Parameters
+> Input State features -6-Layer 1a LayerNorm 6612 Layer 1b Linear 664 448 Layer 1c ReLU 64 64 0Layer 2a Linear 64 165 Layer 2b Sigmoid 110Output αweight 11-
+> Total Parameters 525
+
+Table 3: Detailed architecture of the policy network πϕ.The network takes a 6-dimensional state vector as input and outputs a scalar weight α ∈ (0 , 1) for adaptive KL weighting. Total parameter count: 525 (LayerNorm: 
+
+2 × 6 = 12 , Linear 1: (6 + 1) × 64 = 448 , Linear 2: 
+
+(64 + 1) × 1 = 65 ). 
+
+The policy is trained using REINFORCE with EMA baseline and entropy regularization: 
+
+Lpolicy = − log( α) · (r − b) − βH H(α) (19) where r is the immediate reward (negative dis-tillation loss), b is the exponential moving aver-age baseline with decay factor 0.99, and H(α) = 
+
+−[α log α + (1 − α) log(1 − α)] is the entropy term with coefficient βH = 0 .01 .
+
+B.3 Evaluation Configuration Generation Settings For all evaluation bench-marks, we use nucleus sampling with p = 0 .9,temperature T = 1 .0, and maximum generation length of 256 tokens. Early stopping at EOS token is enabled. 
+
+Metrics 
+
+• Rouge-L : Computed using the rouge-score 
+
+library, measuring longest common subse-quence overlap between generated and ref-erence texts. • BertScore : Computed us-ing bert-score library with 
+
+microsoft/deberta-xlarge-mnli as the reference model, measuring semantic similarity via contextual embeddings. (a) Reward (b) FKL loss (c) RKL loss 
+
+> Figure 6: Training dynamics: reward steadily increases while FKL and RKL decrease synchronously, validating the goal-consistency analysis in Section 3.1.
+
+C Complete Out-of-Distribution Results with BertScore 
+
+Table 4 presents the complete out-of-distribution evaluation results including both Rouge-L and BertScore metrics across all four OOD benchmarks (SelfInst, VicunaEval, S-NI, UnNI) for three model configurations. These results complement Table 2 in the main paper, which reported only Rouge-L scores due to space constraints. Key observations: • ARKD achieves consistent improvements in both Rouge-L and BertScore across all four OOD benchmarks, validating its superior gen-eralization capability beyond the training dis-tribution. • The dual-metric evaluation reveals that ARKD excels in both semantic similarity (BertScore) and lexical alignment (Rouge-L), indicating balanced distribution matching that captures both high-level meaning and surface-level pat-terns. • BertScore improvements are particularly pro-nounced, with ARKD achieving 0.800+ scores on GPT-2 120M and 0.838 on LLaMA 7B, suggesting that adaptive KL weighting ef-fectively captures semantic nuances beyond token-level matching. 
+
+D Extended Ablation Studies 
+
+This section presents additional ablation experi-ments that further validate the necessity of rein-forcement learning-based adaptive weighting over various alternative strategies. 
+
+D.1 Linear Scheduling Strategies 
+
+While Section 4.1 presents performance heatmaps visualizing the effectiveness of various alpha strate-gies across multiple datasets, Table 5 complements 
+
+> Figure 7: BertScore performance heatmap for GPT2-120M across Dolly, S-NI, and UnNI datasets under dif-ferent alpha strategies.
+
+these findings by providing complete numerical results for linear scheduling methods, including BertScore values for the 340M configuration which were not fully covered in the main text figures. 
+
+Cross-metric Consistency Analysis Examining the dual-metric results reveals that linear schedul-ing exhibits consistent underperformance across both Rouge-L and BertScore. For 120M models, both linear_dec and linear_inc achieve identical Rouge-L scores (23.0) but show slight BertScore variation (0.785 vs 0.788), suggesting that start-ing with RKL provides marginally better semantic alignment despite similar lexical quality. However, this gap is negligible compared to ARKD’s gains. 
+
+Scale-dependent Behavior The 340M results demonstrate that the limitations of linear schedul-ing persist across model scales. While all methods benefit from increased capacity (340M scores are uniformly higher than 120M), the relative perfor-mance gap remains: linear scheduling still under-performs ARKD by 0.9–1.0 Rouge-L points and 0.019–0.021 BertScore points. Notably, linear_dec (25.2) outperforms linear_inc (25.1) on 340M, sug-gesting that larger models may benefit slightly from early FKL emphasis—yet this effect is marginal and cannot approach ARKD’s adaptive weighting. 
+
+Why Linear Schedules Fail Unlike ARKD’s state-aware policy which conditions α on real-Model Method SelfInst VicunaEval S-NI UnNI                                                                                                                                                                                      
+
+> R-L BertS R-L BertS R-L BertS R-L BertS
+> GPT-2 1.5B →GPT-2 120M
+> Teacher 15.1 0.810 16.6 0.815 27.2 0.830 31.6 0.835 SFT w/o KD 11.9 0.770 12.5 0.768 16.4 0.775 18.4 0.778 SeqKD 11.6 0.768 12.2 0.766 16.3 0.773 18.5 0.776 FKL 12.1 0.775 12.9 0.773 16.6 0.780 19.2 0.783 RKL 12.5 0.780 13.3 0.778 17.2 0.785 19.8 0.788 FKL+RKL 13.2 0.788 13.9 0.786 17.8 0.793 20.3 0.796
+> ARKD 13.6 0.800 14.5 0.798 19.1 0.805 21.9 0.808 GPT-2 1.5B →GPT-2 340M
+> Teacher 15.1 0.810 16.6 0.815 27.2 0.830 31.6 0.835 SFT w/o KD 13.0 0.785 14.4 0.783 24.9 0.790 25.7 0.793 SeqKD 13.1 0.787 14.8 0.786 25.4 0.793 26.0 0.795 FKL 13.8 0.793 15.2 0.791 25.7 0.797 26.6 0.800 RKL 14.4 0.798 15.4 0.796 26.1 0.802 27.1 0.805 FKL+RKL 14.6 0.802 15.9 0.800 26.3 0.806 27.8 0.809
+> ARKD 15.0 0.808 16.1 0.806 26.8 0.811 28.4 0.815 LLaMA 13B →LLaMA 7B
+> Teacher 23.2 0.852 19.7 0.848 36.1 0.865 39.0 0.870 SFT w/o KD 20.6 0.821 17.5 0.818 32.4 0.832 35.8 0.836 SeqKD 20.8 0.823 18.1 0.821 33.3 0.835 36.6 0.839 FKL 20.5 0.822 18.3 0.822 33.8 0.837 36.5 0.840 RKL 21.0 0.826 18.6 0.825 34.1 0.840 37.1 0.843 FKL+RKL 21.8 0.831 18.9 0.828 34.7 0.843 37.5 0.846
+> ARKD 22.6 0.838 19.2 0.832 35.5 0.849 38.1 0.852
+
+Table 4: Complete out-of-distribution evaluation results with both Rouge-L (R-L) and BertScore (BertS) metrics. ARKD consistently achieves the best performance across all benchmarks and model configurations in both metrics, demonstrating superior semantic alignment and lexical quality. Bold indicates the best student model in each configuration.                                        
+
+> Method GPT-2 120M GPT-2 340M
+> Rouge-L BertScore Rouge-L BertScore FKL ( α≡1.0)22.9 0.781 24.9 0.803 RKL ( α≡0.0)23.3 0.797 25.5 0.813 FKL+RKL ( α≡0.5)23.2 0.794 25.7 0.817 linear_dec (1 →0) 23.0 0.785 25.2 0.808 linear_inc (0 →1) 23.0 0.788 25.1 0.806 greedy_min 24.1 0.808 25.9 0.822
+> ARKD 24.5 0.815 26.1 0.827
+
+Table 5: Complete numerical results for linear schedul-ing strategies on DollyEval, including BertScore for GPT-2 340M. Linear scheduling methods (linear_dec: 
+
+α 1→0; linear_inc: α 0→1) adjust weights according to predefined temporal patterns. 
+
+time distributional features (entropy, variance, FKL/RKL magnitudes), linear schedules rely solely on elapsed time. This fundamental limitation mani-fests in three ways: 1. Invariance to training dynamics : Linear schedules cannot detect critical transitions (e.g., when the student begins overfitting teacher’s long-tail modes) and adjust accord-ingly. 2. Assumption of monotonicity : Both sched-ules assume optimal weighting changes mono-tonically over time, contradicting ARKD’s learned non-monotonic trajectory which plateaus after convergence (Figure 5). 3. No feedback mechanism : Without observing immediate reward signals, linear schedules cannot correct suboptimal trajectories mid-training, whereas ARKD’s policy gradient en-ables continuous refinement based on distilla-tion loss feedback. 
+
+D.2 Static Alpha Values 
+
+To further investigate the sensitivity of performance to α values, we evaluate two additional static con-figurations ( α = 0 .25 and α = 0 .75 ) on GPT-2 120M: Results show that α = 0 .25 (RKL-dominant with 25% FKL) achieves the best performance (23.5 Rouge-L) among static values, closely match-ing ARKD’s converged value ( α ≈ 0.18 ). How-ever, ARKD still outperforms by 1.0 Rouge-L point, demonstrating that: • The optimal α is neither 0.5 (as assumed by Method Alpha Rouge-L BertScore                           
+
+> FKL 1.0 22.9 0.781
+> α= 0 .75 0.75 23.0 0.789 FKL+RKL 0.5 23.2 0.794
+> α= 0 .25 0.25 23.5 0.799 RKL 0.0 23.3 0.797 greedy_min dynamic ( →0) 24.1 0.808
+> ARKD dynamic ( →0.18) 24.5 0.815
+> Table 6: Performance across static alpha values on Dol-lyEval (GPT-2 120M). While α= 0 .25 performs best among static values, it still falls short of ARKD’s adap-tive strategy.
+
+FKL+RKL) nor purely 0/1, but lies in the RKL-dominant range with a small FKL com-ponent. • Even knowing the optimal α value post-hoc, using it as a static weight throughout train-ing is suboptimal. ARKD’s advantage comes from trajectory-level optimization: exploring higher α values early in training (preventing mode collapse) before converging to lower values for precise refinement. • This validates that the temporal dynam-ics of weighting—not just the final value—contribute to ARKD’s effective-ness, a capability that static methods fundamentally cannot provide. 
+
+D.3 Why RL Outperforms Greedy Heuristics 
+
+As discussed in Section 4.1, the greedy_min heuris-tic ( α = I[FKL < RKL] , selecting the lower-loss divergence at each step) provides a strong myopic baseline. Our experiments reveal that greedy_min converges to α ≈ 0 throughout training, effectively degenerating to pure RKL due to FKL consistently being larger than RKL in magnitude. Despite this degeneration, greedy_min (24.1 Rouge-L) still outperforms pure RKL (23.3), which we attribute to implicit regularization effects from the min-selection dynamics. However, ARKD sur-passes greedy_min by 0.4 points on 120M and 0.2 points on 340M. This improvement stems from: 1. Continuous mixing : ARKD outputs α ∈
+
+(0 .15 , 0.25) rather than hard-switching to 0, preserving a small but crucial FKL component that provides mode-coverage regularization. 2. Forward-looking optimization : Greedy se-lection optimizes immediate loss reduction, while ARKD’s policy gradient maximizes cu-mulative rewards, enabling anticipation of long-term training dynamics. 3. Exploration-exploitation : ARKD explores higher α values (0.3–0.6) during the first 600 steps before converging, while greedy_min commits to α = 0 immediately, potentially missing beneficial early-stage FKL emphasis. This ablation definitively demonstrates that RL-based adaptation provides tangible benefits over strong non-RL baselines, validating the necessity of our reinforcement learning framework.
