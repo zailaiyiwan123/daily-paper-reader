@@ -1,0 +1,939 @@
+Title: Hierarchical Anti-Aesthetics: Protecting Facial Privacy against Customized Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2607.02038v1
+
+Published Time: Fri, 03 Jul 2026 00:55:15 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+> MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 1
+
+# Hierarchical Anti-Aesthetics: Protecting Facial Privacy against Customized Diffusion Models 
+
+Songping Wang, Yueming Lyu †, Shiqi Liu, Chen Zhao, Ziyuan Chen, Ning Li, Jing Dong, Senior Member, IEEE, Caifeng Shan †, Senior Member, IEEE 
+
+Abstract —The rise of customized diffusion models has fueled a boom in personalized visual content creation, but it also introduces serious risks of malicious misuse, thereby posing threats to personal privacy. Image aesthetics are strongly cor-related with human perception of image quality. Motivated by this observation, we address facial privacy protection from a novel aesthetic perspective by degrading the generation quality of maliciously customized models, thus reducing facial identity leakage. Specifically, we propose a Hierarchical Anti-Aesthetics (HAA) framework that exploits aesthetic cues at multiple per-ceptual levels. HAA consists of two key branches: (1) Global Anti-Aesthetics, which degrades overall aesthetics and generation quality by constructing a global anti-aesthetic reward mechanism and a corresponding loss; and (2) Local Anti-Aesthetics, which disrupts facial identity by using a local anti-aesthetic reward mechanism and loss to guide adversarial perturbations toward facial regions. By integrating both branches, HAA achieves anti-aesthetic degradation from a global to a local level during customized generation. Extensive experiments show that HAA outperforms existing methods in identity removal, providing an effective tool for protecting facial privacy. 
+
+Index Terms —Facial Privacy Protection, Diffusion Model, Text-to-Image Synthesis, Adversarial Attacks 
+
+I. I NTRODUCTION 
+
+Diffusion models (DMs) have achieved significant break-throughs in the field of text-to-image (T2I) generation, markedly enhancing the quality and realism of image gen-eration by executing diffusion processes in latent spaces [1], [2], [3], [4], [5], [6], [7]. These models diversify and enhance visual effects in image generation while ensuring a high degree of consistency between the generated images and textual de-scriptions. To meet personalized needs and improve fine-tuning efficiency, researchers have developed various DM fine-tuning methods, such as Textual Inversion [8], DreamBooth [9], Custom Diffusion [10], and SVDiff [11]. These fine-tuning methods offer stronger customization capabilities, allowing users to generate high-quality images of specific themes with few reference images. Despite the immense potential of these technologies, they also harbor significant safety risks that cannot be ignored. 
+
+Songping Wang, Yueming Lyu, Shiqi Liu, Chen Zhao, Ziyuan Chen, Caifeng Shan are with the School of Intelligence Science and Technology, Nanjing University, Suzhou 215163, China (email: 
+
+theone@buaa.edu.cn ). Ning Li is with the China Mobile Information Technology Co., Ltd., Beijing 100037, China. Jing Dong is with the State Key Laboratory of Multimodal Artificial Intelligence Systems (MAIS), Center for Research on Intelligent Perception and Computing (CRIPAC), Institute of Automation Chinese Academy of Sciences (CASIA), Beijing 100190, China. 
+
+> †
+
+Corresponding author “a dslr portrait of sks person”    
+
+> Perturbed Image
+> Customized
+> Text-to-Image
+> Previous Work
+> Ours Safe: Facial Identity
+> Information Removal
+> Unsafe: Facial Identity
+> Information Retention
+> Customized
+> Text-to-Image
+> Anti-Aesthetics
+> 6.8 4.2
+> 0.6
+> Enhance
+
+Fig. 1. Previous image-protection methods overlook aesthetic cues, which limits their ability to remove identity and inevitably leads to privacy leakage. In contrast, our method effectively enhances the ability to eliminate facial identity, guided by the proposed anti-aesthetic mechanisms. The prompt is “a dslr portrait of sks person”. 
+
+Malicious users may exploit these models to generate forged images or deepfake content, infringing on personal privacy and intellectual property rights, and even creating fake news to mislead the public [12], [13], [14], [15], [16]. To address these threats, anti-customization methods are primarily based on adversarial attacks, such as Mist [17], ASPL [18], and CAAT [19]. These methods introduce ad-versarial noise to interfere with the customized fine-tuning process, preventing the malicious misuse of user images by customized diffusion models. However, as illustrated in Fig. 1, existing methods exhibit limitations in facial privacy protection and copyright preservation. These approaches primarily rely on a straightforward end-to-end paradigm that degrades overall image quality by maximizing the original training loss, yet they critically overlook the design of identity elimination for local facial regions. This oversight substantially undermines their effectiveness in removing recognizable facial features, leading to privacy leakage and the misuse of user portraits. Re-cent methods refine this pipeline by attacking cross-attention, timestep/frequency features, or global-local feature/attribute constraints [19], [20], [21]. In contrast, HAA introduces a preference-level view of protection: malicious customization is weakened by suppressing the human-preferred realism and facial details required for usable identity reconstruction. Under the same constrained perturbation interface, frozen reward  
+
+> arXiv:2607.02038v1 [cs.CV] 2 Jul 2026 MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 2
+
+General Training Aesthetics Learning     
+
+> Customized
+> Text-to-Image
+> Train Infer
+> Customized
+> Text-to-Image
+> Train Infer
+> Customized
+> Text-to-Image
+> Train Infer
+> Customized
+> Text-to-Image
+> Train Infer
+
+Anti-General Training Anti-Aesthetics Learning  
+
+> Fig. 2. Compared with general training, aesthetic learning enhances the quality and details of generated images by aligning with human aesthetic preferences. Similarly, compared with anti-general training (previous protection methods), anti-aesthetic learning further reduces the quality of generated images and destroys facial details by misaligning with human aesthetics, thereby effectively protecting facial privacy. “a photo of a sks person in front of the Eiffel Tower” is used as the prompt for inference.
+
+models impose explicit anti-aesthetic targets at whole-image and face-local levels, providing a direct signal beyond model-internal feature disruption. To delve into this issue, we make the following key obser-vations and reflections from a novel aesthetic perspective: 1) There is a close connection between the aesthetic attributes of an image and human perception of image quality [22]. Specifically, the higher the conformity of an image to aesthetic standards, the higher its perceived quality; conversely, the greater the deviation from aesthetic standards, the lower the perceived quality. 2) Human aesthetic perception is not one-dimensional but hierarchical, encompassing both the percep-tion of global harmony and the perception of local details. These two levels together form a comprehensive judgment of image aesthetics [23], [24]. 3) The findings in Fig. 2 demonstrate that aligning with human aesthetic preferences can effectively improve the quality of generated images and facial details [25], [26]. This naturally raises the question: 
+
+If we adopt an anti-aesthetic alignment approach, can it achieve the goal of reducing the quality of generated images while removing facial identity? 
+
+Inspired by the above observations and reflections, we propose the Hierarchical Anti-Aesthetics (HAA) framework. This framework is designed to degrade image quality by hier-archically exploring aesthetic cues from global to local scales, thereby safeguarding users’ facial privacy and copyright. Specifically, HAA includes the following two key branches: 1) Global Anti-Aesthetics, which weakens the overall aesthetics of images generated by malicious fine-tuners and reduces over-all generation quality by constructing a global anti-aesthetic reward mechanism and designing a global anti-aesthetic loss; and 2) Local Anti-Aesthetics, which guides adversarial noise to force customized diffusion models to perform local anti-facial aesthetic alignment by establishing a local anti-aesthetic reward mechanism and designing a local anti-aesthetic loss, thereby reducing their ability to reconstruct facial details. By seamlessly integrating these branches, we form a joint hierar-chical anti-aesthetics framework that fully explores aesthetic cues from global to local, thereby achieving the goal of anti-aesthetics. Implementing anti-aesthetics substantially reduces the generation quality of customized DMs, thereby reducing facial identity leakage and strengthening the protection of personal privacy and copyright. Our main contributions are as follows:  
+
+> •
+
+From a novel aesthetic perspective, we propose a joint Hi-erarchical Anti-Aesthetics (HAA) framework that seam-lessly integrates global and local anti-aesthetic branches. This integration effectively reduces aesthetic quality at both global and local levels, thereby achieving the goal of anti-aesthetics.  
+
+> •
+
+We introduce Global Anti-Aesthetics by constructing a global anti-aesthetic reward mechanism and designing a global anti-aesthetic loss, thereby reducing the overall generation quality of customized generative models.  
+
+> •
+
+We propose Local Anti-Aesthetics, construct a local anti-aesthetic reward mechanism, and design a local anti-aesthetic loss to guide malicious customized diffusion models to oppose alignment with human facial aesthetics.  
+
+> •
+
+Extensive experiments across multiple datasets and gener-ative models show that our approach outperforms existing methods by a large margin, supporting the effectiveness and generalization capability of our method. The remainder of this paper is organized as follows. Section II reviews related work on customized diffusion models and image cloaking-based privacy protection. Section III intro-duces the problem definition and DreamBooth preliminaries. Section IV details the proposed HAA framework, including Global and Local Anti-Aesthetics branches. Section V presents extensive experimental results and analysis. Finally, Section VI concludes the paper. II. RELATED WORK 
+
+A. Customized Diffusion Models 
+
+Recent years have witnessed the continued development of diffusion models [4], [5], [6], [7], [27], [28], and these models have shown great potential in guiding the generation process through text input. Exemplar models, including DALL-E 2 [3], MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 3Local    
+
+> Aesthetics
+> Modeling
+> Global
+> Aesthetics
+> Modeling
+> Local
+> Reward
+> Global
+> Reward
+> Reconstruction
+> Feedback
+> Feedback
+> Input
+> Clean Images
+> Protected Images Adversarial Noises
+> Update
+> Hierarchical Anti-Aesthetics (HAA)
+> Generate
+> Calculate
+> rg
+
+L
+
+> rl
+
+L
+
+> co
+
+L            
+
+> Adversarial Finetune
+> Prompt: a photo of sks person
+> Trainable
+> Frozen
+> Anti-Aesthetics branch
+> 0.4 1.5
+> 3.7
+> 6.5
+> Local
+> Aesthetics
+> Modeling
+> Anti-Aesthetics Rating
+> 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀
+> Local Anti-Aesthetics Branch
+> 𝐀 𝐀
+> Local Anti-
+> Aesthetics Score
+> 0.8 2.4 4.1 5.2
+> Global
+> Aesthetics
+> Modeling
+> Anti-Aesthetics Rating
+> 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀
+> Global Anti-Aesthetics Branch
+> Global Anti-
+> Aesthetics Score
+> Global Anti-Aesthetics Branch
+> Local Anti-Aesthetics Branch
+> Customized
+> T2I Model
+> 𝐀 𝐀
+
+Fig. 3. The framework of our proposed HAA. It is an iterative training process where the adversarial noise and the parameters of the surrogate customized generative model are updated simultaneously. The final adversarial noise generated is added to the user’s image, making it resistant to malicious use by the customized generative model. 
+
+Stable Diffusion [2], and Stable Diffusion XL [29], have received widespread attention for their high sample quality. Using the latent diffusion method and incorporating CLIP-based [30] text encoders, these models employ a two-stage process: encoding the input image or text into a latent rep-resentation and denoising within this compact latent space to bridge the gap between textual descriptions and visual content, thereby significantly improving generation quality while maintaining high fidelity and consistency in text-to-image (T2I) generation tasks. DreamBooth [9] further addresses the challenge of cus-tomized generation, thereby leading to significant improve-ments in generating personalized content from limited data while preserving diversity and flexibility. However, Dream-Booth faces challenges with more complex customizations, particularly when personalization requires a diverse and exten-sive dataset. In contrast, Custom Diffusion [10] can first fine-tune each concept model individually and then merge them into one through constrained optimization, which enhances the ability to generate diverse outputs while maintaining coherence across different concepts. SVDiff [11] optimizes all singular values of the weight matrix and leverages spectral shifts to introduce a small number of trainable parameters into diffusion models, enabling them to effectively capture variations in specific themes. Textual Inversion [8] teaches a text model a new word using example images and trains its embedding to align with the corresponding visual representation by adding a new token to the vocabulary and optimizing the embedding using representative images. 
+
+B. Privacy Protection with Image Cloaking 
+
+Recent breakthroughs in generative models, represented by diffusion models, have achieved paradigm-shifting ad-vancements. Building on this foundation, the development of customization technologies has greatly facilitated personal visual creation. However, the misuse of personalized custom generation has raised significant concerns about copyright protection, political stability, and personal privacy. To address these issues, image cloaking methods have been developed, which involve adding specific perturbations to the original images to prevent misuse by customized generative models. AdvDM [31] performs Monte Carlo sampling on latent variables in the diffusion model’s hidden space and generates perturbations specifically targeting and misleading the model’s feature extraction process during the sampling time steps, ultimately leading the model to produce erroneous outputs or reducing its overall performance. ASPL [18] employs an Al-ternating Surrogate and Perturbation Learning (ASPL) strategy to enhance counterattacks against the DreamBooth method. Mist [17] is specifically designed for copyright protection of artwork and can effectively defend against malicious use. CAAT [19] effectively disrupts the text-to-image mapping by introducing subtle perturbations in the cross-attention layers of customized diffusion models, thereby protecting users’ portrait rights from infringement. SimAC [20] explores the limitations of the internal properties of diffusion models, investigates the relationship between time step selection and frequency domain perception as well as the roles of hierarchical features in the denoising process, and proposes an adaptive greedy time step search and a feature-based optimization framework, which enhances the anti-interference effect. GoodAC [21] further introduces a global-local anti-customization strategy by disrupting global perceptual feature correlations and local facial attributes. Existing methods mainly enhance privacy protection via model-internal objectives, including reconstruction loss, cross-attention disruption, timestep/frequency manipulation, and feature- or attribute-level discrepancy. These objectives may incidentally degrade visual quality, but they do not explicitly introduce human-preference reward feedback or decompose aesthetic guidance into global image-level and local face-level cues. This underexplored use of aesthetic feedback may limit facial de-identification. To complement this line of research, HAA introduces a hierarchical anti-aesthetics perspective that explores aesthetic cues from global appearance to local facial regions, thereby improving the suppression of facial identity MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 4
+
+information and strengthening facial privacy protection. III. P RELIMINARIES 
+
+A. Problem Definition 
+
+We study facial privacy protection against personalized diffusion models. Under a black-box assumption, an attacker can collect a small number of the user’s publicly available face images and personalize (fine-tune) a diffusion model to generate forged portraits resembling the victim, enabling deepfakes and privacy abuse. Our goal is to add a magnitude-bounded, nearly imperceptible perturbation δ to each image to be shared (i.e., xadv = clip( x + δ) with ∥δ∥∞ ≤ η), such that any model fine-tuned on these protected images produces degraded outputs (i.e., worse generation quality implies better protection) with reduced identity consistency, thereby reducing the utility of forgeries and protecting privacy. 
+
+B. DreamBooth 
+
+DreamBooth is a classic fine-tuning technique for text-to-image diffusion models that enables personalized generation. Specifically, given a small number of subject images (3–5), it fine-tunes a pre-trained diffusion model to generate new images of that subject in various contexts. DreamBooth binds the target subject to a rare token identifier (e.g., sks ), and the input prompt follows the format of “a sks [class noun]”, where [class noun] represents the category (e.g., person). DreamBooth combines two objective terms: a personalization reconstruction loss and a prior preservation loss. The personal-ization reconstruction loss encourages the model to reconstruct the subject identity from the provided reference images, while the prior preservation loss mitigates overfitting and language drift in the few-shot setting. The overall objective is formulated as: 
+
+Lco (θ) = Ev0, c, t, ϵ 
+
+h
+
+∥ϵ − ϵθ (vt, t, c )∥22
+
+i
+
++ γ · Ev′
+
+> 0, c pr , t ′, ϵ ′
+
+h
+
+∥ϵ′ − ϵθ (v′ 
+
+> t′
+
+, t ′, c pr )∥22
+
+i
+
+,
+
+(1) where ϵθ (·) is the noise prediction network parameterized by θ (e.g., the U-Net in latent diffusion models). v0 and v′
+
+> 0
+
+denote the clean latents of a subject image and a class (prior) image, respectively. c is the subject prompt containing the rare identifier token, and cpr is the class prior prompt. t and t′ are diffusion timesteps sampled from a predefined schedule, and 
+
+ϵ, ϵ ′ ∼ N (0 , I ) are i.i.d. Gaussian noise variables. The noisy latents are constructed as: 
+
+vt = αtv0 + σtϵ, v′ 
+
+> t′
+
+= αt′ v′ 
+
+> 0
+
++ σt′ ϵ′, (2) with (αt, σ t) determined by the noise scheduler. γ balances the prior preservation term. ∥ · ∥ 2 denotes the Euclidean norm (and ∥ · ∥ 22 its squared form). IV. THE PROPOSED METHOD 
+
+A. Global Anti-Aesthetics (GAA) 
+
+We start from a novel perspective—the relationship between aesthetics and quality—and introduce a novel Global Anti-Aesthetics Algorithm (GAA), which focuses on mining global aesthetic cues to degrade the overall quality of images. Specif-ically, we construct a global anti-aesthetic reward mechanism and design a global anti-aesthetic loss function in conjunction with a reconstruction loss to train adversarial noise. 
+
+Global anti-aesthetic reward mechanism. Given a sample 
+
+x, we perform diffusion steps on it using a pre-trained surro-gate DM. We then employ a Monte Carlo sampling strategy to sample the diffusion timestep (and the corresponding noise) and conduct a single-step prediction (i.e., one forward pass of the denoiser followed by VAE decoding) for global anti-aesthetic alignment. This process can be formalized as follows: 
+
+x′ 
+
+> t
+
+= Gθ (N (E(xadv t ), B (T )) , C ), (3) where xadv t denotes the adversarial sample at the current optimization step (we use t to match the notation in Eq. 3), 
+
+B(·) denotes a Monte Carlo sampler, and T stands for the set of diffusion timesteps. Concretely, B(T ) samples one timestep t ∈ T (and the associated Gaussian noise used by the scheduler) for each image in the mini-batch, yielding a noisy latent through the noise scheduler N (·) after VAE encoding E(·). Equivalently, for image i, vadv i = E(xadv i ) and 
+
+vadv ti = αti vadv i + σti ϵi before Gθ (·). Then, Gθ (·) performs a direct one-step prediction and decodes the predicted latent back to the image domain. This pipeline is efficient and end-to-end differentiable with respect to xadv because it only consists of differentiable components (VAE encoder/decoder, noise scheduler, and the denoiser forward pass), without running the full reverse diffusion chain (see Eq. 15 in [4]). To implement GAA, we construct a global anti-aesthetic reward model to obtain global anti-aesthetic rewards. For this purpose, we utilize the publicly available human aesthetic pref-erence dataset VisionRewardDB-Image [32] to train a Global Aesthetic Reward Model RM g with BLIP as the backbone. Then, RM g is frozen. Through RM g , we can conduct a global aesthetic evaluation of the generated images to obtain global aesthetic scores. Subsequently, we construct global anti-aesthetic rewards Rgi based on these global aesthetic scores. The formulas can be expressed as follows: 
+
+rgi = −RM g (x′
+
+> ti
+
+, C g ), (4) 
+
+Rgi = rgi − 1
+
+> n
+
+Pni=1 rgi
+
+q 1
+
+> n
+
+Pni=1 (rgi − 1
+
+> n
+
+Pni=1 rgi )2
+
+, (5) Let x′ 
+
+> ti
+
+denote the i-th generated sample in the batch at the 
+
+t-th iteration, where n denotes the batch size. Cg represents the global prompt. Eq. 4 is used to calculate the global anti-aesthetic reward, aiming to measure deviations in aesthetics. This mechanism guides the model to perform “reverse opti-mization” for global aesthetics. Eq. 5 serves to normalize the global anti-aesthetic reward. Through normalization, we adjust the reward value to an appropriate range and avoid excessively large or small numerical values. The larger the value of Rgi ,the higher the global anti-aesthetic score and the poorer the overall quality of the generated image. 
+
+Global anti-aesthetic loss. In our approach, we utilize the global anti-aesthetic reward Rgi obtained from Eq. 5 to calculate the global anti-aesthetic loss Lrg . This loss is then MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 5
+
+employed to update the adversarial noise, thereby undermining the overall generation quality of malicious fine-tuners. The specific formula is as follows: 
+
+Lrg = − 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+log 
+
+
+
+1 + exp   − Rgi
+
+
+
+, (6) 
+
+xadv = P roj (arg max 
+
+> xadv
+
+(Lco + λ · L rg )) , (7) where exp( ·) denotes the exponential function, Lco is the reconstruction loss defined in Eq. 1, and λ is a balancing coefficient. P roj (·) ensures that the adversarial noise remains within a prescribed ℓ∞ budget. Specifically, the projection is applied to the perturbation δ, while clipping is only used to map x + δ back to the valid image range. Inspired by reinforcement learning, where the optimization process is differentiable [33], we compute Lrg based on the rewards 
+
+Rgi provided by RM g . Specifically, Eq. 6 applies a softplus function to smoothly map the global anti-aesthetic rewards Rgi
+
+into an averaged, differentiable objective. Maximizing this ob-jective encourages larger Rgi , thereby promoting misalignment with human aesthetic preferences and guiding adversarial per-turbations to degrade the generation quality of the T2I model. In practice, gradients are back-propagated from RM g (·) to 
+
+xadv through x′ 
+
+> t
+
+in Eq. 3, enabling direct optimization of the perturbation under the ℓ∞ constraint. Inspired by adversarial learning, we adopt an adversarial game strategy. On one hand, we train a surrogate diffusion model (SDM) with xadv generated by GAA to enhance robustness. On the other hand, we attack the robust SDM to generate stronger attacks. The training process of the SDM can be represented as follows: 
+
+θ′ = arg min  
+
+> θ′
+
+Lco (xadv , θ ′), (8) where θ′ denotes the parameters of the SDM. Through this ad-versarial mechanism, adversarial samples with stronger attack effects can be generated, thereby improving the overall attack capability. This strategy is also employed in the subsequent methods. 
+
+B. Local Anti-Aesthetics (LAA) 
+
+Human perception of aesthetics is multidimensional, encom-passing not only global aesthetic perception but also local aesthetic perception. Inspired by this, we propose a novel Local Anti-Aesthetics Algorithm (LAA), where we construct a local anti-aesthetic reward mechanism and design a local anti-aesthetic loss. This approach forces maliciously fine-tuned DMs to perform anti-facial aesthetic alignment, thereby enhancing the ability to eliminate facial identity cues. 
+
+Local anti-aesthetic reward mechanism. Specifically, a lightweight face detection model F is applied to the x′ 
+
+> t
+
+defined in Eq. 3 to obtain face bounding boxes Box t and confidence scores S. Similar to the global aesthetic reward model, to mine local facial aesthetic cues, we use the same BLIP architecture to construct a low-cost local facial aesthetic reward model 
+
+RM l. Using the detected boxes and the generated images, we extract the corresponding facial regions and use RM l to provide local aesthetic feedback. We then utilize the feedback 
+
+Algorithm 1 Hierarchical Anti-Aesthetics (HAA) 
+
+Require: Clean images X ; subject prompt C; global prompt 
+
+Cg ; local prompt Cl; timestep set T ; batch size n;iterations K; step size α; weights λ, β .
+
+Require: Frozen reward models RM g , RM l; face detector F ;trainable surrogate diffusion model SDM θ′ .
+
+Ensure: Protected images Xadv = {clip( x + δ) | x ∈ X } 
+
+with ∥δ∥∞ ≤ η. 
+
+> 1:
+
+Initialize perturbation δ ← 0 
+
+> 2:
+
+Sample a mini-batch {xi}ni=1 ∼ X  
+
+> 3:
+
+for k = 1 to K do  
+
+> 4:
+
+Sample timesteps {ti}ni=1 ∼ T via B(T ) 
+
+> 5:
+
+for i = 1 to n do  
+
+> 6:
+
+xadv i ← clip( xi + δ) 
+
+> 7:
+
+x′ 
+
+> ti
+
+← Gθ
+
+ N (E(xadv i ), t i), C  ▷ Eq. 3  
+
+> 8:
+
+rgi ← − RM g (x′ 
+
+> ti
+
+, C g ) ▷ Eq. 4  
+
+> 9:
+
+(Si, Box i) ← F (x′ 
+
+> ti
+
+) ▷ Eq. 9  
+
+> 10:
+
+rli ← − RM l(x′ 
+
+> ti
+
+, Box i, C l) ▷ Eq. 10  
+
+> 11:
+
+end for  
+
+> 12:
+
+Rg ← Normalize( rg ) ▷ Eq. 5  
+
+> 13:
+
+Rl ← Normalize( rl) ▷ Eq. 11  
+
+> 14:
+
+Lrg ← − 1
+
+> n
+
+Pni=1 log  1 + exp( −Rgi ) ▷ Eq. 6  
+
+> 15:
+
+Lrl ← − 1
+
+> n
+
+Pni=1 log  1 + exp( −Rli) ▷ Eq. 12  
+
+> 16:
+
+Lco ← L DreamBooth (SDM θ′ , {xadv i }, C ) ▷ Eq. 1  
+
+> 17:
+
+Ltotal ← Lco + λL rg + βL rl ▷ Eq. 14  
+
+> 18:
+
+δ ← Π∥δ∥∞≤η
+
+
+
+δ + α · sign( ∇δ Ltotal )
+
+
+
+▷ Eq. 15  
+
+> 19:
+
+θ′ ← θ′ − μ · ∇ θ′ Lco ▷ Eq. 8  
+
+> 20:
+
+end for  
+
+> 21:
+
+return Xadv 
+
+to calculate the local anti-aesthetic rewards Rli for updating the adversarial noise. The lower the quality of the generated face, the higher the Rli. Let Cl represent the local prompt; this process can be formalized as follows: 
+
+Sti , Box ti = F (x′
+
+> ti
+
+), (9) 
+
+rli = −RM l(x′
+
+> ti
+
+, Box ti , C l), (10) 
+
+Rli = rli − 1
+
+> n
+
+Pni=1 rli
+
+q 1
+
+> n
+
+Pni=1 (rli − 1
+
+> n
+
+Pni=1 rli)2
+
+. (11) 
+
+Local anti-aesthetic loss. Based on Rli, we further calculate the reward loss Lrl to update the adversarial noise. This process can be formalized as follows: 
+
+Lrl = − 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+log 
+
+
+
+1 + exp   − Rli
+
+
+
+, (12) 
+
+xadv = P roj (arg max 
+
+> xadv
+
+(Lco + β · L rl )) , (13) where β is a balancing coefficient. Similarly, the parameters of the SDM are updated during the iterative attack. By attacking a more robust surrogate diffusion model, the attack strength is enhanced, thereby achieving the local anti-aesthetic objective. MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 6 
+
+> TABLE I PERFORMANCE ON CELEB A-HQ D ATASET .
+
+CelebA-HQ Method “a photo of sks person” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 1.000 0.498 0.599 112.3 Mist 0.969 0.375 0.191 281.2 CAAT 0.813 0.339 0.326 271.7 ASPL 0.750 0.332 0.006 359.5 SimAC 0.438 0.321 -0.188 388.9 GoodAC 0.375 0.192 -0.278 421.1 HAA 0.281 0.117 -0.894 471.1 
+
+Method “a dslr portrait of sks person” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.859 0.346 0.706 175.1 Mist 0.859 0.308 0.249 271.0 CAAT 0.766 0.260 0.236 251.8 ASPL 0.656 0.251 -0.183 384.0 SimAC 0.500 0.239 -0.202 369.0 GoodAC 0.375 0.196 -0.575 435.5 HAA 0.266 0.115 -0.861 461.4 
+
+Method “a close-up photo of sks person, high details” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.625 0.276 0.281 200.8 Mist 0.594 0.268 -0.128 268.4 CAAT 0.510 0.177 -0.419 305.9 ASPL 0.438 0.167 -0.882 433.3 SimAC 0.333 0.162 -0.779 401.7 GoodAC 0.219 0.112 -1.276 462.1 HAA 0.177 0.077 -1.334 476.0 
+
+Method “a photo of sks person looking at the mirror” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.672 0.276 0.022 232.9 Mist 0.695 0.257 -0.289 287.0 CAAT 0.602 0.171 -0.545 316.1 ASPL 0.523 0.157 -0.854 422.4 SimAC 0.562 0.156 -0.773 405.6 GoodAC 0.531 0.128 -1.192 455.9 HAA 0.289 0.085 -1.296 473.5 
+
+C. Hierarchical Anti-Aesthetics (HAA) 
+
+Building upon the complementary strengths of GAA and LAA, we propose a unified HAA framework (Fig. 3) that integrates global and local aesthetic degradation within a single optimization objective. This design disrupts image generation quality at multiple perceptual levels, achieving anti-aesthetic effects in both global composition and local facial details. Specifically, the hierarchy in HAA is realized through the reward-model inputs and the joint objective, rather than a separate sampling schedule: GAA evaluates the full decoded image with the global prompt Cg , while LAA evaluates de-tected facial regions with the local prompt Cl. Compared with methods relying solely on Lco or feature-level discrepancy ob-jectives, HAA further incorporates two frozen reward-guided terms, Lrg and Lrl , while using the same timestep sampler to maintain efficient differentiable feedback. Accordingly, the final training objective is defined as: HAA uses the standard projected adversarial-perturbation loop as the basis for controlled comparison. The technical  
+
+> TABLE II PERFORMANCE ON VGGF ACE 2 D ATASET .
+
+VGGFace2 Method “a photo of sks person” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.875 0.421 0.625 199.1 Mist 0.906 0.227 0.248 355.6 CAAT 0.719 0.145 0.371 349.8 ASPL 0.750 0.193 0.373 388.6 SimAC 0.500 0.118 0.143 435.6 GoodAC 0.375 0.111 -0.070 442.4 HAA 0.125 0.031 -0.252 468.6 
+
+Method “a dslr portrait of sks person” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.813 0.379 0.717 227.6 Mist 0.813 0.240 0.409 357.2 CAAT 0.750 0.179 0.559 332.8 ASPL 0.703 0.173 0.351 387.9 SimAC 0.422 0.102 -0.018 429.3 GoodAC 0.344 0.085 -0.105 439.4 HAA 0.109 0.028 -0.608 462.4 
+
+Method “a close-up photo of sks person, high details” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.688 0.376 0.720 232.3 Mist 0.573 0.215 0.279 343.2 CAAT 0.521 0.155 0.353 341.1 ASPL 0.490 0.150 0.039 381.0 SimAC 0.292 0.078 -0.581 434.5 GoodAC 0.219 0.054 -0.944 440.0 HAA 0.083 0.019 -1.162 458.4 
+
+Method “a photo of sks person looking at the mirror” FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.750 0.355 0.482 246.0 Mist 0.641 0.188 0.005 354.9 CAAT 0.633 0.139 0.145 334.0 ASPL 0.602 0.153 -0.055 380.6 SimAC 0.414 0.092 -0.616 429.0 GoodAC 0.406 0.090 -0.927 434.8 HAA 0.258 0.031 -1.119 446.0 
+
+change is the optimization signal: HAA injects frozen human-preference feedback into both whole-image and face-local perturbation updates. These terms are not generic auxiliary losses; they define external preference targets that penalize preference-aligned realism and facial detail quality. Thus, the contribution lies in reward-guided hierarchical anti-aesthetic supervision, rather than in a new outer projected-gradient optimizer. 
+
+Ltotal = Lco + λ · L rg + β · L rl . (14) 
+
+xadv = P roj (arg max 
+
+> xadv
+
+(Ltotal )) . (15) In each iteration, the overall loss is maximized to optimize the adversarial samples, enabling the adversarial noise to poison malicious fine-tuners and disrupt the global and local aesthetics of the generated images, thereby degrading overall generation quality. While the adversarial samples are itera-tively optimized, the parameters of the SDM are fine-tuned in an adversarial training-like manner. Ultimately, through MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 7
+
+iterative attacks, the final adversarial samples can effectively remove facial identity information, thereby protecting facial privacy and copyright. V. EXPERIMENTS 
+
+A. Experimental Settings 
+
+Datasets. Following previous work [19], we conduct experi-ments on the CelebA-HQ [34] and VGGFace2 [35] datasets. Both are large, classic datasets specifically for facial privacy research. Due to the wide range of comparison metrics, we select 10 individuals from each dataset, covering different genders, ages, and ethnicities, with at least 15 images for each individual. Unless explicitly stated, we conduct experimental tests uniformly on CelebA-HQ. 
+
+Models. Our experiments primarily utilize the popular open-source diffusion model SD-v2.1 [36]. Furthermore, to exten-sively validate the effectiveness of our approach, we also conduct experiments on SD-v1.4 and SD-v1.5. In addi-tion, extended experiments on mainstream SD-V3.0 [37] and FLUX [38] are also conducted in the subsequent experiments. 
+
+Baselines and comparisons. We compare our method with various state-of-the-art methods designed to prevent the misuse of user images by DMs, including ASPL [18], Mist [17], CAAT [19], SimAC [20], and GoodAC [21]. 
+
+Metrics. Following previous work [19], we employ a classic face detection model to detect the generated images and calculate Facial Detection Success Rate (FDSR) [39]. For identity consistency, we calculate Face Similarity [40] between the detected faces and clean images. FDSR is the proportion of generated images with at least one detected face. Face Sim-ilarity is the average cosine similarity between ℓ2-normalized ArcFace embeddings; if no face is detected, the per-image similarity is set to 0. Moreover, we use Image Reward [32] to assess the quality of the generated images, and report its score as IR. Finally, Fr´ echet Inception Distance (FID) [41] is used to assess the similarity between the generated images and clean images. Lower FDSR and Face Similarity indicate weaker face detectability and identity consistency, while lower Image Reward and higher FID indicate poorer preference-aligned generation quality; together, these metrics indicate stronger privacy protection. 
+
+Implementation Details. To ensure a fair comparison, we adopt a unified experimental setup. We use the latest Stable Diffusion (v2.1) as the pre-trained model and fine-tune the text encoder and UNet models using the DreamBooth method for 1000 training steps with a batch size of 4 and a learning rate of 5×10 −7. We set α = 5 ×10 −3 as the step size, along with a perturbation budget η = 0 .05 . Moreover, in the LAA module, we employ RetinaFace [42] for face detection because of its high efficiency and accuracy. For computing Face Similarity, we use ArcFace [40] for its high accuracy and robustness. All experiments in the table are run three times, and the results are averaged to ensure stability. Our evaluation is designed to test both effectiveness and generalization. In addition to the main CelebA-HQ and VGGFace2 comparisons under four prompts, we in-clude component ablations, prompt mismatch, varying num-0.0 0.2 0.4 0.6 0.8 1.0                   
+
+> 250
+> 300
+> 350
+> 400
+> 450
+> 500
+> FID
+> Fig. 4. FID value varies with different λand βvalues defined in Eq. 14 on CelebA-HQ. Baseline GAA LAA HAA
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> (A) FDSR
+> Baseline GAA LAA HAA
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> (B) Face Similarity
+> Baseline GAA LAA HAA
+> 0.8
+> 0.6
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+> (C) Image Reward
+> Baseline GAA LAA HAA
+> 0
+> 100
+> 200
+> 300
+> 400
+> (D) FID
+> Fig. 5. Effectiveness Analysis of HAA Components on CelebA-HQ.
+
+bers of protected images, perturbation-budget studies, image-transformation and purification defenses, transfer across Stable Diffusion versions, transfer to SD-V3.0 and FLUX, and three fine-tuning pipelines (SVDiff, Textual Inversion, and Custom Diffusion). 
+
+B. Comparison with Baselines 
+
+To more thoroughly assess effectiveness, we perform quan-titative comparisons on two datasets (CelebA-HQ and VG-GFace2) under four prompt settings, three of which remain unseen during training, and report results against recent state-of-the-art methods in Tab. I and Tab. II. For each prompt, we randomly generate 32 images and report the mean of four metrics. On CelebA-HQ with the prompt “a photo of sks person”, HAA reduces FDSR from 96.9% to 28.1% and Face Similarity from 37.5% to 11.7%, lowers Image Reward from 0.191 to -0.894, and increases FID from 281.2 to 471.1 relative to Mist. On VGGFace2 with the prompt “a close-up photo of sks person, high details”, HAA reduces FDSR from 52.1% to 8.3% and Face Similarity from 15.5% to 1.9%, lowers Image Reward from 0.353 to -1.162, and increases FID from 341.1 to 458.4 relative to CAAT. Across datasets and prompt variations, these results suggest that HAA more effectively suppresses identity-related cues in the generated outputs, as indicated by the concurrent decreases in FDSR and Face Similarity. We also observe that stronger identity removal coincides with degraded perceptual quality MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 8
+
+TABLE III ASSESSMENT ACROSS DIFFERENT DM VERSIONS ON CELEB A-HQ. SD-V1.4 attack FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.938 0.439 0.440 148.4 Mist 0.906 0.332 -0.027 237.8 CAAT 0.125 0.035 -1.083 508.8 ASPL 0.375 0.076 -0.728 458.4 SimAC 0.186 0.067 -1.079 508.1 HAA 0.062 0.030 -1.577 540.4 
+
+SD-V1.5 attack FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.969 0.454 0.577 140.4 Mist 1.000 0.383 -0.165 225.9 CAAT 0.312 0.036 -1.335 466.5 ASPL 0.250 0.059 -0.904 479.4 SimAC 0.219 0.149 -1.230 452.8 HAA 0.000 0.003 -1.563 523.7 
+
+TABLE IV EFFECTIVENESS STUDIES ACROSS DIFFERENT FINE -TUNING SCENARIOS ON CELEB A-HQ. Different fine-tuning scenarios Method SVDiff FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.914 0.335 0.538 149.2 Mist 0.875 0.202 0.274 212.9 CAAT 0.688 0.199 0.121 337.4 ASPL 0.516 0.168 0.103 388.3 SimAC 0.789 0.205 0.095 289.6 HAA 0.492 0.133 0.002 401.2 
+
+Method Textual Inversion FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.969 0.258 0.914 140.8 Mist 1.000 0.212 0.432 185.7 CAAT 0.969 0.172 0.543 191.5 ASPL 1.000 0.178 0.535 152.9 SimAC 1.000 0.234 0.415 148.1 HAA 0.938 0.194 0.030 213.5 
+
+Method Custom Diffusion FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 0.938 0.437 0.567 120.0 Mist 0.906 0.330 0.173 194.8 CAAT 0.875 0.308 0.177 271.3 ASPL 0.938 0.319 0.315 271.2 SimAC 0.969 0.364 0.480 202.0 HAA 0.781 0.254 0.152 275.4 
+
+(higher FID) and lower preference-aligned scores (lower Im-age Reward), which is consistent with the goal of discouraging high-quality personalized reconstruction under malicious fine-tuning. We attribute this behavior to the hierarchical anti-aesthetics design: the global branch broadly disrupts aesthetics that correlate with overall realism, while the local branch further targets facial regions where identity information con-centrates, and their combination yields a more consistent de-identification effect under prompts not seen during training. 
+
+C. Parameter Tuning 
+
+In our formulation, Eq. 14 introduces two hyperparameters, 
+
+λ and β, which weight the global and local anti-aesthetic 
+
+TABLE V PROMPT MISMATCH BETWEEN TRAINING AND TESTING ON CELEB A-HQ. THE TRAINING PROMPT IS “A PHOTO OF SKS PERSON ”, WHILE THE INFERENCE PROMPT USES RARE IDENTIFIERS SUCH AS “SKS ” OR “T@T”. “a photo of [v] person” Train [v] Test [v] FDSR ↓ FS ↓ IR ↓ FID ↑
+
+sks sks 0.281 0.117 -0.894 471.1 
+
+sks t@t 0.438 0.316 0.017 344.6 “a dslr portrait of [v] person” Train [v] Test [v] FDSR ↓ FS ↓ IR ↓ FID ↑
+
+sks sks 0.266 0.115 -0.861 461.4 
+
+sks t@t 0.578 0.221 0.197 276.5 “a close-up photo of [v] person, high details” Train [v] Test [v] FDSR ↓ FS ↓ IR ↓ FID ↑
+
+sks sks 0.177 0.077 -1.334 476.0 
+
+sks t@t 0.385 0.148 -0.610 325.1 “a photo of [v] person looking at the mirror” Train [v] Test [v] FDSR ↓ FS ↓ IR ↓ FID ↑
+
+sks sks 0.289 0.085 -1.296 473.5 
+
+sks st@t 0.523 0.138 -0.678 322.0 
+
+losses, respectively. We perform parameter tuning on CelebA-HQ using SD-2.1 and examine how these weights affect FID. As shown in Fig. 4, λ exerts a pronounced influence on FID. When λ increases from small values, FID rises accordingly, which is consistent with the global anti-aesthetic objective increasingly dominating optimization and thereby pushing generated samples farther from the clean distribution. However, beyond λ = 0 .2, FID begins to decrease, suggesting diminishing returns—and potentially a change in the optimiza-tion regime in which overly strong global degradation does not further widen the distributional gap captured by FID. Based on this empirical trend, we set λ = 0 .2 in the remaining experiments. We observe that β also materially affects overall performance. Following the same tuning protocol, we set 
+
+β = 0 .2, which provides a favorable operating point under our evaluation setting by balancing the contribution of local facial degradation against the other objectives in Eq. 14. 
+
+D. Ablation Study 
+
+Effectiveness Analysis of HAA Components. We conduct systematic ablation studies to examine the individual roles of Global Anti-Aesthetics (GAA) and Local Anti-Aesthetics (LAA), as well as their combined effect. As reported in Fig. 5, relative to the Baseline (FDSR = 0 .719 ), adding GAA reduces FDSR to 0.562 (a 21 .8% relative reduction) and decreases Face Similarity to 0.261 (a 32 .7% relative reduction). This behavior is consistent with GAA primarily acting at the image-level distribution: by discouraging globally preferred aesthetic configurations, it tends to suppress holistic realism cues that also correlate with identity consistency. When we instead incorporate the local anti-facial aesthetics loss (LAA) into the Baseline, LAA yields stronger privacy-oriented degradation than GAA in this setting: FDSR further drops to 0.406 (a 27 .8% relative reduction), and Image Reward decreases from −0.339 to −0.605 . These results suggest MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 9                                                                                                                         
+
+> TABLE VI EFFECTIVENESS ASSESSMENT BY VARYING THE NUMBER OF PERTURBED IMAGES ON CELEB A-HQ. “a photo of sks person”
+> Perturbed Clean FDSR ↓FS ↓IR ↓FID ↑
+> 400.281 0.117 -0.894 471.1
+> 310.625 0.290 -0.164 338.8 220.688 0.390 0.210 267.3 130.719 0.426 0.273 213.6 041.000 0.498 0.599 112.3 “a dslr portrait of sks person”
+> Perturbed Clean FDSR ↓FS ↓IR ↓FID ↑
+> 400.266 0.115 -0.861 461.4
+> 310.641 0.244 0.055 320.1 220.703 0.310 0.262 269.4 130.688 0.330 0.230 215.1 040.859 0.346 0.706 175.1 “a close-up photo of sks person, high details”
+> Perturbed Clean FDSR ↓FS ↓IR ↓FID ↑
+> 400.177 0.077 -1.334 476.0
+> 310.427 0.164 -0.663 373.5 220.479 0.223 -0.357 319.0 130.458 0.262 -0.138 238.8 040.625 0.276 0.281 200.8 “a photo of sks person looking at the mirror”
+> Perturbed Clean FDSR ↓FS ↓IR ↓FID ↑
+> 400.289 0.085 -1.296 473.5
+> 310.547 0.164 -0.668 378.0 220.602 0.227 -0.404 320.7 130.594 0.274 -0.256 265.9 040.672 0.276 0.022 232.9
+
+that explicitly targeting facial regions provides a more direct lever for weakening identity-relevant evidence, because many recognition pipelines depend on localized facial details that may persist even when global image quality degrades. Finally, the full HAA model, which combines both global and local anti-aesthetic objectives, shows the most pronounced effect: FDSR decreases to 0.281 (a 60 .9% relative reduction vs. the Baseline), Face Similarity decreases to 0.117 (a 69 .8% 
+
+relative reduction), Image Reward reaches −0.894 , and FID increases to 471 .1 (a 46 .5% relative increase). The stepwise trend across variants indicates that GAA and LAA are com-plementary rather than redundant: the global branch broadly shifts samples away from high-fidelity, preference-aligned generations, while the local branch concentrates the disruption on facial regions where identity information is densest. Their combination yields a more consistent degradation of both detection success and identity similarity, which aligns with the goal of reducing malicious fine-tuners’ ability to reconstruct recognizable faces under our experimental setting. 
+
+E. Necessity of the Global Branch 
+
+Although LAA directly targets detected faces, identity leak-age in customized diffusion models is not restricted to the detected face crop. Hair, head contour, pose, clothing, lighting, and scene co-occurrence can still support subject-token bind-ing and identity reconstruction. In addition, LAA depends on reliable face detection. GAA therefore provides a principled full-image anti-aesthetic objective for complementary image-level suppression and remains effective when local detection is unreliable.              
+
+> Fig. 6. CLIP cosine similarity after masking detected face regions. Lower values indicate less residual non-face identity-related information. Clean Base GAA LAA HAA
+> Fig. 7. Grad-CAM response visualization for HAA components. Brighter regions indicate stronger optimization pressure for suppressing identity-supporting information.
+
+We first mask all detected face regions and compute CLIP image-embedding cosine similarity between the masked gen-erated images and clean references. Clean denotes unprotected training, and Base denotes reconstruction-loss-only pertur-bation without anti-aesthetic losses. As shown in Fig. 6, GAA reduces residual non-face similarity more than LAA (0.403 vs. 0.430), and HAA achieves the lowest value (0.381). This indicates that identity-supporting information also exists outside the face crop and that the global branch helps remove it. The quantitative ablation in Fig. 5 further shows that GAA alone improves over the baseline, LAA provides stronger face-local degradation, and HAA achieves the best overall protection. Fig. 7 visualizes the corresponding Grad-CAM response regions, with response strength following Clean <
+
+Base < GAA < LAA < HAA. LAA focuses on facial details, GAA covers broader image-level structures, and HAA yields the broadest response. Finally, we evaluate a face-detection-failure stress setting. In Fig. 8, LAA (0%) corresponds to the case where no valid face box is available, so the local reward cannot provide effective face-local guidance. Adding GAA improves LAA at both 0% and 60% valid-local-detection availability. When 60% of local detections are available, adding GAA reduces FDSR from 0.531 to 0.375 and Face Similarity from 0.299 to 0.152, while increasing FID from 391.9 to 453.2. These results indicate that GAA provides complementary feedback when the local branch is weakened, rather than merely increasing perturbation strength. 
+
+F. Black-Box Performance on Different DM Versions. 
+
+To better approximate practical deployments where the target customized T2I model differs from the surrogate used for perturbation crafting, we evaluate HAA under black-box model-version mismatch by transferring attacks across different Stable Diffusion releases. As shown in Tab. III, MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 10 00.2 0.4 0.6 0.8 
+
+> LAA (0%) LAA (0%) + GAA LAA (60%) LAA (60%) + GAA
+> FDSR ↓
+> 00.1 0.2 0.3 0.4
+> LAA (0%) LAA (0%) + GAA LAA (60%) LAA (60%) + GAA
+> Face Similarity ↓
+> -0.75 -0.5 -0.25 00.25
+> LAA (0%) LAA (0%) + GAA LAA (60%) LAA (60%) + GAA
+> Image Reward ↓
+> 0100 200 300 400 500
+> LAA (0%) LAA (0%) + GAA LAA (60%) LAA (60%) + GAA
+> FID ↑
+
+Fig. 8. Face-detection-failure stress test. The 0% and 60% settings denote valid-local-detection availability for LAA. Adding GAA consistently improves LAA when local detections are unavailable or partially available. TABLE VII EFFECTIVENESS STUDIES ACROSS VARYING NOISE BUDGETS ON 
+
+CELEB A-HQ. 
+
+η FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+0.00 1.000 0.498 0.599 112.3 0.02 0.425 0.220 -0.428 379.8 0.05 0.281 0.117 -0.894 471.1 0.10 0.156 0.054 -0.999 462.2 
+
+0.15 0.000 0.000 -1.364 497.0 
+
+TABLE VIII ASSESSMENT ACROSS SD-V3.0 AND FLUX UNDER A BLACK -BOX SETTING ON CELEB A-HQ. 
+
+Model Attack Face Similarity ↓ Image Reward ↓ FID ↑
+
+SD-V3.0 CAAT 0.357 0.725 170.4 SD-V3.0 SimAC 0.353 0.988 188.5 SD-V3.0 HAA 0.343 0.561 197.0 FLUX CAAT 0.399 0.630 123.1 FLUX SimAC 0.397 0.453 117.7 FLUX HAA 0.375 0.336 148.5 
+
+HAA maintains strong effectiveness on both SD-v1.4 and SD-v1.5. Concretely, on SD-v1.5, it further reduces FDSR to 0.000 and Face Similarity to 0.003 , with Image Reward 
+
+−1.563 and FID 523 .7. Compared to baselines, these results indicate that perturbations transfer across model versions and suppress both face detectability and identity consistency. We view this stability as evidence that HAA primarily disrupts version-invariant cues shared across model releases, rather than fragile version-specific artifacts. In particular, degrading global appearance statistics while targeting facial regions reduces downstream fine-tuning’s reliance on semantically meaningful identity features. This helps preserve protection strength when the attacker’s model differs from the one used during perturbation optimization. 
+
+G. More fine-tuning scenarios 
+
+Tab. IV evaluates HAA’s transferability across three cus-tomization pipelines (SVDiff, Textual Inversion, Custom Dif-fusion) on CelebA-HQ. Overall, HAA consistently shifts fine-tuned generators to weaker identity evidence (lower Face Sim-ilarity/FDSR) and reduced preference-aligned quality (lower Image Reward), supporting perturbation effectiveness beyond the DreamBooth-style surrogate used in optimization. In the SVDiff setting, HAA outperforms other methods, achieving the best protection metrics: lowest FDSR ( 0.492 ), Face Similarity ( 0.133 ), Image Reward ( 0.002 ), and highest FID (401 .2), indicating a stronger ability to disrupt face detection and identity consistency. Tab. IV supports HAA’s generalization across heterogeneous fine-tuning strategies. Its impact is most pronounced in pipelines directly affecting facial detail generation (SVDiff, Custom Diffusion), while Textual Inversion is intrinsically harder to defend and CAAT obtains the lowest Face Similarity in that setting. Even so, HAA reliably degrades preference-aligned quality and in-creases distributional divergence, fulfilling the goal of reducing maliciously customized models’ utility for privacy-invasive face reconstruction. 
+
+TABLE IX HAA UNDER DIVERSE IMAGE TRANSFORMATION AND PURIFICATION DEFENSES WITH η = 0 .02 ON CELEB A-HQ. 
+
+M ethod FDSR ↓ Face Similarity ↓ Image Reward ↓ FID ↑
+
+Clean 1.000 0.498 0.599 112.3 HAA 0.425 0.220 -0.428 379.8 
+
+Gaussian blur k=3 0.644 0.302 0.315 215.1 Gaussian blur k=5 0.875 0.326 0.377 215.6 Gaussian blur k=7 0.906 0.349 0.410 209.1 JPEG q=30 0.938 0.269 -0.337 257.2 JPEG q=50 0.869 0.262 -0.288 263.2 JPEG q=70 0.813 0.254 -0.173 267.0 DiffPure 0.906 0.375 0.451 235.8 
+
+H. Prompt mismatch assessment 
+
+Tab. V evaluates robustness to prompt mismatch on CelebA-HQ. We optimize perturbations using a fixed training prompt (“a photo of sks person”) and then test at inference time with prompt templates that vary in style and, importantly, replace the identifier token with rare alternatives (e.g., “t@t” or “st@t”). This setting probes whether the protection hinges on a particular token string or instead transfers to semantically equivalent prompts. Across all prompts, HAA effectively re-duces identity-related information. As shown in Tab. V, when the test identifier matches training ( [v] = “sks”), HAA achieves strong protection, with low FDSR (e.g., 0.281 , 0.177 ), low Face Similarity (down to 0.077 ), and negative Image Rewards (as low as −1.334 ). These results offer two complementary insights. First, HAA’s effect is partly token-agnostic, as the perturbations consistently weaken identity signals. Second, the performance gap between matched and mismatched identifiers reveals that fine-tuning relies on the specific token-to-identity link; altering the token weakens this association and, thus, the protection. 
+
+I. Assessment on number of perturbed images 
+
+Tab. VI evaluates HAA’s protection against the number of perturbed training images, assessing its effectiveness and sample efficiency. Across four prompts, 4 perturbed images consistently yield the strongest protection across all metrics. For example, with “a photo of sks person”, 4 images achieve FDSR=0.281, Face Similarity=0.117, Image Reward=-0.894, MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 11 0.5 0.0 0.5 1.0    
+
+> Anti-Aesthetic Score
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Face Similarity
+> VGG-Face2
+> CelebA-HQ
+> 0.5 0.0 0.5 1.0
+> Anti-Aesthetic Score
+> 100
+> 150
+> 200
+> 250
+> 300
+> 350
+> 400
+> 450
+> 500
+> FID
+> VGG-Face2
+> CelebA-HQ
+
+Fig. 9. The relationship between Anti-Aesthetic Score, Face Similarity (reflecting identity-removal capability), and FID (reflecting image quality). The blue and orange scatter points represent the VGGFace2 and CelebA-HQ datasets, respectively. 
+
+and FID=471.1. Notably, HAA remains effective with just 1 perturbed image: for “a dslr portrait of sks person”, 1 perturbed image reduces FDSR to 0.688 and Face Similarity to 0.330 vs. the clean baseline; for “a close-up photo of sks person, high details”, it lowers Image Reward to -0.138 and raises FID to 238.8, indicating limited poisoning degrades image quality and identity consistency. Moreover, protection strength scales predictably with perturbed image count. For “a photo of sks person looking at the mirror”, increasing perturbed images from 0 to 4 steadily improves metrics: FDSR drops from 0.672 to 0.289 , Face Similarity from 0.276 to 0.085 ,and FID rises from 232 .9 to 473 .5, suggesting more poisoned images prevent perturbation averaging and reduce identity reconstruction reliability. HAA also performs well with detail-rich prompts: for “a close-up photo of sks person, high details”, 2 perturbed images achieve FDSR=0.479 and Image Reward=-0.357. Overall, Tab. VI supports HAA’s practicality for constrained budgets and predictable protection scaling with perturbed image count. 
+
+J. Effectiveness studies across varying noise budgets 
+
+We study how the perturbation budget affects the generation quality of customized models when applying HAA. Tab. VII reports results for η ∈ { 0.0, 0.02 , 0.05 , 0.1, 0.15 }. As η in-creases, the generated outputs degrade more noticeably (e.g., FDSR drops from 1.000 to 0.000 and Face Similarity from 
+
+0.498 to 0.000 ), indicating stronger suppression of identity cues. At the same time, overly large budgets are less practical because they can visibly affect the protected images. Notably, even under a tight budget of η = 0.02 , HAA remains effective (FDSR 0.425 , Face Similarity 0.220 , Image Reward 
+
+−0.428 , FID 379 .8), supporting its applicability under realistic constraints. 
+
+K. Assessment across SD-V3.0 and FLUX models 
+
+Tab. VIII evaluates black-box transfer to SD-V3.0 and FLUX on CelebA-HQ using Face Similarity, Image Reward, and FID. On SD-V3.0, HAA attains the lowest Face Similarity (0.343 ) and the lowest Image Reward ( 0.561 ) among the compared methods, while its FID ( 197 .0) is higher than CAAT and SimAC. On FLUX, HAA again yields the lowest Face Similarity ( 0.375 ) and the lowest Image Reward ( 0.336 ), and it also produces the highest FID ( 148 .5). Overall, these results indicate that HAA remains effective under black-box transfer to recent generative models, but the Clean: LPIPS 0.000/SSIM 1.00 Mist: LPIPS 0.058/SSIM 0.85 CAAT: LPIPS 0.062/SSIM 0.85      
+
+> ASPL: LPIPS 0.049/SSIM 0.91 SimAC: LPIPS 0.037/SSIM 0.92 Ours: LPIPS 0.023/SSIM 0.94
+
+Fig. 10. Portrait image protected by different methods. The protective noise added by HAA on user images is subtle on CelebA-HQ. 
+
+absolute transfer strength is weaker than what we observe on SD-v1.4/v1.5 in our other experiments. A plausible ex-planation is architectural mismatch: our surrogate is built on SD-2.1 (similar to SD-v1.4/v1.5), which uses a U-Net denoiser, whereas SD-V3.0 and FLUX adopt transformer-based denoisers. This shift likely reduces gradient and fea-ture alignment across models, thereby weakening perturbation transfer. We also observe a consistent trade-off: stronger iden-tity suppression and lower preference-aligned quality (lower Face Similarity and Image Reward) coincide with larger distributional deviation (higher FID), suggesting that on these newer backbones, protection gains are more tightly coupled with perceptible degradation in generation quality under our evaluation protocol. 
+
+L. Robustness of HAA 
+
+Tab. IX evaluates HAA’s robustness to defensive processing with a η = 0 .02 budget. Compared to clean images (FDSR 
+
+= 1.000 , Face Similarity = 0.498 , FID = 112 .3), HAA degrades identity and quality signals: FDSR drops to 0.425 ,Face Similarity to 0.220 , Image Reward becomes negative (−0.428 ), and FID increases to 379 .8. We first test common non-adaptive edits, including Gaussian blur and JPEG com-pression. Although these operations weaken the perturbation and increase FDSR/Face Similarity, Image Reward remains lower and FID remains higher than the clean baseline, indicat-ing that HAA retains a protective effect under common image processing. We further evaluate DiffPure as a purification-based post-processing defense. The experimental results indicate that DiffPure weakens HAA’s protection in this setting, increasing FDSR to 0.906 and Face Similarity to 0.375 . Nevertheless, it does not fully restore the generation behavior under the clean-image condition: Face Similarity remains lower than that of the clean setting ( 0.375 vs. 0.498 ), Image Reward is lower ( 0.451 vs. 0.599 ), and FID remains substantially higher (235 .8 vs. 112 .3). Therefore, under our experimental setting, the protective effect of HAA remains observable. 
+
+M. Correlation Verification between Anti-Aesthetic and Pri-vacy Protection 
+
+Fig. 9 reports the relationship between the anti-aesthetic score ( rgi in Eq. 4; higher values indicate stronger aesthetic MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 12 Portrait Image Mist ASPL CAAT Ours  
+
+> Fig. 11. Comparative visualization results on the VGGFace2 dataset. Two individuals and four prompts are used for experimental evaluation. Arranged from top to bottom, the prompts for each individual are as follows: “a photo of a sks person”, “a dslr portrait of a sks person”, “a close-up photo of a sks person with high details”, and “a photo of a sks person looking at the mirror”. The poorer the image quality, the better the protection effect and the more effectively identity information is removed, demonstrating the advantage of HAA’s privacy-preserving performance.
+
+degradation), Face Similarity, and FID on VGGFace2 and CelebA-HQ. The samples cover four prompts and six com-parison methods. The anti-aesthetic score is negatively correlated with Face Similarity and positively correlated with FID, suggesting that lower preference-aligned quality often coincides with weaker identity preservation. This correlation motivates HAA but does not by itself rule out generic image degradation as a confounder. We therefore provide the controlled analyses in the following subsection to separate the proposed aesthetic mechanism from generic low-level distortion. 
+
+N. Visualization Results 
+
+Fig. 10 visualizes the perturbations generated by differ-ent protection methods on the CelebA-HQ dataset, comple-mented by quantitative imperceptibility metrics (LPIPS [43] and SSIM [44]) to objectively evaluate the visual naturalness of protected images. Compared with Mist, CAAT, ASPL, and SimAC, the HAA method introduces fewer visually salient artifacts while still providing effective protection, indicating that it achieves a more favorable balance between preserving the natural appearance of shared images and reducing their utility for malicious customization. Fig. 11 further compares the qualitative protection out-comes on VGGFace2 for two identities under four prompts. Across prompts, models fine-tuned on HAA-protected images tend to generate faces with substantially weaker identity-consistent details. In contrast, competing methods more often retain recognizable facial structure, which visually aligns with their higher identity leakage in our quantitative evaluation. Moreover, various figures in Appendix visually show the effectiveness of HAA in protecting individuals across different genders and ethnicities. 
+
+O. Robustness Verification and Fault-Tolerant Mechanism 
+
+We further evaluate HAA under challenging input condi-tions and discuss the fallback mechanism used when face detection fails. 
+
+Robustness under extreme scenarios. We evaluate common input variations, including occlusion, rotation, and motion blur. As shown in Fig. 12, HAA continues to reduce identity-consistent generation under these conditions, indicating that the perturbation remains effective beyond the standard clean-input setting. 
+
+Fallback for face-detection failure. LAA relies on valid face localization. Face detection succeeds in about 99% of LAA updates on VGGFace2 and CelebA-HQ; when it fails, we use a central pseudo-box covering 64% of the image area to keep the local branch differentiable, while GAA continues to provide full-image feedback. In the forced failure test in Fig. 8, adding GAA improves LAA at both 0% and 60% valid-local-detection availability. At 0%, FDSR decreases from 0.719 to 0.562 and Face Similarity from 0.388 to 0.261; at 60%, they decrease from 0.531 to 0.375 and from 0.299 to 0.152, respectively. Thus, GAA provides fallback anti-aesthetic feedback when local face supervision is absent or incomplete. 
+
+Partial identity retention. HAA reduces identity evidence but does not theoretically guarantee complete identity removal. Residual identity can remain under weak perturbation budgets, after purification, under strong prompt mismatch or model mismatch, or in pipelines less dependent on pixel-level facial reconstruction. We therefore report both FDSR and ArcFace Face Similarity and include residual cases from Textual Inver-sion, DiffPure, SD-V3.0, and FLUX. HAA still lowers Face Similarity and preference-aligned quality in these settings, while GAA/LAA cooperation, pseudo-box fallback, and multi-image protection mitigate but do not eliminate such failures. 
+
+P. Disentangling Aesthetic Degradation from Generic Image Degradation 
+
+We further examine whether HAA’s identity-removal effect is attributable to generic image degradation or to the proposed MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 13 Input HAA 
+
+(A) 
+
+(B) 
+
+(C) 
+
+(D) 
+
+Fig. 12. Visualization of HAA’s protection effectiveness under extreme scenarios such as occlusion, rotation, and motion blur. (A) represents the original image, (B) represents random occlusion on the original image, (C) represents rotating the original image by 30 degrees, and (D) represents applying motion blur to the image. The visualization results show that our method remains effective in extreme scenarios. TABLE X CONTROLLED COMPARISON BETWEEN GENERIC IMAGE DEGRADATIONS AND HAA UNDER LPIPS-CONTROLLED PERCEPTUAL DISTORTION ON 
+
+CELEB A-HQ WITH THE PROMPT “A PHOTO OF SKS PERSON ”. Method FDSR ↓ Face Similarity ↓ IR ↓ FID ↑ LPIPS Defocus Blur 1.000 0.330 -0.488 217.1 0.715 Gaussian Blur 1.000 0.383 -0.265 215.8 0.722 Resolution Degradation 1.000 0.332 0.412 258.0 0.709 Gaussian Noise 0.719 0.482 0.449 153.8 0.725 Salt-Pepper Noise 0.469 0.476 0.587 135.8 0.709 HAA 0.281 0.117 -0.894 471.1 0.706 
+
+aesthetic mechanism. We use four complementary analy-ses: quantitative and qualitative LPIPS-controlled comparisons with generic degradations, a reward-control study, and ArcFace Grad-CAM visualization. Tab. X compares HAA with five generic degradations whose LPIPS values are all higher than HAA’s (0.709–0.725 vs. 0.706). Despite larger perceptual distortion, these degradations retain substantially more identity evidence: Defocus Blur, Gaussian Blur, and Resolution Degradation still yield FDSR 
+
+= 1 .000 , while Gaussian Noise and Salt-Pepper Noise retain much higher Face Similarity (0.482 and 0.476). By contrast, HAA reduces FDSR to 0.281 and Face Similarity to 0.117. The first two rows of Fig. 13 provide a qualitative LPIPS-controlled comparison. Generic degradations introduce blur, resolution loss, or noise, but still preserve recognizable fa-cial layouts and local identity details. HAA causes stronger identity-oriented disruption, consistent with Tab. X. Tab. XI assesses aesthetic-mechanism-driven optimization. Replacing the aesthetic reward with a random reward does not improve over the baseline (FDSR 0.844 vs. 0.719; Face Similarity 0.394 vs. 0.388), whereas HAA achieves the best privacy metrics. Thus, meaningful aesthetic feedback, rather than a random reward signal, provides important evidence for Defocus Blur Resolution  
+
+> Degradation
+> Gaussian
+> Blur
+> Gaussian
+> Noise
+> Salt Pepper HAA
+
+Fig. 13. Qualitative LPIPS-controlled comparison and ArcFace Grad-CAM analysis. The first two rows compare generic degradations and HAA. The third row shows ArcFace embedding Grad-CAM responses with respect to the original identity; brighter regions indicate stronger identity evidence, while weaker responses indicate stronger de-identification. TABLE XI REWARD -CONTROL STUDY FOR AESTHETIC -MECHANISM -DRIVEN OPTIMIZATION . C LEAN DENOTES CUSTOMIZATION USING UNPROTECTED ORIGINAL IMAGES ; B ASELINE DENOTES PROTECTION WITHOUT THE PROPOSED AESTHETIC REWARD TERMS ; R ANDOM REPLACES THE AESTHETIC REWARDS WITH RANDOM SIGNALS UNDER THE SAME OPTIMIZATION PROTOCOL .Method FDSR ↓ Face Similarity ↓ IR ↓ FID ↑
+
+Clean 1.000 0.498 0.599 112.3 Baseline 0.719 0.388 0.183 321.6 Random 0.844 0.394 0.206 326.4 HAA 0.281 0.117 -0.894 471.1 
+
+disrupting identity-relevant cues. The third row of Fig. 13 shows ArcFace Grad-CAM re-sponses with respect to the original identity. Resolution Degra-dation remains bright around key facial regions, indicating residual original-identity evidence. HAA exhibits almost no MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 14                   
+
+> TABLE XII COMPARISON OF COMPUTATIONAL COST AND VRAM REQUIREMENTS ON
+> CELEB A-HQ.
+> Method VRAM (MiB) ↓Training Time (s) ↓FDSR ↓FID ↑
+> ASPL 20417 152 0.750 359.5 SimAC 30327 327 0.438 388.9 HAA 30647 486 0.281 471.1
+
+high-response regions, indicating a larger distance from the original identity in ArcFace embedding space. Overall, generic degradation lacks an effective design for suppressing identity cues, whereas HAA achieves stronger de-identification through its aesthetics-driven mechanism. 
+
+Q. Comparison of computational cost and VRAM require-ments on CelebA-HQ 
+
+Tab. XII compares computational cost and VRAM usage on CelebA-HQ. HAA consumes 30647 MiB VRAM, which is essentially on par with SimAC ( 30327 MiB), suggesting that the hierarchical anti-aesthetic design does not materially increase the memory footprint. Although HAA increases train-ing time from 327 s to 486 s, it delivers a noticeably larger gain in protection: FDSR decreases from 0.438 to 0.281 and FID increases from 388 .9 to 471 .1. Given our evaluation protocol, where lower FDSR and higher FID indicate stronger protection, these results suggest that HAA offers a favorable efficiency-effectiveness trade-off. It enhances privacy protec-tion while incurring only modest additional VRAM usage and a relatively small increase in computational cost, which may be acceptable for resource-constrained deployments that prioritize protection strength. 
+
+R. Reward Model Validation 
+
+Since RM g and RM l provide the optimization feedback for HAA, we validate them along three axes: effectiveness, identity specificity, and robustness/reliability. 
+
+Aesthetic validity analysis. We evaluate RM g on ImageRe-wardDB for image-level aesthetic preference alignment and 
+
+RM l on SCUT-FBP5500 for face-local aesthetic preference alignment. As shown in Tables XIII and XIV, RM g provides meaningful global preference scores, and RM l achieves the best preference accuracy among the compared facial scoring models. We further test downstream utility using the random-reward control in Tab. XI. Replacing the aesthetic reward with a random signal does not improve protection over the baseline, whereas HAA substantially reduces FDSR and Face Similarity. Thus, HAA benefits from structured aesthetic feedback rather than arbitrary rewards. 
+
+Identity-specificity analysis. RM l is not trained or used as an identity classifier; it only scores detected facial regions for local aesthetics. As shown in Fig. 14, different identities with similar aesthetic quality receive close scores, with a small average absolute score difference of about 0.157 compared to the Aesthetic Scorer [45]. Images of the same identity under different backgrounds and expressions also yield rela-tively small score variation (standard deviation 0.221 –0.355 ),                                                                                                
+
+> TABLE XIII VALIDATION OF THE GLOBAL REWARD MODEL RM gON
+> IMAGE REWARD DB. Model Pref. Acc. Recall Filter @1 @2 @4 @1 @2 @4 CLIP 54.82 27.22 48.52 78.17 29.65 51.75 76.82 Aesthetic 57.35 30.73 53.91 75.74 32.08 54.45 76.55 BLIP 57.76 30.73 50.67 77.63 33.42 56.33 80.59
+> RM g64.43 43.60 66.80 94.40 48.80 72.80 95.20 TABLE XIV VALIDATION OF THE LOCAL FACIAL REWARD MODEL RM lON
+> SCUT-FBP5500. Model Pref. Acc. Recall Filter @1 @2 @4 @1 @2 @4 CLIP 53.63 15.31 30.69 59.64 16.62 30.69 59.42 Aesthetic 55.78 17.35 29.20 54.55 26.69 43.82 67.71 BLIP 59.33 20.25 40.69 71.31 18.11 33.71 59.85
+> RM l67.20 35.56 59.64 87.67 22.69 41.09 68.65 5.355 /0.095 5.332 /0.121 5.308 /0.122 5.361 /0.126 5.364 /0.145
+> 5.297 /0.160 5.337 /0.162 5.308 /0.122 5.289 /0.169 5.223 /0.250 5.708 /0.349 5.700 /0.320 5.619 /0.318 5.244 /0.343 5.921 /0.355
+> 6.363 /0.221 5.343 /0.278 6.039 /0.318 5.928 /0.315 5.888 /0.307
+> Fig. 14. Identity-specificity diagnostics of RM l. Top: different identities with similar aesthetic quality, where each tile reports the RM lscore / absolute difference from the Aesthetic Scorer. Bottom: same-identity groups under background and expression changes, where each tile reports the mean / standard deviation.
+
+indicating stable scoring across non-identity variations. These diagnostics indicate that RM l’s scores do not rely on specific identity labels, but are mainly driven by local facial aesthetic quality. 
+
+Robustness and reliability analysis. We apply Gaussian Blur, Gaussian Noise, Defocus Blur, and Salt-Pepper Noise with increasing intensities. As shown in Figs. 15 and 16, both 
+
+RM g and RM l consistently assign lower scores as degrada-tion intensity increases, indicating stable and quality-sensitive feedback. Overall, these results evaluate the reward models at the scorer, downstream-optimization, and diagnostic-behavior levels, supporting their use as frozen preference scorers in HAA. MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 15     
+
+> Fig. 15. Robustness analysis of the global reward model RM g. Under Gaussian Blur, Gaussian Noise, Defocus Blur, and Salt-Pepper Noise, the global aesthetic score consistently decreases as degradation intensity increases.
+> Fig. 16. Robustness analysis of the local reward model RM l. Under the same four degradation types, the face-local aesthetic score consistently decreases with stronger degradation.
+
+S. More details 
+
+Both reward models use a BLIP-style preference-scorer ar-chitecture with a ViT-L image encoder, a 12-layer transformer text encoder, cross-modal fusion, and an MLP scalar head. For RM g , we use the public ImageRewardDB dataset for prompt-conditioned image-level rankings. The preference data contain 8,878 prompts and 136,892 pairwise comparisons, constructed from ranked groups of 4–9 generated images for each prompt. The reported preference-accuracy test split contains 466 prompts and 6,399 comparison pairs, while Recall/Filter are evaluated on another 371 prompts with 8 images per prompt; the remaining annotated prompts are used for training. Given a prompt Cg , a preferred image xw, and a less preferred image xl, the global scorer is optimized with a pairwise logistic ranking loss, i.e., it is encouraged to satisfy 
+
+RM g (xw, C g ) > RM g (xl, C g ). This makes RM g sensitive to global human-preference factors such as prompt alignment, fidelity, and overall aesthetics. For RM l, we construct face-level preference pairs and apply the same preference-scorer principle at the face level. Facial regions are detected from LAION natural images, masked, and inpainted with a diffusion inpainting pipeline to create degraded face regions. The original face crop is treated as xwl ,while the inpainted/degraded face is treated as xll, yielding about 46k face-quality pairs from 23k natural images. The local prompt is fixed to the face-level prompt Cl, so the scorer focuses on facial plausibility and aesthetic detail rather than full-image context. RM l is optimized with the same pair-wise logistic ranking objective, encouraging RM l(xwl , C l) >RM l(xll, C l). No identity labels are used in this training; the supervision is quality/preference ordering. After training, both 
+
+RM g and RM l are frozen and only provide differentiable feedback for HAA perturbation optimization. We also report the training protocol: 70% of BLIP Transformer layers are frozen, the learning rate is set to 1 × 10 −5, the batch size is 64, a cosine learning-rate schedule is used, and training is conducted on four RTX 5880 Ada GPUs. Training can also be conducted on a single RTX 5880 Ada GPU, although this increases the training time. VI. C ONCLUSION 
+
+Existing anti-customization methods often overlook key aesthetic cues, limiting their ability to remove identities. To address this issue, we propose a novel Hierarchical Anti-Aesthetics (HAA) framework, which includes both Global Anti-Aesthetics and Local Anti-Aesthetics branches. These branches work together to leverage aesthetic cues from global to local and encourage anti-alignment with human aesthetic preferences, thereby reducing customized DMs’ ability to reconstruct facial details. Extensive experiments show that HAA outperforms existing methods and provides a useful tool for protecting facial privacy and copyright. REFERENCES [1] S. Gu, D. Chen, J. Bao, F. Wen, B. Zhang, D. Chen, L. Yuan, and B. Guo, “Vector quantized diffusion model for text-to-image synthesis,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 10 696–10 706. [2] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,2022, pp. 10 684–10 695. [3] A. Ramesh, P. Dhariwal, A. Nichol, C. Chu, and M. Chen, “Hierarchical text-conditional image generation with clip latents,” arXiv preprint arXiv:2204.06125 , vol. 1, no. 2, p. 3, 2022. [4] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion probabilistic models,”                              
+
+> Advances in neural information processing systems , vol. 33, pp. 6840– 6851, 2020. [5] J. Song, C. Meng, and S. Ermon, “Denoising diffusion implicit models,”
+> arXiv preprint arXiv:2010.02502 , 2020. [6] O. Bar-Tal, D. Ofri-Amar, R. Fridman, Y. Kasten, and T. Dekel, “Text2live: Text-driven layered image and video editing,” in European conference on computer vision .Springer, 2022, pp. 707–723. [7] G. Kim, T. Kwon, and J. C. Ye, “Diffusionclip: Text-guided diffusion models for robust image manipulation,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022, pp. 2426–2435. [8] R. Gal, Y. Alaluf, Y. Atzmon, O. Patashnik, A. H. Bermano, G. Chechik, and D. Cohen-Or, “An image is worth one word: Person-alizing text-to-image generation using textual inversion,” arXiv preprint arXiv:2208.01618 , 2022. MANUSCRIPT FOR IEEE TRANSACTIONS ON INFORMATION FORENSICS AND SECURITY 16
+
+[9] N. Ruiz, Y. Li, V. Jampani, Y. Pritch, M. Rubinstein, and K. Aberman, “Dreambooth: Fine tuning text-to-image diffusion models for subject-driven generation,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2023, pp. 22 500–22 510. [10] N. Kumari, B. Zhang, R. Zhang, E. Shechtman, and J.-Y. Zhu, “Multi-concept customization of text-to-image diffusion,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2023, pp. 1931–1941. [11] L. Han, Y. Li, H. Zhang, P. Milanfar, D. Metaxas, and F. Yang, “Svdiff: Compact parameter space for diffusion fine-tuning,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2023, pp. 7323–7334. [12] J. Vice, N. Akhtar, R. Hartley, and A. Mian, “Bagm: A backdoor attack for manipulating text-to-image generative models,” IEEE Transactions on Information Forensics and Security , 2024. [13] Y. Huang, F. Juefei-Xu, Q. Guo, J. Zhang, Y. Wu, M. Hu, T. Li, G. Pu, and Y. Liu, “Personalization as a shortcut for few-shot backdoor attack against text-to-image diffusion models,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 38, no. 19, 2024, pp. 21 169– 21 178. [14] J. Frank, T. Eisenhofer, L. Sch¨ onherr, A. Fischer, D. Kolossa, and T. Holz, “Leveraging frequency analysis for deep fake image recogni-tion,” in International conference on machine learning . PMLR, 2020, pp. 3247–3258. [15] J. W. Seow, M. K. Lim, R. C. Phan, and J. K. Liu, “A comprehensive overview of deepfake: Generation, detection, datasets, and opportuni-ties,” Neurocomputing , vol. 513, pp. 351–371, 2022. [16] L. Guarnera, O. Giudice, and S. Battiato, “Deepfake detection by analyz-ing convolutional traces,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition workshops , 2020, pp. 666– 667. [17] B. Zheng, C. Liang, X. Wu, and Y. Liu, “Understanding and im-proving adversarial attacks on latent diffusion model,” arXiv preprint arXiv:2310.04687 , 2023. [18] T. Van Le, H. Phung, T. H. Nguyen, Q. Dao, N. N. Tran, and A. Tran, “Anti-dreambooth: Protecting users from personalized text-to-image synthesis,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2023, pp. 2116–2127. [19] J. Xu, Y. Lu, Y. Li, S. Lu, D. Wang, and X. Wei, “Perturbing attention gives you more bang for the buck: Subtle imaging perturbations that efficiently fool customized diffusion models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2024, pp. 24 534–24 543. [20] F. Wang, Z. Tan, T. Wei, Y. Wu, and Q. Huang, “Simac: a simple anti-customization method for protecting face privacy against text-to-image synthesis of diffusion models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024, pp. 12 047–12 056. [21] L. Xu, J. Wang, H. Hao, H. Qin, J. Zhao, and X. Liu, “Harnessing global-local collaborative adversarial perturbation for anti-customization,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025, pp. 13 414–13 423. [22] P. P. Tinio, H. Leder, and M. Strasser, “Image quality and the aesthetic judgment of photographs: Contrast, sharpness, and grain teased apart and put together.” Psychology of Aesthetics, Creativity, and the Arts ,vol. 5, no. 2, p. 165, 2011. [23] S. E. Palmer, K. B. Schloss, and J. Sammartino, “Visual aesthetics and human preference,” Annual review of psychology , vol. 64, no. 1, pp. 77–107, 2013. [24] X. Lu, Z. Lin, H. Jin, J. Yang, and J. Z. Wang, “Rating image aesthetics using deep learning,” IEEE Transactions on Multimedia , vol. 17, no. 11, pp. 2021–2034, 2015. [25] V. Gallego, “Personalizing text-to-image generation via aesthetic gradi-ents,” arXiv preprint arXiv:2209.12330 , 2022. [26] S. Wu, F. Ding, M. Huang, W. Liu, and Q. He, “Vmix: Improving text-to-image diffusion model with cross-attention mixing control,” arXiv preprint arXiv:2412.20800 , 2024. [27] J. Ho, C. Saharia, W. Chan, D. J. Fleet, M. Norouzi, and T. Salimans, “Cascaded diffusion models for high fidelity image generation,” Journal of Machine Learning Research , vol. 23, no. 47, pp. 1–33, 2022. [28] A. Lugmayr, M. Danelljan, A. Romero, F. Yu, R. Timofte, and L. Van Gool, “Repaint: Inpainting using denoising diffusion probabilistic models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022, pp. 11 461–11 471. [29] D. Podell, Z. English, K. Lacey, A. Blattmann, T. Dockhorn, J. M¨ uller, J. Penna, and R. Rombach, “Sdxl: Improving latent diffusion models for high-resolution image synthesis,” arXiv preprint arXiv:2307.01952 ,2023. [30] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark et al. , “Learning transferable visual models from natural language supervision,” in International conference on machine learning . PMLR, 2021, pp. 8748–8763. [31] C. Liang, X. Wu, Y. Hua, J. Zhang, Y. Xue, T. Song, Z. Xue, R. Ma, and H. Guan, “Adversarial example does good: Preventing painting im-itation from diffusion models via adversarial examples,” arXiv preprint arXiv:2302.04578 , 2023. [32] J. Xu, X. Liu, Y. Wu, Y. Tong, Q. Li, M. Ding, J. Tang, and Y. Dong, “Imagereward: Learning and evaluating human preferences for text-to-image generation,” Advances in Neural Information Processing Systems ,vol. 36, 2024. [33] C. Yu, A. Velu, E. Vinitsky, J. Gao, Y. Wang, A. Bayen, and Y. Wu, “The surprising effectiveness of ppo in cooperative multi-agent games,” 
+
+Advances in neural information processing systems , vol. 35, pp. 24 611– 24 624, 2022. [34] H. Zhu, W. Wu, W. Zhu, L. Jiang, S. Tang, L. Zhang, Z. Liu, and C. C. Loy, “Celebv-hq: A large-scale video facial attributes dataset,” in 
+
+European conference on computer vision . Springer, 2022, pp. 650–667. [35] Q. Cao, L. Shen, W. Xie, O. M. Parkhi, and A. Zisserman, “Vggface2: A dataset for recognising faces across pose and age,” in 2018 13th IEEE international conference on automatic face & gesture recognition (FG 2018) . IEEE, 2018, pp. 67–74. [36] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” 2021. [37] P. Esser, S. Kulal, A. Blattmann, R. Entezari, J. M¨ uller, H. Saini, Y. Levi, D. Lorenz, A. Sauer, F. Boesel et al. , “Scaling rectified flow transformers for high-resolution image synthesis,” in Forty-first international conference on machine learning , 2024. [38] B. F. Labs, S. Batifol, A. Blattmann, F. Boesel, S. Consul, C. Diagne, T. Dockhorn, J. English, Z. English, P. Esser, S. Kulal, K. Lacey, Y. Levi, C. Li, D. Lorenz, J. M¨ uller, D. Podell, R. Rombach, H. Saini, A. Sauer, and L. Smith, “Flux.1 kontext: Flow matching for in-context image generation and editing in latent space,” 2025. [Online]. Available: https://arxiv.org/abs/2506.15742 [39] S. Yang, P. Luo, C.-C. Loy, and X. Tang, “From facial parts responses to face detection: A deep learning approach,” in Proceedings of the IEEE international conference on computer vision , 2015, pp. 3676–3684. [40] J. Deng, J. Guo, N. Xue, and S. Zafeiriou, “Arcface: Additive angular margin loss for deep face recognition,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2019, pp. 4690– 4699. [41] M. Heusel, H. Ramsauer, T. Unterthiner, B. Nessler, and S. Hochreiter, “Gans trained by a two time-scale update rule converge to a local nash equilibrium,” Advances in neural information processing systems ,vol. 30, 2017. [42] J. Deng, J. Guo, E. Ververas, I. Kotsia, and S. Zafeiriou, “Retinaface: Single-shot multi-level face localisation in the wild,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,2020, pp. 5203–5212. [43] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , 2018, pp. 586–595. [44] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: from error visibility to structural similarity,” IEEE transactions on image processing , vol. 13, no. 4, pp. 600–612, 2004. [45] C. Schuhmann, R. Beaumont, R. Vencu, C. Gordon, R. Wightman, M. Cherti, T. Coombes, A. Katta, C. Mullis, M. Wortsman et al. , “Laion-5b: An open large-scale dataset for training next generation image-text models,” Advances in neural information processing systems , vol. 35, pp. 25 278–25 294, 2022.
