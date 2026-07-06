@@ -1,0 +1,1167 @@
+Title: Decoupled Guidance: Disentangling Subject and Context Pathways in Text-to-Image Personalization
+
+URL Source: https://arxiv.org/pdf/2607.00766v2
+
+Published Time: Fri, 03 Jul 2026 00:28:16 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Decoupled Guidance: Disentangling Subject and Context Pathways in Text-to-Image Personalization 
+
+## Seongmin Kim *,1 Kyucheol Shin *,1 Heesun Jung 2 Jinseo Kim 1 Sungyong Baik 1,2† 1Department of Artificial Intelligence, 2Department of Data Science Hanyang University 
+
+{smin28, akami40, jheesun, jinseo84, dsybaik }@hanyang.ac.kr 
+
+*Equal contribution †Corresponding author a can dressed as a wizard, holding a 
+
+> glowing staff, standing in a mystical
+> forest filled with ancient ruins
+> a cat wearing royal robes inside a
+> magnificent palace throne room with
+> crystal chandeliers
+> a toy wearing cozy winter
+> clothes inside a warm mountain cabin
+> beside a fireplace
+> a mug in a firefighter outfit fighting a
+> fire on the street with a water gun Reference Image
+> a can wearing a cozy sweater
+> and scarf, holding a cup of hot cocoa
+> by the fireplace
+> a toy dressed as a purple wizard,
+> standing beside a small magical frog
+> inside an ancient medieval library
+> a mug is riding a surfboard in the
+> ocean
+> a cat sitting in a movie theater
+> wearing 3D glasses, popcorn flying
+> through the air
+
+Figure 1. Personalization results from DeGu. Given a few reference images, our method faithfully preserves fine-grained subject identity while composing each subject into novel scenes. All images are generated with the SD v3.5 backbone. 
+
+## Abstract 
+
+Text-to-image personalization aims to generate a user-provided subject in novel scenes described by text. How-ever, most existing methods encode subject identity (fi-delity) and context (editability) through the same condition-ing pathway, forcing the two to compete for attention-map resources. We refer to this phenomenon as conditioning en-tanglement and show that it induces a fidelity-editability trade-off. We further provide causal evidence by replac-ing the target subject token with a generic subject token, which produces shifts in attention allocation and corre-sponding changes in context adherence. To this end, we pro-pose Decoupled Guidance (DeGu), a plug-and-play frame-work that routes subject identity and scene context through two independent guidance streams. We further introduce a spatial mixing mechanism that dynamically fuses these streams, ensuring each operates within its semantically rel-evant region without interference. Furthermore, DeGu can be readily applied to existing personalization methods with-out modifying the underlying backbone models, consistently improving the overall personalization performance while enabling inference-time control over the fidelity–editability balance, across diverse methods and backbones, including flow-matching Diffusion Transformers (DiTs). 
+
+1
+
+> arXiv:2607.00766v2 [cs.CV] 2 Jul 2026
+
+(a) Previous methods (e.g. Textual Inversion) 
+
+(b) DeGu (Ours)                         
+
+> generated image
+> generated image
+> a dog on top of a
+> purple rug in a forest
+> [𝑆 ∗]
+> [𝑆 ∗]
+> a𝑆 ∗on top of apurple rug in aforest
+> Generation
+> with DeGu
+> (Ours)
+> Generation
+> aon top of apurple rug in aforest dog
+> a𝑆 ∗on top of a
+> purple rug in a forest
+> Attention collapse!
+> No attention collapse
+> subject (dog)
+> context (purple rug)
+> (forest)
+> subject (dog)
+> context (purple rug)
+> (forest)
+> ✘
+> Attn
+> Map
+> Attn
+> Map
+> Attn
+> Map
+
+Figure 2. Conditioning entanglement in existing personaliza-tion and the proposed DeGu framework. (a) Previous methods route subject identity and scene context through a single condi-tioning pathway. The attention maps illustrate attention collapse in embedding optimization (detailed analysis in Section 3). (b) DeGu routes subject identity and scene context through two in-dependent guidance streams, preventing the attention competition between subject and context. 
+
+## 1. Introduction 
+
+Recent text-to-image models [18, 33, 36, 39, 41, 44] can generate photorealistic images from text descriptions such as “a dog in a caf´ e.” However, these models produce generic subjects rather than specific ones—e.g., unable to generate images of a particular pet with distinctive markings. Text-to-image personalization [8, 42, 52] aims to address this limitation: given only a handful of reference images of a tar-get subject (e.g., a pet, a product, or a personal object), the goal is to synthesize the target subject in novel scenes while preserving its identity. This capability has broad practical values, spanning creative content generation, e-commerce, and personal media production. However, personalization is a challenging problem that requires a model to simultaneously satisfy two objectives: reproducing a target subject faithfully and following the scene, layout, and attributes described by text. One promis-ing approach centers on fine-tuning methods [5, 11, 23, 42], which directly adapt model parameters to learn new sub-jects. Despite high fidelity, directly adapting model pa-rameters embeds subject identity into the model weights, which limits the extent to which inference-time guidance can steer scene composition. On the other hand, embed-ding optimization [1, 8, 20, 34, 51] keeps the model frozen and learns a small set of token embeddings representing the new subject. While this design avoids overwriting prior knowledge, higher subject fidelity tends to come at the cost Attention Share (%) 
+
+Figure 3. Attention collapse is a systematic consequence of uni-fied prompts. Per-token cross-attention magnitudes for a com-positional prompt. Left: In the pre-trained model, attention dis-tributes evenly across tokens. Right: After personalization via TI, the learned subject token S∗ absorbs most of the cross-attention budget, suppressing context tokens such as “purple,” “rug,” and “forest” to near zero—an effect we refer to as attention collapse 
+
+(analyzed in Section 3). 
+
+of text-image alignment. Meanwhile, encoder-based meth-ods [24, 52, 53, 57] predict subject representations directly from images, eliminating per-subject optimization, but still lack a principled mechanism to independently adjust the balance between subject fidelity and context adherence at inference time. Despite their differences, these paradigms share a common structural property: subject identity and scene context are routed through a single conditioning path-way, limiting independent control over each objective. We examine this shared-pathway structure in the em-bedding optimization setting, where its effects are most directly observable. In Section 3, we show that unified prompts cause the learned subject token to absorb the ma-jority of cross-attention resources—a phenomenon we term 
+
+attention collapse —systematically suppressing context to-kens and degrading editability. Motivated by this analy-sis, we propose Decoupled Guidance (DeGu) , a plug-and-play framework that routes subject identity and scene con-text through two independent guidance streams, as shown in Figure 2. While DeGu is motivated by the attention collapse di-agnosed in embedding optimization, the decoupling mech-anism itself does not depend on any specific paradigm or backbone architecture. Experiments show that DeGu con-sistently improves personalization performance across em-bedding optimization, fine-tuning, and encoder-based meth-ods on multiple backbones including flow-matching Dif-fusion Transformers (DiTs), while enabling inference-time control over the fidelity–editability balance through inde-pendent guidance scales for each stream. 
+
+## 2. Related work 
+
+Text-to-image diffusion models. Diffusion models [12, 18, 27, 28, 45–47], particularly Latent Diffusion Models (LDM) [36, 41] and their popular instantiation Stable Dif-2: Text Encoder 
+
+Training    
+
+> Mask 𝐌 𝑡
+> (b) Decoupled Guidance Mixer (DGM)
+> (c ) Test -time Cross -Attention Masking (TCAM)
+
+Inference     
+
+> 𝝐 (𝐳 𝑡 ,𝑡 ,𝒄 𝑓 )
+> 𝝐 (𝐳 𝑡 ,𝑡 ,𝒄 𝑒 )
+
+𝐳 𝑡  𝐳 𝑡 −1
+
+…  
+
+> atoy floating
+> on top of water
+
+𝒄 𝑓 
+
+𝒄 𝑒 
+
+[𝑆 ∗]
+
+❆ ෤𝛜  𝐳 𝑡 = 𝛜 𝜽  𝐳 𝑡                                     
+
+> +𝛾 𝑒 ⋅𝝐 𝐳 𝑡 ,𝑡 ,𝒄 𝑒 −𝝐 𝐳 𝑡 ⊙1−𝐌 𝑡
+> +𝛾 𝑓 ⋅𝝐 𝐳 𝑡 ,𝑡 ,𝒄 𝑓 −𝝐 𝐳 𝑡 ⊙𝐌 𝑡
+> 1−(⋅)
+> &Otsu Thresholding
+> 1−Normalize( 𝐀 𝑡 ,𝑓
+> ns )=ഥ𝐀 𝑡 ,𝑓
+> ns Normalize( 𝐀 𝑡 ,𝑓
+> ns )𝐀 𝑡 ,𝑓
+> ns
+> (a) Context -Agnostic Embeddings (CAE )
+
+𝐳 𝑡 −1
+
+𝝐 (𝐳 𝑡 , 𝑡 , 𝒄 𝑓 )
+
+𝒄 𝑓 
+
+❆ 
+
+> [SOT]
+
+[𝑆 ∗] [EOT] ... [EOT] 
+
+𝐳 𝑡 
+
+> Entropy -based
+> Selection
+> Blur
+> generated image
+> ഥ𝐀 𝑡 ,𝑓
+> ns
+> Denoising
+> Module
+
+❆
+
+...  ...  ...   
+
+> 𝑟 1 × 𝑟 1
+> 𝑟 2×𝑟 2
+> Denoising
+> Module
+
+❆Figure 4. Overview of our proposed framework. (a) We isolate the subject token from the context tokens and introduce Context-Agnostic Embeddings (CAE), which trains the token embedding of our learnable token [S∗] using the token sequence [SOT ] [ S∗] [ EOT ] · · · [EOT ]
+
+to obtain the fidelity condition cf via text encoder E to focus on capturing the subject identity. (b) At inference, our Decoupled Guidance Mixer (DGM) combines cf (for fidelity) with the context condition ce (for editability). (c) Test-time Cross-Attention Masking (TCAM) derives a subject mask Mt by inverting and binarizing the attention map of a designated non-subject token in the cf stream. This mask spatially partitions the guidance, applying cf inside the subject region and ce to the background (details in Appendix B). 
+
+fusion (SD), have become a widely adopted framework for text-to-image generation, owing to their text-aligned syn-thesis quality. Their generation quality stems from large-scale training [33, 36, 39, 44], while text alignment is achieved by employing pretrained text encoders such as CLIP [37], BLIP [25], and T5 [38], together with Classifier-Free Guidance (CFG) [17]. Notably, attention layers in these models have been shown to encode spatially mean-ingful representations useful for segmentation [35, 49]. De-spite this progress, generating images of specific unseen subjects remains an open challenge, which we address in this work. 
+
+Text-to-image personalization. The core challenge of per-sonalization is to faithfully reproduce a specific subject while composing it into novel scenes described by text. Ex-isting approaches fall broadly into three paradigms. Embed-ding optimization methods [1, 8, 10, 20, 34, 50, 51, 55, 56] keep the model frozen and embed subject characteristics into learnable token embeddings, preserving prior knowl-edge with minimal storage, but the limited capacity of token embeddings makes it difficult to achieve both high subject fidelity and strong editability [48, 53]. Fine-tuning meth-ods [2, 5, 9, 11, 13, 14, 19, 23, 31, 32, 42, 43, 48] di-rectly adapt model parameters to learn subject characteris-tics, achieving high fidelity at the risk of catastrophic for-getting [7, 22, 26]. Encoder-based methods [24, 52, 53, 57] train an image encoder to predict the subject directly from reference images, removing per-subject optimization but requiring large-scale datasets for encoder training. Our method belongs to the embedding optimization paradigm but mitigates the fidelity–editability trade-off by decoupling subject and context conditioning, with only a few hun-dred kilobytes of storage. It also serves as a plug-and-play module that consistently improves existing methods with-out modifying their weights. 
+
+Attention manipulation in compositional generation. Aseparate line of work [4, 15] reweights or redistributes cross-attention during inference to mitigate token neglect in compositional generation. While these methods offer some improvements, they still operate within a single uni-fied prompt and fail to decouple the conditioning path-ways. Composable diffusion [29] combines independent text conditions at the score level via a product-of-experts formulation; our method shares this score-level combina-tion but addresses a different setting where one condition is a learned subject embedding, requiring a dedicated training strategy to establish the conditional independence that text-only composition assumes by construction (Section 4.3). Despite these varied efforts, a structural property persists across personalization methodologies: subject and context conditions share the same attention budget. 
+
+## 3. The anatomy of conditioning entanglement 
+
+In this section, we aim to analyze conditioning entangle-ment and how it affects personalization. Prior work at-tributes the fidelity–editability trade-off to limited token 3(a) ACS (%)          
+
+> CLIP -T (Editability)
+> DINO (Fidelity) (b) ACS (%)
+> CLIP -T (Editability)
+> DINO (Fidelity)
+> Figure 5. Attention collapse as evidence of conditioning en-tanglement. Both plots report ACS against fidelity (DINO) and editability (CLIP-T). (a) As TI training progresses, ACS rises— fidelity improves but editability degrades accordingly. (b) Increas-ing learnable tokens ( nT I = 1–5) also raises ACS with the same trade-off, confirming a structural consequence of unified prompts rather than a matter of capacity.
+
+capacity and proposes to expand the conditioning bud-get [1, 20, 51]. In contrast, we argue that unified prompts inherently cause attention competition , with severe cases yielding attention collapse where subject tokens absorb most attention resources. We test this through three experi-ments that progressively rule out alternative explanations. 
+
+Attention competition in unified prompts. All exper-iments in this section are conducted on SD v2.1 across 39 subjects from diverse categories, each evaluated on 25 compositional prompts. To determine whether unified prompts systematically bias attention toward the subject token, we analyze cross-attention distributions in the pre-trained model and Textual Inversion [8] (TI)—which repre-sents the subject as a learned token S∗ in the prompt. We compute per-token cross-attention magnitude averaged over spatial locations and diffusion timesteps. For each prompt, we define the Attention Collapse Score (ACS) as the frac-tion of total cross-attention captured by the subject token: 
+
+ACS = ¯AS∗
+
+P 
+
+> i
+
+¯Awi
+
+× 100% , (1) where ¯Awi denotes the mean cross-attention magnitude of token wi.To isolate the causal effect, we treat the pre-trained model as a controlled reference in which the subject po-sition contains a generic class token (e.g., “dog”), and mea-sure the change when that token is replaced by the learned 
+
+S∗ from TI. Figure 3 illustrates the analysis results of at-tention for one prompt example. With the generic token, attention distributes relatively evenly, allowing the model to integrate subject characteristics with compositional con-text. However, substituting a generic token with S∗ breaks this balance: the learned token captures most attention (me-dian ACS = 86%) while context tokens are suppressed to under 10% combined, with ACS exceeding 80% in 94% of cases. 
+
+Attention collapse as evidence of conditioning entangle-ment. We next correlate mean ACS with DINO (fidelity) and CLIP-T (editability) for each subject. As shown in Fig-ure 5(a), ACS correlates positively with fidelity and nega-tively with editability in a consistent, monotonic pattern: as the subject token claims a larger attention share, text-image alignment falls proportionally. This pattern extends beyond TI: the mean ACS and editability metrics for P+ and NeTI follow the same monotonic ordering, confirming that atten-tion collapse is a directly observable signature of condition-ing entanglement. This analysis demonstrates that attention collapse is a direct and systematic consequence of encod-ing subject identity through unified prompts in embedding optimization. 
+
+Capacity scaling intensifies collapse. A natural alternative hypothesis is that the trade-off stems from limited represen-tational capacity: adding more subject tokens S∗ could im-prove fidelity without sacrificing editability [1, 20, 51]. We test this by training TI, while varying the number of learn-able subject tokens ( nT I ) from 1 to 5 across our bench-mark. The analysis results falsify the capacity hypothe-sis. As shown in Figure 5(b), increasing nT I from 1 to 5
+
+improves fidelity but degrades editability. The collective attention share of subject tokens grows markedly, further suppressing context tokens: the added capacity is absorbed by the same shared attention pool, intensifying competition rather than relieving it. This intensified dominance, despite being distributed across multiple tokens, indicates that the tension arises from structural competition within the shared attention pool: adding capacity inside a unified prompt in-tensifies the competition rather than resolving it (see Sec-tion G.1). These analysis results rule out capacity as the pri-mary cause of attention competition and reinforce the con-clusion from the preceding experiment: subject and context compete within a shared attention space. 
+
+## 4. Proposed method 
+
+Section 3 establishes that unified prompts force subject identity and scene context to compete for the same at-tention resources, leading to fidelity–editability trade-off. More broadly, existing personalization methods across all paradigms route both objectives through a shared condi-tioning pathway, limiting the ability to independently ad-just their balance at inference time. We present Decou-pled Guidance (DeGu), a framework that addresses this entanglement at three levels (Figure 4): (1) contextual co-occurrence in trained tokens ( Context-Agnostic Embed-dings , CAE); (2) attention competition within a shared for-ward pass ( Decoupled Guidance Mixer , DGM); (3) refer-ence background leakage across spatial regions ( Test-time Cross-Attention Masking , TCAM). 
+
+4.1. Preliminaries 
+
+Our work builds upon Diffusion Models [6, 36, 41], which synthesize images by iteratively denoising a latent represen-4𝛾 𝑒 = 0 1.5 3.0 4.5 6.0 7.5                      
+
+> Ref Img
+> 𝛾 𝑓 =00.51.01.52.03.0
+> a toy on a cobblestone street
+> 𝛾 𝑓  = 3.0
+> 𝛾 𝑒  = 7.5Figure 6. Independent guidance control through γeand γf.Left ( γf= 3 .0fixed): Increasing γestrengthens text adherence while pre-serving subject identity. Right ( γe= 7 .5fixed): Increasing γfenhances subject-specific features while preserving text prompt adherence. This validates independent pathway operation.
+
+tation zt conditioned on text condition c from text encoder 
+
+E. Classifier-Free Guidance (CFG) [17] steers generation toward c by combining a conditional prediction ϵ(zt, t, c)
+
+and an unconditional prediction ϵ(zt):
+
+˜ϵ(zt) = ϵ(zt) + γ(ϵ(zt, t, c) − ϵ(zt)) , (2) where t denotes the denoising timestep and γ controls the guidance strength. As shown in Section 3, this unified con-ditioning forces subject and scene semantics to compete within a single attention space. We aim to resolve this at-tention competition by decomposing the conditioning into two parallel streams—subject identity and scene context. 
+
+4.2. Context-Agnostic Embeddings (CAE) 
+
+Because standard methods train S∗ within context-bearing prompts, the resulting embedding already encodes contex-tual co-occurrence; simply routing it through a separate stream does not eliminate the entanglement. We there-fore introduce Context-Agnostic Embeddings (CAE), which trains the token embedding of a new learnable token [S∗] in complete isolation. We use the bracket notation to distin-guish our token from S∗ in existing methods. Then, the overall prompt sequence consists of only the learnable to-ken [S∗] and padding tokens [EOT ]:
+
+[SOT ] [ S∗] [ EOT ] · · · [EOT ]. (3) The token embedding of [S∗] is initialized from the em-bedding of the [EOT ] token and optimized to solely capture subject identity. Text encoder E maps this sequence to the fidelity condition cf . Because no context tokens appear in this sequence, cf is structurally independent of any linguis-tic context. Unlike standard methods (e.g., Textual Inversion [8]) that train S∗ within context prompts (e.g., “ a S∗ in the snow ”), CAE trains the token embedding of [S∗] in isola-tion with the reconstruction objective: 
+
+L = Ezt,ϵ,t 
+
+∥ϵ − ϵθ (zt, t, cf )∥2. (4) By optimizing this objective, cf encodes visual patterns from reference images without linguistic grounding, pro-ducing a context-independent representation that can com-pose with arbitrary scene contexts through a separate path-way. Meanwhile, the context condition ce is obtained by encoding standard text prompts (e.g., “ a dog in the snow ”) that contain no learnable tokens. 
+
+4.3. Decoupled Guidance Mixer (DGM) 
+
+The two conditions cf and ce from CAE each produce a noise prediction, ϵ(zt, t, cf ) and ϵ(zt, t, ce), which we in-corporate into a factorized reformulation of CFG: 
+
+˜ϵ(zt) = ϵ(zt) + γe(ϵ(zt, t, ce) − ϵ(zt)) + γf (ϵ(zt, t, cf ) − ϵ(zt)) , (5) where ϵ(zt) is the unconditional noise prediction, while γe
+
+and γf control editability guidance and fidelity guidance, respectively. Because cf and ce are processed in sepa-rate forward passes, each produces its own key–value pairs 
+
+{Ke, Ve} and {Kf , Vf } for the cross-attention mecha-nism, so the resulting attention maps are disjoint and the pathway-level interference identified in Section 3 is elim-inated. Equation 5 corresponds to the score of a product-of-experts (PoE) target distribution [16, 29] under the con-ditional independence assumption cf ⊥ ce | zt. This as-sumption is structurally encouraged by our design: CAE constructs cf without any linguistic tokens and ce contains no learned subject tokens, so the two conditions encode se-mantically disjoint information. The full derivation and ap-proximation error analysis are provided in Appendix A. 
+
+4.4. Test-time Cross-Attention Masking (TCAM) 
+
+DGM eliminates pathway-level interference, but a spatial challenge remains: because cf is trained on reference im-ages, its noise prediction encodes background alongside subject appearance, which can leak into context regions. We introduce Test-time Cross-Attention Masking (TCAM) to spatially partition the two streams at each denoising step, deriving subject masks directly from the latent-space atten-tion within the fidelity forward pass—without any external segmentation model or additional training. Within the cf
+
+forward pass, the CAE tokens [S∗] concentrate on subject regions while non-subject tokens ( [SOT ], [EOT ]) attend to context regions. Inverting the attention map of such a non-subject token therefore yields more complete and spatially stable subject coverage than relying on [S∗] directly. Let 
+
+Ans  
+
+> t,f
+
+denote the cross-attention map of the designated non-subject token at denoising step t in the fidelity stream (see 5Reference Image  DeGu (Ours) 
+
+a wet bird     
+
+> an alarm clock on
+> top of green grass
+> with sunflowers
+> around it
+> a dog with the
+> Eiffel Tower in the
+> background
+> DTI + Ours MS + Ours DTI MS -Diffusion
+> Standalone Plug -and -Play Plug -and -Play
+
+Figure 7. Qualitative comparison on SDXL. Each row shows one subject: reference (leftmost), standalone DeGu, SDXL baselines (DTI, MS-Diffusion), and plug-and-play variants (DTI+DeGu, MS+DeGu). DTI follows the prompt but loses subject-specific details; MS-Diffusion retains coarse cues yet misses fine identity details for unseen subjects and fails to compose novel scenes. DeGu decouples identity and context via dedicated pathways and improves both baselines in a plug-and-play manner without changing their weights. 
+
+Appendix B for implementation details). We normalize and invert this map, then apply binarization to obtain a subject mask Mt:
+
+¯Ans  
+
+> t,f
+
+= 1 − Normalize( Ans  
+
+> t,f
+
+), (6) where Normalize maps values to [0 , 1] . The soft mask 
+
+¯Ans  
+
+> t,f
+
+is binarized via Gaussian blur and Otsu thresholding to yield Mt (Appendix B). The final guidance is spatially partitioned using Mt:
+
+˜ϵ(zt) = ϵ(zt)+ γe[( ϵ(zt, t, ce) − ϵ(zt)) ⊙ (1 − Mt)] (7) 
+
++ γf [( ϵ(zt, t, cf ) − ϵ(zt)) ⊙ Mt],
+
+confining cf to the subject region and ce to the context region. TCAM operates entirely within the latent space, reusing attention maps computed during the forward pass, so it adds no external model and no decode overhead (com-parison against Grounded SAM 2 [30, 40] in Section 5.3). 
+
+4.5. Plug-and-play integration 
+
+While DeGu can be used with a pretrained backbone model (standalone setting), DeGu can also be seamlessly in-tegrated into existing personalized models with minimal changes. In practice, an existing personalization method already performs standard CFG with its own condition cb
+
+(e.g., “ a S∗ in the snow ”). DeGu appends its fidelity and editability streams alongside cb, forming a three-term guid-ance that combines the existing condition with our decou-pled pathways (Appendix A, Equations J–K). 
+
+## 5. Experiments 
+
+To validate the effectiveness of our proposed framework, DeGu, we address three questions: does pathway separa-tion enable independent control over fidelity and editability across diverse personalization methods and backbones; do the gains stem from the design rather than added capacity; and what is the contribution of each component? 
+
+5.1. Experimental setup 
+
+Datasets and baselines. We follow the DreamBooth [42] evaluation protocol, using 39 subjects (9 live, 30 non-live) drawn from both the DreamBooth [42] and Textual Inver-sion [8] benchmarks to ensure diverse coverage, and eval-uate on 25 compositional prompts per subject. On SD v2.1, we compare against embedding optimization meth-ods (TI [8], P+ [51], NeTI [1]) and fine-tuning methods (DB [42], CoRe [54]); on SDXL against DTI [21] and MS-Diffusion [52]; and on SD v3.5 (DiT) we compare against DB-LoRA to test architectural generality. Full implementa-tion and baseline configuration details are provided in Ap-pendix B. 
+
+Metrics. Following prior work [8, 42], we evaluate sub-ject fidelity using DINO [3] and CLIP-I [37], and editability using CLIP-T [37]. We additionally report Masked CLIP-I (MCLIP-I) and Masked DINO (MDINO), which com-pute fidelity on subject regions cropped via Grounded SAM 2 [30, 40] to isolate subject appearance from background changes (see Appendix C for protocol). We report an over-all metric as Overall = 14 (CLIP-I + DINO ) + 12 CLIP-T, assigning equal weight to subject fidelity and editability. 6Table 1. Quantitative comparison across backbones and personalization paradigms. DeGu (Ours) consistently pushes the Pareto frontier of personalization across all paradigms and architectures, improving the overall score. CLIP-I and DINO measure full-image subject fidelity; CLIP-T measures editability; Overall = 14 (CLIP-I + DINO ) + 12 CLIP-T balances them; MCLIP-I and MDINO are masked fidelity metrics on the subject region only.                                                                                                                                       
+
+> Backbone Paradigm Method CLIP-I ↑DINO ↑CLIP-T ↑Overall ↑MCLIP-I ↑MDINO ↑
+> SD v2.1 Standalone DeGu (Ours) 0.7965 0.6655 0.3034 0.5172 0.9000 0.8019
+> Embedding TI [8] 0.8086 0.6256 0.2734 0.4953 0.8763 0.7300 + DeGu (Ours) 0.8315 0.6888 0.2870 0.5236 0.9045 0.8086
+> P+ [51] 0.7828 0.6052 0.3077 0.5009 0.8809 0.7400 + DeGu (Ours) 0.8091 0.6719 0.3066 0.5236 0.9037 0.8047
+> NeTI [1] 0.8092 0.6407 0.2905 0.5077 0.8874 0.7638 + DeGu (Ours) 0.8257 0.6885 0.2968 0.5270 0.9073 0.8141
+> Fine-tuning DB [42] 0.8025 0.6491 0.2996 0.5127 0.8862 0.7792 + DeGu (Ours) 0.8272 0.6938 0.2903 0.5254 0.9066 0.8241
+> CoRe [54] 0.7428 0.5309 0.2931 0.4650 0.8508 0.6615 + DeGu (Ours) 0.7987 0.6514 0.3007 0.5129 0.8974 0.7955
+> SDXL Standalone DeGu (Ours) 0.7978 0.6649 0.3021 0.5167 0.9053 0.8065
+> Embedding DTI [21] 0.7333 0.4876 0.3105 0.4605 0.8340 0.6212 + DeGu (Ours) 0.7800 0.6205 0.3162 0.5082 0.8941 0.7800
+> Encoder MS-Diffusion [52] 0.7655 0.5908 0.3206 0.4994 0.8749 0.7516 + DeGu (Ours) 0.7689 0.6072 0.3212 0.5046 0.8885 0.7750
+> SD v3.5 Standalone DeGu (Ours) 0.8029 0.6432 0.3064 0.5147 0.8817 0.7529
+> Fine-tuning DB [42] 0.7864 0.6250 0.3086 0.5072 0.8744 0.7501 + DeGu (Ours) 0.8440 0.7142 0.2852 0.5322 0.9085 0.8214
+
+5.2. Experimental results 
+
+Quantitative comparison. To evaluate whether pathway separation expands the achievable Pareto frontier regard-less of the underlying personalization strategy, Table 1 re-ports results across three backbones (SD v2.1, SDXL, SD v3.5) spanning embedding optimization, fine-tuning, and encoder-based paradigms. On SD v2.1, DeGu substan-tially raises subject fidelity across all baselines—MDINO improves by up to +0 .0786 (TI) and +0 .0449 (DB)—while maintaining competitive editability, consistently improving the overall score. These gains extend to SDXL and SD v3.5, which differ substantially in architecture—SD v3.5 re-places the U-Net with a Diffusion Transformer (DiT)—and the fidelity–editability balance remains adjustable at infer-ence time via γf and γe (Section 5.3). 
+
+Qualitative comparison. Figure 7 exposes representative failure modes on SDXL: DTI follows the prompt but loses subject-specific details, while MS-Diffusion retains coarse cues yet misses fine identity for unseen subjects. DeGu breaks this coupling by routing each objective through a dedicated pathway, and its plug-and-play mode further im-proves each baseline without backbone-specific retraining. The same pattern holds on SD v2.1, where embedding op-timization methods lose subject identity and fine-tuning methods fail to compose novel scenes (Appendix E.1). SD v3.5 results are shown in Figure 1, with additional examples in Appendix E.2. 
+
+Plug-and-play integration. Improving an existing method without degrading compositional capability is structurally difficult under entangled conditioning, because any added fidelity signal injected into a shared attention stream com-petes with the host context tokens. Table 1 (rows marked 
+
++ DeGu) shows that subject fidelity improves substantially across tested baselines while the overall score improves consistently, with only a few hundred kilobytes of storage for the CAE token embeddings (details in Appendix G.5). Crucially, CAE token embeddings are learned on the pre-trained backbone and then reused in all comparison settings, rather than being optimized separately for each baseline. 
+
+5.3. Ablation studies 
+
+Having established that each component targets a distinct level of entanglement, including conditioning-level com-petition (CAE), pathway-level interference (DGM), and spatial-level leakage (TCAM), we now verify their individ-7Reference Image 
+
+a toy floating on top of water 
+
+> Generated Image
+> TCAM
+> Generated Image
+> Grounded
+> SAM 2
+> Denoising Process
+
+Figure 8. Mask quality across denoising timesteps. Each group shows the decoded intermediate latent and the corresponding mask. At early timesteps (high noise), Grounded SAM 2 produces unreliable segmentations because its input lies far outside its training distribution, while TCAM consistently localizes the subject by operating on latent-space attention maps. Reference Images      
+
+> a bowl on top of green grass with sunflowers around it
+> w/o TCAM DeGu (Ours) w/o DGM, TCAM
+> a plushie on the beach
+
+Figure 9. Qualitative effect of each component. w/o DGM, TCAM : CAE placed in unified guidance recreates attention col-lapse. w/o TCAM : DGM decouples guidance but cf spatially dom-inates, leaking reference backgrounds. DeGu (Ours) : TCAM con-fines each stream to its relevant region, achieving both high fidelity and compositional control. Table 2. Component ablation. Each row adds one compo-nent. We report masked fidelity metrics (MCLIP-I, MDINO) to isolate subject appearance from background changes (Overall 
+
+= 14 (MCLIP-I + MDINO ) + 12 CLIP-T). CAE alone recreates at-tention collapse; DGM recovers fidelity but leaks reference back-grounds; TCAM resolves this by spatially confining each stream. CAE DGM TCAM MCLIP-I ↑ MDINO ↑ CLIP-T ↑ Overall ↑                  
+
+> ✓✗✗0.8897 0.7683 0.2751 0.5521
+> ✓✓✗0.8956 0.7902 0.2995 0.5712
+> ✓✓✓0.9000 0.8019 0.3034 0.5772
+
+ual contributions through systematic ablations on SD v2.1. 
+
+Component analysis. Table 2 and Figure 9 report results for three progressive configurations. CAE alone recreates attention collapse when placed back into unified guidance, degrading both metrics. Adding DGM decouples the guid-ance streams but causes cf to dominate spatially, leaking reference backgrounds into generated scenes. TCAM re-solves this by spatially partitioning the two streams, recov-ering editability while maintaining high fidelity. 
+
+Why not external segmentation? External segmenters such as Grounded SAM 2 [30, 40] require decoding the noisy latent zt to pixel space at every step; at high-noise timesteps, the decoded output is heavily out-of-distribution, producing unstable masks. As shown in Figure 8, external segmentation fails under high noise, while cross-attention maps still localize the subject. TCAM achieves higher sub-ject fidelity (MDINO: 0.8019 vs. 0.6214) and faster infer-ence (4.5 s/image vs. 21.2 s/image). 
+
+Inference-time guidance control. Because cf and ce op-erate through separate forward passes with distinct cross-attention mechanisms, the fidelity–editability balance be-comes adjustable at inference time without retraining. Fig-ure 6 illustrates this: increasing γe (with γf = 3 .0 fixed) strengthens text adherence while preserving subject iden-tity, and increasing γf (with γe = 7.5 fixed) sharpens subject-specific features while compositional elements re-main stable. Entangled methods lack this capability. 
+
+## 6. Conclusion 
+
+We identify conditioning entanglement —routing subject identity and scene context through a shared pathway—as a structural bottleneck that collapses compositional con-trollability in text-to-image personalization, with attention collapse as its observable signature. Decoupled Guidance 
+
+(DeGu) addresses this at three levels: Context-Agnostic Embeddings (CAE) train the subject token in a padding-only sequence to eliminate linguistic co-occurrence; the Decoupled Guidance Mixer (DGM) separates subject and context conditioning with disjoint key–value sets; and Test-time Cross-Attention Masking (TCAM) spatially confines each stream via a binary mask derived from the fidelity-8stream attention maps, without requiring an external seg-mentation module. By decomposing guidance into inde-pendent streams, DeGu shifts the fidelity–editability bal-ance from a training-time decision to an inference-time choice, enabling flexible control via γf and γe. Across embedding optimization, fine-tuning, and encoder-based methods on multiple backbones, this design consistently improves the overall personalization performance, demon-strating the flexibility and effectiveness of the proposed de-coupled guidance scheme. 9Supplementary Material Table of Contents 
+
+A Theoretical justification for the Decoupled Guidance Mixer . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 1 
+
+B Implementation details . . . . . . . . . . . . . . . . . . . . . . . . . . . 3 B.1 Training configurations . . . . . . . . . . . . . . . . . . . . . . 3 B.2 Baseline configurations . . . . . . . . . . . . . . . . . . . . . . 4 B.3 Evaluation configuration . . . . . . . . . . . . . . . . . . . . . 4 
+
+C Mask-based evaluation protocols . . . . . . . . . . . . . . . . . . 4 
+
+D Additional quantitative results . . . . . . . . . . . . . . . . . . . . . 5 
+
+E Additional qualitative results . . . . . . . . . . . . . . . . . . . . . . 5 E.1 Qualitative comparison on SD v2.1 . . . . . . . . . . . . 5 E.2 Results with SD v3.5 backbone . . . . . . . . . . . . . . . 5 E.3 Plug-and-play integration on SD v2.1 . . . . . . . . . . 6 
+
+F User study . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6 
+
+G Additional ablation studies . . . . . . . . . . . . . . . . . . . . . . . . 9 G.1 Token capacity scaling . . . . . . . . . . . . . . . . . . . . . . . 9 G.2 CAE token count . . . . . . . . . . . . . . . . . . . . . . . . . . . 10 G.3 Masking token selection . . . . . . . . . . . . . . . . . . . . 11 G.4 Disentanglement as the source of gain in plug-and-play mode . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12 G.5 Storage-performance trade-off . . . . . . . . . . . . . . . 12 
+
+H Multi-concept personalization . . . . . . . . . . . . . . . . . . . . 13 This supplementary material provides theoretical deriva-tions, implementation details, extended quantitative and qualitative results, user study protocols, ablation studies, and multi-concept experiments that complement the main paper. 
+
+## A. Theoretical justification for the Decoupled Guidance Mixer 
+
+The Decoupled Guidance Mixer (DGM, Section 4.3) com-bines two independent noise predictions via 
+
+˜ϵ(zt) = ϵ(zt, t )+ γe
+
+ ϵ(zt, t, ce) − ϵ(zt, t )
+
++ γf
+
+ ϵ(zt, t, cf ) − ϵ(zt, t ).
+
+(A) A natural question is whether this linear combination has a principled probabilistic interpretation, or whether it is a heuristic superposition of two guidance signals. A product-of-experts (PoE) distribution [16] assigns high density only where every expert agrees, which aligns with the goal of personalization: the generated image should satisfy both the fidelity condition and the editability condition simulta-neously. We show that Equation A corresponds to the score of such a PoE target, and that it approximates the joint pos-terior score with an explicit error term. 
+
+Score function notation. In the main paper, the uncondi-tional prediction is written as ϵ(zt) to visually distinguish it from the conditional prediction ϵ(zt, t, c), since t is al-ready implied by the subscript of zt. Throughout this sec-tion, we write ϵ(zt, t ) for both cases to keep the timestep dependence explicit in the derivations. Define the (condi-tional) score function 
+
+s(zt, t | c) ≜ ∇zt log pt(zt | c). (B) Under the standard ϵ-prediction parameterization [18], the score is proportional to the negative predicted noise: 
+
+sθ (zt, t | c) = − 1
+
+σt
+
+ϵθ (zt, t, c), (C) where σt is the noise scale at time t.
+
+A target distribution whose score factorizes additively. 
+
+Rather than claiming that a linear combination of scores al-ways equals the true joint score of pt(zt | cf , ce), we de-fine an explicit target distribution whose score decomposes additively. Consider the following product-of-experts dis-tribution [16, 29] with γf = γe = 1 :
+
+q(zt | cf , ce) ∝ pt(zt) p(cf | zt) p(ce | zt). (D) Taking the gradient of the log-density: 
+
+∇zt log q(zt | cf , ce) = ∇zt log pt(zt)+ ∇zt log p(cf | zt)+ ∇zt log p(ce | zt).
+
+(E) Applying Bayes’ rule and noting that ∇zt log p(c) = 0 :
+
+∇zt log p(c | zt) = ∇zt log pt(zt | c)
+
+− ∇ zt log pt(zt), (F) we obtain 
+
+∇zt log q(zt | cf , ce) = s(zt, t )+  s(zt, t | cf ) − s(zt, t )
+
++  s(zt, t | ce) − s(zt, t ),
+
+(G) where s(zt, t ) ≜ ∇zt log pt(zt) is the unconditional score. Substituting sθ (zt, t | c) = −ϵθ (zt, t, c )/σ t shows that this special case ( γf = γe = 1 ) recovers the DGM up-date in Equation A with unit guidance scales. DGM gen-eralizes this by introducing independent guidance scales 
+
+γf and γe, corresponding to an exponentiated PoE target 
+
+qγ (zt | cf , ce) ∝ pt(zt) p(cf | zt)γf p(ce | zt)γe , fol-lowing the same convention as standard CFG [17] where 
+
+γ > 1 sharpens the conditional distribution. The effect of each scale on the two streams is validated independently in Figure 6 of the main paper. 1Approximation error and its suppression. When the two conditions are not conditionally independent given zt,define the interaction residual 
+
+∆( zt) ≜ log p(cf , ce | zt)
+
+− log p(cf | zt) − log p(ce | zt), (H) so that the true joint score decomposes as 
+
+∇zt log pt(zt | cf , ce) = ∇zt log q(zt | cf , ce)+ ∇zt ∆( zt). (I) DGM can therefore be viewed as an approximation to the true joint score, with ∇zt ∆( zt) as an explicit error term. It is worth distinguishing the consensus mechanism inherent to PoE from the problematic competition observed in con-ventional single-pass conditioning. In a PoE distribution, the requirement that every expert assigns high likelihood is a desirable property: it ensures that the generated sample simultaneously satisfies both the fidelity and editability ob-jectives. The difficulty arises when this consensus is real-ized implicitly inside a single forward pass, where the con-ditions share a common softmax and the resulting attention competition corrupts each expert’s likelihood estimate—the attention collapse documented in Section 3. DGM relocates the consensus from the attention interior to the score space: each expert produces its likelihood estimate in an isolated forward pass, and the estimates are combined externally via Equation A. Our design further suppresses the approxima-tion error ∇zt ∆( zt) in two complementary ways: (i) CAE removes shared linguistic context tokens from cf by con-struction, reducing statistical dependence between cf and 
+
+ce; and (ii) because the two forward passes maintain disjoint key-value pools, each expert estimates its conditional like-lihood without computational interference from the other stream. Together, (i) and (ii) make the PoE approximation most accurate in the regime where ∆( zt) is small, i.e., when 
+
+cf and ce are close to conditionally independent given zt.
+
+Scope of the guarantee: single-step isolation. The path-way isolation established above holds within a single de-noising step : given zt, the two forward passes are indepen-dent. However, across steps, zt−1 is produced by combin-ing both guidance signals (Equation A), so zt−1 carries in-formation from both cf and ce. At the next step, the fidelity forward pass ϵ(zt−1, t −1, cf ) therefore receives an indirect signal from ce through zt−1. This inter-step coupling is a structural property of all score-level composition meth-ods: Composable Diffusion [29], which combines multiple text conditions via the same additive formulation, shares exactly the same inter-step dependency but does not dis-cuss it explicitly. Moreover, this inter-step mixing is not merely a limitation—it serves a constructive role. If the two streams were fully decoupled across steps, each would in-dependently develop its own spatial structure, causing the subject to appear as a visually inconsistent element pasted onto the scene rather than naturally integrated into it. By sharing zt−1 across streams, DGM ensures that the fidelity and editability streams develop a common spatial scaffold, allowing the subject and scene to remain geometrically co-herent throughout denoising. The key advantage of DGM is therefore that it removes intra-step coupling—where cf and 
+
+ce would otherwise compete within the same forward pass under a shared softmax—while retaining inter-step mixing as a mechanism for spatial coherence. Our ablation results (Table 2 in the main paper) confirm that intra-step isolation is the dominant factor driving the improvement. 
+
+Extension to three-stream plug-and-play integration. 
+
+When DeGu is attached to an existing personalization method (Section 4.5), a third condition cb (the prompt con-taining the learned token of the host method, e.g., “ a S∗
+
+in the snow ”) enters the guidance. The three-stream DGM update without spatial masking takes the form 
+
+˜ϵ(zt) = ϵ(zt, t )+ γe
+
+ ϵ(zt, t, ce) − ϵ(zt, t )
+
++ γf
+
+ ϵ(zt, t, cf ) − ϵ(zt, t ) (J) 
+
++ γb
+
+ ϵ(zt, t, cb) − ϵ(zt, t ).
+
+When combined with TCAM, the spatial partitioning con-fines cf to the subject region and ce to the background, while cb operates over the full spatial extent since it already encodes both subject and context in its entangled prompt: 
+
+˜ϵ(zt) = ϵ(zt, t )+ γe
+
+(ϵ(zt, t, ce) − ϵ(zt, t )) ⊙ (1 − Mt)
+
++ γf
+
+(ϵ(zt, t, cf ) − ϵ(zt, t )) ⊙ Mt
+
+ (K) 
+
++ γb
+
+ ϵ(zt, t, cb) − ϵ(zt, t ).
+
+The PoE framework extends naturally to three experts. De-fine the three-expert target distribution: 
+
+q(zt | cf , ce, cb) ∝ pt(zt) p(cf | zt) p(ce | zt) p(cb | zt).
+
+(L) Taking the log-gradient and applying Bayes’ rule yields 
+
+∇zt log q = s(zt, t )+  s(zt, t | cf ) − s(zt, t )
+
++  s(zt, t | ce) − s(zt, t )
+
++  s(zt, t | cb) − s(zt, t ). (M) which, under the ϵ-parameterization, corresponds to Equa-tion J with unit guidance scales. The interaction residual generalizes to 
+
+∆( zt) = log p(cf , ce, cb | zt) − log p(cf | zt)
+
+− log p(ce | zt) − log p(cb | zt). (N) 2The same suppression mechanisms from the two-expert case—CAE and disjoint forward passes—apply here. Set-ting γb = 0 recovers the standalone two-expert form (Equa-tion A), confirming that the three-expert formulation is a strict generalization. 
+
+## B. Implementation details 
+
+Throughout the supplementary material, we follow the notation convention from the main paper: [S∗] denotes the learnable token introduced by our method (Context-Agnostic Embeddings), while S∗ refers to learned tokens in existing methods such as Textual Inversion. 
+
+B.1. Training configurations 
+
+Denoising module architecture. Throughout this paper, we refer to the core network that predicts noise at each denoising step as the denoising module . For SD v1.5, SD v2.1, and SDXL, this module is a U-Net with explicit cross-attention layers. For SD v3.5, the denoising module is a Diffusion Transformer (DiT) that employs joint atten-tion (MMDiT), where text and image tokens are concate-nated and processed through shared self-attention blocks rather than separate cross-attention layers. In the latter case, TCAM extracts the text-token-to-image-patch subma-trix from the joint attention as the functional equivalent of a cross-attention map. All backbone-specific details— including attention source, non-subject token selection, can-didate resolution sets for mask generation, and guidance scales—are reported in the following subsections. 
+
+Plug-and-play design. Our method is designed as a mod-ular framework that can be integrated with existing person-alization methods without modifying their base architec-tures. The core components (CAE, DGM, TCAM) oper-ate independently of the underlying diffusion backbone and can be applied to embedding optimization, fine-tuning, and encoder-based approaches alike. 
+
+Optimization setup. We train CAE tokens using AdamW optimizer with learning rate η = 1 e-3 and weight decay 
+
+1e-2. Training is performed for 1500 steps with batch size 8. We use a constant learning rate schedule and further scale the learning rate by the batch size. For experiments with SD v3.5, we instead use the Prodigy optimizer. 
+
+CAE. Unless specified otherwise, we use 5 context-agnostic embeddings with layer-wise conditioning throughout the cross-attention layers following P+, providing favorable fidelity while maintaining storage efficiency (320 KB vs. 3.4 GB for fine-tuning methods, e.g., for SD v2.1), as dis-cussed in Section G.2 and G.5. When multiple CAE to-kens exist, Ans  
+
+> t,f
+
+refers to the attention map of the sin-gle non-subject token (e.g., [SOT ], [EOT ]), while the sub-ject token attention is computed as the average: A[S∗] 
+
+> t,f
+
+=
+
+> 1
+> n
+
+Pni=1 A[S∗]
+
+> t,f,i
+
+, where i indexes the CAE tokens and n is their count. 
+
+TCAM activation timing. We activate TCAM when the denoising timestep satisfies t < t TCAM , where tTCAM =0.6T and T is the total number of denoising steps. Dur-ing the early phase of denoising ( t ≥ tTCAM ), the two guidance streams operate without spatial partitioning so that they jointly establish coherent global structure; once coarse layout is formed ( t < t TCAM ), TCAM activates to confine each stream to its semantically relevant region, refining sub-ject details without leaking reference backgrounds. We se-lect tTCAM = 0 .6T based on empirical evaluation across subjects, where fidelity gains saturate while editability re-mains stable. 
+
+TCAM configuration per backbone. TCAM requires two backbone-dependent choices: (i) the attention source and the non-subject token used for mask derivation, and (ii) the candidate set used for mask generation. In SD v1.5 and SD v2.1, which employ a U-Net with explicit cross-attention layers, we extract cross-attention maps di-rectly from the decoder blocks. For mask derivation, we use the [SOT ] (start-of-text) token as the non-subject to-ken, which serves as a sequence-level aggregator and con-sistently attends to background regions (see ablation in Sec-tion G.3). In SDXL, we likewise extract cross-attention maps from the decoder blocks of the U-Net architecture. However, the non-subject token used for mask derivation is [EOT ] (end-of-text), whose attention distribution more consistently reflects global context and background regions. In SD v3.5, which employs a Diffusion Transformer (DiT) with joint attention (MMDiT), no separate cross-attention layer exists; instead, text and image tokens are concate-nated and processed through shared self-attention blocks. We extract the submatrix corresponding to the text-token-to-image-patch direction from the joint attention matrix and treat it as the functional equivalent of a cross-attention map. The non-subject token in this architecture is the sequence-terminal token [EOT ], which plays a similar global aggre-gation role in the text representation. The soft mask is com-puted by inverting the selected non-subject token attention: 
+
+¯Ans  
+
+> t,f
+
+= 1 − Normalize( Ans  
+
+> t,f
+
+), where Ans  
+
+> t,f
+
+denotes the at-tention map of the non-subject token in the fidelity stream at denoising step t. We then apply Gaussian blur with ker-nel size 5 × 5 and sigma 1.1, followed by Otsu thresholding to binarize ¯Ans  
+
+> t,f
+
+into the final mask Mt. The candidate res-olution or layer set is chosen per backbone. For SD v1.5, we select from resolutions {16 , 32 }, and for SD v2.1 from 
+
+{24 , 48 }; in each case, the candidate mask with lower Shan-non entropy is selected. For SDXL, we use a fixed resolu-tion of 32 . For SD v3.5, we average the attention maps from the middle transformer layers {8, 9, 10 }.
+
+Guidance scales. We use γf = 3 .0 for the fidelity stream and γe = 7 .5 for the editability stream in standalone mode. We set γe = 7 .5 to match the default CFG scale of pre-3trained Stable Diffusion, thereby preserving the original compositional capabilities. For the fidelity stream, we em-pirically select γf = 3.0 as a moderate value that en-hances subject identity without overwhelming the editabil-ity guidance. In plug-and-play mode (Equation K), we use 
+
+γb = 4 .0, γf = 1 .5, and γe = 3 .0.
+
+B.2. Baseline configurations 
+
+We compare against representative methods from three paradigms: embedding optimization (Textual Inversion [8], P+ [51], NeTI [1], DTI [21]), fine-tuning (Dream-Booth [42], CoRe [54]), and encoder-based methods (MS-Diffusion [52]). All baselines follow their official im-plementations when available; for SD v3.5, we adopt a DreamBooth-style LoRA adaptation of the denoising back-bone. 
+
+SD v1.5 / SD v2.1 baselines: 
+
+• Textual Inversion: Single learnable token, 3000 training steps, learning rate 5e-3, batch size 8. • P+: Extended token sequence ( n = 16 ), 500 steps, learn-ing rate 1e-3, batch size 8. • NeTI: Timestep-dependent embeddings, 1000 steps, learning rate 1e-3, batch size 8. • DreamBooth: Full U-Net fine-tuning, 800 steps, learning rate 5e-4, batch size 1. • CoRe: Context-regularized training for embedding (300 steps, learning rate 5e-3, batch size 6) and full U-Net fine-tuning (1000 steps, learning rate 2e-6, batch size 4). 
+
+SDXL baselines: 
+
+• DTI: Single learnable token, 800 training steps, learning rate 1e-2, batch size 4. • MS-Diffusion: Zero-shot inference using officially re-leased pre-trained weights; no per-subject optimization is required by design. 
+
+SD v3.5 baselines: For brevity, this SD v3.5 DreamBooth-style LoRA baseline is denoted as DB in Table 1 of the main paper. • DB-LoRA: LoRA fine-tuning of the SD v3.5 denois-ing backbone (MMDiT, rank 8), 800 steps, Prodigy op-timizer, batch size 4. 
+
+B.3. Evaluation configuration 
+
+Datasets. We follow the DreamBooth evaluation proto-col [42], using 39 subjects: 9 live subjects (e.g., dog, cat) and 30 non-live objects (e.g., backpack, teapot, clock, toy), drawn from both the DreamBooth [42] and Textual Inver-sion [8] benchmarks. For each subject, we use 4–6 ref-erence images and evaluate on 25 compositional prompts from the DreamBooth benchmark. 
+
+Prompt templates. We evaluate our method using all 25 prompts from the DreamBooth benchmark [42]. The bench-mark provides distinct prompt sets for non-live subjects and live subjects. Non-live prompts emphasize scene contexts  
+
+> Table A. Representative prompt templates from DreamBooth benchmark. Non-live Subjects (25 prompts total)
+> a [subject] in the jungle a [subject] on the beach a [subject] with a tree and autumn leaves in the background a [subject] on top of a dirt road a [subject] on top of a white rug ...
+> Live Subjects (25 prompts total)
+> a [subject] wearing a red hat a [subject] in a firefighter outfit a [subject] wearing pink glasses a [subject] on a cobblestone street a [subject] on top of a wooden floor ...
+
+and spatial arrangements (e.g., “a [subject] in a forest”, “a [subject] on top of a purple rug”), while live prompts focus on accessories and contextual variations (e.g., “a [subject] wearing a santa hat”, “a [subject] in a firefighter outfit”). Table A shows representative examples from each category. At generation time, each method uses the same Dream-Booth prompt template and differs only in how the subject slot is filled (e.g., S∗ for embedding methods, sks for fine-tuning methods, and the class noun for DeGu). For CLIP-T evaluation, we compute text-image similarity using the class-normalized prompt for all methods, replacing method-specific identifiers with the corresponding class noun so that the metric is comparable across approaches. 
+
+Metrics. We evaluate subject fidelity using DINO [3] and CLIP-I [37], and editability using CLIP-T [37]. To isolate subject evaluation from background changes, we additionally compute Masked DINO and Masked CLIP-I using automatically extracted subject masks (detailed in Appendix C). We report an overall metric as Overall =
+
+> 12
+
+  CLIP-I +DINO  
+
+> 2
+
++CLIP-T  = 14 (CLIP-I +DINO )+ 12 CLIP-T , which first averages the two fidelity scores and then equally weights the combined fidelity and editability. 
+
+## C. Mask-based evaluation protocols 
+
+Standard fidelity metrics such as CLIP-I and DINO com-pute similarity over the full generated image, meaning that background similarity can inflate scores even when sub-ject identity is poorly preserved—or, conversely, penalize a method that places the correct subject in a genuinely novel scene. To disentangle subject fidelity from background vari-ation, we introduce masked versions of these metrics that evaluate only the segmented subject region. This section describes the computation protocol in detail, as illustrated in Figure A. Note that the limitation of external segmenters 4Generated Image        
+
+> Grounded
+> SAM 2
+> Segmented Image
+> Crop
+> Cropped Image
+> Reference Image
+> Grounded
+> SAM 2
+> Segmented Image
+> Crop
+> Cropped Image
+> Calculating
+> CLIP -I, DINO Figure A. Overview of mask-based evaluation protocols (Masked CLIP-I & Masked DINO). For both generated and reference images, we apply Grounded SAM 2 to extract subject masks, crop the regions of interest, and compute CLIP-I and DINO similarities between the cropped subjects.
+
+discussed in Section 5.3 of the main paper concerns itera-tive mask extraction from intermediate noisy latents during sampling; for post-hoc evaluation here, Grounded SAM 2 is applied only once to the final decoded images, where the inputs are in-distribution natural images. To compute Masked DINO and Masked CLIP-I, we first generate masks for subject regions using Grounded SAM 2, which combines Grounding DINO [30] and SAM 2 [40]. We provide general class prompts (e.g., “dog”, “backpack”) to produce binary masks for both the generated and refer-ence images. After obtaining the masks, we segment the subject regions and crop them to create isolated subject im-ages, as shown in Figure A. Finally, we calculate the DINO and CLIP-I similarities between these cropped subject re-gions. Formally, given reference image Iref and generated im-age Igen , we obtain their corresponding binary masks Mref 
+
+and Mgen through Grounded SAM 2, then crop the masked regions: 
+
+I′ 
+
+> ref
+
+= Crop (Iref ⊙ Mref ),I′ 
+
+> gen
+
+= Crop (Igen ⊙ Mgen ),
+
+Masked DINO = sim DINO (I′
+
+> ref
+
+, I ′
+
+> gen
+
+),
+
+Masked CLIP-I = sim CLIP (I′
+
+> ref
+
+, I ′
+
+> gen
+
+). (O) where ⊙ denotes element-wise multiplication, and Crop extracts the bounding box region of the masked subject. For the component ablation in Table 2 of the main paper, the overall score is computed with masked fidelity metrics: Overall = 14 (MCLIP-I + MDINO ) + 12 CLIP-T, because the goal of that experiment is to isolate subject-region fi-delity from background variation introduced by each mask-ing configuration. 
+
+## D. Additional quantitative results 
+
+Table B reports quantitative results on SD v1.5, supplement-ing the main paper (which covers SD v2.1, SDXL, and SD v3.5) with MCLIP-I and MDINO scores that isolate sub-ject fidelity from background changes (evaluation protocol in Appendix C). The results on SD v1.5 mirror the trends observed on SD v2.1 in the main paper. Among embed-ding optimization methods, TI exhibits the largest fidelity deficit, and attaching DeGu yields the most pronounced im-provement: MDINO rises from 0.6631 to 0.8084, indicating that pathway separation recovers subject details that uni-fied prompts tend to suppress. P+ and NeTI show similar gains, with the overall score improving consistently across the three embedding baselines. For fine-tuning methods, the improvement is more moderate—DB shows a modest gain in overall score—which is expected because fine-tuning methods already encode subject identity through adapted model weights rather than solely through attention compe-tition. Across both paradigms, MCLIP-I and MDINO im-prove in tandem with standard CLIP-I and DINO, confirm-ing that the gains reflect genuine subject fidelity rather than incidental background matching. 
+
+## E. Additional qualitative results 
+
+E.1. Qualitative comparison on SD v2.1 
+
+Figure C presents standalone qualitative comparisons on SD v2.1 across embedding optimization (Textual Inversion, P+, NeTI) and fine-tuning (DreamBooth, CoRe) baselines. Em-bedding optimization methods follow the context prompt but lose subject-specific details such as distinctive textures and color patterns, consistent with the attention collapse an-alyzed in Section 3. Fine-tuning methods better preserve subject identity but tend to replicate reference backgrounds rather than composing the subject into the novel scene de-scribed by the prompt. DeGu achieves both high subject fidelity and faithful scene composition by routing the two objectives through independent pathways. 
+
+E.2. Results with SD v3.5 backbone 
+
+To test whether the decoupled guidance mechanism trans-fers to architectures that differ substantially from the U-Net backbone, we apply DeGu to SD v3.5, which replaces the U-Net with a Diffusion Transformer (DiT) and fuses text and image tokens through joint attention (MMDiT) rather than separate cross-attention layers. Figure B presents stan-dalone DeGu results across four representative subjects un-der a wide range of compositional prompts, including style transfer ( e.g ., impressionist, ukiyo-e, cyberpunk), scene placement ( e.g ., christmas windowsill, museum gallery), and attribute binding ( e.g ., wearing a santa hat, floating in space). Across these challenging conditions, DeGu retains fine-grained subject details such as label typography on the 5Table B. Additional quantitative results on SD v1.5. CLIP-I and DINO measure full-image subject fidelity; MCLIP-I and MDINO denote Masked CLIP-I and Masked DINO, which isolate the subject region from background; CLIP-T measures editability. Overall =                                                                                     
+
+> 14(CLIP-I +DINO ) + 12CLIP-T. DeGu consistently improves fidelity and overall score across embedding optimization and fine-tuning paradigms on this backbone.
+> Paradigm Method CLIP-I ↑DINO ↑CLIP-T ↑Overall ↑MCLIP-I ↑MDINO ↑
+> Standalone DeGu (Ours) 0.7985 0.6724 0.2999 0.5177 0.9037 0.8045
+> Embedding TI 0.7755 0.5695 0.2471 0.4598 0.8470 0.6631 + DeGu 0.8303 0.6932 0.2763 0.5190 0.9028 0.8084
+> P+ 0.7595 0.5657 0.2977 0.4802 0.8626 0.6893 + DeGu 0.8041 0.6713 0.3006 0.5192 0.9034 0.8064
+> NeTI 0.7972 0.6334 0.2888 0.5021 0.8847 0.7533 + DeGu 0.8209 0.6954 0.2926 0.5254 0.9099 0.8258
+> Fine-tuning DB 0.8283 0.6868 0.2768 0.5172 0.8939 0.7898 + DeGu 0.8347 0.7019 0.2732 0.5208 0.8975 0.7976
+> CoRe 0.8280 0.6848 0.2668 0.5116 0.9010 0.8003 + DeGu 0.8387 0.7101 0.2689 0.5217 0.9107 0.8240
+
+can, wood-grain texture on the candle, and the curved sil-houette of the vase, while faithfully reflecting the scene context specified by each prompt. These results indicate that conditioning entanglement is not an artifact specific to the U-Net cross-attention design; it persists under joint-attention formulations as well, and pathway-level separa-tion remains an effective remedy regardless of the underly-ing architecture. 
+
+E.3. Plug-and-play integration on SD v2.1 
+
+Figure D shows plug-and-play integration results on SD v2.1 baselines (TI, P+, NeTI, DreamBooth, CoRe), com-plementing the SDXL results in the main paper. For each baseline, the left image shows the original output and the right shows the result after attaching DeGu. Across the five baselines, a consistent pattern emerges: embedding opti-mization methods (TI, P+, NeTI), which tend to lose sub-ject identity under unified prompts, recover fine-grained de-tails such as distinctive textures and color patterns after in-tegration. Fine-tuning methods (DreamBooth, CoRe) re-tain their strong identity preservation while gaining com-positional flexibility—for instance, backgrounds that pre-viously replicated reference scenes now reflect the target prompt. Importantly, DeGu uses CAE token embeddings trained once on SD v2.1 and reuses them across the five baselines without any method-specific retraining, demon-strating the practical benefit of the plug-and-play design. 
+
+## F. User study 
+
+We conducted two online survey-based user studies to eval-uate the perceptual quality of generated images. Both stud-ies used the same evaluation protocol: participants were presented with prompt-reference pairs and, for each pair, selected the best image among the compared methods on three criteria: • “Which image best preserves the identity and characteris-tics of the object in the reference image? (Fidelity)” • “Which image best reflects the given text prompt? (Ed-itability)” • “Which image shows the best overall generation quality? (Overall)” In both studies, the presentation order was randomized and method names were anonymized. The two studies were conducted separately with different participant pools. Fig-ure E shows the evaluation interface presented to partici-pants. 
+
+Results on SD v2.1. The first study recruited 104 partic-ipants, each evaluating 16 prompt-reference pairs across six methods (Textual Inversion, P+, NeTI, DreamBooth, CoRe, and DeGu). As shown in Table C, DeGu achieves the highest selection rates across the three criteria, with 49.7% for identity preservation, 43.4% for text prompt ad-herence, and 47.9% for overall quality. These rates are more than twice as high as those of the second-best method, CoRe (23.9%, 20.9%, 23.1%), with margins exceeding 20 percentage points (each criterion aggregates 104 × 16 = 1,664 participant-pair comparisons). Embedding optimiza-tion methods receive notably low selection rates—Textual 6Reference Image  an impressionist 
+
+painting of can in a 
+
+bright garden scene, 
+
+vibrant colors, loose 
+
+brush strokes, artistic 
+
+composition 
+
+a traditional ukiyo -e
+
+style illustration of 
+
+can on a wooden 
+
+platform, stylized 
+
+waves and clouds in 
+
+the background 
+
+a marble sculpture 
+
+version of can 
+
+displayed in a 
+
+museum gallery, soft 
+
+ambient lighting, 
+
+classical art style 
+
+a golden metallic can 
+
+placed on a luxurious 
+
+velvet cloth, dramatic 
+
+spotlight, high detail 
+
+reflections 
+
+a cartoon style 
+
+illustration of can in a 
+
+colorful kitchen scene, 
+
+playful design, vibrant 
+
+colors 
+
+a neon vaporwave 
+
+aesthetic scene with 
+
+vase on a reflective 
+
+floor, purple and pink 
+
+neon lights, retro 
+
+futuristic atmosphere 
+
+a traditional chinese 
+
+ink painting of vase 
+
+on textured rice paper, 
+
+expressive brush 
+
+strokes, minimalist 
+
+composition 
+
+a snowy winter scene 
+
+with vase placed on a 
+
+wooden bench, falling 
+
+snowflakes, cold blue 
+
+lighting, cinematic 
+
+atmosphere 
+
+a minimalist flat 
+
+design illustration of 
+
+vase centered on a 
+
+pastel background 
+
+a pastel colored 
+
+children book 
+
+illustration of vase on 
+
+a small table in a cozy 
+
+kitchen, soft lighting 
+
+and playful 
+
+atmosphere 
+
+a dog wearing a 
+
+rainbow scarf 
+
+a surreal scene where 
+
+dog floats in space 
+
+surrounded by 
+
+colorful nebula clouds, 
+
+cinematic sci -fi 
+
+lighting 
+
+a dog in a firefighter 
+
+outfit 
+
+a dog wearing a santa 
+
+hat 
+
+a dog wearing pink 
+
+glasses 
+
+a baroque style oil 
+
+painting of candle on 
+
+an ornate table, 
+
+dramatic chiaroscuro 
+
+lighting, rich textures, 
+
+classical composition 
+
+a fantasy illustration 
+
+of candle resting on 
+
+an ancient stone altar, 
+
+glowing magical 
+
+runes, mystical fog, 
+
+cinematic lighting 
+
+a dramatic studio 
+
+portrait of candle 
+
+placed on a dark 
+
+wooden table, strong 
+
+directional lighting, 
+
+deep shadows, 
+
+cinematic atmosphere 
+
+a quiet christmas 
+
+evening with candle 
+
+on a windowsill, snow 
+
+falling outside the 
+
+window, warm indoor 
+
+lighting and peaceful 
+
+atmosphere 
+
+a futuristic cyberpunk 
+
+scene with candle 
+
+placed on a neon -lit 
+
+street, wet pavement 
+
+reflections, cinematic 
+
+lighting 
+
+Reference Image 
+
+Reference Image 
+
+Reference Image Figure B. Qualitative results with SD v3.5 backbone. DeGu generalizes to the DiT architecture of SD v3.5, consistently preserving subject identity across diverse compositional prompts. 
+
+7Reference Image  Textual Inversion  P+  NeTI  DreamBooth  CoRe 
+
+a to y on top 
+
+of a white rug 
+
+a backpac k
+
+floating on 
+
+top of water 
+
+a plushie with a
+
+tree and autumn 
+
+leaves in the 
+
+background 
+
+> Standalone
+
+DeGu (Ours) Figure C. Qualitative comparison on SD v2.1. Each row shows one subject with reference images (leftmost), DeGu and outputs from five baselines. Embedding optimization methods use “a S∗ . . . ”, fine-tuning methods use “a sks . . . ”, and DeGu uses the plain class label (e.g., “dog”, “backpack”) as ce. Embedding optimization methods follow context prompts but lose subject identity; fine-tuning methods preserve identity but fail to compose novel scenes. DeGu achieves both. Reference Image                                    
+
+> Reference Image
+> NeTI +DeGu (Ours)
+> a purple toy
+> aplushie in the snow
+> P+ +DeGu (Ours)
+> atoy on top of green grass with
+> sunflowers around it
+> aplushie on top of the sidewalk in a
+> crowded street
+> Textual Inversion +DeGu (Ours)
+> atoy on a cobblestone street
+> aplushie with a city in the
+> background
+> CoRe +DeGu (Ours)
+> atoy on the beach
+> aplushie with a mountain in the
+> background
+> DreamBooth +DeGu (Ours)
+> atoy on top of a wooden floor
+> aplushie in a subway station
+
+Figure D. Plug-and-play integration results on SD v2.1. For each baseline (TI, P+, NeTI, DreamBooth, CoRe), the left image shows the baseline output and the right shows the result after applying DeGu. DeGu consistently recovers subject-specific details while preserving text-prompt adherence, using the same CAE weights trained once on SD v2.1 without any baseline-specific retraining. 
+
+Inversion at 1.9% for identity and P+ at 5.2%—which aligns with the attention collapse analysis in Section 3: these methods suffer the most from conditioning entanglement because their subject representations compete directly with context tokens for the same attention budget. Fine-tuning methods (DreamBooth, CoRe) perform better but still fall substantially below DeGu, suggesting that parameter-level adaptation does not fully resolve the structural interference between subject and context pathways. 
+
+Results on SDXL. The second study recruited 31 par-ticipants, each evaluating 6 prompt-reference pairs across three methods (DTI, MS-Diffusion, and standalone DeGu). Table D reports the results. DeGu achieves the highest selection rates in identity preservation (82.8%) and over-all quality (49.7%), while also leading in prompt adher-
+
+Table C. User study results on SD v2.1. For each of 16 prompt-reference pairs, participants selected the best generation among six methods across three criteria: subject identity preservation, text prompt adherence, and overall quality. Values show selection rate (%) across all responses. Method Identity (%) ↑ Prompt (%) ↑ Overall (%) ↑
+
+Textual Inversion [8] 1.9 4.2 2.6 P+ [51] 5.2 12.0 6.9 NeTI [1] 10.6 12.3 12.1 DreamBooth [42] 8.7 7.2 7.4 CoRe [54] 23.9 20.9 23.1 DeGu (standalone) 49 .7 43 .4 47 .9
+
+8Figure E. User study interface. For each prompt-reference pair, participants viewed reference images (top) alongside outputs from all methods, presented in randomized order. They then selected the best image under each evaluation criterion. Method names were not revealed during evaluation. 
+
+ence (39.8%). The identity gap is particularly pronounced: DeGu surpasses MS-Diffusion (10.2%) and DTI (7.0%) by wide margins, indicating that participants perceive a clear advantage in subject fidelity when the two conditioning pathways are separated. Prompt adherence scores are more evenly distributed across the three methods, which is con-sistent with the observation that all compared approaches retain reasonable text-following ability on SDXL; the key differentiator lies in preserving subject identity without sac-  
+
+> Table D. User study results on SDXL. Following the same pro-tocol as Table C with a separate set of participants. Values show selection rate (%) across all responses.
+
+Method Identity (%) ↑ Prompt (%) ↑ Overall (%) ↑
+
+DTI [21] 7.0 29.6 26.0 MS-Diffusion [52] 10.2 30.6 24.3 DeGu (standalone) 82 .8 39 .8 49 .7                                      
+
+> Table E. Token capacity scaling. As the number of tokens for TI increases from 1 to 5, fidelity improves while editability degrades substantially. All models trained for 1000 steps.
+> Token Count CLIP-I ↑DINO ↑CLIP-T ↑
+> (nT I )(Fidelity) (Fidelity) (Editability)
+> n= 1 0.7625 0.5391 0.2964
+> n= 2 0.8182 0.6390 0.2758
+> n= 3 0.8281 0.6638 0.2676
+> n= 4 0.8281 0.6691 0.2651
+> n= 5 0.8290 0.6734 0.2659 Change ( n= 1 →5)+8.7% +24.9% -10.3%
+
+rificing editability. Combined with the SD v2.1 results in Table C, these findings indicate that the perceptual gains from pathway separation transfer across different backbone architectures. 
+
+## G. Additional ablation studies 
+
+G.1. Token capacity scaling 
+
+This experiment examines whether the fidelity–editability tension observed in Section 3 of the main paper can be at-tributed to insufficient token capacity rather than structural attention competition. If the trade-off were simply a mat-ter of representational bottleneck, allocating more learnable tokens to the subject should improve fidelity without de-grading editability. Table E tests this hypothesis by increas-ing the number of learnable tokens nT I in Textual Inversion from 1 to 5, with each configuration trained for 1000 steps on SD v2.1. The quantitative trend in Table E reveals a clear pattern. Fidelity improves monotonically as the token count grows: DINO increases from 0.5391 ( n=1 ) to 0.6734 ( n=5 ), a gain of roughly 25%. However, this improvement comes at a proportional cost to editability: CLIP-T drops from 0.2964 to 0.2659, a degradation of more than 10%. Notably, the fi-delity gains saturate beyond n=3 , where CLIP-I and DINO plateau, while the editability loss continues to accumulate. This asymmetry indicates that additional tokens are not ex-panding the representational capacity in a way that benefits both objectives; instead, the added tokens are absorbed into the same shared attention pool, claiming a larger collective 9a toy  on  a cobble  stone  street  [EOT]  [EOT]  [EOT]  [EOT] [SOT]  [EOT] 
+
+## [EOT]  [EOT]  [EOT]  [EOT]  [EOT]  [EOT] [SOT]  [EOT] 
+
+# 𝑐 𝑒 
+
+# 𝑐 𝑓 
+
+[𝑆 1
+
+> ∗
+
+] [𝑆 2
+
+> ∗
+
+] [𝑆 3
+
+> ∗
+
+] [𝑆 4
+
+> ∗
+
+] [𝑆 5
+
+> ∗
+
+]
+
+Generated 
+
+Image Figure F. Token-wise attention maps in the fidelity stream cf for TCAM token selection (SD v2.1). Subject tokens [S∗] focus on identity-defining parts, [EOT ] remains diffuse, and [SOT ] provides the most stable complementary background response; Table G quantifies the masking performance obtained from each candidate. TI ( 𝑛 𝑇𝐼 = 5)                  
+
+> TI ( 𝑛 𝑇𝐼 =1)
+> a𝑆 ∗on acobblestone street
+> aon acobblestone street 𝑆 1
+> ∗𝑆 2
+> ∗𝑆 3
+> ∗𝑆 4
+> ∗𝑆 5
+> ∗
+> 𝑺 𝟏
+> ∗~𝑺 𝟓
+> ∗=𝟗𝟔%
+
+Figure G. Token capacity scaling intensifies attention collapse. 
+
+Attention heatmaps for prompt “a {class } on a cobblestone street”. TI with a single token ( n = 1 ) shows severe collapse (89.1% to 
+
+S∗, 10.9% to context). Expanding to 5 tokens ( n = 5 ) worsens the problem: subject tokens collectively capture 96.0% while context tokens are suppressed to 4.0%—a 64% reduction. Despite individ-ual token distribution (9.8%, 17.8%, 18.3%, 19.1%, 31.0%), col-lective dominance intensifies, confirming that increasing capacity within unified prompts does not resolve the issue. 
+
+share at the expense of context tokens. Figure G provides attention heatmap visualizations that corroborate this interpretation. With a single token ( n=1 ), the learned S∗ already captures 89.1% of the total cross-attention, leaving only 10.9% for context tokens such as “cobblestone” and “street.” When the token count is ex-panded to five ( n=5 ), the five subject tokens S∗ 
+
+> 1
+
+through S∗
+
+> 5
+
+collectively absorb 96.0% of the attention budget. Context tokens are suppressed to 4.0%—a 64% relative reduction compared to the single-token case. These results provide evidence against the capacity hy-pothesis and support the analysis in Section 3 of the main paper. The fundamental issue is not that a single token lacks representational power, but that subject tokens placed within a unified prompt compete with context tokens un-der the same softmax normalization. Adding capacity in-side a shared attention pool intensifies this zero-sum com-petition rather than relieving it, because the softmax re-distributes probability mass toward whichever tokens carry stronger gradients during optimization—and subject recon-n = 1  3 5 7Ref Img 
+
+Figure H. Effect of CAE token count on subject fidelity. Qual-itative comparison shows that n = 5 provides sufficient capacity to capture subject identity, with minimal improvement beyond this point. 
+
+struction provides a consistently stronger learning signal than compositional context. Decoupling the two objectives into separate conditioning pathways, as proposed in Sec-tion 4, sidesteps this competition by construction. 
+
+G.2. CAE token count 
+
+Because CAE trains token embeddings in isolation from context tokens, an important design choice is how many to-kens are needed to capture sufficient subject detail. Too few tokens may underrepresent fine-grained identity fea-tures, while too many may increase storage cost and training time without proportional benefit. We vary the number of context-agnostic embeddings from n = 1 to 7 to determine a suitable configuration. Figure H shows qualitative results for n = {1, 3, 5, 7}
+
+on a representative subject. With a single token ( n=1 ), the generated image captures the coarse category but misses distinctive details such as surface patterns and color distri-bution. Increasing to n=3 recovers most of these features, and n=5 further refines fine-grained identity cues. Beyond 
+
+n=5 , improvements become marginal: the n=7 output is visually indistinguishable from n=5 , suggesting that five tokens provide a saturation point for the subjects in our benchmark. We therefore select n = 5 as the default, which balances fidelity and storage efficiency. 10 Table F. Effect of pathway disentanglement in plug-and-play mode (SD v2.1). The entangled baseline applies cb to all conditioning terms, which reduces to two effective forward passes. DeGu uses disentangled cf and ce alongside cb. The performance gap confirms that the gain originates from pathway separation rather than additional computation. 
+
+Method Configuration CLIP-I ↑ DINO ↑ CLIP-T ↑ Overall ↑ MCLIP-I ↑ MDINO ↑
+
+TI Entangled ( cb only) 0.8107 0.6279 0.2748 0.4971 0.8787 0.7311 Disentangled ( cb, cf , ce, Ours) 0.8315 0.6888 0.2870 0.5236 0.9045 0.8086 
+
+P+ Entangled ( cb only) 0.7836 0.6105 0.3075 0.5023 0.8798 0.7428 Disentangled ( cb, cf , ce, Ours) 0.8091 0.6719 0.3066 0.5236 0.9037 0.8047 
+
+NeTI Entangled ( cb only) 0.8107 0.6449 0.2905 0.5092 0.8891 0.7678 Disentangled ( cb, cf , ce, Ours) 0.8257 0.6885 0.2968 0.5270 0.9073 0.8141 
+
+DreamBooth Entangled ( cb only) 0.8032 0.6551 0.2816 0.5054 0.8868 0.7827 Disentangled ( cb, cf , ce, Ours) 0.8272 0.6938 0.2903 0.5254 0.9066 0.8241 
+
+CoRe Entangled ( cb only) 0.7460 0.5361 0.2939 0.4675 0.8527 0.6649 Disentangled ( cb, cf , ce, Ours) 0.7987 0.6514 0.3007 0.5129 0.8974 0.7955 Reference Image                   
+
+> Reference Image
+> Reference Image
+> a can and atoy on top of a wooden floor
+> a plushie and adog in the jungle
+> a candle and an emoji with a tree and
+> autumn leaves in the background
+> a plushie and adog with a city in the
+> background
+> a candle and an emoji on top of a dirt road
+> a can and atoy on top of a purple rug in a
+> forest
+> a plushie and adog on the beach
+> a candle and an emoji on top of green
+> grass with sunflowers around it
+> a can and atoy on top of pink fabric
+
+MS -Diffusion  + DeGu (Ours)  MS -Diffusion  + DeGu (Ours)  MS -Diffusion  + DeGu (Ours) 
+
+Figure I. Multi-concept personalization. Each row shows two reference subjects (leftmost) and generated images from MS-Diffusion and MS-Diffusion + DeGu (Ours) under the corresponding text prompt. Attaching DeGu recovers subject-specific details while preserving compositional coherence across both subjects. 
+
+G.3. Masking token selection 
+
+Because TCAM directly governs the spatial boundary be-tween subject and background, we report MCLIP-I and MDINO here: full-image metrics would conflate subject fi-delity changes with background variation introduced by the mask itself. For spatial guidance partitioning in TCAM, the main paper establishes that non-subject tokens yield more complete subject coverage than [S∗] direct attention. Here we analyze which specific non-subject token to use in the Stable Diffusion architecture, where the cf sequence con-tains [SOT ], [EOT ], and [S∗] tokens. As shown in Figure F, each token exhibits distinct attention patterns: the subject token [S∗] concentrates on identity-defining features (e.g., face, unique textures) rather than complete subject bound-aries, often missing body parts; the [EOT ] token shows dif-fuse attention extending into background regions without 11 Table G. Masking token ablation on SD v2.1. SOT-based mask-ing achieves the best subject coverage with stable mask quality. MCLIP-I ↑ MDINO ↑ CLIP-T ↑          
+
+> [S∗]0.8993 0.7990 0.3038
+> [EOT ]0.8938 0.7851 0.3043
+> [SOT ](Ours) 0.9000 0.8019 0.3034
+
+clear subject-background separation; and the [SOT ] token naturally and consistently attends to background regions, making its inverted attention map ( 1 − Normalize( ASOT  
+
+> t,f
+
+))the most complete and stable subject coverage among the three candidates. Table G provides a quantitative comparison on SD v2.1. SOT-based masking achieves the highest MCLIP-I (0.9000) and MDINO (0.8019), indicating slightly better subject cov-erage. More importantly, [SOT ]-based masks provide more consistent coverage across denoising timesteps and com-plex poses compared to the other two candidates. We select [SOT ] because TCAM prioritizes subject coverage and mask stability, and the marginal CLIP-T advantage of 
+
+[EOT ] does not offset its weaker subject localization. The 
+
+[S∗]-based approach occasionally misses subject extremi-ties (e.g., limbs, tails), while [EOT ]-based masks tend to in-clude background fragments that dilute the spatial partition-ing. For SDXL and SD v3.5, we use the backbone-specific non-subject token described in Section B.1. 
+
+G.4. Disentanglement as the source of gain in plug-and-play mode 
+
+In the plug-and-play setting, DeGu introduces cf and ce
+
+alongside the host condition cb, resulting in four forward passes per denoising step. One might ask whether this gain could be replicated simply by applying cb more times— that is, whether the additional forward passes alone, rather than the disentangled conditions, are responsible for the im-provement. To test this, we construct a baseline that replaces cf and 
+
+ce with cb while preserving the same spatial masking struc-ture. The mask Mt is derived from the cross-attention maps of cb using the same TCAM procedure described in Sec-tion 4.4, so the comparison keeps the masking mechanism fixed and tests whether repeating an entangled condition can match the benefit of using disentangled conditions: 
+
+˜ϵ(zt) = ϵ(zt, t ) + γb
+
+ ϵ(zt, t, cb) − ϵ(zt, t )
+
++ γe
+
+(ϵ(zt, t, cb) − ϵ(zt, t )) ⊙ (1 − Mt)
+
++ γf
+
+(ϵ(zt, t, cb) − ϵ(zt, t )) ⊙ Mt
+
+.
+
+(P) Because all three terms evaluate the same function 
+
+ϵ(zt, t, cb), Equation P is mathematically equivalent to ap-plying cb with a spatially-varying guidance scale. This                                    
+
+> Table H. Storage-performance trade-off (SD v2.1). DeGu is competitive with or exceeds the tested baselines at a fraction of the storage cost. When combined with existing methods, it consis-tently improves results with negligible overhead.
+> Baseline Combined
+> Method Storage Overall Method Storage Overall TI 4KB 0.4953 TI (+ DeGu) 324KB 0.5236
+> P+ 64KB 0.5009 P+ (+ DeGu) 384KB 0.5236
+> NeTI 2.4MB 0.5077 NeTI (+ DeGu) 2.7MB 0.5270
+> DB 3.4GB 0.5127 DB (+ DeGu) 3.4GB 0.5254
+> CoRe 3.4GB 0.4650 CoRe (+ DeGu) 3.4GB 0.5129
+> DeGu (standalone) 320KB 0.5172
+
+reduces to two distinct forward passes regardless of how many terms appear—meaning that repeating an entangled condition yields no additional information beyond what a single evaluation already provides. The baseline therefore suggests that additional forward passes offer limited benefit when the condition itself remains entangled. Table F reports results on SD v2.1 across all plug-and-play baselines. DeGu outperforms the entangled baseline across the tested methods. Spatially distributing an entan-gled guidance signal does not resolve the underlying atten-tion competition between subject and context tokens; the fidelity–editability tension documented in Section 3 of the main paper persists because cb continues to place both ob-jectives within the same attention pool. The gain of DeGu therefore comes from using cf and ce as genuinely distinct conditions—each encoding only the semantics relevant to its target region—rather than from the number of forward passes. 
+
+G.5. Storage-performance trade-off 
+
+A practical consideration for personalization methods is the per-subject storage overhead, particularly in deployment scenarios where many subjects must be stored simultane-ously. Table H presents the storage requirements and per-formance on SD v2.1. In the standalone setting, DeGu achieves the highest overall performance (0.5172) while requiring only 320 KB of storage per subject. This is four orders of magnitude smaller than fine-tuning approaches such as DreamBooth and CoRe, which store full model checkpoints at 3.4 GB, yet DeGu achieves comparable or higher performance. Compared to lightweight embedding methods, DeGu re-quires more storage than TI (4 KB) due to the use of five layer-wise CAE tokens, but the absolute overhead remains modest and the performance gain is substantial. When in-tegrated with existing baselines in a plug-and-play manner, the additional storage is at most 320 KB for the CAE token embeddings—less than 0.01% of the total checkpoint size for fine-tuning methods—making the integration cost neg-ligible in practice. 12 H. Multi-concept personalization 
+
+The main paper evaluates single-subject personalization, where each generated image contains one target subject. We further examine whether the decoupled guidance prin-ciple extends to multi-concept personalization, where mul-tiple subjects appear simultaneously in a single image. This setting intensifies the attention competition analyzed in Sec-tion 3, since each additional subject token further fragments the shared attention budget. To test this, we apply DeGu on top of MS-Diffusion [52], which supports multi-subject zero-shot personalization via layout-guided conditioning. As shown in Figure I, MS-Diffusion alone tends to lose fine-grained identity details of individual subjects when com-posing them into a shared scene, consistent with the condi-tioning entanglement pattern observed in the single-subject case. Attaching DeGu recovers subject-specific features for both concepts while preserving the scene context specified by the text prompt, suggesting that pathway separation re-mains beneficial even when the fidelity stream encodes mul-tiple subjects at once. 13 References 
+
+[1] Yuval Alaluf, Elad Richardson, Gal Metzer, and Daniel Cohen-Or. A neural space-time representation for text-to-image personalization. ACM TOG , 42, 2023. 2, 3, 4, 6, 7, 8[2] Omri Avrahami, Kfir Aberman, Ohad Fried, Daniel Cohen-Or, and Dani Lischinski. Break-a-scene: Extracting multiple concepts from a single image. In ACM SIGGRAPH Asia ,2023. 3 [3] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv´ e J´ egou, Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-ing properties in self-supervised vision transformers. In 
+
+ICCV , 2021. 6, 4 [4] Hila Chefer, Yuval Alaluf, Yael Vinker, Lior Wolf, and Daniel Cohen-Or. Attend-and-excite: Attention-based se-mantic guidance for text-to-image diffusion models. ACM TOG , 42, 2023. 3 [5] Hong Chen, Yipeng Zhang, Simin Wu, Xin Wang, Xuguang Duan, Yuwei Zhou, and Wenwu Zhu. Disenbooth: Identity-preserving disentangled tuning for subject-driven text-to-image generation. In ICLR , 2024. 2, 3 [6] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, Dustin Podell, Tim Dockhorn, Zion English, and Robin Rombach. Scaling rec-tified flow transformers for high-resolution image synthesis. In ICML , 2024. 4 [7] Robert M French. Catastrophic forgetting in connectionist networks. Trends in Cognitive Sciences , 3, 1999. 3 [8] Rinon Gal, Yuval Alaluf, Yuval Atzmon, Or Patashnik, Amit Haim Bermano, Gal Chechik, and Daniel Cohen-or. An image is worth one word: Personalizing text-to-image generation using textual inversion. In ICLR , 2023. 2, 3, 4, 5, 6, 7, 8 [9] Yuchao Gu, Xintao Wang, Jay Zhangjie Wu, Yujun Shi, Yun-peng Chen, Zihan Fan, Wuyou Xiao, Rui Zhao, Shuning Chang, Weijia Wu, et al. Mix-of-show: Decentralized low-rank adaptation for multi-concept customization of diffusion models. In NeurIPS , 2023. 3 [10] Shuang Guan, Yichen Ge, Yu-Wing Tai, Jian Yang, Weijian Li, and Min You. Hybridbooth: Hybrid prompt inversion for efficient subject-driven generation. In ECCV , 2025. 3 [11] Ligong Han, Yinxiao Li, Han Zhang, Peyman Milanfar, Dimitris Metaxas, and Feng Yang. Svdiff: Compact param-eter space for diffusion fine-tuning. In ICCV , 2023. 2, 3 [12] Tiankai Hang, Shuyang Gu, Xin Geng, and Baining Guo. Improved noise schedule for diffusion training. ICCV , 2025. 2[13] Shaozhe Hao, Kai Han, Shihao Zhao, and Kwan-Yee K Wong. Vico: Plug-and-play visual condition for personal-ized text-to-image generation. arXiv preprint , 2023. 3 [14] Xingzhe He, Zhiwen Cao, Nicholas Kolkin, Lantao Yu, Kun Wan, Helge Rhodin, and Ratheesh Kalarot. A data perspec-tive on enhanced identity preservation for diffusion person-alization. In WACV , 2025. 3 [15] A. Hertz, R. Mokady, J. Tenenbaum, K. Aberman, Y. Pritch, and D. Cohen-Or. Prompt-to-prompt image editing with cross attention control. ICLR , 2023. 3 [16] Geoffrey E Hinton. Training products of experts by minimiz-ing contrastive divergence. Neural Computation , 14, 2002. 5, 1 [17] Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance. In NeurIPS Workshop on Deep Generative Models and Downstream Applications , 2021. 3, 5, 1 [18] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-sion probabilistic models. In NeurIPS , 2020. 2, 1 [19] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, and Weizhu Chen. Lora: Low-rank adaptation of large language models. In ICLR ,2021. 3 [20] Jianyi Jin, Yuxuan Shen, Zhaofeng Fu, and Jian Yang. Cus-tomized generation reimagined: Fidelity and editability har-monized. In ECCV , 2025. 2, 3, 4 [21] Kunhee Kim, NaHyeon Park, Kibeom Hong, and Hyunjung Shim. Directional textual inversion for personalized text-to-image generation. ICLR , 2026. 6, 7, 4, 9 [22] James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins, Andrei A Rusu, Kieran Milan, John Quan, Tiago Ramalho, Agnieszka Grabska-Barwinska, et al. Overcoming catastrophic forgetting in neu-ral networks. Proceedings of the National Academy of Sci-ences , 114, 2017. 3 [23] Nupur Kumari, Bingliang Zhang, Richard Zhang, Eli Shechtman, and Jun-Yan Zhu. Multi-concept customization of text-to-image diffusion. In CVPR , 2023. 2, 3 [24] Dongxu Li, Junnan Li, and Steven Hoi. Blip-diffusion: Pre-trained subject representation for controllable text-to-image generation and editing. In NeurIPS , 2023. 2, 3 [25] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi. Blip: Bootstrapping language-image pre-training for unified vision-language understanding and generation. In ICML ,2022. 3 [26] Zhizhong Li and Derek Hoiem. Learning without forgetting. 
+
+IEEE Transactions on Pattern Analysis and Machine Intelli-gence , 2017. 3 [27] Shanchuan Lin, Bingchen Liu, Jiashi Li, and Xiao Yang. Common diffusion noise schedules and sample steps are flawed. WACV , 2024. 2 [28] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximil-ian Nickel, and Matt Le. Flow matching for generative mod-eling. ICLR , 2023. 2 [29] Nan Liu, Shuang Li, Yilun Du, Antonio Torralba, and Joshua B Tenenbaum. Compositional visual generation with composable diffusion models. In ECCV , 2022. 3, 5, 1, 2 [30] Shilong Liu, Zewen Zeng, Tianhe Ren, Feng Li, Hao Zhang, Jie Yang, Chunyuan Li, Jianwei Yang, Hang Su, Jun Zhu, et al. Grounding dino: Marrying dino with grounded pre-training for open-set object detection. arXiv preprint , 2023. 6, 8, 5 [31] Zhiheng Liu, Ruili Feng, Kai Zhu, Yifei Zhang, Kecheng Zheng, Yu Liu, Deli Zhao, Jingren Zhou, and Yang Cao. Cones: Concept neurons in diffusion models for customized generation. ICML , 2023. 3 
+
+14 [32] Zhiheng Liu, Yifei Zhang, Yujun Shen, Kecheng Zheng, Kai Zhu, Ruili Feng, Yu Liu, Deli Zhao, Jingren Zhou, and Yang Cao. Customizable image synthesis with multiple subjects. In NeurIPS , 2023. 3 [33] A. Nichol, P. Dhariwal, A. Ramesh, P. Shyam, P. Mishkin, B. McGrew, I. Sutskever, and M. Chen. Glide: Towards pho-torealistic image generation and editing with text-guided dif-fusion models. ICML , 2022. 2, 3 [34] Lianyu Pang, Jian Yin, Haoran Xie, Qiping Wang, Qing Li, and Xudong Mao. Cross initialization for face personaliza-tion of text-to-image models. In CVPR , 2024. 2, 3 [35] Joon Hyun Park, Kumju Jo, and Sungyong Baik. Seediff: Off-the-shelf seeded mask generation from diffusion models. In AAAI , 2025. 3 [36] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas M¨ uller, Joe Penna, and Robin Rombach. SDXL: Improving latent diffusion mod-els for high-resolution image synthesis. In ICLR , 2024. 2, 3, 4[37] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In ICML , 2021. 3, 6, 4 [38] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. JMLR , 2020. 3 [39] Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, and Mark Chen. Hierarchical text-conditional image gener-ation with CLIP latents. arXiv preprint , 2022. 2, 3 [40] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman R¨ adle, Chloe Rolland, Laura Gustafson, Eric Mintun, Junt-ing Pan, Kalyan Vasudev Alwala, Nicolas Carion, Chao-Yuan Wu, Ross Girshick, Piotr Doll´ ar, and Christoph Feicht-enhofer. Sam 2: Segment anything in images and videos. 
+
+arXiv preprint , 2024. 6, 8, 5 [41] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image syn-thesis with latent diffusion models. In CVPR , 2022. 2, 4 [42] Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Yael Pritch, Michael Rubinstein, and Kfir Aberman. Dreambooth: Fine tuning text-to-image diffusion models for subject-driven generation. In CVPR , 2023. 2, 3, 6, 7, 4, 8 [43] Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Wei Wei, Tingbo Hou, Yael Pritch, Neal Wadhwa, Michael Rubinstein, and Kfir Aberman. Hyperdreambooth: Hypernetworks for fast personalization of text-to-image models. In CVPR , 2024. 3[44] Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li, Jay Whang, Emily L Denton, Kamyar Ghasemipour, Raphael Gontijo Lopes, Burcu Karagol Ayan, Tim Sali-mans, Jonathan Ho, David J Fleet, and Mohammad Norouzi. Photorealistic text-to-image diffusion models with deep lan-guage understanding. In NeurIPS , 2022. 2, 3 [45] Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsupervised learning using nonequilibrium thermodynamics. In ICML , 2015. 2 [46] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denois-ing diffusion implicit models. ICLR , 2021. [47] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Ab-hishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equa-tions. In ICLR , 2021. 2 [48] Yoad Tewel, Rinon Gal, Gal Chechik, and Yuval Atzmon. Key-locked rank one editing for text-to-image personaliza-tion. In ACM SIGGRAPH , 2023. 3 [49] Junjiao Tian, Lavisha Aggarwal, Andrea Colaco, Zsolt Kira, and Mar Gonzalez-Franco. Diffuse, attend, and segment: Unsupervised zero-shot segmentation using stable diffusion. In CVPR , 2024. 3 [50] Yael Vinker, Andrey Voynov, Daniel Cohen-Or, and Ariel Shamir. Concept decomposition for visual exploration and inspiration. ACM Transactions on Graphics , 42, 2023. 3 [51] Andrey Voynov, Qinghao Chu, Daniel Cohen-Or, and Kfir Aberman. P+: Extended textual conditioning in text-to-image generation. arXiv preprint , 2023. 2, 3, 4, 6, 7, 8 [52] Xierui Wang, Siming Fu, Qihan Huang, Wanggui He, and Hao Jiang. Ms-diffusion: Multi-subject zero-shot image per-sonalization with layout guidance. In ICLR , 2025. 2, 3, 6, 7, 4, 9, 13 [53] Yuxiang Wei, Yabo Zhang, Zhilong Ji, Jinfeng Bai, Lei Zhang, and Wangmeng Zuo. Elite: Encoding visual con-cepts into textual embeddings for customized text-to-image generation. In ICCV , 2023. 2, 3 [54] Feize Wu, Yun Pang, Junyi Zhang, Lianyu Pang, Jian Yin, Baoquan Zhao, Qing Li, and Xudong Mao. Core: Context-regularized text embedding learning for text-to-image per-sonalization. In AAAI , 2025. 6, 7, 4, 8 [55] Zhi Xu, Shaozhe Hao, and Kai Han. Cusconcept: Cus-tomized visual concept decomposition with diffusion mod-els. In WACV , 2025. 3 [56] Yuxing Zhang, Wenbo Dong, Fanyi Tang, Nian Huang, Haisu Huang, Changjie Ma, Tong-Yee Lee, Oliver Deussen, and Changhe Xu. Prospect: Prompt spectrum for attribute-aware personalization of diffusion models. ACM Transac-tions on Graphics , 42, 2023. 3 [57] Yuxuan Zhang, Yiren Song, Jiaming Liu, Rui Wang, Jinpeng Yu, Hao Tang, Huaxia Li, Xu Tang, Yao Hu, Han Pan, et al. Ssr-encoder: Encoding selective subject representation for subject-driven generation. In CVPR , 2024. 2, 3 
+
+15

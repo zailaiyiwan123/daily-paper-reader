@@ -1,0 +1,969 @@
+Title: CoPersona: Collaborative Persona Graphs for Robust LLM Personalization
+
+URL Source: https://arxiv.org/pdf/2607.01485v1
+
+Published Time: Fri, 03 Jul 2026 00:21:05 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# CoPersona: Collaborative Persona Graphs for Robust LLM Personalization 
+
+## Yangtian Zhang ∗
+
+yangtian.zhang@yale.edu Yale University New Haven, Connecticut, USA 
+
+## Leyao Wang ∗
+
+leyao.wang.lw855@yale.edu Yale University New Haven, Connecticut, USA 
+
+## Hiren Madhu 
+
+hiren.madhu@yale.edu Yale University New Haven, Connecticut, USA 
+
+## Ngoc Bui 
+
+ngocbh.pt@gmail.com Yale University New Haven, Connecticut, USA 
+
+## Walter Roznyatovskiy 
+
+vlad.r@samsung.com Samsung Mountain View, California, USA 
+
+## Rex Ying 
+
+rex.ying@yale.edu Yale University New Haven, Connecticut, USA 
+
+## Abstract 
+
+Real-world LLM personalization is often constrained by sparse and skewed user histories: most users provide only a handful of interactions, while even frequent users’ logs capture an incomplete and biased view of their preferences. As a result, weakly observed user attributes are difficult to infer, leading to brittle personalization when test-time requests shift toward under-supported facets. Motivated by this limitation, we present CoPersona , a graph-based collaborative personalization framework that completes sparse user profiles by borrowing signals from behaviorally similar peers. However, directly transferring signals is difficult because uneven facet coverage introduces bias into interaction histories, obscuring user similarity in the unstructured global space. To address this issue, CoPersona decomposes interaction histories into multiple facet-level representations and explicitly models peer-to-peer, facet-level alignment through a multiplex persona graph. To effectively leverage peer information at inference time, we employ a dual-branch architecture that combines non-parametric peer retrieval 
+
+with parametric graph reasoning . Experiments across multiple do-mains and model scales demonstrate consistent improvements over strong baselines, validating CoPersona as an effective approach for robust LLM personalization. 
+
+## CCS Concepts 
+
+• Information systems → Personalization .
+
+## Keywords 
+
+Large Language Models, Personalization, Collaborative Learning, Graph Neural Networks, Retrieval-Augmented Generation 
+
+ACM Reference Format: 
+
+Yangtian Zhang, Leyao Wang, Hiren Madhu, Ngoc Bui, Walter Roznya-tovskiy, and Rex Ying. 2026. CoPersona: Collaborative Persona Graphs for Robust LLM Personalization. In Proceedings of the 32nd ACM SIGKDD Con-ference on Knowledge Discovery and Data Mining V.2 (KDD ’26), August 09–13,  
+
+> ∗Both authors contributed equally to this research.
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> KDD ’26, Jeju Island, Republic of Korea
+> ©2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2259-2/2026/08 https://doi.org/10.1145/3770855.3817892
+
+2026, Jeju Island, Republic of Korea. ACM, New York, NY, USA, 12 pages. https://doi.org/10.1145/3770855.3817892 
+
+## 1 Introduction 
+
+Large language models (LLMs) have rapidly expanded in capability, powering applications from conversational assistants and writing tools to decision support and recommendation. Despite these ad-vances, most LLMs remain largely preference-agnostic : they are optimized for population-level behavior and often overlook the goals, values, and writing style of a particular individual [7, 9, 50]. In many practical settings, however, the same request can warrant different responses for different users, motivating LLM personal-ization —adapting generation using user-specific information to improve usefulness and user-level alignment [2, 32, 62]. A dominant line of work [ 21 , 24 , 34 , 45 , 49 ] instantiates personal-ization through a memory–retrieval pipeline: given a user’s current query, the system retrieves relevant snippets from the user’s inter-action history and concatenates them with the query as context for the LLM. While effective, real-world histories are often lim-ited in volume and scope [ 52 , 55 ] and therefore provide a partial and biased view of a user’s persona. A persona spans multiple be-havioral dimensions (e.g., preferences, tone, values), but histories typically over-represent some dimensions while under-representing others (e.g., abundant signals about entertainment preferences but little about value orientation). This creates a facet-level cold-start 
+
+regime [ 51 ] For instance, a user’s history might clearly indicate a preference for Sci-Fi (Genre Facet) but contain no evidence regard-ing their critical writing style (Tone Facet). When a query hinges on these missing dimensions, standard retrieval fails, forcing the LLM to revert to generic generation or hallucinate a persona that contradicts the user’s actual voice. Motivated by collaborative filtering in recommendation sys-tems [ 6], we investigate a collaborative remedy to this limitation: augmenting a target user’s profile by borrowing information from other users with similar behaviors. Recent work [ 43 , 52 , 55 ] has begun to incorporate inter-user signals for LLM personalization. However, most existing approaches [ 52 , 55 ] still depend on shal-low retrieval of peers’ documents under a largely global notion of similarity, offering limited structure or interpretability about which 
+
+facets drive similarity and what signals should be transferred. This becomes especially problematic under sparse and skewed histo-ries: users may appear similar overall while differing sharply by       
+
+> arXiv:2607.01485v1 [cs.IR] 1 Jul 2026 KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhang et al. Genre Preference : The user
+> primarily favors historical
+> fiction..
+> Communication Styles :
+> Missing Evidence
+> …
+> Profile
+> Genre Preference : The user primarily
+> favors historical fiction..
+> Communication Styles :The user often
+> communicate in a thoughtful, story -
+> driven way …
+> …
+> Peer Profile
+> Aligned Peer Users
+> Genre Preference : The user
+> primarily favors historical
+> fiction..
+> Communication Styles :
+> The user might ….
+> …
+> Profile
+
+Figure 1: Facet coverage bias and collaborative persona com-pletion. By leveraging behaviorally aligned peers, comple-mentary facet evidence can be inferred 
+
+facet simply because their histories emphasize different aspects (e.g., one reveals more about communication style while another reveals more about preferences). As a result, unstructured neighbor borrowing can be noisy, difficult to control, and hard to audit. To address this challenge, we present CoPersona , a collabo-rative personalization framework that incorporates persona facet structure via a facet-level similarity graph. CoPersona first discov-ers a small set of human-interpretable facets from population data, capturing key dimensions along which user personas vary. It then summarizes each user’s history into facet-specific profiles and em-beds them to build a multiplex user–user graph, where each layer encodes similarity under a particular facet. This design provides a more interpretable and controllable mechanism for peer borrowing: it enables facet-aligned transfer, reduces negative transfer when users are similar in some dimensions but not others, and remains robust when a user’s own history is sparse or skewed toward a subset of facets. To leverage peer information effectively at inference time, CoP-ersona combines two complementary components. (i) A light-weight non-parametric branch retrieves facet-aligned neighbor pro-files to provide transparent, human-readable evidence that can be directly inspected in the prompt. Using prompt-based evidence alone can result in performance limitation under context-length and noise constraints: relevant peer signals may be sparse, redundant, or difficult for the LLM to integrate consistently. (ii) A complementary 
+
+parametric graph branch performs reliability-gated message passing over the multiplex facet relationship graph, aggregating neighbor information in latent space to complement under-supported facets and compressing the result into soft-prompt tokens. Together, these components mitigate facet coverage bias and improve personaliza-tion when user histories are sparse or uneven. Experiments across multiple domains and model scales show consistent gains over strong baselines, validating CoPersona as a practical approach to robust LLM personalization via graph-based peer borrowing . In summary, our contributions are: 
+
+• We propose CoPersona , which discovers persona facets, con-structs a facet-level multiplex similarity graph, and enables inference-time graph-based collaborative information borrowing. 
+
+• We develop a dual-branch inference mechanism—(i) facet-aligned neighbor retrieval in text space and (ii) reliability-gated graph aggregation in latent space—that robustly complements missing or weakly observed facets. 
+
+• We demonstrate consistent gains across domains and model scales, validating CoPersona as a practical approach to robust LLM personalization. 
+
+## 2 Preliminaries 2.1 Problem Formulation 
+
+LLM personalization aims to generate user-aligned text by lever-aging a user’s historical interactions. Let U = {𝑢 1, . . . , 𝑢 𝑁 } denote users. For each user 𝑢 , we observe a history D𝑢 = {( 𝑥 𝑘 , 𝑦 𝑘 )} 𝑁 𝑢 
+
+> 𝑘 =1
+
+,where each pair corresponds to one interaction. Here 𝑥 is the in-put context that specifies what to respond to (e.g., an item title/-category/short description for review generation, or an incoming email/dialogue history for assistant-style tasks). The target 𝑦 is the user-authored text response (e.g., a critical vs. enthusiastic re-view, a terse vs. detailed reply), which implicitly reflects the user’s preferences and writing style. Standard methods assume that the observed history D𝑢 is a suffi-cient statistic to model the user’s behavior. They learn parameters 𝜃 
+
+of a conditional model 𝑃 𝜃 by maximizing the likelihood of observed responses given queries and the user’s history: 
+
+𝜃 ★ = argmax 
+
+> 𝜃
+
+∑︁ (𝑥,𝑦 ) ∈ T 𝑢 
+
+log 𝑃 𝜃 (𝑦 | 𝑥, D𝑢 ) , (1) where T𝑢 denotes training examples for user 𝑢 (or a population-level training set with user histories). 
+
+## 2.2 Facet Coverage Bias 
+
+In reality, user personas are inherently multi-faceted rather than monolithic: a single user may vary along multiple latent behavioral dimensions (e.g., topical preferences, value orientation, tone, and stylistic habits), and different generation contexts can selectively elicit different dimensions. Following Chen et al . [10] , Lu et al . [31] ,we view each user as governed by a set of latent facets that jointly shape their outputs. Concretely, let F = {𝑓 𝑚 }𝑀 𝑚 =1 denote a global facet schema. For each user 𝑢 , we associate a latent persona state 𝑍 𝑢 = {𝑧 (𝑚 ) 
+
+> 𝑢
+
+}𝑀 𝑚 =1,where 𝑧 (𝑚 ) 
+
+> 𝑢
+
+captures how user 𝑢 behaves along facet 𝑓 𝑚 . We observe only a finite interaction history 𝐷 𝑢 = {( 𝑥 𝑘 , 𝑦 𝑘 )} 𝑁 𝑢 
+
+> 𝑘 =1
+
+, where each in-teraction provides partial and context-dependent evidence about 
+
+𝑍 𝑢 . Importantly, the history is rarely uniformly informative across facets [ 8, 47 ]: some facets are repeatedly surfaced by the user’s logged contexts (e.g., consistent formality and analytical style in product reviews), while other facets (e.g., humor usage, emotional expressiveness, or conversational warmth) may be sparsely exhib-ited or never elicited. We refer to this uneven observability as Facet Coverage Bias :the empirical distribution of evidence in 𝐷 𝑢 is skewed toward a subset of facets, yielding low coverage for the remainder. Low coverage should be interpreted as under-observation rather than absence [8, 47 ]—a facet can be part of the user’s true persona yet remain weakly supported in the recorded log. This perspective is consistent with prior findings that observational user traces are selective and incomplete, where non-observation does not imply non-preference or non-existence. Facet coverage bias becomes problematic at test time when the new query 𝑥 ′ implicitly requires facets that are weakly supported in 𝐷 𝑢 . In this regime, standard personalization methods (retrieval-, profile-, or embedding-based) tend to extrapolate from the dom-inant observed facets, causing over-transfer : the model produces CoPersona: Collaborative Persona Graphs for Robust LLM Personalization KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+outputs that are faithful to what is well-covered in the history (e.g., persistent formality) but misaligned with the facet(s) that the cur-rent request actually hinges on (e.g., a more playful, empathetic, or persuasive tone). In Sec. 4.3, we empirically quantify this cov-erage skew and show that performance degradation concentrates on under-covered facets, motivating our facet-aware collaborative completion strategy. 
+
+## 3 Methodology 
+
+To mitigate Facet Coverage Bias arising from isolated and often sparse user histories, we propose CoPersona , a framework that casts LLM personalization as graph-based collaborative inference .The core insight is that, although any single user’s history may be limited, population-level behavior is comparatively dense and struc-tured: users who align on observed facets (e.g., value orientation) are more likely to share unobserved facets (e.g., genre preference). Accordingly, instead of restricting personalization for user 𝑢 to their own history D𝑢 , CoPersona models the population manifold as a Collaborative Persona Graph G—a multiplex user–user sim-ilarity graph where each facet induces a similarity layer connecting semantically aligned users. This graph acts as a semantic bridge that enables a target user to “borrow” complementary signals from similar peers to complete their latent persona for downstream gen-eration. Formally, we expand the probabilistic generation model to condition on G:
+
+𝑃 𝜃 (𝑦 ′ | 𝑥 ′, D𝑢 , G) , (2) from which a response is produced via a decoding strategy (e.g., sampling or beam search). CoPersona instantiates this formulation in three phases: (1) Facet Disentanglement (Sec. 3.1), which struc-tures raw histories into facet-specific summaries and embeddings; (2) Multiplex Graph Construction (Sec. 3.2), which maps inter-user per-facet relations; and (3) Dual-Branch Inference (Sec. 3.3), which jointly leverages parametric reasoning and non-parametric context retrieval. 
+
+## 3.1 Facet Disentanglement 
+
+User personas are inherently multi-faceted, yet real-world histo-ries are sparse and skewed: only a few behavioral attributes are repeatedly expressed, while others are rarely elicited. CoPersona therefore disentangles a user’s history into facet-specific represen-tations in two steps: we first induce a compact global facet schema 
+
+in a data-driven manner, then summarize and embed each user per facet to obtain a structured persona state. 
+
+Facet schema induction. A key design choice is to avoid a manu-ally pre-defined facet list. Predefining facets is brittle: the “right” schema is domain- and population-dependent, hard to enumerate exhaustively, and easy to miss emergent behavioral axes that matter for downstream generation. Instead, we induce facets from popula-tion data so the schema (i) adapts to the dataset’s dominant modes of variation, (ii) remains human-interpretable, and (iii) provides consistent organizing dimensions for facet-aware similarity and collaboration. Concretely, we first construct a profile text 𝜏 𝑢 for each user by concatenating up to 𝑅 historical interactions. We encode 𝜏 𝑢 with a sentence encoder to obtain a dense profile embedding 𝑧 𝑢 ∈ R𝑑 , and cluster {𝑧 𝑢 } into 𝐾 groups using standard clustering algorithm (e.g., KMeans or HDBSCAN) to identify representative persona modes. For each cluster 𝑘 , we select a small set of prototype users and build a compact evidence package 𝑆 𝑘 = (𝑇 𝑘 , 𝐸 𝑘 ) where 𝑇 𝑘 is a set of cluster-level keywords/phrases summarizing salient cues (i.e. top TF-IDF terms computed over {𝜏 𝑢 : 𝑢 ∈ Cluster 𝑘 }), and 𝐸 𝑘 is a small set of representative evidence (e.g., short excerpts) collected from users in cluster 𝑘 .Collecting these packages as 𝑃 = {𝑆 𝑘 }𝐾 𝑘 =1, we prompt an LLM to contrast clusters and induce a facet schema whose axes best separate the representative persona modes: 
+
+ˆF = {𝑓 𝑚 }𝑀 𝑚 =1 = LLM (𝑃 ), (3) where each facet 𝑓 𝑚 includes (i) a concise name, (ii) a natural-language definition describing the behavioral attribute, and (iii) a scoring specification (categorical or ordinal) to clarify how evidence should be interpreted. We further instruct the LLM to avoid redun-dant facets and prefer orthogonal dimensions (e.g., tone vs. topical preference vs. value orientation), yielding a small, interpretable schema that is shared across users and serves as the organizing backbone for downstream per-facet summarization and facet-wise similarity modeling. 
+
+Facet summarization, reliability, and embeddings. Given the in-duced schema F , we derive facet-specific summarization and rep-resentations for every user. For each user 𝑢 and facet 𝑚 , we gather the set of historical interactions and prompt an LLM to produce: (i) a concise facet summary 𝑠 (𝑚 ) 
+
+> 𝑢
+
+describing the user’s typical behavior along the facet dimension 𝑓 𝑚 (e.g., value orientation), (ii) optionally up to two short supporting quotes ev (𝑚 ) 
+
+> 𝑢
+
+grounded in the user’s past text, and (iii) a reliability label 𝑟 (𝑚 ) 
+
+> 𝑢
+
+∈ { none , weak , moderate , strong }
+
+that indicates how well the facet summary is supported by available evidence. We form the facet description by concatenation: 
+
+𝑡 (𝑚 ) 
+
+> 𝑢
+
+= [ 𝑠 (𝑚 ) 
+
+> 𝑢
+
+; ev (𝑚 ) 
+
+> 𝑢
+
+]. (4) We then embed 𝑡 (𝑚 ) 
+
+> 𝑢
+
+with a pretrained sentence encoder and ℓ2
+
+normalization to obtain a dense per-facet embedding 𝑒 (𝑚 ) 
+
+> 𝑢
+
+∈ R𝑑 . For facets with little or no usable evidence (typically 𝑟 (𝑚 ) 
+
+> 𝑢
+
+∈ { none , weak }), we instantiate a neutral placeholder description (e.g., “No explicit profile information provided.”) before encoding, ensuring every user has a well-formed representation on every facet. The resulting embeddings {𝑒 (𝑚 ) 
+
+> 𝑢
+
+}𝑀 𝑚 =1, together with reliability labels {𝑟 (𝑚 ) 
+
+> 𝑢
+
+}𝑀 𝑚 =1,constitute a disentangled persona state; in later stages, the reliability signal is used to downweight or filter low-support facets when con-structing facet-wise neighborhoods and performing collaborative inference. 
+
+## 3.2 Multiplex Collaborative Persona Graph 
+
+Given the facet-level decomposition from Sec. 3.1, we construct a 
+
+multiplex Collaborative Persona Graph G that organizes users by their similarity within each facet . Concretely, G contains 𝑀 facet-induced layers, one per facet 𝑚 ∈ { 1, . . . , 𝑀 } in the induced schema 
+
+F . Each layer shares the same node set V (one node per user), but has its own edge set capturing facet-specific peer alignment. This multiplex structure provides the backbone for controlled, facet-aware collaboration: it allows CoPersona to borrow complementary KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhang et al. Select Representative User 
+
+> Facet Inducer
+> K-Means
+
+Induce Facet 
+
+Schema 
+
+> Facet Schema
+> Genre Preference : Describe the primary genres the user ….
+> Critical Tone : Describe how positive versus critical the …
+> Value Orientation : Describe beliefs and principles the user…
+> …
+> Embedding Model
+
+Construct Similarity Graph 
+
+Multiplex User -User Similarity Graph 
+
+Dual Branch Inference with Graph  
+
+> New Inquiry x
+> (e.g. Review Generation)
+
+1
+
+2
+
+> (Identify distinguishing facets)
+
+3
+
+> Facet Summarizer
+
+Summarize and Embed Facet 
+
+4 5     
+
+> Parametric Branch
+> Retrieve Neighbor Facet Summary
+> Persona
+> Synthesis
+> Node: User Multiplex Edge: Similarity between users Per -facet embedding
+> Selected
+> Representative User
+> Per -Facet Embedding
+> Movie Title: Interstellar （2014 ）
+> Movie Content: xxx
+> Inquiry Input
+> Movie Review: I don’t like this
+> genre but…
+> Synthesis Result
+> …
+> ……
+> …
+> …
+> Reliability Gated Message Passing
+> Non -Parametric Branch
+> Facet Embedding &
+> Facet Summary
+> Input
+> …
+> Genre Preference : The user primarily favors historical fiction..
+> Critical Tone : The user tends to evaluate whether events …
+> …
+> Per -Facet Facet Summary
+
+Figure 2: CoPersona overview. CoPersona personalizes an LLM by (1) mining representative users and inducing a global facet schema, (2) summarizing each user per facet and constructing a multiplex user–user similarity graph (one layer per facet), and (3) performing dual-branch inference that combines non-parametric facet-level neighbor retrieval with parametric graph reasoning (e.g., reliability-gated message passing) to synthesize a personalized persona signal for generation. 
+
+signals from peers on the particular facet that is under-observed for the target user, rather than collapsing all evidence into a single global similarity score. 
+
+Nodes and facet states. For every user 𝑢 and facet 𝑚 , Sec. 3.1 produces a normalized facet embedding e(𝑚 )
+
+𝑢 ∈ R𝑑 together with a reliability label 𝑟 (𝑚 )
+
+𝑢 ∈ { none , weak , moderate , strong } indicating how well the facet summary is supported by the user history. We use 
+
+{e(𝑚 )
+
+𝑢 }𝑢 ∈ V as the node embedding table for layer 𝑚 , and leverage 
+
+{𝑟 (𝑚 )
+
+𝑢 } to downweight or filter low-evidence facets when forming neighborhoods. 
+
+Facet-wise edges and sparsification. Edges are defined indepen-dently within each facet layer. In layer 𝑚 , we compute the cosine similarity between users 𝑢 and 𝑣 using their normalized facet em-beddings: 
+
+A(𝑚 )
+
+𝑢𝑣 = sim (e(𝑚 )
+
+𝑢 , e(𝑚 )
+
+𝑣 ) = e(𝑚 )
+
+𝑢 · e(𝑚 )
+
+𝑣 
+
+∥e(𝑚 )
+
+𝑢 ∥∥ e(𝑚 )
+
+𝑣 ∥ . (5) To incorporate evidence quality, we optionally apply a reliability gate to the similarity by multiplying by a scalar weight 𝜔 (·) (Details in Appendix. C): 
+
+˜A(𝑚 )
+
+𝑢𝑣 = 𝜔 
+
+
+
+𝑟 (𝑚 )
+
+𝑢 
+
+
+
+𝜔 
+
+
+
+𝑟 (𝑚 )
+
+𝑣 
+
+
+
+A(𝑚 )
+
+𝑢𝑣 , (6) where 𝜔 (none ) ≤ 𝜔 (weak ) ≤ 𝜔 (moderate ) ≤ 𝜔 (strong ). Finally, to reduce noise and ensure scalability, we sparsify each layer by retaining only the top-𝐾 neighbors per user under ˜A(𝑚 ) , yielding facet-specific neighborhoods N (𝑚 )
+
+𝑢 and a sparse adjacency per layer. Under this multiplex construction, when a target user under-expresses a facet 𝑚 (low 𝑟 (𝑚 )
+
+𝑢 ), CoPersona can still identify a set of aligned peers using other facets 𝑚 ′ ≠ 𝑚 that are well-supported for the user (high 𝑟 (𝑚 ′ )
+
+𝑢 ). This allows CoPersona to implicitly infer facet 𝑚 by aggregating these peers’ facet-𝑚 representations. 
+
+## 3.3 Dual-Branch Inference 
+
+CoPersona combines two complementary inference mechanisms. The non-parametric branch retrieves facet-specific exemplars from behaviorally similar users, preserving human-interpretable signals in observed facets. The parametric branch performs latent col-laborative inference on the Collaborative Persona Graph, using reliability-gated message passing to denoise observed facets and impute missing ones in a continuous embedding space. At infer-ence time, both branches contribute conditioning signals to the base LLM: retrieved exemplars are provided as textual context, while the collaborative persona embedding is injected as soft prompts. 
+
+Non-Parametric Facet Retrieval. The first branch of CoPersona implements a non-parametric, retrieval-style form of personaliza-tion that operates directly in the text space by reusing the facet-wise neighborhoods of the multiplex Collaborative Persona Graph (Sec. 3.2). In facet layer 𝑚 , edges are weighted by the reliability-gated facet similarity ˜𝐴 (𝑚 )
+
+𝑢𝑣 derived from cosine similarity of facet embeddings (Eq. 5 and Eq. 6). For a target user 𝑢 ★ and facet 𝑚 , we retrieve neighbors directly from the sparsified graph: 
+
+𝑁 (𝑚 )
+
+𝑢 ★ = 𝑣 |  𝑢 ★, 𝑣  ∈ E (𝑚 ) , (7) where E (𝑚 ) retains the top- 𝐾 neighbors per user under ˜𝐴 (𝑚 ) .(Equivalently, 𝑁 (𝑚 )
+
+𝑢 ★ matches the TopK set under ˜𝐴 (𝑚 )
+
+𝑢 ★𝑣 ; we use the stored neighborhood for efficiency and consistency.) From each neighbor 𝑣 ∈ 𝑁 (𝑚 )
+
+𝑢 ★ , we retrieve a facet-aligned ex-emplar package 𝑡 (𝑚 )
+
+𝑣 = [𝑠 (𝑚 )
+
+𝑣 ; 𝑒𝑣 (𝑚 )
+
+𝑣 ] (Eq. 4), which includes the CoPersona: Collaborative Persona Graphs for Robust LLM Personalization KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+neighbor’s facet summary and (when available) short evidence quotes grounded in their past text. We then form the facet-wise exemplar set: 
+
+𝐸 (𝑚 ) 
+
+> 𝑢 ★
+
+=
+
+n 𝑣, 𝑡 (𝑚 ) 
+
+> 𝑣
+
+, ˜𝐴 (𝑚 )
+
+> 𝑢 ★𝑣
+
+ 𝑣 ∈ 𝑁 (𝑚 )
+
+> 𝑢 ★
+
+o
+
+. (8) Finally, we linearize {𝐸 (𝑚 ) 
+
+> 𝑢 ★
+
+}𝑀 𝑚 =1 into a facet-grouped peer con-text 𝐶 peer  
+
+> 𝑢 ★
+
+, where ˜𝐴 (𝑚 ) 
+
+> 𝑢 ★𝑣
+
+serves as an explicit confidence signal over retrieved peer exemplars. This branch makes no parametric updates and preserves facet-aligned, human-interpretable peer signals. 
+
+Parametric Graph Reasoning. While the non-parametric branch can already supply useful signals for under-observed facets by retrieving facet-specific exemplars from similar users, it does so in an explicitly local and token-level manner, and its effectiveness is constrained by retrieval noise and context length. The parametric branch of CoPersona is designed as a complementary mechanism: instead of operating on raw text, it performs latent collaborative inference over the Collaborative Persona Graph via a reliability-gated message passing scheme , aggregating information from neighbors into continuous facet representations and learning how strongly to trust self versus peers. This yields smoothed, reliability-aware facet embeddings that provide a compact soft-prompt prior, complementing the discrete, example-based guidance from the non-parametric branch. We start from the facet-specific embeddings e(𝑚 ) 
+
+> 𝑢
+
+and the ordinal reliability label 𝑟 (𝑚 ) 
+
+> 𝑢
+
+∈ {none, weak, moderate, strong} introduced in Sec. 3.1, and use it to control how strongly the parametric branch trusts the user’s own facet representation versus information aggre-gated from neighbors. Concretely, we transform the discrete label into a scalar trust gate 𝛾 (𝑚 ) 
+
+> 𝑢
+
+= 𝑓 𝜃 
+
+
+
+𝑟 (𝑚 )
+
+> 𝑢
+
+
+
+∈ [ 0, 1] using a learnable monotone scoring function 𝑓 𝜃 (·) 1, . This yields a monotonically increasing confidence score aligned with evidence strength, and 
+
+𝛾 (𝑚 ) 
+
+> 𝑢
+
+is then used in the reliability-gated message passing update to interpolate between the user’s own facet embedding and the neighbor-aggregated embedding, with larger 𝛾 (𝑚 ) 
+
+> 𝑢
+
+placing more weight on self and smaller values relying more on peers. To exploit cross-user structure, we construct a shared neighbor set N𝑢 at the user level (e.g., from an anchor embedding that aggre-gates the observed facets of 𝑢 ). Intuitively, N𝑢 contains users whose overall persona profiles are structurally similar, even if individual facets may be missing for 𝑢 . For each facet 𝑚 , we initialize the node state with the facet embedding, 
+
+h(0,𝑚 ) 
+
+> 𝑢
+
+= e(𝑚 ) 
+
+> 𝑢
+
+, (9) and aggregate facet-𝑚 information from the neighbors of 𝑢 :
+
+˜h(𝑚 ) 
+
+> 𝑢
+
+= Agg 𝑣 ∈ N 𝑢 h(0,𝑚 ) 
+
+> 𝑣
+
+, (10) where Agg is a permutation-invariant operator (e.g., mean). We then apply a reliability-aware, self-vs-neighbors gate to obtain the updated facet representation: 
+
+h(𝑚 ) 
+
+> 𝑢
+
+= 𝜎 
+
+
+
+𝑊  𝛾 (𝑚 ) 
+
+> 𝑢
+
+h(0,𝑚 ) 
+
+> 𝑢
+
++ ( 1 − 𝛾 (𝑚 ) 
+
+> 𝑢
+
+) ˜h(𝑚 )
+
+> 𝑢
+
+
+
+, (11)                 
+
+> 1Constrained to satisfy 𝑓 𝜃 (none ) ≤ 𝑓 𝜃 (weak ) ≤ 𝑓 𝜃 (moderate ) ≤ 𝑓 𝜃 (strong ).See details in Appendix. C
+
+with 𝑊 a shared projection and 𝜎 a nonlinearity. When facet 𝑚 is strongly supported for user 𝑢 (𝛾 (𝑚 ) 
+
+> 𝑢
+
+≈ 1), the update is dominated by the user’s own facet embedding and only lightly influenced by neighbors. When the LLM indicates that facet 𝑚 is weak or absent for 𝑢 (𝛾 (𝑚 ) 
+
+> 𝑢
+
+≈ 0), the update leans toward the aggregated neighbor embedding, effectively imputing the missing facet from structurally similar peers. The resulting set {h(𝑚 ) 
+
+> 𝑢
+
+}𝑀 𝑚 =1 forms a latent, collaboratively smoothed view of the user’s persona. To capture semantic dependencies be-tween these behavioral dimensions, we apply a cross-facet self-attention mechanism over the facet embeddings after each layer. We finally concatenate these contextualized embeddings to obtain a single collaborative persona vector h𝑢 :
+
+h𝑢 = h(1) 
+
+> 𝑢
+
+∥ . . . ∥ h(𝑀 )
+
+> 𝑢
+
+ . (12) This vector is then projected into a fixed number of soft prompt tokens that condition the base LLM during generation. In contrast to the non-parametric branch, which operates in the space of re-trieved exemplars, the parametric branch performs inference in a latent space over the graph, denoising observed facets and inferring plausible values for under-observed ones. 
+
+## 3.4 Joint Optimization 
+
+During training, we optimize all learnable components of CoPer-sona jointly with the base LLM. For each user 𝑢 and query 𝑥 ′, the parametric branch produces a collaborative persona vector h𝑢 from the reliability-gated graph reasoning in Sec. 3.3. We map this vector into a fixed-length sequence of soft prompt tokens by a learned linear projection: 
+
+S𝑢 = reshape  𝑊 𝑝 h𝑢 
+
+ ∈ R𝐿 𝑝 ×𝑑 LLM , (13) where 𝑊 𝑝 ∈ R(𝐿 𝑝 ·𝑑 LLM ) × 𝑑 persona is a trainable matrix, 𝐿 𝑝 is the num-ber of soft prompt tokens, 𝑑 LLM is the hidden dimension of the base LLM, and reshape (·) converts the projected vector into a matrix of 
+
+𝐿 𝑝 token embeddings. In parallel, we retrieve query-relevant interactions from the target user’s own history via BM25 Robertson et al . [46] , follow-ing Qiu et al . [43] . Let H𝑢 (𝑥 ′) = BM25TopK (𝑥 ′, D𝑢 ) denote the retrieved self-history. We combine this with the peer exemplar context from the non-parametric branch to form the textual condi-tioning: 𝐶 𝑢 (𝑥 ′) = Linearize  H𝑢 (𝑥 ′), {𝐸 (𝑚 ) 
+
+> 𝑢
+
+}𝑀 𝑚 =1
+
+.
+
+The final input to the LLM is the concatenation, in embedding space, of the soft prompts S𝑢 , the retrieved context 𝐶 𝑢 (𝑥 ′), and the current query 𝑥 ′. We train by minimizing the negative log-likelihood of 𝑦 :
+
+L = − 
+
+> |𝑦 |
+
+∑︁  
+
+> 𝑡 =1
+
+log 𝑃 LLM (𝑦 𝑡 | 𝑦 <𝑡 , S𝑢 , 𝐶 𝑢 (𝑥 ′), 𝑥 ′) . (14) 
+
+## 4 Experimental Results 
+
+We conduct experiments on real-world personalization benchmarks to answer the following research questions: 
+
+• RQ1 : How does CoPersona compare with existing personaliza-tion baselines in overall generation quality and user alignment? KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhang et al. 
+
+Table 1: Performance comparison across datasets and model scales. R-1 denotes ROUGE-1, MET. denotes METEOR, BL. denotes BLEU, and BS. denotes BERTScore. Best results within each block are highlighted in bold.                                                                                                                                        
+
+> Model Method Books Movies & TV CDs & Vinyl
+> R-1 MET. BL. BS. R-1 MET. BL. BS. R-1 MET. BL. BS.
+> 32B
+> Non-Perso 0.3025 0.1949 2.6728 0.4970 0.2608 0.1666 1.1226 0.4702 0.2765 0.1767 1.6597 0.4742 RAG 0.3404 0.2735 6.8178 0.5159 0.2983 0.2142 2.8680 0.4822 0.3092 0.2177 3.1588 0.4868 PAG 0.3276 0.2830 6.8920 0.5051 0.2816 0.2130 2.7751 0.4746 0.2971 0.2215 3.2164 0.4787 DPL 0.3392 0.3003 7.7423 0.5156 0.2967 0.2238 3.2965 0.4855 0.3119 0.2337 3.8271 0.4910
+> 7B
+> Non-Perso 0.2907 0.1735 1.9766 0.5004 0.2469 0.1503 0.7242 0.4713 0.2604 0.1561 1.0997 0.4753 RAG 0.3149 0.2101 3.6874 0.5083 0.2693 0.1701 1.3021 0.4787 0.2796 0.1733 1.6129 0.4824 PAG 0.3136 0.2378 4.6762 0.4992 0.2761 0.1905 1.9360 0.4735 0.2882 0.1979 2.4740 0.4789 DPL 0.3194 0.2459 5.6623 0.5050 0.2845 0.1958 2.2451 0.4795 0.2952 0.2003 2.6943 0.4838 DEP 0.3621 0.3009 12.3350 0.5496 0.3061 0.2372 6.5927 0.5086 0.3143 0.2309 6.3548 0.5122
+> CoPersona (Ours) 0.3953 0.3349 15.4703 0.5729 0.3142 0.2401 8.0569 0.5184 0.3216 0.2438 7.8669 0.5177
+
+Table 2: Performance comparison across datasets and model scales. R-1 denotes ROUGE-1, R-L denotes ROUGE-L, MET. denotes METEOR, and BL. denotes BLEU. Best results within each block are highlighted in bold.                                                                                        
+
+> Model Method Video Games Musical Instruments Sports& Outdoors
+> R-1 R-L MET. BL. R-1 R-L MET. BL. R-1 R-L MET. BL.
+> 7B
+> Non-Perso 0.2386 0.1304 0.1664 0.74 0.2388 0.1348 0.2062 1.72 0.2752 0.1497 0.2114 1.93 RAG 0.2553 0.1365 0.1841 1.30 0.2449 0.1369 0.2157 2.05 0.2826 0.1528 0.2225 2.45 PAG 0.2537 0.1307 0.2008 1.99 0.2265 0.1253 0.2224 1.65 0.2671 0.1427 0.2336 1.91 DPL 0.2626 0.1366 0.2005 2.01 0.2401 0.1353 0.2145 2.77 0.2775 0.1507 0.2234 2.19 DEP 0.2655 0.1440 0.1974 4.66 0.2319 0.1321 0.1977 3.07 0.2839 0.1738 0.2041 4.68
+> CoPersona (Ours) 0.2928 0.1553 0.2086 5.87 0.2447 0.1503 0.1760 5.06 0.3004 0.1747 0.2140 5.86
+
+• RQ2 : Do the reviews generated by CoPersona appear more human-like and authentic, as assessed by LLM-as-Judge eval-uation? 
+
+• RQ3 : How much does each component of CoPersona contribute to performance (e.g., the parametric branch, the non-parametric branch, and the retrieval strategy)? 
+
+• RQ4 : How robust is CoPersona to key design choices (e.g., the number of facets and neighbors), and how sensitive is it to major hyperparameters (e.g., decoding temperature)? 
+
+## 4.1 Experimental Setup 
+
+Datasets. Building upon prior work, we focus on the represen-tative task of review generation for LLM personalization [ 3 , 13 ,21 , 35 , 39 , 42 , 43 ]. Specifically, we adopt the Amazon Reviews 2023 dataset 2 [13 ] , as used by DEP [ 42 ], covering three categories: Books ,
+
+Movies & TV , and CDs & Vinyl . In addition, we construct three more category-specific datasets from Amazon Reviews 2023 by applying the DPL preprocessing pipeline [ 43 ] to Video Games , Musical In-struments , and Sports & Outdoors . These categories exhibit sparser user–item interactions, allowing us to better assess generalization under limited history. We intentionally filter the data to ensure that each user retains only a limited number of reviews, thereby maintaining sparsity. For all six datasets, we follow the original test splits provided by DPL [ 43 ]. More details about the datasets are provided in Appendix A. 
+
+> 2https://amazon-reviews-2023.github.io/
+
+Baselines. Following existing personalization works such as DPL [ 43 ] and DEP [ 42 ], We compare CoPersona with the following baseline methods (implementation details in Appendix B. For some baselines, we also report results using a larger 32B base model. 
+
+• Non-Perso : Generates reviews using only item information, ti-tles, and ratings, without user personalization. 
+
+• RAG [ 49 ]: Conditions generation on retrieved user history records for contextual personalization. 
+
+• PAG [ 45 ]: Summarizes user history into a compact profile and combines it with retrieved evidence for structured personaliza-tion. 
+
+• DPL [43 ]: Builds a textual user profile by contrasting the target user with similar peers and prepends it to the prompt. 
+
+• DEP [ 42 ]: Learns user embeddings that capture preference dif-ferences and injects them into a frozen LLM as soft conditioning signals. 
+
+Evaluation Metrics. Following previous works on personalized text generation [ 3 , 21 , 39 , 42 , 43 , 49 , 65 ], we report ROUGE-1 [ 28 ], ROUGE-L [28], METEOR [4], BLEU 3 [37], and BERTScore 4 [67]. In addition, we report LLM-as-Judge evaluation to assess the human-likeness of generated reviews beyond n-gram overlap. Un-like BLEU/ROUGE, which capture surface similarity, LLM-as-Judge directly evaluates naturalness and authenticity, providing a scalable proxy for whether reviews sound genuinely human [59].      
+
+> 3We use the standard SacreBLEU [41].
+> 4We adopt led-base-16384 [5] to compute embeddings. CoPersona: Collaborative Persona Graphs for Robust LLM Personalization KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea
+
+Implementation Details. We build facet-specific user profiles by summarizing up to six reviews with GPT-4o-mini [ 36 ] and em-bedding them using sentence-transformers/all-mpnet-base -v2 [44 , 53 ]. We then construct a multiplex user graph where facet-wise cosine similarities select up to five neighbors and are averaged for a combined score. Personalization is achieved on Qwen/Qwen2.5 -7B-Instruct [ 61 ] via a soft-prompt and LoRA [ 14 ] finetuning. At inference, cached soft prompts are used with BM25 [ 46 ]-retrieved history. Additional details are provided in Appendix C. 
+
+## 4.2 Main Results (RQ1 & RQ2) 
+
+Table 1 reports performance on three benchmark categories. CoP-ersona consistently achieves the best results across all metrics and datasets. On Books, our method surpasses the strongest baseline (DEP) by +3.3 ROUGE-1, +3.4 METEOR, and +3.1 BLEU, indicating substantially better lexical alignment and semantic fidelity. Similar gains are observed on Movies & TV and CDs & Vinyl, where CoP-ersona yields the highest ROUGE, METEOR, BLEU, and BERTScore simultaneously. Notably, while prior methods such as RAG, PAG, and DPL im-prove over non-personalized generation, their gains remain limited under sparse histories. In contrast, CoPersona’s collaborative per-sona completion provides complementary facet evidence, leading to more accurate and consistent improvements. 
+
+Generalization to Sparse Settings. Results on Video Games, Musi-cal Instruments, and Sports & Outdoors further confirm the robust-ness of CoPersona, as these datasets are particularly preprocessed to mimic the cold start settings (Section 4.1). Our method achieves the highest ROUGE-1, ROUGE-L, and BLEU across all three cate-gories. In Video Games and Sports & Outdoors, CoPersona delivers particularly strong BLEU gains, suggesting improved phrase-level alignment and stylistic consistency. Although PAG and DPL occasionally yield competitive METEOR scores, they do not consistently outperform CoPersona across met-rics. This demonstrates that collaborative facet borrowing general-izes beyond the core domains and remains effective across diverse product categories. 
+
+LLM-as-Judge Evaluation. Table 3 presents human-likeness scores evaluated by Qwen2.5-72B-Instruct-AWQ [ 58 , 61 ]. CoPersona achieves the highest or tied-highest scores across all evaluated dimensions, indicating that its generated reviews appear more natural and au-thentic. Due to limited context window constraints, LLM-as-Judge evaluation is performed only on the Books dataset 5.Quantitatively, CoPersona consistently outperforms the strongest baseline, DEP, with a notable gain of +1.24 in Practical Details. These results demonstrate that collaborative facet completion sig-nificantly enhances writing realism and perceived authenticity, confirming that the model’s improvements extend beyond mere n-gram overlap. 
+
+> 5The extensive profile sizes and average output lengths in other categories (e.g., Movies & TV) frequently exceed the model’s token capacity
+
+Table 3: LLM-as-Judge evaluation with Qwen-72B-Instruct-AWQ on Books dataset.                           
+
+> Method Metrics
+> Authenticity Practical Details Human Likeness Non-Perso 7.70 ±0.47 5.86 ±0.68 6.81 ±0.63 RAG 7.87 ±0.34 6.35 ±0.81 7.05 ±0.59 PAG 7.89 ±0.34 6.56 ±0.87 7.00 ±0.53 DPL 7.86 ±0.35 6.66 ±1.12 7.00 ±0.57 DEP 7.87 ±0.61 7.15 ±1.39 7.50 ±0.81 CoPersona (Ours) 7.93 ±0.36 8.39 ±0.91 7.69 ±0.54
+
+## 4.3 Facet Coverage Bias Analysis 
+
+We numerically evaluate facet coverage bias in the existing dataset. Table 4 reports the per-domain statistics and the fraction of facet-biased samples, defined as users for which at least one facet has support no stronger than moderate (Sec. 3.1). A higher fraction therefore indicates more severe facet coverage bias (i.e., weaker facet coverage in user histories). We find that this bias is perva-sive across domains: Movies & TV exhibits the highest bias rate (100%), followed by Books (97.48%), while CDs & Vinyl shows a comparatively lower—though still substantial—rate (88.26%). This suggests domain-dependent evidence sparsity: in Movies & TV and Books, nearly all users have at least one facet that is not strongly supported, making the induced profiles more prone to bias from incomplete, diffuse, or noisy support signals. 
+
+Table 4: Statistics of the experimented datasets.                             
+
+> Category #data Profile Size Output Length Facet-biased Books 317 34 .84 ±22 .55 1194 .90 ±802 .44 309 (97.48%)
+> Movies & TV 1925 41 .11 ±35 .90 1704 .61 ±1752 .44 1925 (100.00%)
+> CDs & Vinyl 1754 38 .50 ±32 .37 1600 .04 ±1419 .89 1548 (88.26%)
+
+## 4.4 Ablation Studies (RQ3) 
+
+We ablate key components of CoPersona to quantify where its gains come from. Unless otherwise stated, we report results on Books 
+
+and keep the training setup and decoding strategy fixed. 
+
+Dual-branch inference. Table 5 shows that both branches con-tribute, with the parametric graph branch playing a larger role. Removing the non-parametric branch drops performance from 0.3953 to 0.3822 in ROUGE-1 and from 15.47 to 13.30 in BLEU, indicating that facet-aligned neighbor exemplars provide useful, human-readable evidence beyond the user’s own sparse history. Removing the parametric branch causes a substantially larger degra-dation (ROUGE-1 0.3673; BLEU 11.34), suggesting that latent graph reasoning is crucial for denoising and completing weakly supported facets under facet coverage bias. Overall, the best performance is achieved when both branches are combined, validating the comple-mentarity between text-space neighbor evidence and latent-space 
+
+collaborative refinement. 
+
+Retrieval strategy for self-history. We further examine the im-pact of the self-history retrieval module by replacing the default BM25 [ 46 ] retriever with a dense retriever, Contriever [ 17 ]. This substitution leads to a small but consistent decrease in performance KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhang et al. 0.5     
+
+> 0.6
+> 0.65 0.7
+> 0.75 0.8
+> 0.9
+> 1
+> Temperature
+> 0.225
+> 0.250
+> 0.275
+> 0.300
+> 0.325
+> 0.350
+> 0.375
+> 0.400
+> ROUGE
+> ROUGE-1
+> ROUGE-L 0.5
+> 0.6
+> 0.65 0.7
+> 0.75 0.8
+> 0.9
+> 1
+> Temperature
+> 0.325
+> 0.330
+> 0.335
+> 0.340
+> 0.345
+> 0.350
+> METEOR
+> METEOR 0.5
+> 0.6
+> 0.65
+> 0.7
+> 0.75
+> 0.8
+> 0.9
+> 1
+> Temperature
+> 12
+> 13
+> 14
+> 15
+> 16
+> BLEU
+> BLEU
+
+Figure 3: Sensitivity to decoding temperature. 3
+
+> 4
+> 5
+> 6
+> # Facets
+> 0.390
+> 0.392
+> 0.394
+> 0.396
+> 0.398
+> 0.400
+> ROUGE-1
+> ROUGE-1
+> ROUGE-L
+> 0.2200
+> 0.2225
+> 0.2250
+> 0.2275
+> 0.2300
+> 0.2325
+> ROUGE-L 3
+> 4
+> 5
+> 6
+> # Facets
+> 0.3300
+> 0.3325
+> 0.3350
+> 0.3375
+> 0.3400
+> 0.3425
+> 0.3450
+> 0.3475
+> METEOR
+> METEOR 3
+> 4
+> 5
+> 6
+> # Facets
+> 15.0
+> 15.2
+> 15.4
+> 15.6
+> 15.8
+> 16.0
+> BLEU
+> BLEU
+
+Figure 4: Ablation on the number of induced facets (Books). 0
+
+> 1
+> 2
+> 3
+> # Neighbors Retrieved
+> 0.380
+> 0.382
+> 0.384
+> 0.386
+> 0.388
+> 0.390
+> 0.392
+> 0.394
+> 0.396
+> ROUGE-1
+> ROUGE-1
+> ROUGE-L
+> 0.218
+> 0.220
+> 0.222
+> 0.224
+> 0.226
+> ROUGE-L 0
+> 1
+> 2
+> 3
+> # Neighbors Retrieved
+> 0.315
+> 0.320
+> 0.325
+> 0.330
+> 0.335
+> METEOR
+> METEOR 0
+> 1
+> 2
+> 3
+> # Neighbors Retrieved
+> 13.0
+> 13.5
+> 14.0
+> 14.5
+> 15.0
+> 15.5
+> BLEU
+> BLEU
+
+Figure 5: Ablation on the number of retrieved neighbors (Books). 
+
+(e.g., ROUGE-1 0.3906 vs. 0.3953), suggesting that the gains of CoP-ersona are not driven by a particular retriever and that the collabo-rative signal remains effective under alternative retrieval backends. Interestingly, a simple recency-based heuristic attains the best re-sults on Books , likely because recent interactions better capture a user’s current writing style and preferences. Nevertheless, to en-able fair comparison with prior work that uses BM25 as the default retriever (e.g., Qiu et al . [43] ), we adopt BM25 as the main system configuration throughout our experiments. 
+
+Table 5: Ablation on Books. Parentheses show absolute changes vs. the full two-branch model. 
+
+Method R-1 R-L MET BLEU Full model 0.3953 0.2254 0.3349 15.4703 w/o non-parametric branch 0.3822 (-0.0131) 0.2190 (-0.0064) 0.3149 (-0.0200) 13.3008 (-2.1695) 
+
+w/o parametric branch 0.3673 (-0.0280) 0.2067 (-0.0187) 0.2890 (-0.0459) 11.3355 (-4.1348) 
+
+w/ Contriever retrieval 0.3906 (-0.0047) 0.2226 (-0.0028) 0.3337 (-0.0012) 15.2739 (-0.1964) 
+
+w/ Recency retrieval 0.4062 (+0.0109) 0.2408 (+0.0154) 0.3520 (+0.0171) 16.6532 (+1.1829) 
+
+## 4.5 Hyperparameter Sensitivity (RQ4) 
+
+We examine robustness to several key design choices on Books .
+
+Decoding temperature. Figure 3 varies the decoding temperature over a broad range (0.5–1.0). Performance is largely stable in the range 0.7–1.0, with a mild peak at moderate temperatures, indicat-ing that CoPersona does not require careful tuning of sampling stochasticity to maintain strong quality. Following prior work [ 42 ], we use a default temperature of 0.8 in all experiments. 
+
+Number of induced facets. Figure 4 varies the size of the induced facet schema (3–6). We observe a gradual improvement as the num-ber of facets increases, consistent with the intuition that a more fine-grained schema better decomposes a user’s persona and re-duces facet mixing when evidence is uneven. At the same time, gains diminish beyond a moderate number of facets, suggesting that CoPersona benefits from finer structure but does not rely on an aggressively large schema. 
+
+Retrieved neighbor budget. Figure 5 varies the number of re-trieved neighbors (0–3). Performance improves steadily as we re-trieve more neighbors, indicating that additional peer evidence pro-vides complementary signals that help complete under-supported facets. The improvement saturates at larger budgets, implying that only a small but related neighborhood is sufficient to capture most of the collaborative benefit while keeping inference efficient. 
+
+## 4.6 Discovered Facet Schema 
+
+To better understand the personas induced by CoPersona , we present the facets discovered across domains (Table 6). The induced schemas vary by dataset and reflect domain-specific user concerns: in narrative domains such as Books and Movies, facets often cap-ture emotional engagement and critical interpretation, whereas in product-centric domains such as Sports & Outdoors and Musical Instruments, they emphasize utility-oriented considerations (e.g., value for money, product quality, and usage context). Overall, these patterns suggest that our facet discovery adapts to domain signals and yields interpretable preference dimensions for personalization, rather than dataset-agnostic latent factors. 
+
+## 5 Related Work 
+
+Personalization in LLMs. LLM personalization seeks to adapt model behavior to individual users’ preferences, goals, and inter-action patterns [ 49 ]. Prior work generally falls into two broad paradigms: prompting-based methods and finetuning-based tech-niques. Early prompting-based approaches [ 16 , 20 ] encode user information directly in the input, using structured or unstructured natural language prompts to summarize preferences or interac-tion history, but they rely heavily on careful prompt construc-tion and aggressive compression of user data [ 23 , 33 ]. More recent work [ 15 , 21 , 25 , 48 , 49 , 60 , 62 , 64 ] adopts retrieval-augmented strategies that dynamically incorporate relevant signals from a user’s past interactions into the model context at inference time, alleviating context-length constraints while remaining vulnerable to retrieval errors, particularly when user histories are sparse or noisy. Finetuning-based approaches, including soft-prompt [ 12 , 29 ], LoRA [ 56 , 57 , 66 , 69 ], and RLHF-style [ 18 , 26 , 38 , 40 , 54 , 68 ] fine-tuning, offer an alternative by embedding user-specific information directly into model parameters, enabling more efficient and persis-tent personalization. However, these works are typically limited to capturing single user’s information. 
+
+Cold-Start Problem and Collaborative Filtering. The cold-start problem, long studied in recommendation systems, arises when limited interaction data prevents accurate preference modeling for new users [ 27 , 51 ]. Common solutions include leveraging side infor-mation [ 1], and collaborative filtering [ 6], which mitigates sparsity by transferring signals from similar users. Inspired by this paradigm, recent work extends collaborative filtering to LLM personalization by incorporating inter-user information. One line of work explicitly CoPersona: Collaborative Persona Graphs for Robust LLM Personalization KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 6: Persona facets discovered across different domains. 
+
+Dataset Discovered Facets Books Engagement Level; Genre Preference; Critical Tone; Review Length; Diversity of Themes. 
+
+Movies & TV Emotional Engagement; Critical Analysis; Genre Preference; Rating Consistency; Social Influence. 
+
+CDs & Vinyl Rating Enthusiasm; Critical Engagement; Nostalgia Factor; Genre Preference; Review Style. 
+
+Musical Instruments Satisfaction Level; Product Knowledge; Value for Money; Usage Context; Brand Loyalty. 
+
+Sports & Outdoors Product Satisfaction; Quality Perception; User Engagement; Value for Money; Brand Loyalty. 
+
+Video Games Engagement Level; Critical Perspective; Nostalgia Factor; Community Engagement; Gameplay Preference. 
+
+models user–peer differences, using natural-language summaries or difference-aware latent soft prompts [ 42 , 43 ]. Other approaches go further by directly injecting peer interactions into prompts or constructing shared persona representations [ 52 , 55 , 63 ]. However, they typically rely on global similarity in an unstructured space and perform only shallow retrieval over peers’ histories [ 52 ]. In contrast, our approach adopts a structured, facet-aware framework: we construct a multiplex facet-level graph and borrow signals from neighbors aligned on specific facets via both non-parametric re-trieval and parametric message passing, enabling targeted transfer rather than indiscriminate peer aggregation. 
+
+## Acknowledgments 
+
+This work was supported in part by the 2025 Samsung Leap-U Program. 
+
+## References 
+
+[1] Nor Aniza Abdullah, Rasheed Abubakar Rasheed, Mohd Hairul Nizam Md Nasir, and Md Mujibur Rahman. 2021. Eliciting auxiliary information for cold start user recommendation: A survey. Applied Sciences 11, 20 (2021), 9608. [2] Gati V Aher, Rosa I Arriaga, and Adam Tauman Kalai. 2023. Using large language models to simulate multiple humans and replicate human subject studies. In 
+
+International conference on machine learning . PMLR, 337–371. [3] Steven Au, Cameron J Dimacali, Ojasmitha Pedirappagari, Namyong Park, Franck Dernoncourt, Yu Wang, Nikos Kanakaris, Hanieh Deilamsalehy, Ryan A Rossi, and Nesreen K Ahmed. 2025. Personalized graph-based retrieval for large language models. arXiv preprint arXiv:2501.02157 (2025). [4] Satanjeev Banerjee and Alon Lavie. 2005. METEOR: An automatic metric for MT evaluation with improved correlation with human judgments. In Proceedings of the acl workshop on intrinsic and extrinsic evaluation measures for machine translation and/or summarization . 65–72. [5] Iz Beltagy, Matthew E Peters, and Arman Cohan. 2020. Longformer: The long-document transformer. arXiv preprint arXiv:2004.05150 (2020). [6] JesúS Bobadilla, Fernando Ortega, Antonio Hernando, and Jesús Bernal. 2012. A collaborative filtering approach to mitigate the new user cold start problem. 
+
+Knowledge-based systems 26 (2012), 225–238. [7] Ngoc Bui, Hieu Trung Nguyen, Shantanu Kumar, Julian Theodore, Weikang Qiu, Viet Anh Nguyen, and Rex Ying. 2025. Mixture-of-personas language models for population simulation. arXiv preprint arXiv:2504.05019 (2025). [8] Jiawei Chen, Hande Dong, Xiang Wang, Fuli Feng, Meng Wang, and Xiangnan He. 2021. Bias and Debias in Recommender System: A Survey and Future Directions. arXiv:2010.03240 [cs.IR] https://arxiv.org/abs/2010.03240 [9] Jin Chen, Zheng Liu, Xu Huang, Chenwang Wu, Qi Liu, Gangwei Jiang, Yuanhao Pu, Yuxuan Lei, Xiaolong Chen, Xingmei Wang, et al . 2024. When large language models meet personalization: Perspectives of challenges and opportunities. World Wide Web 27, 4 (2024), 42. [10] Yi-Pei Chen, Noriki Nishida, Hideki Nakayama, and Yuji Matsumoto. 2024. Recent Trends in Personalized Dialogue Generation: A Review of Datasets, Methodolo-gies, and Evaluations. arXiv:2405.17974 [cs.CL] https://arxiv.org/abs/2405.17974 [11] J. A. Hartigan and M. A. Wong. 1979. Algorithm AS 136: A K-Means Clustering Algorithm. Applied Statistics 28, 1 (1979), 100–108. doi:10.2307/2346830 [12] Liam Hebert, Krishna Sayana, Ambarish Jash, Alexandros Karatzoglou, Sukhdeep Sodhi, Sumanth Doddapaneni, Yanli Cai, and Dima Kuzmin. 2024. Persoma: Per-sonalized soft prompt adapter architecture for personalized language prompting. 
+
+arXiv preprint arXiv:2408.00960 (2024). [13] Yupeng Hou, Jiacheng Li, Zhankui He, An Yan, Xiusi Chen, and Julian McAuley. 2024. Bridging language and items for retrieval and recommendation. arXiv preprint arXiv:2403.03952 (2024). [14] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al . 2022. Lora: Low-rank adaptation of large language models. ICLR 1, 2 (2022), 3. [15] Qiushi Huang, Shuai Fu, Xubo Liu, Wenwu Wang, Tom Ko, Yu Zhang, and Lilian Tang. 2023. Learning retrieval augmentation for personalized dialogue generation. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing . 2523–2540. [16] EunJeong Hwang, Bodhisattwa Majumder, and Niket Tandon. 2023. Aligning language models to user opinions. In Findings of the Association for Computational Linguistics: EMNLP 2023 . 5906–5919. [17] Gautier Izacard, Mathilde Caron, Lucas Hosseini, Sebastian Riedel, Piotr Bo-janowski, Armand Joulin, and Edouard Grave. 2021. Unsupervised dense in-formation retrieval with contrastive learning. arXiv preprint arXiv:2112.09118 
+
+(2021). [18] Joel Jang, Seungone Kim, Bill Yuchen Lin, Yizhong Wang, Jack Hessel, Luke Zettlemoyer, Hannaneh Hajishirzi, Yejin Choi, and Prithviraj Ammanabrolu. 2023. Personalized soups: Personalized large language model alignment via post-hoc parameter merging. arXiv preprint arXiv:2310.11564 (2023). [19] Daniel Jurafsky and James H. Martin. 2026. Speech and Language Processing: An Introduction to Natural Language Processing, Computational Linguistics, and Speech Recognition, with Language Models (3rd ed.). Online manuscript released January 6, 2026. https://web.stanford.edu/~jurafsky/slp3/ [20] Wang-Cheng Kang, Jianmo Ni, Nikhil Mehta, Maheswaran Sathiamoorthy, Lichan Hong, Ed Chi, and Derek Zhiyuan Cheng. 2023. Do llms understand user prefer-ences? evaluating llms on user rating prediction. arXiv preprint arXiv:2305.06474 
+
+(2023). [21] Ishita Kumar, Snigdha Viswanathan, Sushrita Yerra, Alireza Salemi, Ryan A Rossi, Franck Dernoncourt, Hanieh Deilamsalehy, Xiang Chen, Ruiyi Zhang, Shubham Agarwal, et al . 2024. Longlamp: A benchmark for personalized long-form text generation. arXiv preprint arXiv:2407.11016 (2024). [22] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient memory management for large language model serving with pagedattention. In 
+
+Proceedings of the 29th Symposium on Operating Systems Principles . 611–626. [23] Cheng Li, Mingyang Zhang, Qiaozhu Mei, Weize Kong, and Michael Bendersky. 2024. Learning to rewrite prompts for personalized text generation. In Proceedings of the ACM Web Conference 2024 . 3367–3378. [24] Cheng Li, Mingyang Zhang, Qiaozhu Mei, Yaqing Wang, Spurthi Amba Hombaiah, Yi Liang, and Michael Bendersky. 2023. Teach LLMs to Personalize–An Approach inspired by Writing Education. arXiv preprint arXiv:2308.07968 (2023). [25] Jinming Li, Wentao Zhang, Tian Wang, Guanglei Xiong, Alan Lu, and Gerard Medioni. 2023. GPT4Rec: A generative framework for personalized recommen-dation and user interests interpretation. arXiv preprint arXiv:2304.03879 (2023). [26] Xinyu Li, Ruiyang Zhou, Zachary C Lipton, and Liu Leqi. 2024. Personal-ized language modeling from personalized human feedback. arXiv preprint arXiv:2402.05133 (2024). [27] Blerina Lika, Kostas Kolomvatsos, and Stathes Hadjiefthymiades. 2014. Facing the cold start problem in recommender systems. Expert systems with applications 
+
+41, 4 (2014), 2065–2073. [28] Chin-Yew Lin. 2004. Rouge: A package for automatic evaluation of summaries. In Text summarization branches out . 74–81. [29] Jiongnan Liu, Yutao Zhu, Shuting Wang, Xiaochi Wei, Erxue Min, Yu Lu, Shuaiqiang Wang, Dawei Yin, and Zhicheng Dou. 2025. Llms+ persona-plug= personalized llms. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 9373–9385. [30] Ilya Loshchilov and Frank Hutter. 2017. Decoupled weight decay regularization. 
+
+arXiv preprint arXiv:1711.05101 (2017). [31] Zhenyi Lu, Wei Wei, Xiaoye Qu, Xian-Ling Mao, Dangyang Chen, and Jixiong Chen. 2023. Miracle: Towards Personalized Dialogue Generation with Latent-Space Multiple Personal Attribute Control. In Findings of the Association for KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhang et al. 
+
+Computational Linguistics: EMNLP 2023 , Houda Bouamor, Juan Pino, and Kalika Bali (Eds.). Association for Computational Linguistics, Singapore, 5933–5957. doi:10.18653/v1/2023.findings-emnlp.395 [32] Hanjia Lyu, Song Jiang, Hanqing Zeng, Yinglong Xia, Qifan Wang, Si Zhang, Ren Chen, Chris Leung, Jiajie Tang, and Jiebo Luo. 2024. Llm-rec: Personalized recom-mendation via prompting large language models. In Findings of the Association for Computational Linguistics: NAACL 2024 . 583–612. [33] Wenyu Mao, Jiancan Wu, Weijian Chen, Chongming Gao, Xiang Wang, and Xiangnan He. 2025. Reinforced prompt personalization for recommendation with large language models. ACM Transactions on Information Systems 43, 3 (2025), 1–27. [34] Sheshera Mysore, Zhuoran Lu, Mengting Wan, Longqi Yang, Bahareh Sarrafzadeh, Steve Menezes, Tina Baghaee, Emmanuel Barajas Gonzalez, Jennifer Neville, and Tara Safavi. 2024. Pearl: Personalizing large language model writing assis-tants with generation-calibrated retrievers. In Proceedings of the 1st Workshop on Customizable NLP: Progress and Challenges in Customizing NLP for a Domain, Application, Group, or Individual (CustomNLP4U) . 198–219. [35] Jianmo Ni, Jiacheng Li, and Julian McAuley. 2019. Justifying recommendations using distantly-labeled reviews and fine-grained aspects. In Proceedings of the 2019 conference on empirical methods in natural language processing and the 9th international joint conference on natural language processing (EMNLP-IJCNLP) .188–197. [36] OpenAI. 2024. GPT-4 Technical Report. arXiv:2303.08774 [cs.CL] https://arxiv. org/abs/2303.08774 [37] Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. 2002. Bleu: a method for automatic evaluation of machine translation. In Proceedings of the 40th annual meeting of the Association for Computational Linguistics . 311–318. [38] Chanwoo Park, Mingyang Liu, Dingwen Kong, Kaiqing Zhang, and Asuman Ozdaglar. 2024. Rlhf from heterogeneous feedback via personalization and pref-erence aggregation. arXiv preprint arXiv:2405.00254 (2024). [39] Qiyao Peng, Hongtao Liu, Hongyan Xu, Qing Yang, Minglai Shao, and Wenjun Wang. 2024. LLM: Harnessing Large Language Models for Personalized Review Generation. arXiv preprint arXiv:2407.07487 (2024). [40] Sriyash Poddar, Yanming Wan, Hamish Ivison, Abhishek Gupta, and Natasha Jaques. 2024. Personalizing reinforcement learning from human feedback with variational preference learning. Advances in Neural Information Processing Sys-tems 37 (2024), 52516–52544. [41] Matt Post. 2018. A Call for Clarity in Reporting BLEU Scores. In Proceedings of the Third Conference on Machine Translation: Research Papers . 186–191. [42] Yilun Qiu, Tianhao Shi, Xiaoyan Zhao, Fengbin Zhu, Yang Zhang, and Fuli Feng. 2025. Latent Inter-User Difference Modeling for LLM Personalization. arXiv:2507.20849 [cs.CL] https://arxiv.org/abs/2507.20849 [43] Yilun Qiu, Xiaoyan Zhao, Yang Zhang, Yimeng Bai, Wenjie Wang, Hong Cheng, Fuli Feng, and Tat-Seng Chua. 2025. Measuring What Makes You Unique: Difference-Aware User Modeling for Enhancing LLM Personalization. In Find-ings of the Association for Computational Linguistics: ACL 2025 . Association for Computational Linguistics, 21258–21277. [44] Nils Reimers and Iryna Gurevych. 2019. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. arXiv:1908.10084 [cs.CL] https://arxiv.org/abs/ 1908.10084 [45] Chris Richardson, Yao Zhang, Kellen Gillespie, Sudipta Kar, Arshdeep Singh, Zeynab Raeesy, Omar Zia Khan, and Abhinav Sethy. 2023. Integrating summa-rization and retrieval for enhanced personalization via large language models. 
+
+arXiv preprint arXiv:2310.20081 (2023). [46] Stephen Robertson, Hugo Zaragoza, et al . 2009. The probabilistic relevance framework: BM25 and beyond. Foundations and trends ® in information retrieval 
+
+3, 4 (2009), 333–389. [47] Yuta Saito, Suguru Yaginuma, Yuta Nishino, Hayato Sakata, and Kazuhide Nakata. 2020. Unbiased Recommender Learning from Missing-Not-At-Random Implicit Feedback. In Proceedings of the 13th International Conference on Web Search and Data Mining (Houston, TX, USA) (WSDM ’20) . Association for Computing Machinery, New York, NY, USA, 501–509. doi:10.1145/3336191.3371783 [48] Alireza Salemi, Surya Kallumadi, and Hamed Zamani. 2024. Optimization meth-ods for personalizing large language models through retrieval augmentation. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 752–762. [49] Alireza Salemi, Sheshera Mysore, Michael Bendersky, and Hamed Zamani. 2024. LaMP: When Large Language Models Meet Personalization. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 7370–7392. [50] Shibani Santurkar, Esin Durmus, Faisal Ladhak, Cinoo Lee, Percy Liang, and Tatsunori Hashimoto. 2023. Whose opinions do language models reflect?. In 
+
+International Conference on Machine Learning . PMLR, 29971–30004. [51] Andrew I Schein, Alexandrin Popescul, Lyle H Ungar, and David M Pennock. 2002. Methods and metrics for cold-start recommendations. In Proceedings of the 25th annual international ACM SIGIR conference on Research and development in information retrieval . 253–260. [52] Teng Shi, Jun Xu, Xiao Zhang, Xiaoxue Zang, Kai Zheng, Yang Song, and Han Li. 2025. Retrieval augmented generation with collaborative filtering for personalized text generation. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1294–1304. [53] Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, and Tie-Yan Liu. 2020. MPNet: Masked and Permuted Pre-training for Language Understanding. arXiv:2004.09297 [cs.CL] https://arxiv.org/abs/2004.09297 [54] Nisan Stiennon, Long Ouyang, Jeffrey Wu, Daniel Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul F Christiano. 2020. Learning to summarize with human feedback. Advances in neural information processing systems 33 (2020), 3008–3021. [55] Chenkai Sun, Ke Yang, Revanth Gangi Reddy, Yi Fung, Hou Pong Chan, Kevin Small, ChengXiang Zhai, and Heng Ji. 2025. Persona-db: Efficient large language model personalization for response prediction with collaborative data refinement. In Proceedings of the 31st International Conference on Computational Linguistics .281–296. [56] Zhaoxuan Tan, Zheyuan Liu, and Meng Jiang. 2024. Personalized pieces: Efficient personalized large language models through collaborative efforts. arXiv preprint arXiv:2406.10471 (2024). [57] Zhaoxuan Tan, Qingkai Zeng, Yijun Tian, Zheyuan Liu, Bing Yin, and Meng Jiang. 2024. Democratizing large language models via personalized parameter-efficient fine-tuning. arXiv preprint arXiv:2402.04401 (2024). [58] Qwen Team. 2024. Qwen2.5: A Party of Foundation Models. https://qwenlm. github.io/blog/qwen2.5/ [59] Yu-Min Tseng, Yu-Chao Huang, Teng-Yun Hsiao, Wei-Lin Chen, Chao-Wei Huang, Yu Meng, and Yun-Nung Chen. 2024. Two Tales of Persona in LLMs: A Survey of Role-Playing and Personalization. In Findings of the Association for Computational Linguistics: EMNLP 2024 , Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen (Eds.). Association for Computational Linguistics, Miami, Florida, USA, 16612– 16631. doi:10.18653/v1/2024.findings-emnlp.969 [60] Hongru Wang, Wenyu Huang, Yang Deng, Rui Wang, Zezhong Wang, Yufei Wang, Fei Mi, Jeff Z Pan, and Kam-Fai Wong. 2024. Unims-rag: A unified multi-source retrieval-augmented generation for personalized dialogue systems. arXiv preprint arXiv:2401.13256 (2024). [61] An Yang, Baosong Yang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Zhou, Cheng-peng Li, Chengyuan Li, Dayiheng Liu, Fei Huang, Guanting Dong, Haoran Wei, Huan Lin, Jialong Tang, Jialin Wang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Ma, Jin Xu, Jingren Zhou, Jinze Bai, Jinzheng He, Junyang Lin, Kai Dang, Keming Lu, Keqin Chen, Kexin Yang, Mei Li, Mingfeng Xue, Na Ni, Pei Zhang, Peng Wang, Ru Peng, Rui Men, Ruize Gao, Runji Lin, Shijie Wang, Shuai Bai, Sinan Tan, Tianhang Zhu, Tianhao Li, Tianyu Liu, Wenbin Ge, Xiaodong Deng, Xiaohuan Zhou, Xingzhang Ren, Xinyu Zhang, Xipin Wei, Xuancheng Ren, Yang Fan, Yang Yao, Yichang Zhang, Yu Wan, Yunfei Chu, Yuqiong Liu, Zeyu Cui, Zhenru Zhang, and Zhihao Fan. 2024. Qwen2 Technical Report. arXiv preprint arXiv:2407.10671 (2024). [62] Fan Yang, Zheng Chen, Ziyan Jiang, Eunah Cho, Xiaojiang Huang, and Yanbin Lu. 2023. Palr: Personalization aware llms for recommendation. arXiv preprint arXiv:2305.07622 (2023). [63] Mert Yazan, Suzan Verberne, and Frederik Situmeang. 2025. Improving RAG for Personalization with Author Features and Contrastive Examples. In European Conference on Information Retrieval . Springer, 408–416. [64] Saber Zerhoudi and Michael Granitzer. 2024. Personarag: Enhancing retrieval-augmented generation systems with user-centric agents. arXiv preprint arXiv:2407.09394 (2024). [65] Jinghao Zhang, Yuting Liu, Wenjie Wang, Qiang Liu, Shu Wu, Liang Wang, and Tat-Seng Chua. 2025. Personalized Text Generation with Contrastive Activation Steering. In Proceedings of the 63rd Annual Meeting of the Association for Com-putational Linguistics (Volume 1: Long Papers) . Association for Computational Linguistics, 7128–7141. [66] Kai Zhang, Yejin Kim, and Xiaozhong Liu. 2024. Personalized llm response generation with parameterized memory injection. arXiv preprint arXiv:2404.03565 
+
+(2024). [67] Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q. Weinberger, and Yoav Artzi. 2020. BERTScore: Evaluating Text Generation with BERT. In 8th International Conference on Learning Representations, ICLR 2020, 2020 .[68] Minjun Zhu, Yixuan Weng, Linyi Yang, and Yue Zhang. 2024. Personality align-ment of large language models. arXiv preprint arXiv:2408.11779 (2024). [69] Yuchen Zhuang, Haotian Sun, Yue Yu, Rushi Qiang, Qifan Wang, Chao Zhang, and Bo Dai. 2024. Hydra: Model factorization framework for black-box llm personalization. Advances in Neural Information Processing Systems 37 (2024), 100783–100815. CoPersona: Collaborative Persona Graphs for Robust LLM Personalization KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+## A Overview of Datasets 
+
+We study personalized review generation using Amazon Reviews 2023 [ 13 ] following the DPL preprocessing protocol [ 43 ]. Besides the original DPL splits, we construct three additional categories (Video Games , Sports & Outdoors , Musical Instruments ) with adjusted thresholds to better simulate sparse-user settings. 
+
+Preprocessing. We filter reviews to keep only entries with valid text, title, rating, and timestamp above a minimum length. Items are kept if their cleaned descriptions fall within a length range and have valid metadata. We then iteratively prune the user–item graph so that: (i) each item has at least a minimum number of reviewers, and (ii) each user has a minimum number of reviews. Duplicate reviews are removed by keeping the most recent unique (user, item) interaction. 
+
+Profile Construction. For each user, reviews are sorted chrono-logically. The most recent 𝑘 = 2 interactions are held out as targets (bounded by at most half of the history). Earlier interactions form the profile . Users with too few profile reviews and items appearing in too few profiles are further pruned. 
+
+Splits. Given a profile and held-out interactions: 
+
+• Train: predict earlier held-out reviews autoregressively, 
+
+• Validation: predict the second-to-last review, 
+
+• Test: predict the last review. 
+
+Table 7: Main preprocessing thresholds.                       
+
+> Parameter VG Sports Music Min review length 110 90 90 Min desc length 60 50 50 Min users/item 433Min reviews/user 855Holdout 𝑘 433Min profile size 644
+
+Table 8: Statistics of the experimented datasets.                 
+
+> Category #data Profile Size Output Length Video_Games 837 15.22 ±10.90 1368.57 ±1861.22
+> Musical Instruments 556 11 .94 ±6.43 716 .19 ±706 .38
+> Sports_and_Outdoors 531 18.18 ±16.69 578.59 ±443.18
+
+Data Format. Each instance contains a user ID, profile reviews, and a target review: 
+
+> {user_id, profile: [reviews...], data: target_review}
+
+Each input concatenates target item title, description, review title, rating, and retrieved user history. 
+
+## B Baseline Details 
+
+We compare CoPersona with representative personalization base-lines that differ in how user information is represented and incor-porated into generation. 
+
+• Non-Perso . This baseline removes personalization signals and conditions the LLM only on item-level inputs, the target rating, and the review title. It serves as a lower bound for generation without user history. 
+
+• RAG [49 ]. RAG retrieves a small set of the user’s recent reviews and concatenates them into the prompt, allowing the LLM to infer preferences directly from raw historical examples. 
+
+• PAG [ 45 ]. PAG summarizes recent reviews into a natural-language user profile and provides it together with retrieved reviews, com-bining high-level preferences with concrete evidence. 
+
+• DPL [43 ]. DPL constructs a difference-aware profile by compar-ing the target user with representative users selected through embedding-space clustering. The resulting summary captures differences in aspects such as sentiment, topics, and style, and is prepended to the generation prompt. For fairness, we use the same embedding model as in CoPersona for representative-user selection. 
+
+• DEP [42 ]. DEP learns latent user embeddings that capture pref-erence deviations from other users and injects the resulting per-sonalization vectors into a frozen LLM as soft prompts, enabling representation-level personalization without increasing prompt length. 
+
+## C Implementation Details 
+
+Facet Disentanglement. We implement a two-stage pipeline for persona facet discovery. First, we construct a user-level document by concatenating up to 8 recent reviews per user (including rat-ing, title, and text) and truncating to a fixed length for stability. We encode each user document using a SentenceTransformer en-coder ( all-MiniLM-L6-v2 ) with ℓ2-normalized embeddings [ 44 ]. We augment semantic embeddings with lightweight writing-style fea-tures (e.g., average review length, sentence-length proxy, punctua-tion/emoji rate, lexical diversity, and rating statistics), which are standardized and concatenated to the embedding vector. We then cluster users using KMeans [ 11 ], and for each cluster, we compute representative keywords via TF–IDF [ 19 ] and select representative users via medoid-based selection using cosine distance. Finally, we pack cluster summaries (cluster size, top terms, representative ex-cerpts, and style statistics) and prompt an LLM to induce a small, non-redundant set of human-interpretable facets, each with a defi-nition, value specification, scoring rubric, and evidence grounded in specific clusters; the model returns a structured facet schema in JSON for downstream personalization. For efficient local inference, we support vLLM [22] as the backend. 
+
+Facet summarization and per-facet embeddings. We start from a discovered facet set. For each user, we summarize up to 6 histori-cal reviews into facet-specific profile text using gpt-4o-mini [36 ], with temperature 0.2 and a 2048-token budget, batching 8 users per LLM call. We then embed each facet summary with sentence -transformers/all-mpnet-base-v2 [44 , 53 ]. 6 Embeddings are com-puted with max sequence length 512, batch size 32, and L2 nor-malization. Each per-user facet embedding concatenates the facet paragraph with up to two evidence quotes when available.  
+
+> 6https://huggingface.co/sentence-transformers/all-mpnet-base-v2 KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhang et al.
+
+Multiplex user–user similarity graph. We construct a multiplex graph where each facet induces a similarity layer. For each facet, we compute cosine similarity (dot product of normalized embeddings), retain up to 5 neighbors per facet with similarity ≥ 0.35 , and store the facet-specific similarity as an edge weight. A user pair’s com-bined similarity is defined as the mean of its facet weights. We use fixed reliability weights 𝝎 = [0.05 , 0.25 , 0.60 , 0.95 ] in graph con-struction stage, corresponding to 𝑟 ∈ [ none , weak , moderate , strong ],respectively. 
+
+Monotone label-to-gate mapping. In learnable parametric branch, we convert the ordinal reliability label 𝑟 (𝑚 ) 
+
+> 𝑢
+
+∈ { none, weak, mod-erate, strong } into a scalar trust gate 𝛾 (𝑚 ) 
+
+> 𝑢
+
+∈ [ 0, 1] via a light-weight learnable mapping. Let ℓ (𝑟 ) ∈ { 0, 1, 2, 3} denote the ordinal encoding of the label. We learn a gate value {𝛾 𝑘 }3 
+
+> 𝑘 =0
+
+for each la-bel level and set 𝛾 (𝑚 ) 
+
+> 𝑢
+
+= 𝛾 ℓ  
+
+> 
+> 𝑟 (𝑚 )
+> 𝑢
+> 
+
+. To ensure 𝛾 𝑘 is monotonically non-decreasing with evidence strength, we parameterize it using cumulative non-negative increments: 𝛿 𝑖 = softplus 
+
+ ˜𝛿 𝑖 
+
+
+
+≥ 0, 𝑖 =
+
+1, 2, 3, 𝑧 𝑘 = 𝑧 0 + Í𝑘 𝑖 =1 𝛿 𝑖 , 𝛾 𝑘 = 𝜎 (𝑧 𝑘 ) where 𝑧 0 ∈ R and ˜𝛿 𝑖 ∈ R
+
+are learnable parameters, 𝜎 (·) is the sigmoid function, and softplus enforces 𝛿 𝑖 ≥ 0. This guarantees 𝛾 0 ≤ 𝛾 1 ≤ 𝛾 2 ≤ 𝛾 3 while keeping the mapping differentiable and adding only four scalar parameters (shared across facets in our implementation; a per-facet variant is straightforward). 
+
+Personalizer fine-tuning. We use Qwen/Qwen2.5-7B-Instruct [ 58 ,61 ] as the base model. Our soft-prompt personalizer is a two-layer MLP that maps each user’s facet representation to a sequence of virtual tokens. We first construct a user vector using a single-layer reliability-gated graph encoder (hidden size 512, ReLU, dropout 0.1). The projector uses a two-layer MLP: Linear(d_in -> 512) +
+
+Tanh + Linear(512 -> L*H) , where 𝑑 in is the user-vector dimen-sion, 𝐿 =20 is the soft-prompt length, and 𝐻 is the LLM hidden size (Qwen2.5-7B). The output is reshaped to 𝐿 × 𝐻 and prepended to the token embeddings. During training, we prepend soft_prompt to the token embed-dings, extend the attention mask with ones for the virtual tokens, and set the corresponding labels to −100 so that the loss is computed only over real tokens. We fine-tune the base model with LoRA [ 14 ](rank 16, 𝛼 =32 , dropout 0.05), while optimizing the soft-prompt personalizer and graph encoder end-to-end. At inference time, we generate the soft prompt once per user and cache it for reuse. We train for 10 epochs with batch size 1 and gradient accumula-tion of 4 (effective batch size 4), using AdamW [ 30 ] with learning rate 2 × 10 −5, weight decay 0.01, and betas (0.9, 0.98 ). We use a cosine learning-rate schedule with warmup ratio 0.06 and clip gradi-ents to a maximum norm of 1.0. At inference, prompts include four retrieved reviews and up to three neighbors selected by the highest combined similarity. To fit within the model’s context window, we cap the input at 8192 tokens and apply per-component limits: 1024 tokens per retrieved review, 1024 tokens for the user’s historical reviews, and 512 tokens per neighbor facet summary. 
+
+## D Computational Cost Analysis 
+
+Most of the computation in our personalization pipeline can be performed offline and cached. Facet summarization, embedding extraction, and graph construction are per-user (or per-refresh) preprocessing steps, and the graph message passing can likewise be run ahead of time to produce a fixed user representation. We then precompute the user’s soft prompt (virtual tokens) once and store it. As a result, online inference only needs to retrieve the cached soft prompt and prepend it to the decoding context, without running any graph/message-passing or embedding-related computation on the critical path; consequently, the incremental runtime overhead during generation is negligible in practical deployments.

@@ -1,0 +1,290 @@
+Title: GenPage: Towards End-to-End Generative Homepage Construction at Netflix
+
+URL Source: https://arxiv.org/pdf/2606.31031v1
+
+Published Time: Wed, 01 Jul 2026 00:23:57 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# GenPage: Towards End-to-End Generative Homepage Construction at Netflix 
+
+# Lequn Wang 
+
+lequnw@netflix.com Netflix NYC, NY, USA 
+
+# Jiangwei Pan ∗
+
+panjiangwei@gmail.com Netflix Los Gatos, CA, USA 
+
+# Fengdi Che †
+
+fengdi@ualberta.ca University of Alberta Edmonton, Alberta, Canada 
+
+# Linas Baltrunas 
+
+lbaltrunas@netflix.com Netflix Los Gatos, CA, USA 
+
+## Abstract 
+
+We present GenPage, an end-to-end generative approach to Netflix homepage construction that replaces the traditional multi-stage recommender stack with a single transformer. GenPage treats the user and request context as a prompt, and autoregressively gen-erates the entire structured, multi-row homepage as the response. We adapt the LLM training recipe: pretraining on production pages, followed by post-training via weighted binary classification (WBC) or reinforcement learning (RL). For industry-scale deployment, we introduce techniques addressing cold start, model freshness, business-rule enforcement, and serving efficiency. In online A/B tests against a mature, highly optimized production homepage rec-ommender, the WBC variant of GenPage delivered a +0.24% lift on the core user engagement metric we use for launch decisions (𝑝 < 0.001 ), while reducing end-to-end serving latency by 20% .Offline, two findings stand out: enriching the prompt yields a larger improvement than scaling model capacity in our current regime, and RL post-training increases homepage diversity even though diversity is not part of the objective. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems ; • Comput-ing methodologies → Natural language generation ; Neural net-works ; Reinforcement learning .
+
+## Keywords 
+
+Recommender Systems, Large Language Models, Generative Rec-ommendation, Reinforcement Learning 
+
+ACM Reference Format: 
+
+Lequn Wang, Jiangwei Pan, Fengdi Che, and Linas Baltrunas. 2018. GenPage: Towards End-to-End Generative Homepage Construction at Netflix. In  
+
+> ∗Work done while the author was affiliated with Netflix.
+> †Work done while the author was an intern at Netflix. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 10 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Large language models (LLMs) have demonstrated a powerful par-adigm: a single generative transformer can perform diverse tasks by generating a response to a prompt. More broadly, they have reshaped how we think about machine learning systems: a suffi-ciently expressive model trained end-to-end can often reduce the need for manually engineered representations and features. Traditionally, recommender systems have been built as multi-stage pipelines—candidate generation, ranking, and re-ranking— with each stage optimized separately [ 4 , 7]. Constructing a home-page like Netflix’s adds further complexity: the output is not a single ranked list but a structured layout of rows and the entities within each row, historically assembled by many specialized models (e.g., separate models for rows and entities). In this paper, we present GenPage, an end-to-end generative approach to Netflix homepage construction. Instead of building homepages through a multi-stage pipeline of specialized models and extensive feature engineering, we train a single generative model to answer a simpler, more direct question: 
+
+Given everything we know about this user and this request, what homepage should we generate to maximize user satisfaction? 
+
+We treat the user and request context as the prompt, and generate the entire homepage autoregressively as the response. This shift is motivated by several aspirations: 
+
+• End-to-end modeling. A single transformer that consumes raw input signals can replace a complex multi-stage recom-mender stack. This reduces the number of ML models to maintain, avoids misaligned objectives across stages, and eliminates much of the traditional feature engineering. 
+
+• Better scaling behavior. Model quality improves with more data, compute, and model capacity, without redesigning the system. 
+
+• Whole-page optimization via reinforcement learning (RL). Operating at the page level enables RL with page-level rewards that capture interactions across rows and entities, such as diversity or balancing rows with differing stopping power —how strongly a row or entity captures attention and  
+
+> arXiv:2606.31031v1 [cs.IR] 30 Jun 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Wang et al.
+
+stops the user from browsing further. 1 This aligns recom-mendations with user satisfaction and business objectives more directly than the entity-level objectives (e.g., movie or show level) used by most traditional recommender systems. 
+
+• Flexibility and extensibility. The prompt-response par-adigm is flexible by design, lowering the barrier for new product features. By simplifying feature engineering and en-abling whole-page optimization, it becomes easier to support new content types (e.g., live events, games, podcasts), new layouts beyond the current 2D structure, personalized UI components, and per-entity artwork personalization without major architectural changes. Bringing GenPage into production at Netflix also requires ad-dressing several challenges specific to industry-scale recommender systems. Because our homepage is generated in real time, users are sensitive to serving latency, making it a primary engineering constraint. We also need to handle entity cold start in a constantly evolving catalog, keep the model fresh as trends shift, and enforce complex business rules on the generated output. Despite these challenges, GenPage has already had substantial production impact. We validated the weighted binary classifica-tion (WBC) post-training variant in an online A/B test against a mature, highly optimized multi-stage production recommender on the Netflix homepage. It delivered a +0.24% lift on the core user engagement metric we use for launch decisions ( 𝑝 < 0.001 ), while reducing end-to-end serving latency by 20% . Our RL-based post-training has not yet shipped online, but we view it as the key path to realizing GenPage’s full vision. Concretely, this paper makes the following contributions: 
+
+• We formulate the construction of structured, multi-row per-sonalization surfaces as an end-to-end generative sequence modeling problem, in which a single transformer directly generates the entire page. This problem is shared by many industry-scale recommenders, such as Netflix’s homepage, Amazon’s homepage, and Spotify’s home shelves, where the output is a structured layout of rows or modules whose el-ements interact—for example, balancing rows and entities of differing stopping power, or maintaining diversity across the page—so the page must be optimized as a whole, sub-ject to product constraints. This contrasts with prior work on generative recommendation [ 1 , 8 , 10 , 13 , 26 , 36 , 39 , 40 ], which generates a flat (ranked) list of items. 
+
+• We adapt the LLM training recipe to this setting: pretraining on positively engaged production pages to learn the “lan-guage” of homepage construction, followed by post-training via weighted binary classification (WBC) or reinforcement learning (RL) to align the pages with user satisfaction. WBC trains the model to estimate the immediate value of each token while still decoding the full homepage autoregres-sively; RL optimizes the policy against a page-level reward model trained directly from organic user engagement on each page—in contrast to the pairwise human preferences typical of LLM RLHF [5, 23]. 
+
+> 1For example, a Continue Watching row near the top has high stopping power: mem-bers tend to resume a title they have already started rather than explore new content. Visual treatment matters too—rows with larger artwork tend to reduce further scrolling.
+
+• We present a set of techniques tailored to industry-scale gen-erative recommendation: a custom tokenization for serving efficiency and product control; context injection and seman-tic embedding fusion for entity cold start; multi-cadence incremental training for model freshness; constrained decod-ing for business-rule enforcement; and hybrid row decoding for further latency and cost reduction at inference time. 
+
+• We report offline experiments characterizing the role of pretraining, model scaling, context richness, and RL post-training. Two findings stand out: enriching the prompt yields a larger improvement than scaling model capacity in our current regime, and RL post-training increases homepage diversity even though diversity is not part of the objective. 
+
+• We validate GenPage in an online A/B test against the pro-duction homepage recommender at Netflix, demonstrating that it can outperform a multi-stage production stack on both user engagement and serving latency. We expect this approach to generalize to many personalization settings. We focus on Netflix homepage construction as a concrete case study, sharing our design, trade-offs, and lessons learned. 
+
+## 2 Data 
+
+Transitioning from a traditional recommendation model to a gen-erative transformer requires a fundamental shift in data represen-tation. Just as an LLM represents text as a sequence of tokens, our approach represents the Netflix experience—user context and the resulting homepage—as a unified sequence of discrete tokens (Figure 1). The homepage itself—an entire structured, multi-row layout—lives within this token sequence, allowing the model to generate the page as a whole rather than scoring rows and entities independently. Each training example represents a homepage impression and consists of three components: 
+
+• Context : user engagement history, profile attributes, and request context. 
+
+• Page : the recommended rows and entities shown on the homepage in layout order. 
+
+• Feedback : user interactions with that page, such as play, thumbs-up, or abandonment for entities on the page. Only Context and Page are tokenized as model inputs and out-puts. Feedback is used to derive supervision signals via our internal reward system (Section 3). Instead of using an off-the-shelf text tokenizer, we build a domain-specific tokenizer for the homepage construction data, a proven ap-proach in recommender systems [ 16 ] and other specialized domains such as computer vision [ 27 ], biology [ 28 ], and chemistry [ 29 ]. This choice provides two key advantages over generic text tokenization: 
+
+• Computational efficiency. Custom tokenization signifi-cantly reduces sequence length, thus lowering inference cost and latency. For example, representing the event “User watched Orange is the New Black for 50 minutes 30 days ago.” would require 16 tokens in GPT-5, whereas our scheme compresses it to 4 tokens: [Entity_ID] , [Action_Type] ,
+
+[Action_Time_Bucket] , and [Action_Duration_Bucket] .GenPage: Towards End-to-End Generative Homepage Construction at Netflix Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Context Tokens Page Tokens Request Context Tokens User Profile Tokens User History Tokens Time of Day Bucket Device Type Kids or Adult Language Entity ID User Action Duration Bucket Row 1 Tokens Row K Tokens Row N Tokens Row ID Entity ID Entity ID Entity ID User Action Type User Action Time Bucket 
+
+Figure 1: Tokenization of Netflix homepage construction data. The context tokens function as the prompt, drawing from diverse data sources including user history, profile attributes, and request context, with example tokens shown for each source. The page tokens represent the generated response, encoding the structured layout of rows and entities. 
+
+• Product control. A direct mapping between tokens and product concepts (e.g., rows and entities) makes it straight-forward to control what we generate—a crucial capability for enforcing business rules (Section 6.3). 
+
+## 2.1 Context Tokens 
+
+Context tokens encode user engagement history, user profile, and request context. User history is represented as a sequence of tokenized actions [ 11 ,16 , 32 ]. For each action, we extract key metadata as tokens, such as action type, entity ID, timestamp, and duration. We include both explicit actions (e.g., play, add to My List, thumbs-up) and implicit signals (e.g., trailer views, visiting a details page). User profile tokens capture attributes such as language and pro-file type. Request context tokens encode signals like time of day, day of week, and device. Some data sources are too long to convert directly into a raw token sequence. A user’s full impression history, for example, would be prohibitively expensive to tokenize in full. In such cases, we tokenize a summarized version. This partially undercuts our goal of operating on raw inputs: any handcrafted summary reintroduces a form of prompt engineering into an otherwise end-to-end pipeline. A key direction for future work is to learn to compress these long sources end-to-end, avoiding this prompt engineering. To help the model distinguish between data sources, we insert special tokens that mark the start of each source segment. Continu-ous signals (e.g., timestamps, durations) are bucketized into discrete ranges to maintain a finite vocabulary. 
+
+## 2.2 Page Tokens 
+
+Each entity (e.g., show, movie, game) and each row (e.g., Korean TV Shows) is represented as a single token. The homepage is tokenized in layout order: left to right, top to bottom. We update the entity and row vocabulary daily to incorporate newly added entities and rows. Entities still out of vocabulary at serving time are handled via semantic embedding fusion (Section 6.1) and fallback tokens (Section 6.2). In principle, the same paradigm extends to any output that can be expressed as a linear token sequence: layouts beyond the current 2D structure (e.g., one-dimensional feeds or mixed layouts), person-alized UI components, or per-entity outputs such as personalized artwork. We leave these extensions to future work. 
+
+## 2.3 Paginated Recommendation 
+
+To make recommendations responsive to in-session user prefer-ences, the homepage is often generated incrementally, a few rows at a time. Before each pagination request, we append the page tokens from previously recommended rows to the prompt, along with the latest user engagements on those rows, derived from Netflix’s real-time event-logging infrastructure. This allows the model to generate the next set of recommendations using both the user’s long-term preferences and their most recent in-session engagements. 
+
+## 3 Reward System 
+
+To quantify the long-term value of a recommendation, we rely on an internal reward system described in prior work [ 35 ]. This reward system is tuned through online A/B testing to align with long-term user satisfaction and serves as the core supervision signal for both supervised and reinforcement learning. The reward system processes user feedback and outputs a scalar reward for every impressed entity on the homepage. For instance, a TV show binge-watched in one night reflects higher user satisfac-tion and receives a higher reward than a movie watched for only 10 minutes. An impressed but abandoned entity receives a negative reward. We define the page-level reward as the sum of rewards across all impressed entities on the homepage. 
+
+## 4 Model Architecture 
+
+To process data represented as sequences of tokens, we adopt a stan-dard decoder-only transformer architecture [ 25 ] used in advanced LLMs for its simplicity, flexibility, and broad ecosystem support. We untie the input embedding and output projection weights [ 14 ,24 ]. The optimal logit scales differ substantially between next-token-prediction pretraining (which optimizes a softmax over the vocabu-lary) and WBC post-training (which optimizes per-token sigmoids); see Section 5 for both. Untied weights let the model adapt to each objective. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Wang et al. 
+
+For our first rounds of online A/B tests, we use a ∼ 200 M-parameter model to ensure we stay within our serving latency budget. The offline scaling trends (Section 7) suggest further qual-ity improvements are available as inference optimizations create latency headroom. 
+
+## 5 Training Recipe 
+
+Our training pipeline mirrors the LLM recipe: we first teach the model the “language” of the Netflix homepage through pretraining, then align its outputs with user satisfaction through post-training. For post-training, we explore two alternative approaches: weighted binary classification (WBC) and reinforcement learning (RL). WBC is simpler to optimize and aligns directly with the entity-level objec-tives of our production ranking models. RL is harder to evaluate and optimize, but it is the key path to GenPage’s full vision of page-level optimization, with the flexibility to incorporate test-time reasoning and multi-token entity representations. 
+
+## 5.1 Pretraining via Next-Token Prediction 
+
+We pretrain the model with a standard next-token-prediction ob-jective: given the context tokens and a prefix of page tokens, the model learns to predict the next page token. This stage focuses on representation learning, teaching the model the relationship between user contexts and successful homepages. Note that our (context, page) data resembles the prompt-response pairs used in LLM supervised fine-tuning (SFT) more than the raw text used in LLM pretraining; we nonetheless call this stage pretraining because we train the model from scratch rather than fine-tuning from an existing checkpoint. Whereas LLMs often face scarce high-quality labeled data, we have an abundance of user feedback data. For pretraining, we use homepage impressions that received positive user feedback when served in production, bootstrapping the model to generate pages similar to those produced by the production system. However, pretraining largely mimics the existing production model, and training recursively on self-generated data without external feedback risks model degeneration [ 31 ]. Furthermore, pre-training does not directly optimize the magnitude of the reward. To address these limitations, we explore two post-training approaches. 
+
+## 5.2 Post-Training via Weighted Binary Classification 
+
+One effective approach to aligning the generative model with fine-grained user satisfaction is weighted binary classification (WBC). At a high level, WBC trains the model to predict the immediate value of generating the next entity or row, while still decoding the full page autoregressively. This entity-level objective is easier to optimize than page-level RL: by decomposing the page into per-token targets, WBC assigns credit at the token level by construction rather than requiring RL to learn it. Concretely, the model predicts this value per token, conditioned on user context and the preceding generated tokens, rather than learning an explicit generation policy. This entity-level training is enabled by our custom tokenization (Section 2): each entity and row is a single token, giving a direct one-to-one correspondence between per-token model outputs and per-entity (or per-row) re-wards. Recall that each training example is a homepage impression. For every impressed entity on the page, our reward system provides a scalar reward based on user feedback on it; for each impressed row, we derive a row-level reward by aggregating the rewards for the entities in the row. From each reward, we derive a binary label from the sign (e.g., play vs. abandonment) and a weight from the magnitude (e.g., binge-watching receives higher weight than short-play). We then optimize a weighted binary cross-entropy loss on the logit for the corresponding token. In this setup, the logit for a token can be interpreted as the model’s value estimate for generating that token at that position. For each impressed entity and row target, we additionally sample random tokens as negative targets. Because rarely-impressed tokens are drawn as random negatives far more often than they appear as positives, this injects a mild pessimism [ 19 , 33 ]—effectively a popularity prior—into their learned values, and prevents the model from confidently surfacing niche entities whose high scores would otherwise be dominated by noise. Despite being trained as a value predictor, the model can still gen-erate pages autoregressively. At each step, it computes the values (logits) for all candidate tokens, greedily selects the one with the maximum value, and appends it to the prefix. This process repeats token by token to generate the entire homepage. On our standard held-out evaluation set for production rank-ing models, the WBC-trained generative model outperforms our production rankers on key entity-level metrics such as weighted AUC. This demonstrates that an end-to-end generative formulation can match or exceed a multi-stage production stack on standard entity-level offline metrics. 
+
+## 5.3 Post-Training via Reinforcement Learning 
+
+Reinforcement learning (RL) is the post-training direction we are ac-tively exploring. While WBC is effective at optimizing entity-level metrics, it cannot consider the homepage as a whole. By treating page generation as a sequential decision-making process, RL en-ables whole-page optimization with the flexibility to support several useful extensions: 
+
+• Whole-page optimization. RL directly optimizes an aggre-gate page-level reward, accounting for interactions across rows and entities—such as diversity, or balancing rows and entities of differing stopping power—as well as page-level business constraints. 
+
+• Test-time reasoning. Analogous to its application in LLMs, RL can optimize reasoning capabilities for generative recom-mendation [ 21 , 38 ]. Reasoning outputs can also be viewed as a form of automated feature engineering. 
+
+• Multi-token entity support. With our custom tokeniza-tion, each entity and row is a single token, so the per-entity reward maps directly onto that one token and credit assign-ment is immediate. In a more complex catalog, however, a single entity may be represented by multiple tokens (e.g., 
+
+[Show_ID] + [Episode_#] for an episode within a show, or multi-token semantic IDs [ 26 ]). In that case it is unclear how GenPage: Towards End-to-End Generative Homepage Construction at Netflix Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Large-Scale Training Daily Incremental Updates Large-Scale Training Week K Pretraining Data from a large historical window Post-Training Data from a large historical window Day 1 Daily Post-Training Today's data Hist. Day 2 Daily Post-Training Today's data Hist. ... Day N Daily Post-Training Today's data Hist. Week K+1 Pretraining Data from a large historical window Post-Training Data from a large historical window ... Time Every week Every day Every week 
+
+Figure 2: Multi-cadence incremental training strategy. Periodic large-scale pretraining and post-training passes run on a broad historical window. Between them, daily incremental post-training updates combine the latest day’s data with a sampled subset of past data to keep the model fresh while avoiding catastrophic forgetting. 
+
+to distribute the single entity-level reward across the con-stituent tokens, so WBC’s per-token labeling breaks down. RL instead optimizes the sequence-level return, so it handles variable-length, multi-token entities naturally. Of these, only whole-page optimization is explored in this paper; test-time reasoning and multi-token entity support are part of the motivation for adopting RL but are directions for future work. Inspired by the RLHF [ 5, 23 ] recipe used to align large language models, we adopt a two-step approach: we first train a reward model that predicts the page-level outcome reward from a generated page. This reward model is distinct from the reward system of Section 3: the reward system converts observed user feedback into a scalar reward for a page that was actually shown, whereas the reward model predicts the page-level reward for a generated page before it is ever shown to a user. This prediction is what lets RL optimize against arbitrary candidate pages during training. Training against a reward model avoids the high variance of off-policy correction on logged or predicted propensities [ 3], but introduces the risk of reward hacking. Since the reward model is trained on data generated from the production policy, it is most reliable on pages similar to those the production policy generates. We therefore use a KL penalty to keep the policy close to the pretrained checkpoint, which itself was trained to mimic the production policy. This keeps the pages within the reward model’s region of coverage and limits opportunities for reward hacking. For the RL algorithm, we adopt Dr. GRPO [ 22 ], a variant of GRPO [ 9 ] that mitigates biases in the training objective. We build our training pipeline using the verl RL library [ 30 ], with vLLM [ 20 ]as the inference engine. To train the model within this framework, we need the following components: 
+
+• Prompts : Production user requests, represented by context tokens. 
+
+• Policy and reference models : Both are initialized from the pretrained checkpoint; the reference model anchors the KL penalty discussed above. 
+
+• Reward model : A dedicated transformer-based reward model, also initialized from the pretrained checkpoint, predicts the page-level outcome reward, using the sum of entity-level rewards from our internal reward system as the supervision target. We also incorporate rule-based format rewards to guide the RL policy. For example, the page should resemble a list of rows, and business-critical rows or entities should not appear too low on the page. 
+
+Open Challenges. Unlike LLM RLHF, which relies on scarce, human-labeled pairwise preference comparisons over unstructured text responses, our setting has direct user feedback at the entity and row level on a structured page. Fully leveraging this richer, struc-tured signal raises two related challenges. (1) Offline evaluation : our current page-level evaluation relies on a reward model the policy is also optimizing against, making it largely circular. Human labels—a common alternative in LLM evaluation—are also problematic, since each user’s preferences depend on personal context that third-party labelers cannot replicate. Candidate directions include dedicated held-out reward models, rule-based evaluations, and counterfactual estimators [ 2, 15 , 34 ]. (2) Decomposition vs. joint modeling : WBC and page-level RL sit at opposite extremes: WBC fully decomposes the page into entity-level optimization (simplifying optimization but losing some interactions across rows and entities), while page-level RL optimizes the entire page jointly without structural decom-position (capturing all interactions across rows and entities but harder to optimize and less sample-efficient). Middle grounds that exploit partial structure—mixed objectives, structured policy pa-rameterizations, or assumptions from user behavior models (e.g., click models [6] or choice models [37])—are promising. 
+
+## 6 Addressing Production Challenges 6.1 Cold Start 
+
+New entities lack the rich interaction data needed to learn robust token embeddings. We address this through two complementary strategies: 
+
+• Context injection. We inject metadata about new or time-sensitive entities (e.g., Live Now events) directly into the Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Wang et al. 
+
+context tokens, providing the model with semantic and time-sensitive information. 
+
+• Semantic embedding fusion. Rather than relying solely on entity ID embeddings learned from user interaction data, we represent each entity as a fusion of its ID embedding and a content-based embedding derived from semantic in-formation such as synopses, cast, transcripts, genres, and video content. This fused embedding serves as the input embedding for the entity’s token in the transformer. During training, with small probability, we randomly replace an en-tity ID token with the generic fallback token (Section 6.2), so the model learns to make recommendations from the content-based embedding alone. This ensures that a new entity has a meaningful representation in the same latent space as established entities as soon as its content metadata is available, even before it has any interaction data. 
+
+## 6.2 Multi-Cadence Incremental Training 
+
+At Netflix scale, daily retraining of a large transformer from scratch is prohibitively expensive, but recommendation models must re-main fresh to capture shifting trends and new catalog additions. We address this with a multi-cadence incremental training strategy (Figure 2). Our training pipeline operates on a cyclic schedule with two distinct rhythms. At a tunable cadence, we conduct a large-scale pretraining and post-training pass on data from a broad historical window. Between these passes, each day we perform an incremental update by continuing post-training from the previous day’s check-point, using a mix of the latest day’s data and a sampled subset of past data. This helps the model stay current with new trends and catalog changes while preventing overfitting and catastrophic forgetting [18]. To manage the daily influx of new tokens (e.g., new entities, rows), we employ fallback tokens. New tokens are initialized us-ing fallback tokens of their type (e.g., [Row_Fallback_Token] for new rows, [Entity_Fallback_Token] for new entities). During training, we randomly replace a small percentage of known tokens with fallback tokens, teaching the model to handle unknown tokens gracefully. 
+
+## 6.3 Enforcing Business Rules 
+
+A Netflix homepage must satisfy structural constraints (e.g., orga-nized as a list of rows) as well as product logic such as deduplication, row pinning, and category consistency (e.g., entities in a Comedy row must be comedies). While training signals can encourage rule adherence, they cannot guarantee strict compliance. We enforce these rules at inference time through constrained decoding . At each autoregressive generation step, we compute a mask of eligible tokens based on the applicable business rules and apply it to the output logits, allowing only rule-compliant tokens to be generated. This is greatly simplified by our custom tokenization (Section 2): because each entity and row is a single token, business rules map directly to token-level masks, avoiding the multi-token bookkeeping that constrained decoding requires over a text vocab-ulary. For example, to pin a specific row (e.g., popular games) at a 
+
+Table 1: WBC post-training performance with and with-out pretraining. Loss is the weighted binary cross-entropy. Row/Entity AUC are sample-weighted ROC-AUC over row/entity targets. Metric With Pretraining Without Pretraining 
+
+Loss 0.321 0.333 Row AUC 0.884 0.879 Entity AUC 0.920 0.910 fixed position (e.g., row position 2), we simply mask out all other tokens at that position. 
+
+## 6.4 Hybrid Row Decoding 
+
+Autoregressive generation ensures that each newly generated to-ken is conditioned on the full preceding context, but generating every entity token one at a time can be expensive. We leverage the structure of the homepage to balance inference efficiency with the amount of contextual information available to each generated token. Within each row, the first few entities are especially important: they receive the most user attention and strongly shape the row’s perceived quality and theme. To reduce inference latency, we use a hybrid row decoding strategy. The model autoregressively gen-erates only the first few entities in each row. Conditioned on this generated prefix, we obtain logits for all eligible entities in a single forward pass and select the top-scoring remaining entities, sub-ject to the same inference-time business-rule constraints described above. This approach preserves autoregressive conditioning where it matters most while avoiding the latency and cost of decoding long rows token by token. 
+
+## 7 Offline Experiments 
+
+No public dataset captures structured homepage construction with user engagement at the row and entity level, so all evaluations use Netflix internal data. We present ablations characterizing how different components of GenPage affect model quality. Because the system was developed iteratively, individual ablations span differ-ent training configurations and data snapshots, so we report only relative comparisons within each study. Unless otherwise noted, experiments use ∼ 200 M-parameter models and report results on a held-out evaluation set. We focus on metrics and findings most relevant to practitioners. 
+
+## 7.1 Does pretraining help? 
+
+We compare WBC post-training with and without a preceding next-token-prediction pretraining stage. Table 1 shows that pretraining yields substantial improvements across all metrics. The gains may look small in absolute terms, but they are large in our production regime: setting aside the sample weighting, an Entity AUC lift from 
+
+0.91 to 0.92 means that for a randomly drawn pair of impressed entities, the model’s misranking rate drops from 9% to 8% —a mag-nitude of improvement we rarely observe from a single change on GenPage: Towards End-to-End Generative Homepage Construction at Netflix Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 120M 200M 450M 900M 
+
+Model Parameters (Log Scale) 
+
+> 2.375
+> 2.400
+> 2.425
+> 2.450
+> 2.475
+> 2.500
+> 2.525
+> Pretrain Loss
+> Pretrain Loss
+> WBC Post-Train Loss
+> 0.322
+> 0.323
+> 0.324
+> 0.325
+> 0.326
+> WBC Post-Train Loss
+
+Figure 3: Pretraining and WBC post-training losses as model size scales from 120M to 900M parameters. Both decrease in a power-law-like fashion, mirroring LLM scaling trends. 
+
+a mature production system. Pretraining the model on the “lan-guage” of the Netflix homepage provides a strong initialization for post-training, mirroring the pretrain-then-post-train recipe behind modern LLMs. 
+
+## 7.2 How does the performance scale with model size? 
+
+We sweep model size from ∼ 120 M to ∼ 900 M parameters (Figure 3) and report the next-token-prediction loss from pretraining and the WBC loss from post-training. Both losses decrease in a power-law-like fashion, mirroring the scaling trends seen in LLMs [ 12 , 17 ]. This confirms that the generative approach scales favorably with model size, suggesting that recommendation quality can be further improved by scaling capacity. 
+
+## 7.3 How does the performance scale with information in user context? 
+
+Over the course of development, we progressively enriched the prompt, both by adding new data sources to the context and by refining how each source is tokenized. With model size held fixed, Figure 4 shows that the WBC post-training loss decreases substan-tially as the context is enriched. The model-size sweep and the context-enrichment sweep span different axes and are not strictly comparable: the model-size study covers roughly an order of magnitude in parameters, while the context study spans the full trajectory of our prompt design. Even so, the gap between the two is striking. Scaling the model from 120 Mto 900 M parameters reduces WBC loss by roughly 1.3% , whereas the cumulative effect of enriching the context is around 6.9% . In several cases, a single well-designed context addition delivers a larger improvement than the entire ∼ 7.5× model capacity scaling. This suggests that, in our regime, enriching the prompt—both what we put in the context and how we tokenize it—yields a sub-stantially larger improvement than scaling model capacity. Person-alization quality appears to be bottlenecked first by the information 1 2 3 4 5 6
+
+> Context Enrichment Step
+> 0.92
+> 0.94
+> 0.96
+> 0.98
+> 1.00
+> 1.02
+> Normalized WBC Loss
+
+Figure 4: WBC post-training loss as we progressively enrich the user context tokens. Loss is normalized to step 1 (= 1.0). Since individual experiments were conducted on different data snapshots, each step’s value is compounded from the measured relative improvement over its predecessor rather than measured directly against a shared baseline. 0 20 40 60 80 100 120 140 
+
+Training Steps 
+
+> 1.0
+> 1.1
+> 1.2
+> 1.3
+> 1.4
+> 1.5
+> 1.6
+> Normalized Value
+> Reward
+> Diversity
+
+Figure 5: Training dynamics for RL post-training. Reward and diversity are shown relative to the initial pretrained checkpoint (1.0). Reward steadily increases as expected. Di-versity also increases substantially despite not being part of the RL objective, suggesting that the policy is optimizing the page as a whole rather than myopically optimizing each token in isolation. 
+
+and representation available to the model, and only then by capac-ity. We expect context enrichment to dominate until the context is saturated, at which point model capacity becomes the primary driver. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Wang et al. 
+
+## 7.4 Does RL post-training optimize at the page level? 
+
+In offline evaluations (Figure 5), RL post-training consistently im-proves the page-level reward over the pretrained checkpoint, but this is largely confirmatory: the reward is computed using the same model the policy is optimizing against. More interestingly, al-though diversity is not part of the RL objective, homepage diversity— measured via pairwise embedding distance among entities on the page—also increases over the course of training. This suggests that the RL-trained policy is optimizing the page as a whole rather than myopically optimizing each token in isolation. 
+
+## 8 Online Evaluation 
+
+We conducted an online A/B test against the current production homepage recommender using a ∼ 200 M-parameter WBC model. In this test, GenPage decoded over the existing production row and entity candidate sets, which help handle many business rules (e.g., eligibility). We evaluate only the WBC variant online; scaling RL training to our data volume, refining the page-level reward model, and strengthening its offline evaluation are ongoing, and we plan to evaluate RL post-training in subsequent A/B tests. Figure 6 shows the result: all five variants delivered statistically significant improvements on the core user engagement metric we use for launch decisions ( 𝑝 < 0.001 ) against a mature, highly opti-mized multi-stage production baseline. The best variant delivered a +0.24% lift (95% CI [0.17% , 0.30% ]). The variants explored differ-ent amounts of random negatives (Section 5.2) and different filters on which production impressions to include in training; that all five delivered comparable lifts suggests the gain is robust to these design choices rather than dependent on a particular configuration. Alongside the engagement wins, we observed unintended shifts in the distribution of impressed entity categories (e.g., new vs. estab-lished titles, TV shows vs. movies). These shifts are not necessarily negative, but they are not something we explicitly optimized for, and they warrant deeper investigation. We suspect these shifts reflect GenPage personalizing more precisely than the production stack — consistent with an increase in homepage impression efficiency, i.e., members engaging with what they saw using fewer impres-sions. This sharper personalization appears to surface production-inherited components (such as the reward system) that aren’t yet aligned with the new generative paradigm. We plan to character-ize the drivers of these shifts and, where appropriate, tune these components so the resulting distributions better align with desired product behavior. We also observed strong responsiveness to in-session signals: the latest in-session actions (Section 2.3) quickly influenced subse-quent recommendations and faded back to long-term preferences after a day or two, confirming that the model effectively attends to action timestamps. This responsiveness emerges naturally from the generative formulation, without the extensive manual feature engineering used in our production stack. Contrary to the common assumption that generative models are slower, GenPage reduced end-to-end serving latency by 20% rela-tive to the baseline. By replacing multiple ranking stages and heavy feature computation with a single transformer model operating on 
+
+Figure 6: Daily core user engagement metric over a 14-day online A/B test. The figure plots the average treatment effect of five GenPage variants (cells 2–6, differing in training-data configurations) against the production baseline (cell 1) on the metric we use for launch decisions. Shaded regions in-dicate 95% confidence intervals. All five variants delivered statistically significant improvements over production, with the best-performing variant (cell 2) reaching a 0.24% relative lift by day 14. 
+
+raw tokenized inputs, we eliminated substantial serving complex-ity and computational overhead. Custom tokenization and hybrid row decoding further reduced the number of decoding steps and thus latency. The 20% reduction was achieved without exhausting the available optimizations; further reductions are possible. This headroom can be reinvested in capacity or richer prompts. 
+
+## 9 Conclusion 
+
+We presented GenPage, an early step toward end-to-end genera-tive Netflix homepage construction: representing user context as a tokenized prompt and generating the entire homepage autore-gressively in real time. This collapses the traditional multi-stage recommender stack into a single transformer that can be optimized end-to-end. In online A/B tests against a mature, highly optimized multi-stage production system, GenPage delivered a +0.24% lift on the core user engagement metric we use for launch decisions ( 𝑝 <
+
+0.001 ), while reducing end-to-end serving latency by 20% . Achiev-ing this required adapting the LLM training recipe—pretraining fol-lowed by WBC or RL post-training—together with a set of domain-specific techniques: custom tokenization for serving efficiency and product control, context injection and semantic embedding fusion for entity cold start, multi-cadence incremental training for model freshness, constrained decoding for business-rule enforcement, and hybrid row decoding for inference efficiency. Two offline findings stand out. First, in our current regime, en-riching the prompt yields a substantially larger improvement than scaling model capacity—a takeaway we expect to generalize to other industry-scale personalization settings, at least until the available context is fully exploited. Second, RL post-training increases home-page diversity even though diversity is not part of the objective—an GenPage: Towards End-to-End Generative Homepage Construction at Netflix Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+indication that page-level optimization captures interactions across rows and entities. Several pieces of the full vision are still in progress: RL post-training has not yet shipped online, long context still relies on handcrafted summarization, and broader LLM-style capabilities— language, multimodality, and reasoning—have not yet been incorpo-rated. One promising direction here is a hybrid tokenization combin-ing our domain-specific tokens with generic text tokens, retaining structured control while inheriting the strengths of general-purpose LLMs; conceptually, this introduces an additional recommendation modality into an LLM. More broadly, we expect many advances from the LLM ecosys-tem to transfer naturally to this setting, and the boundary between an LLM and a recommender system may increasingly blur. Our results suggest this is a viable path toward simpler recommender systems that align more directly with user satisfaction. 
+
+## Acknowledgments 
+
+We thank, in alphabetical order, Abhishek Agrawal, Baolin Li, Casey Stella, Daneo Zhang, Dan Zheng, Donnie DeBoer, Fernando Amat Gil, Grace Huang, Hakan Baba, Inbar Naor, Ishita Verma, Jason Uh, Jimmy Patel, Justin Basilico, Lanxi Huang, Lingyi Liu, Liping Peng, Louis Wang, Michelle Kislak, Nathan Kallus, Nicolas Hortiguera, Paran Jain, Qusai Al-Rabadi, Rein Houthooft, Ryan Lee, Santino Ramos, Scarlet Chen, Shaojing Li, Sheallika Singh, Si Cheng, Wei Wang, and ZQ Zhang for their contributions to this work. 
+
+## References 
+
+[1] Prabhat Agarwal, Anirudhan Badrinath, Laksh Bhasin, Jaewon Yang, Edoardo Botta, Jiajing Xu, and Charles Rosenberg. 2025. PinRec: Outcome-Conditioned, Multi-Token Generative Retrieval for Industry-Scale Recommendation Systems. arXiv:2504.10507 [cs.IR] arXiv:2504.10507. [2] Léon Bottou, Jonas Peters, Joaquin Quinonero-Candela, Denis X. Charles, D. Max Chickering, Elon Portugaly, Dipankar Ray, Patrice Simard, and Ed Snelson. 2013. Counterfactual Reasoning and Learning Systems: The Example of Computational Advertising. Journal of Machine Learning Research 14 (2013), 3207–3260. [3] Minmin Chen, Alex Beutel, Paul Covington, Sagar Jain, Francois Belletti, and Ed H Chi. 2019. Top-k off-policy correction for a REINFORCE recommender system. In Proceedings of the twelfth ACM international conference on web search and data mining . 456–464. [4] Heng-Tze Cheng, Levent Koc, Jeremiah Harmsen, Tal Shaked, Tushar Chandra, Hrishi Aradhye, Glen Anderson, Greg Corrado, Wei Chai, Mustafa Ispir, et al .2016. Wide & Deep Learning for Recommender Systems. In Proceedings of the 1st Workshop on Deep Learning for Recommender Systems .[5] Paul F. Christiano, Jan Leike, Tom B. Brown, Miljan Martic, Shane Legg, and Dario Amodei. 2017. Deep Reinforcement Learning from Human Preferences. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) .[6] Aleksandr Chuklin, Ilya Markov, and Maarten De Rijke. 2022. Click models for web search . Springer Nature. [7] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep Neural Networks for YouTube Recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems (RecSys ’16) . ACM. [8] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as Language Processing (RLP): A Unified Pretrain, Personalized Prompt & Predict Paradigm (P5). In Proceedings of the 16th ACM Conference on Recommender Systems (RecSys) .[9] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Peiyi Wang, Qihao Zhu, Runxin Xu, Ruoyu Zhang, Shirong Ma, Xiao Bi, et al . 2025. DeepSeek-R1 in-centivizes reasoning in LLMs through reinforcement learning. Nature 645, 8081 (2025), 633–638. [10] Ruining He, Lukasz Heldt, Lichan Hong, Raghunandan Keshavan, Shifan Mao, Nikhil Mehta, Zhengyang Su, Alicia Tsai, Yueqi Wang, Shao-Chuan Wang, Xinyang Yi, Lexi Baugher, Baykal Cakici, Ed Chi, Cristos Goodrow, Ningren Han, He Ma, Romer Rosales, Abby Van Soest, Devansh Tandon, Su-Lin Wu, Wei-long Yang, and Yilin Zheng. 2025. PLUM: Adapting Pre-trained Language Mod-els for Industrial-Scale Generative Recommendations. arXiv:2510.07784 [cs.IR] arXiv:2510.07784. [11] Balázs Hidasi, Alexandros Karatzoglou, Linas Baltrunas, and Domonkos Tikk. 2016. Session-Based Recommendations with Recurrent Neural Networks. In 
+
+International Conference on Learning Representations (ICLR) .[12] Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor Cai, Eliza Rutherford, DDL Casas, Lisa Anne Hendricks, Johannes Welbl, Aidan Clark, et al . 2022. Training compute-optimal large language models. arXiv preprint arXiv:2203.15556 10 (2022). [13] Yanhua Huang, Yuqi Chen, Xiong Cao, Rui Yang, Mingliang Qi, Yinghao Zhu, Qingchang Han, Yaowei Liu, Zhaoyu Liu, Xuefeng Yao, Yuting Jia, Leilei Ma, Yinqi Zhang, Taoyu Zhu, Liujie Zhang, Lei Chen, Weihang Chen, Min Zhu, Ruiwen Xu, and Lei Zhang. 2025. Towards Large-Scale Generative Ranking. arXiv:2505.04180 [cs.IR] arXiv:2505.04180; Xiaohongshu RankGPT Team. [14] Hakan Inan, Khashayar Khosravi, and Richard Socher. 2016. Tying word vectors and word classifiers: A loss framework for language modeling. arXiv preprint arXiv:1611.01462 (2016). [15] Thorsten Joachims, Ben London, Yi Su, Adith Swaminathan, and Lequn Wang. 2021. Recommendations as treatments. AI Magazine 42, 3 (2021), 19–30. [16] Wang-Cheng Kang and Julian McAuley. 2018. Self-Attentive Sequential Recom-mendation. In IEEE International Conference on Data Mining (ICDM) .[17] Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. 2020. Scaling laws for neural language models. arXiv preprint arXiv:2001.08361 (2020). [18] James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins, Andrei A Rusu, Kieran Milan, John Quan, Tiago Ramalho, Agnieszka Grabska-Barwinska, et al . 2017. Overcoming catastrophic forgetting in neural networks. Proceedings of the national academy of sciences 114, 13 (2017), 3521– 3526. [19] Aviral Kumar, Aurick Zhou, George Tucker, and Sergey Levine. 2020. Conserva-tive q-learning for offline reinforcement learning. Advances in neural information processing systems 33 (2020), 1179–1191. [20] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In ACM Symposium on Operating Systems Principles (SOSP) .[21] Mingfu Liang, Yufei Li, Jay Xu, Kavosh Asadi, Xi Liu, Shuo Gu, Kaushik Rangadu-rai, Frank Shyu, Shuaiwen Wang, Song Yang, et al . 2026. Generative Reasoning Re-ranker. arXiv preprint arXiv:2602.07774 (2026). [22] Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi, Tianyu Pang, Chao Du, Wee Sun Lee, and Min Lin. 2025. Understanding r1-zero-like training: A critical perspective. In Conference on Language Modeling (COLM) .[23] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll L. Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al . 2022. Training Language Models to Follow Instructions with Human Feedback. In Advances in Neural Information Processing Systems (NeurIPS) .[24] Ofir Press and Lior Wolf. 2017. Using the output embedding to improve language models. In Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 2, Short Papers . 157–163. [25] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al . 2019. Language models are unsupervised multitask learners. OpenAI blog 
+
+1, 8 (2019), 9. [26] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al .2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [27] Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott Gray, Chelsea Voss, Alec Rad-ford, Mark Chen, and Ilya Sutskever. 2021. Zero-Shot Text-to-Image Generation. In International Conference on Machine Learning (ICML) .[28] Alexander Rives, Joshua Meier, Tom Sercu, Siddharth Goyal, Zeming Lin, Jason Liu, Demi Guo, et al . 2021. Biological Structure and Function Emerge from Scaling Unsupervised Learning to 250 Million Protein Sequences. Proceedings of the National Academy of Sciences 118, 15 (2021), e2016239118. [29] Philippe Schwaller, Teodoro Laino, Théophile Gaudin, Peter Bolgar, Christo-pher A. Hunter, Costas Bekas, and Alpha A. Lee. 2019. Molecular Transformer: A Model for Uncertainty-Calibrated Chemical Reaction Prediction. ACS Central Science 5, 9 (2019), 1572–1583. [30] Guangming Sheng, Chi Zhang, Zilingfeng Ye, Xibin Wu, Wang Zhang, Ru Zhang, Yanghua Peng, Haibin Lin, and Chuan Wu. 2025. HybridFlow: A Flexible and Effi-cient RLHF Framework. In European Conference on Computer Systems (EuroSys) .[31] Ilia Shumailov, Zakhar Shumaylov, Yiren Zhao, Nicolas Papernot, Ross Anderson, and Yarin Gal. 2024. AI Models Collapse When Trained on Recursively Generated Data. Nature 631, 8022 (2024), 755–759. [32] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential Recommendation with Bidirectional Encoder Repre-sentations from Transformer. In ACM International Conference on Information and Knowledge Management (CIKM) .[33] Adith Swaminathan and Thorsten Joachims. 2015. Batch learning from logged bandit feedback through counterfactual risk minimization. The Journal of Machine Learning Research 16, 1 (2015), 1731–1755. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Wang et al. 
+
+[34] Adith Swaminathan, Akshay Krishnamurthy, Alekh Agarwal, Miroslav Dudik, John Langford, Damien Jose, and Imed Zitouni. 2017. Off-Policy Evaluation for Slate Recommendation. In Advances in Neural Information Processing Systems (NeurIPS) .[35] Gary Tang, Jiangwei Pan, Henry Wang, and Justin Basilico. 2023. Reward In-novation for Long-Term Member Satisfaction. In Proceedings of the 17th ACM Conference on Recommender Systems (RecSys ’23) . ACM. [36] Yi Tay, Vinh Q. Tran, Mostafa Dehghani, Jianmo Ni, Dara Bahri, Harsh Mehta, Zhen Qin, Kai Hui, Zhe Zhao, Jai Gupta, Tal Schuster, William W. Cohen, and Donald Metzler. 2022. Transformer Memory as a Differentiable Search Index. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) .[37] Kenneth E Train. 2009. Discrete choice methods with simulation . Cambridge university press. [38] Alicia Tsai, Adam Kraft, Long Jin, Chenwei Cai, Anahita Hosseini, Taibai Xu, Zemin Zhang, Lichan Hong, Ed H Chi, and Xinyang Yi. 2024. Leveraging llm reasoning enhances personalized recommender systems. In Findings of the Asso-ciation for Computational Linguistics: ACL 2024 . 13176–13188. [39] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Jiayuan He, Yinghai Lu, and Yu Shi. 2024. Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations. In International Conference on Machine Learning (ICML) .[40] Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Lu Ren, Liao Yu, et al . 2025. OneRec-V2 Technical Report. arXiv preprint arXiv:2508.20900 (2025).
