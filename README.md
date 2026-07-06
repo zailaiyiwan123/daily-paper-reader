@@ -24,6 +24,7 @@
 
 
 
+
 ## 🖼️ 界面预览
 <p align="center">
   <img src="others/demo1.png" alt="Daily Paper Reader 界面预览 1" width="80%" />
