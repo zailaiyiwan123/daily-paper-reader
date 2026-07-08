@@ -2,6 +2,7 @@
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 
 * Conference Papers
+  * ICLR-CVPR 2025, 2026 <!--dpr-conference:iclr-cvpr-2025-2026-->
   * ICLR 2025 <!--dpr-conference:iclr-2025-->
     * pers-gen <!--dpr-conference-topic:iclr-2025:query-pers-gen-->
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/conference/iclr-2025/openreview-iclr-2025-3zdmqgqgke-preference-discerning-in-generative-sequential-recommendation" data-sidebar-item="{&quot;title&quot;: &quot;Preference Discerning in Generative Sequential Recommendation&quot;, &quot;link&quot;: &quot;https://openreview.net/forum?id=3ZDMQGQgkE&quot;, &quot;score&quot;: &quot;9.0&quot;, &quot;selection_source&quot;: &quot;conference_retrieval&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;pers-gen&quot;}], &quot;evidence&quot;: &quot;通过偏好辨别实现生成式序列推荐中的个性化&quot;}">Preference Discerning in Generative Sequential Recommendation</a>
