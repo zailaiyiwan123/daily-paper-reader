@@ -1,0 +1,765 @@
+Title: Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE
+
+URL Source: https://arxiv.org/pdf/2607.02818v1
+
+Published Time: Tue, 07 Jul 2026 00:16:22 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE 
+
+# Artem Matveev 
+
+matfu21@yandex.ru AI VK Moscow, Russia 
+
+# Sergei Makeev 
+
+neuralsrg@gmail.com AI VK Moscow, Russia 
+
+# Aleksei Krasilnikov 
+
+TheKabeton@yandex.ru AI VK Moscow, Russia 
+
+# Vladimir Baikalov 
+
+deadinside@itmo.ru AI VK Moscow, Russia 
+
+# Sergei Liamaev 
+
+liamaev.sergei@gmail.com AI VK Moscow, Russia 
+
+# Kirill Khrylchenko 
+
+elightelol@gmail.com HSE University Moscow, Russia 
+
+## Abstract 
+
+Generative retrieval has become a popular paradigm for large-scale recommendation. However, it is typically trained with supervised next-item prediction objectives that do not directly optimize long-term user satisfaction. In this work, we formulate recommendation as a session-level sequential decision-making problem and introduce an autoregres-sive approach for training generative retrievers with off-policy REINFORCE on pre-collected data. Unlike the one-step off-policy correction used in prior work, we propose a multi-step approxi-mation of importance weights enabled by the autoregressive for-mulation. To support offline evaluation, we train a user feedback model that simulates user responses to generated recommenda-tions. This lets us adapt doubly robust off-policy evaluation for sequential decision-making to recommendation, a setting that has received limited attention. We further introduce a feedback-model-based test-time scaling procedure that simulates future responses and selects recommendations with the highest predicted long-term returns. Experiments on the public large-scale Yambda-5B dataset show that our RL agent improves offline estimates of cumulative ses-sion reward over next-item and next-positive prediction baselines, while largely preserving retrieval quality. Moreover, allocating more inference-time compute to simulating future responses improves model-based long-term return estimates without updating the pol-icy. 
+
+## CCS Concepts 
+
+• Information systems → Information retrieval ; Recommender systems ; • Computing methodologies → Reinforcement learning .
+
+## Keywords 
+
+Off-Policy Learning, Off-Policy Evaluation, REINFORCE, Recom-mender Systems, Reinforcement Learning, Importance Sampling, Candidate Generation  
+
+> Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for third-party components of this work must be honored. For all other uses, contact the owner/author(s).
+> KDD ’26, Jeju Island, Republic of Korea
+> ©2026 Copyright held by the owner/author(s).
+
+ACM Reference Format: 
+
+Artem Matveev, Sergei Makeev, Aleksei Krasilnikov, Vladimir Baikalov, Sergei Liamaev, and Kirill Khrylchenko. 2026. Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE. In Proceed-ings of 5th Workshop on End-End Customer Journey Optimization at KDD 2026. (KDD ’26). ACM, New York, NY, USA, 10 pages. 
+
+## 1 Introduction 
+
+Recommender systems are widely deployed across industry to help users navigate vast collections of content. Their mission is to re-tain millions of users by presenting the most relevant items. To achieve this goal, recommender systems are typically optimized with respect to immediate feedback signals, such as clicks [ 28 ] or repins [ 31 ], which can be intuitively viewed as searching for a local optimum in the space of user interests. 
+
+Reinforcement learning. Reinforcement learning (RL) offers a way to extend this optimization objective to account for long-term re-wards. Intuitively, rather than recommending an item that appears locally optimal at a given instant, the recommender is tasked with selecting a sequence of actions that jointly maximize some notion of user satisfaction (reward). Despite the impressive advances in ro-botics [ 15 ], games [ 23 ], and autonomous driving [ 14 ], deployment of RL recommender system is challenging due to extremely sparse feedback [ 21 ], uncertainty in reward design [ 36 ], infrastructural requirements [35] and the limitations of offline evaluation [3]. Depending on whether the agent is trained through interaction with the environment or using pre-collected data, RL can be di-vided into on-policy and off-policy methods, respectively. On-policy RL may be particularly challenging when low-latency infrastruc-ture is required, which is often the case in online learning, where the deployed model is updated on-the-fly as new user feedback is received [ 35 ]. Moreover, existing on-policy deployments, such as OneRec [ 35 ] and OxygenREC [ 9 ], in fact achieve consistency with the reward model (i.e., the ranker) rather than optimize long-term reward. Another on-policy RL application is the integration of personalized recommendation within language models, such as OneRec-Think [ 17 ]. The RL stage there, however, is mostly de-signed to direct the language model’s reasoning capabilities toward predicting the next interaction instead of optimizing long-term reward. Off-policy methods ease these requirements by utilizing pre-collected data (sampled from the behavior policy), thus enabling batch training.  
+
+> arXiv:2607.02818v1 [cs.IR] 2 Jul 2026 KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea Matveev, Makeev et al.
+
+Arguably, one of the most challenging parts of training an RL recommender is evaluation: how should one determine which of the learned policies is the best? While most works place this burden on A/B tests [ 3, 4], offline evaluation is undoubtedly crucial for rapid experimentation. Off-policy evaluation (OPE) can be thought of as a more sophisticated problem than off-policy learning itself, since the latter is expected to find a direction in which the policy improves, whereas the former must be able to evaluate a policy shifted in an arbitrary direction. Reward models, which are often required by OPE methods, can also find use during inference. In large language models, test-time scaling is a process that iteratively improves generated outputs by scoring candidates with a reward model [ 24 , 29 ]. Prior work has adapted test-time scaling to recommenders in the case of one-step trajectories for maximizing immediate reward [ 8]. In this work, we discuss the application of test-time scaling to the multi-step setting. 
+
+Generative retrieval. Industrial recommenders often decouple the recommendation task into retrieval and ranking stages. Retrievers form a set of potentially relevant candidates, which are then sorted by a ranking model. There are two main reasons why a separate retrieval stage is needed. First, rankers are often slow and require significant compute, and in the case of pairwise ranking, where the ranker determines which of two candidates should be preferred, the search space becomes infeasibly large. Second, rankers suffer from the folding effect [ 32 ], induced by the fact that they are trained on already relevant examples. In recent years, two-tower retrievers with separate user and item encoders have become popular among industry practitioners [ 12 , 13 ,20 , 33 , 34 ]. This is largely because such models enable approximate nearest neighbor search [ 18 ], which allows both encoders to be arbitrarily complex, as their inference is not required at runtime and user and item embeddings can be precomputed in advance. Alternatively, Rajput et al . [22] proposed generative retrieval, which uses transformer memory (parameters) as an end-to-end index. Generative retrieval often relies on representing items as sequences of semantic tokens (semantic IDs), which are typically derived by quantizing content embeddings [ 22 , 35 ]. Quantization, however, requires high-quality content embeddings, and the se-quential structure of semantic IDs increases the compute needed to process an item sequence, since each item is represented by multiple tokens. Following Badrinath et al . [1] , we represent items with dense em-beddings instead of relying on semantic IDs and train a generative model that autoregressively constructs a sequence of recommenda-tions that is intended to maximize long-term user satisfaction. In this paper, we describe the training and evaluation of this model. Our contributions are summarized as follows: (1) We propose autoregressive off-policy training of a REIN-FORCE [ 30 ] generative retriever on the public large-scale dataset Yambda-5B [ 21 ]. In contrast to prior work [ 3 ], our autoregressive setup allows for multi-step approximations of importance weights, which empirically increase the expected reward compared to a one-step approximation. (2) We extend the application of doubly robust estimators for sequential decision-making to the recommendation problem by training a user feedback model. To the best of our knowl-edge, prior work has only explored the case of contextual bandit estimators [27] in recommendation systems. (3) We adapt multi-step test-time scaling to an RL generative retriever by simulating environment dynamics with a user feedback model, whereas previous work has only considered single-step generation [8]. (4) We demonstrate the superiority of an RL agent over next-item prediction and next-positive prediction baselines (which often serve as retriever training objectives) given the same amount of data, training time, and compute. 
+
+## 2 Background 
+
+This section introduces the notation and technical background used throughout the paper. 
+
+## 2.1 Sequential Decision-Making 
+
+Sequential decision-making is often formulated as the Markov De-cision Process (MDP), which is conventionally defined by a tuple 
+
+⟨X , A, 𝑃 𝑟 (𝑥, 𝑎 ), 𝑃 (· | 𝑥, 𝑎 ), 𝑃 0 (𝑥 ), 𝛾 ⟩, 𝑥 ∈ X , 𝑎 ∈ A , where X is the state space, A is the action space, 𝑃 𝑟 (𝑥, 𝑎 ) represents the distri-bution of the stochastic reward 𝑟 (𝑥, 𝑎 ) of taking action 𝑎 in state 
+
+𝑥 , 𝑃 (· | 𝑥, 𝑎 ) is the transition probability distribution, 𝑃 0 (𝑥 ) is the initial state distribution, and 𝛾 ∈ [ 0, 1) is the discounting factor. 
+
+𝜋 (· | 𝑥 ) denotes a policy, which is a probability distribution over the action space conditioned on state 𝑥 . Since we discuss off-policy RL, we separate the behavior policy 𝜋 𝑏 (· | 𝑥 ) (which is used for collecting training data) from the target policy 𝜋 𝜃 (· | 𝑥 )
+
+(which is the output of the training stage). In practice, we often deal with an estimation of the behavior policy b𝜋 𝑏 (· | 𝑥 ), since the real distribution is rarely known. By 𝜉 = (𝑥 0, 𝑎 0, 𝑟 0, . . . , 𝑥 𝑇 𝜉 −1, 𝑎 𝑇 𝜉 −1, 𝑟 𝑇 𝜉 −1, 𝑥 𝑇 𝜉 ) we denote a trajec-tory of length 𝑇 𝜉 generated by policy 𝜋 , where 𝑥 0 ∼ 𝑃 0 (𝑥 ), 𝑎 𝑡 ∼
+
+𝜋 (· | 𝑥 𝑡 ), 𝑥 𝑡 +1 ∼ 𝑃 (· | 𝑥 𝑡 , 𝑎 𝑡 ), and 𝑟 𝑡 ∼ 𝑃 𝑟 (· | 𝑥 𝑡 , 𝑎 𝑡 ). For brevity, we denote such complex distribution as 𝜉 ∼ 𝑃 𝜋 𝜉 and the discounted return as 𝑅 𝑡 1:𝑡 2 (𝜉 ) = Í𝑡 2 
+
+> 𝑡 =𝑡 1
+
+𝛾 𝑡 −𝑡 1 𝑟 𝑡 . Then 𝑅 0: 𝑇 𝜉 −1 (𝜉 ) = Í𝑇 𝜉 −1 
+
+> 𝑡 =0
+
+𝛾 𝑡 𝑟 𝑡 is the discounted return of the trajectory 𝜉 .
+
+𝑉 𝜋 (𝑥 ) and 𝑄 𝜋 (𝑥, 𝑎 ) are the value functions under policy 𝜋 for state 𝑥 and state-action pair (𝑥, 𝑎 ), respectively. They are defined as the expected discounted return of a trajectory starting from state 𝑥 
+
+(or state-action pair (𝑥, 𝑎 )): 
+
+𝑉 𝜋 (𝑥 ) = E𝜉 ∼𝑃 𝜋 𝜉 
+
+h
+
+𝑅 0: 𝑇 𝜉 −1 (𝜉 ) | 𝑥 0 = 𝑥 
+
+i
+
+,𝑄 𝜋 (𝑥, 𝑎 ) = E𝜉 ∼𝑃 𝜋 𝜉 
+
+h
+
+𝑅 0: 𝑇 𝜉 −1 (𝜉 ) | 𝑥 0 = 𝑥, 𝑎 0 = 𝑎 
+
+i
+
+.
+
+We evaluate a policy 𝜋 by the expectation of discounted returns of the trajectories it generates: 𝜌 𝜋 = E𝑥 0∼𝑃 0 [𝑉 𝜋 (𝑥 0)] .
+
+## 2.2 Off-policy REINFORCE Recommender 
+
+The general task of an RL agent is to maximize the expected dis-counted return of a trajectory generated by a policy 𝜋 :
+
+𝜋 𝜃 = arg max  
+
+> 𝜋
+
+J ( 𝜋 ) = arg max  
+
+> 𝜋
+
+E𝜉 ∼𝑃 𝜋 𝜉 
+
+h
+
+𝑅 0: 𝑇 𝜉 −1 (𝜉 )
+
+i
+
+.Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea 
+
+Policy gradient methods [ 16 ] offer a way to optimize this objec-tive directly, for example, using the REINFORCE algorithm [30]: 
+
+∇𝜃 J ( 𝜋 𝜃 ) = E𝜉 ∼𝑃 𝜋 𝜃 𝜉 
+
+ 
+
+> 𝑇 𝜉 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝛾 𝑡 𝑅 𝑡 :𝑇 𝜉 −1 (𝜉 )∇ 𝜃 log 𝜋 𝜃 (𝑎 𝑡 | 𝑥 𝑡 )
+
+
+
+.
+
+This formula assumes that the trajectories are sampled from the same policy that is being optimized. Our agent, however, does not have access to the environment and can only be trained using pre-collected trajectories generated by a behavior policy. Off-policy correction allows trajectories to be sampled from a different pol-icy by reweighting each term by 𝜔 𝑡 1:𝑡 2 (𝜉 ) = Î𝑡 2       
+
+> 𝜏 =𝑡 1
+> 𝜋 𝜃 (𝑎 𝜏 |𝑥 𝜏 )
+> 𝜋 𝑏 (𝑎 𝜏 |𝑥 𝜏 )
+
+≈
+
+Î𝑡 2       
+
+> 𝜏 =𝑡 1
+> 𝜋 𝜃 (𝑎 𝜏 |𝑥 𝜏 )
+> b𝜋 𝑏 (𝑎 𝜏 |𝑥 𝜏 )
+
+[3]: 
+
+∇𝜃 J ( 𝜋 𝜃 ) = E𝜉 ∼𝑃 𝜋 𝑏 𝜉 
+
+ 
+
+> 𝑇 𝜉 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝛾 𝑡 𝜔 𝑡 :𝑇 𝜉 −1 (𝜉 )𝑅 𝑡 :𝑇 𝜉 −1 (𝜉 )∇ 𝜃 log 𝜋 𝜃 (𝑎 𝑡 | 𝑥 𝑡 )
+
+
+
+.
+
+Unlike prior work [ 3 , 4 ], we propose autoregressive training, which allows the entire trajectory to be processed in a single for-ward pass rather than requiring states to be sampled from the discounted state visitation distribution. We therefore do not in-troduce additional bias by ignoring the state visitation frequency difference, which cannot be computed in practice. Furthermore, our autoregressive formulation allows us to estimate 𝜔 𝑡 :𝑇 𝜉 −1 (𝜉 ) pre-cisely instead of keeping a single factor [ 3], which avoids another bias in gradient estimation. Following Chen et al . [3] , we drop the leading factors 𝜔 0: 𝑡 −1 (𝜉 ) to reduce gradient variance and weight each step only by the current and subsequent ratios. However, instead of keeping all 𝑇 𝜉 −𝑡 factors, we experiment with retaining up to 𝐾 of them to control gradient variance. 
+
+## 2.3 Off-policy Evaluation 
+
+Historically, OPE estimators are divided into two branches: methods for contextual bandits and methods for sequential decision-making problems (RL). Contextual bandits may be considered as MDPs with a single step horizon: the context is sampled from the environ-ment and assumed to be independent of the agent’s actions. OPE methods for contextual bandits therefore estimate the reward per context-action pair and average them over the dataset, and only reflect the agent’s ability to maximize the immediate reward. RL estimators, on the other hand, are designed for multi-step MDPs, where the environment responds to the agent’s actions by sampling states from a transition distribution conditioned on the agent’s action. They therefore estimate the expected return of a trajectory. Contextual bandit estimators thus can be seen as a special case of RL estimators where the trajectory has length 1 (following the introduced notations, ∀𝜉 : 𝑇 𝜉 = 1). There are roughly two classes of approaches to OPE, which can be adapted to both contextual bandits and RL. (1) The reason we cannot replay the target policy on the dataset is that the reward is only known for the actions taken by the behavior policy. A straightforward solution is to train a model of an environment and then use it to estimate the performance of the target policy 𝜋 𝜃 . This is the core idea behind the direct method (DM) . In the case of contextual bandits, this model is the mean reward of each context-action pair, and in RL it is either the mean reward b𝑟 (𝑥, 𝑎 ) and state transition b𝑃 (· | 𝑥, 𝑎 ), or the state (state-action) value b𝑉 𝜋 𝜃 (𝑥 )
+
+( b𝑄 𝜋 𝜃 (𝑥, 𝑎 )) function directly: 
+
+b𝜌 𝜋 𝜃  
+
+> 𝐷𝑀
+
+= 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑅 0: 𝑇 𝜉 𝑖 −1 (𝜉 𝑖 ) = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+b𝑉 𝜋 𝜃 (𝑥 𝑖 ),
+
+where 𝜉 𝑖 ∼ b𝑃 𝜋 𝜃  
+
+> 𝜉
+
+(b𝑃 𝜋 𝜃  
+
+> 𝜉
+
+is induced by 𝑃 0 (𝑥 ), b𝑃 (· | 𝑥, 𝑎 ), and 
+
+b𝑟 (𝑥, 𝑎 )) and 𝑥 𝑖 ∼ 𝑃 0 (𝑥 ).Given that the environment model is trained on data pro-duced by another (behavior) policy, it may explore areas ir-relevant to the target policy, which can lead to uncontrolled bias but generally low variance [6, 7]. (2) Another method, called inverse propensity scoring (IPS) ,is based on the idea of estimating the expected reward by reweighting rewards observed under the behavior policy via importance sampling (IS). Throughout this paper, we will use its step-wise variant: 
+
+b𝜌 𝜋 𝜃  
+
+> step-IS
+
+= 1
+
+𝑁 
+
+> 𝑁
+
+∑︁  
+
+> 𝑖 =1
+> 𝑇 𝜉 𝑖 −1
+
+∑︁  
+
+> 𝑡 =0
+
+𝛾 𝑡 𝜔 (𝑖 ) 
+
+> 0: 𝑡
+
+𝑟 (𝑖 ) 
+
+> 𝑡
+
+,
+
+where 𝜔 (𝑖 ) 
+
+> 𝑡 1:𝑡 2
+
+= Î𝑡 2       
+
+> 𝜏 =𝑡 1
+> 𝜋 𝜃 (𝑎 𝜏 |𝑥 𝜏 )
+> 𝜋 𝑏 (𝑎 𝜏 |𝑥 𝜏 )
+
+is the cumulative importance weight for the 𝑡 1-th to 𝑡 2-th step of the 𝑖 -th trajectory 𝜉 𝑖 ∼
+
+𝑃 𝜋 𝑏  
+
+> 𝜉
+
+, and 𝑟 (𝑖 ) 
+
+> 𝑡
+
+is the observed reward. When the behavior policy is known, the IPS estimator is unbiased under the absolute continuity assumption (any state-action pair that has zero probability under the behav-ior policy has zero probability under the target policy as well). However, it often suffers from severe variance due to the unbounded importance weights. In practice, the behav-ior policy is often unknown and must be estimated, which introduces bias into the IPS estimator. Note that Jiang and Li [11] and Farajtabar et al . [7] sug-gest using another variant of the IPS estimator (a step-wise weighted importance sampling estimator) which is biased but reduces variance even further. Our case differs in that the collected behavioral trajectories have different lengths, leading to uneven weighting of trajectory steps and intro-ducing noise to the estimate. We therefore use a step-wise importance sampling estimator (step-IS). To have the best of both worlds, DM and IPS were integrated within the doubly robust (DR) estimator, first for statistics [ 2], then for contextual bandits [6], and finally for RL [7, 11]: 
+
+b𝜌 𝜋 𝜃  
+
+> DR
+
+= 1
+
+𝑁 
+
+> 𝑁
+
+∑︁  
+
+> 𝑖 =1
+> 𝑇 𝜉 𝑖 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+h
+
+𝛾 𝑡 𝜔 (𝑖 ) 
+
+> 0: 𝑡
+
+𝑟 (𝑖 )
+
+> 𝑡
+
+− 𝛾 𝑡  𝜔 (𝑖 ) 
+
+> 0: 𝑡
+
+b𝑄 𝜋 𝜃 (𝑥 (𝑖 ) 
+
+> 𝑡
+
+, 𝑎 (𝑖 ) 
+
+> 𝑡
+
+) − 𝜔 (𝑖 )  
+
+> 0: 𝑡 −1
+
+b𝑉 𝜋 𝜃 (𝑥 (𝑖 ) 
+
+> 𝑡
+
+)i1.
+
+Dudik et al . [6] have shown that the DR estimator for contextual bandits is roughly unbiased when either DM or IPS has low bias (i.e., when either the behavior policy estimate or the reward model is               
+
+> 1Here, b𝑄 𝜋 𝜃 (𝑥 𝑡 , 𝑎 𝑡 )and b𝑉 𝜋 𝜃 (𝑥 𝑡 )denote the expected return of the trajectory suffix, which we treat as a valid trajectory of lenth 𝑇 𝜉 −𝑡 .KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea Matveev, Makeev et al.
+
+accurate). Farajtabar et al . [7] have later extended the bias analysis to the case of RL, proving the bias to be: 
+
+𝐵𝑖𝑎𝑠 (b𝜌 𝜋 𝜃 
+
+> DR
+
+) = |E𝑃 𝜋 𝜃 𝜉 
+
+ 
+
+> 𝑇 𝜉 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝛾 𝑡 𝜆 0: 𝑡 −1 (𝜉 )𝛿 0: 𝑡 (𝜉 )Δ(𝑥 𝑡 , 𝑎 𝑡 )
+
+
+
+|, (1) where 𝜆 0: 𝑡 (𝜉 ) = Î𝑡 𝜏 =0       
+
+> 𝜋 𝑏 (𝑎 𝜏 |𝑥 𝜏 )
+> b𝜋 𝑏 (𝑎 𝜏 |𝑥 𝜏 )
+
+, 𝛿 0: 𝑡 (𝜉 ) = 1 − 𝜆 0: 𝑡 (𝜉 ), and Δ(𝑥, 𝑎 ) =
+
+b𝑄 𝜋 𝜃 (𝑥, 𝑎 ) − 𝑄 𝜋 𝜃 (𝑥, 𝑎 ). Note that similar to contextual bandits [ 6], when the behavior policy is known ( b𝜋 𝑏 = 𝜋 𝑏 , implying that 𝛿 0: 𝑡 (𝜉 ) =
+
+0) or the DM estimator is unbiased ( b𝑄 𝜋 𝜃 (𝑥, 𝑎 ) = 𝑄 𝜋 𝜃 (𝑥, 𝑎 )), the bias of the DR estimator is zero. To the best of our knowledge, in recommender systems, prior work appears to have explored DR only for contextual bandits [ 27 ]. 
+
+## 3 Method 
+
+Recommendation as RL problem. We formulate music recommen-dation as a sequential decision-making problem. The setting corre-sponds to a streaming feed, where at each step, the user interacts with a recommended track, provides feedback, and receives the next recommendation. In our notation, at each step 𝑡 , the state 𝑥 𝑡 is the user history up to this step, and the action 𝑎 𝑡 +1 ∈ A is the track (item) selected from the catalog by a recommender. Feedback includes a binary like indicator 1 {like 𝑡 } and the listened ratio 𝑡 ∈ [ 0, 1]. We define the immediate reward as 𝑟 𝑡 = 𝑟 (𝑥 𝑡 , 𝑎 𝑡 ) = 1 {like 𝑡 } + 110 ratio 𝑡 ,
+
+𝑟 𝑡 ∈ [0, 1.1]. The next state 𝑥 𝑡 +1 is obtained by appending the recommended track and the observed feedback to the user history. We treat sequences of consecutive non-organic interactions (in-teractions with recommended tracks) as trajectories (sessions), since only recommendation events are controlled by the policy. Organic events (i.e., user searching for a specific track) are included as part of the user state, but are not treated as policy actions. Our task is to maximize the expected discounted per-trajectory return, where we set 𝛾 = 0.9.
+
+## 3.1 Parameterization 
+
+Behavior policy. We first train a two-tower model 𝑓 𝑏 that esti-mates the behavior probabilities ˆ𝜋 𝑏 needed to calculate importance weights. The user tower is a causal transformer decoder that inputs a chronologically ordered sequence of events, where each event consists of the context (whether it is an organic or recommendation event), item information (track ID and duration), and user feedback (binary like and quantized listened ratio). The item tower is an MLP that encodes item information. The user-candidate similarity is modeled by the dot-product between the user embedding (behavior transformer hidden state corresponding to input state 𝑥 ) 𝑒 𝑏,𝑥 and the candidate embedding 𝑒 𝑏,𝑐 : 𝑓 𝑏 (𝑥, 𝑐 ) = ⟨𝑒 𝑏,𝑥 , 𝑒 𝑏,𝑐 ⟩.We use the next-item prediction objective with the logQ correc-tion [34]: 
+
+LNIP (𝑥, 𝑐 ) = − log exp {𝑓 𝑏 (𝑥, 𝑐 )} 
+
+exp {𝑓 𝑏 (𝑥, 𝑐 )} + Í𝑛 ∈ N exp {𝑓 𝑏 (𝑥, 𝑛 ) − log 𝑄 (𝑛 )} ,
+
+where N is the sampled negative set and 𝑄 (𝑛 ) is the negative-sampling probability. Since only non-organic interactions are con-trolled by the policy, loss is calculated only for non-organic targets in the user sequence (if any). Note that causal masking enables • • •       
+
+> Off-policy REINFORCE loss
+> •••
+> - context - item - feedback - organic
+> Session 1 Session 2 Session N
+
+Transformer 
+
+Behavior Transformer 
+
+Figure 1: Autoregressive off-policy REINFORCE training. To calculate importance weights in REINFORCE loss, we esti-mate the behavior policy probabilities with a frozen trans-former. The target policy is also parametrized with a trans-former that is trained using REINFORCE loss. Consecutive non-organic events form recommendation sessions (trajecto-ries), serving as targets in REINFORCE. Organic events are only used as a part of user history (state). 
+
+autoregressive training, in which all user states in the batch are encoded with a single transformer forward pass. Behavior probability is then calculated as follows: 
+
+ˆ𝜋 𝑏 (𝑎 | 𝑥 𝑡 ) = exp {𝑓 𝑏 (𝑥 𝑡 , 𝑎 )} 
+
+Í𝑎 ′ ∈ A exp {𝑓 𝑏 (𝑥 𝑡 , 𝑎 ′)} . (2) 
+
+Target policy. The target policy is parameterized with exactly the same architecture as the behavior policy. Furthermore, we initialize the target policy model 𝑓 𝜃 from the trained behavior policy model 
+
+𝑓 𝑏 .The target policy model is trained autoregressively with an off-policy REINFORCE objective over non-organic sessions, while the behavior policy model is frozen. Mini-batch processing requires a single forward pass for both target and behavior policy trans-formers. Note that each user sequence may contain multiple non-organic sessions (trajectories). Figure 1 visualizes a single training step. Unlike prior work, which constructed an independent training example for each state-action pair [ 3 ], we process the whole user sequence in a single forward pass. For a trajectory 𝜉 , we approximate each step’s importance weight with at most 𝐾 policy-ratio factors: 
+
+𝜔 𝑡 :𝑡 +𝐾 −1 (𝜉 ) =   
+
+> min (𝑡 +𝐾 −1,𝑇 𝜉 −1)
+
+Ö
+
+> 𝜏 =𝑡
+
+𝜋 𝜃 (𝑎 𝜏 | 𝑥 𝜏 )
+
+b𝜋 𝑏 (𝑎 𝜏 | 𝑥 𝜏 ) .
+
+Weight capping ¯𝜔 𝑡 :𝑡 +𝐾 −1 (𝜉 ) = min (𝑐, 𝜔 𝑡 :𝑡 +𝐾 −1 (𝜉 )) , where 𝑐 is the clipping threshold, is applied to reduce the variance of gradients. 𝜋 𝜃 
+
+is calculated similarly to Equation 2, but using target policy model 
+
+𝑓 𝜃 instead of 𝑓 𝑏 .Let B be a mini-batch of user sequences, and let S( 𝑖 ) denote the set of non-organic sessions (trajectories) contained in the 𝑖 -th user Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea Session 1  Session 2  Session N  
+
+> Like prediction Listened ratio prediction
+
+Transformer    
+
+> - context - item - feedback - organic
+
+Figure 2: User feedback model. Given the user history and candidate recommendation events, transformer predicts the feedback that the user would provide for each target item. The model has two heads for like prediction and listened ra-tio prediction, which are then used to compute the predicted reward for model-based evaluation. 
+
+sequence. The off-policy REINFORCE gradient is then estimated as: 
+
+∇𝜃 J (B) = 1
+
+Í| B | 
+
+> 𝑖 =1
+
+Í𝜉 ∈ S ( 𝑖 )
+
+Í𝑇 𝜉 −1 
+
+> 𝑡 =0
+
+𝛾 𝑡 ¯𝜔 𝑡 :𝑡 +𝐾 −1 (𝜉 )×
+
+∑︁  
+
+> 𝑢 ∈ B
+
+∑︁ 𝜉 ∈ S ( 𝑢 ) 
+
+> 𝑇 𝜉 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝛾 𝑡 ¯𝜔 𝑡 :𝑡 +𝐾 −1 (𝜉 )𝑅 𝑡 :𝑇 𝜉 −1 (𝜉 )∇ 𝜃 log 𝜋 𝜃 (𝑎 𝑡 | 𝑥 𝑡 )
+
+
+
+.
+
+Note that a single-step estimation of the importance weight pro-posed by Chen et al . [3] is a special case of the above when 𝐾 = 1
+
+and only the current action contributes to the weight. In contrast, our multi-step approximation accounts for several future policy-ratio factors within the same trajectory while avoiding the variance of full-trajectory importance sampling. 
+
+User feedback model. To perform model-based evaluation, as well as test-time scaling, we need to imitate user decisions. Given the current user state 𝑥 𝑡 and a candidate action 𝑎 𝑡 , we train the model that predicts the feedback the user provides after interacting with the recommended track: 
+
+ˆ𝑓 𝑡 ∼ b𝑃 feedback (· | 𝑥 𝑡 , 𝑎 𝑡 ) = b𝑃 like (· | 𝑥 𝑡 , 𝑎 𝑡 ) × b𝑃 ratio (· | 𝑥 𝑡 , 𝑎 𝑡 ).
+
+Note that instead of predicting the reward 𝑟 𝑡 directly, we indepen-dently predict the listened ratio and the probability of the user liking this track. This is because our policy model 𝑓 𝜃 inputs the feedback from each past interaction (which consists of the binary like and the listened ratio), and in order to call this model iteratively to generate the entire trajectory, we have to predict feedback for each trajectory element. The user feedback model is parameterized by a causal trans-former. We want this model to autoregressively predict feedback for each action (non-organic event) in the sequence while taking advantage of "seeing" feedback for all past actions. For these two reasons, we organize the input sequence as action-feedback pairs (each input event yields two input tokens). See Figure 2 for the visualization. We take transformer hidden states that correspond to action in-puts and project them into scalar like ℓlike (𝑥 𝑡 , 𝑎 𝑡 ) and ratio ℓratio (𝑥 𝑡 , 𝑎 𝑡 )... 
+
+... 
+
+... 
+
+## ... 
+
+> — predicted feedback
+> User history
+> Generated rollouts
+> Find rollout with max
+> cumulative reward
+> Return the first
+> item of the
+> rollout to user
+
+## ... 
+
+> — predicted item — common context
+
+... 
+
+> User history:
+> Generated rollouts:
+> — feedback — item — context
+
+Figure 3: Multi-step test-time scaling. Given the user history, we sample 𝑁 roll-outs of length 𝑇 . Each roll-out is scored by its predicted discounted return under the learned feedback model. The procedure returns only the first item from the roll-out with the highest cumulative reward. 
+
+logits, that are used to calculate the corresponding losses: 
+
+Llike (ℓlike (𝑥 𝑡 , 𝑎 𝑡 ), like 𝑡 ) = BCEWithLogits (ℓlike (𝑥 𝑡 , 𝑎 𝑡 ), 1 {like 𝑡 }) ,
+
+Lratio (ℓratio (𝑥 𝑡 , 𝑎 𝑡 ), ratio 𝑡 ) = BCEWithLogits (ℓratio (𝑥 𝑡 , 𝑎 𝑡 ), ratio 𝑡 ).
+
+The final loss is a weighted sum of the above: 
+
+L =∑︁ 
+
+> 𝑡
+
+ 210 Llike (ℓlike (𝑥 𝑡 , 𝑎 𝑡 ), like 𝑡 )+ 810 Lratio (ℓratio (𝑥 𝑡 , 𝑎 𝑡 ), ratio 𝑡 )
+
+
+
+.
+
+Predicted feedback is then calculated as like 𝑡 = 𝜎 (ℓlike (𝑥 𝑡 , 𝑎 𝑡 )) 
+
+and ratio 𝑡 = 𝜎 (ℓratio (𝑥 𝑡 , 𝑎 𝑡 )) . The expected reward is estimated as 
+
+b𝑟 𝑡 = 1
+
+nlike 𝑡 
+
+o
+
++ 110 ratio 𝑡 .In our experiments, we also initialize the user feedback model from the trained behavior policy model 𝑓 𝑏 .
+
+## 3.2 Multi-Step Test-Time Scaling 
+
+At inference time, it is possible to spend additional compute to evaluate several possible future trajectories before selecting a rec-ommendation. Firstly, we are given the current user state 𝑥 0. We build the 𝑇 -step trajectory using the following iterative procedure, which at each step 𝑡 = 0, . . . ,𝑇 − 1 returns the action 𝑎 𝑡 . For the 𝑡 -th step: (1) 𝑁 roll-outs are initialized with the current state: 𝑥 ( 𝑗 ) 
+
+> 𝑡
+
+=
+
+𝑥 𝑡 , 𝑗 = 0, . . . , 𝑁 − 1;(2) each roll-out is continued up to length 𝑇 . Let 𝑡 ′ = 𝑡 , then for the 𝑗 -th roll-out: (a) the trained target policy samples an action 𝑎 ( 𝑗 )  
+
+> 𝑡 ′
+
+∼ 𝜋 𝜃 (· | 
+
+𝑥 ( 𝑗 )  
+
+> 𝑡 ′
+
+);KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea Matveev, Makeev et al. 
+
+(b) the trained user feedback model predicts the feedback (like ( 𝑗 )  
+
+> 𝑡 ′
+
+and ratio ( 𝑗 )  
+
+> 𝑡 ′
+
+) for the sampled action 𝑎 ( 𝑗 )  
+
+> 𝑡 ′
+
+, defin-ing its reward b𝑟 ( 𝑗 )  
+
+> 𝑡 ′
+
+;(c) 𝑡 ′ is incremented, and the generation process is repeated while 𝑡 ′ ≤ 𝑇 − 1;(3) each roll-out is then scored by its predicted discounted re-turn, and the best roll-out, 𝑗 ★, is selected; (4) the new state 𝑥 𝑡 +1 is obtained by appending the predicted action 𝑎 ( 𝑗 ★ ) 
+
+> 𝑡
+
+and feedback like ( 𝑗 ★ ) 
+
+> 𝑡
+
+, ratio ( 𝑗 ★ ) 
+
+> 𝑡
+
+at step 𝑡 to the previous state 𝑥 𝑡 ;(5) 𝑡 is incremented, and the procedure is repeated while 𝑡 ≤
+
+𝑇 − 1.A single iteration of this procedure is visualized in Figure 3. This method is inspired by the general idea of estimating the value of intermediate decisions via Monte-Carlo continuations, as in recent step-level value estimation and test-time scaling ap-proaches [ 24 , 26 ]. Unlike methods that train a separate process reward model, we explicitly perform model-based roll-outs at in-ference time and use their predicted returns to choose the next recommendation. To make this procedure efficient, we reuse the KV-cache of both the target policy and the user feedback model across roll-out steps. 
+
+## 3.3 Supervised Baselines 
+
+We compare the REINFORCE recommender with two supervised baselines that are often used for candidate generation in practice. Similar to the REINFORCE recommender, they both have the same architecture and are initialized from the trained behavior policy model 𝑓 𝑏 .(1) NIP-CE continues next-item prediction for non-organic tar-gets. (2) Positive-CE follows a common candidate-generation setup in which the model is trained only on positive interactions. The interaction is considered positive when 𝑟 (𝑥 𝑡 , 𝑎 𝑡 ) ≥ 0.1
+
+(i.e., it is either liked or listened to in full by a user). Both baselines are trained on the same amount of data as the REINFORCE recommender, requiring the same training time and compute. 
+
+## 3.4 Implementation Details 
+
+To encode the high-cardinality item ID feature, we use multi-hash technique [ 25 ], which applies multiple hash functions to the same item ID, retrieves several embedding table entries, and combines them by summation. The embedding table contains 524,288 rows. The listened ratio is quantized into 12 intervals, and each interval is assigned a unique embedding. Track duration is quantized into 7 intervals, which are then mapped to unique embeddings, similar to the listened ratio. For our transformer models, we set the following hyperparam-eters: num_layers = 4, hidden_dim = 256 , num_heads = 4. All models are trained with AdamW optimizer. The behavior policy is trained with learning_rate = 10 −3 for 10 epochs, using sampled softmax with 16,384 in-batch negative examples. The REINFORCE recommender, as well as the super-vised baselines, is trained for 10 epochs with learning_rate =
+
+10 −4. Their training budgets are matched in terms of data, training time, and compute to ensure a fair comparison. For off-policy RL training, we use up to 10 importance-weight factors and clip the weights at 0.5. The user feedback model is trained for 5 epochs with 
+
+learning_rate = 10 −3.In all test-time scaling experiments, we use a roll-out length of 
+
+𝑇 = 8. We generate candidate roll-outs using top-𝑘 sampling with 
+
+𝑘 = 4.
+
+## 4 Experiments 
+
+We formulate the following research questions: 
+
+• RQ1: Can we improve long-term user satisfaction with pol-icy gradient optimization without sacrificing performance based on standard retrieval metrics and without requiring additional data, training time, or compute? 
+
+• RQ2: Following the LLM experience, can we increase gener-ative retrieval quality with multi-step test-time scaling by taking advantage of user feedback model? 
+
+## 4.1 Experimental Setup 
+
+Data. We conduct experiments on Yambda-5B [ 21 ], a large-scale public dataset. We use its largest version, with five billion user in-teractions, since this scale makes it similar to real-world production scenarios. We believe that dataset scale is particularly important because conclusions made on tiny datasets may not necessarily transfer to an industrial setting [5]. To avoid data leakage [ 10 , 19 ], we use a temporal split: the last week is held out for testing, while the remaining data is used for training. Each user history is split into chunks of 512 consecutive events. 
+
+Evaluation metrics. We divide metrics into two classes: recall-based retrieval metrics and off-policy evaluation metrics. 
+
+Recall-based metrics are used to ensure that RL optimization does not derail retrieval quality. These metrics, however, are not valid estimates of the long-term effect, since they only evaluate the policy at a finite set of points generated by a different policy. We calculate recall using an evaluation index I that contains the top 500,000 most popular tracks from the training period. If the target track is not present in I, we evaluate recall as if the target track had been added to the index, i.e., using the expanded index 
+
+I ∪ { 𝑎 } of size 500,001. This ensures that out-of-index targets are still treated as valid candidates during evaluation. For a user state 𝑥 , a target action 𝑎 , and an evaluation index I,let rank 𝜋  
+
+> I
+
+(𝑎 | 𝑥 ) denote the rank of this action under policy 𝜋 . Then recall@K over a target set D is defined as r𝜋  
+
+> D
+
+@K = 1
+
+|D| ∑︁ (𝑥,𝑎 ) ∈ D 
+
+1
+
+n
+
+rank 𝜋  
+
+> I∪{ 𝑎 }
+
+(𝑎 | 𝑥 ) ≤ 𝐾 
+
+o
+
+.
+
+We report recall@100 on three target sets: (1) all non-organic state-action pairs Dall . Recall on Dall targets measures the ability to clone behavior policy; (2) positive pairs Dpos = {( 𝑥 𝑡 , 𝑎 𝑡 ) ∈ D all : 𝑟 𝑡 ≥ 0.1}. Recall on Dpos targets corresponds to the standard evaluation of a candidate generator on positive interactions; Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea 
+
+Table 1: Recall-based comparison.                 
+
+> Model Dall Dpos D𝑝 00 –05 D𝑝 95 –100
+> NIP-CE 0.3153 0.3217 0.2814 0.2679
+> Positive-CE 0.3029 0.3298 0.2634 0.2662 REINFORCE 0.3086 0.3174 0.2653 0.2655
+
+Table 2: User feedback model evaluation.       
+
+> Model Ratio MAE Like PR-AUC Reward MAE User Feedback Model 0.1771 0.2432 0.0340
+
+(3) return-based slices D𝑝𝐴 –𝐵 = {( 𝑥 𝑡 , 𝑎 𝑡 ) ∈ D all : 𝑅 𝑡 :𝑇 𝜉 −1 (𝜉 ) ∈ [𝑞 𝐴 , 𝑞 𝐵 ]} , where 𝑞 𝐴 and 𝑞 𝐵 are the 𝐴 -th and 𝐵 -th percentiles of the return distribution. In our experiments, we use the low-return slice 𝑝 00 –05 and the high-return slice 𝑝 95 –100 .r𝜋  
+
+> D𝑝𝐴 –𝐵
+
+@K is used as a proxy for analyzing which actions the model tends to reproduce: those associated with low or high future session-level return. The desired behavior is to avoid degrading recall on high-return actions while reducing the likelihood of reproducing low-return actions. To estimate long-term reward, we use OPE estimators intro-duced in subsection 2.3: Step-IS, DM, and DR. Step-IS applies im-portance sampling correction with clipping at 10. DM evaluates the policy using the learned user feedback model. 𝑉 𝜋 (𝑥 ) and 𝑄 𝜋 (𝑥, 𝑎 )
+
+functions are estimated with Monte-Carlo roll-outs using greedy decoding. 
+
+## 4.2 Long-Term User Satisfaction (RQ1) 
+
+Evaluation based on standard retrieval metrics. Table 1 compares the REINFORCE recommender with supervised baselines based on recall@100 across the four different target sets discussed above. Several observations follow from this experiment. First, the best performance across Dall and Dpos is achieved by NIP-CE and Positive-CE baselines, respectively. This is expected, given that these models have been directly optimized for these target sets. Fortunately, the performance gap between the baselines and the REINFORCE recommender is quite modest. Second, there is a clear difference between NIP-CE and the other two models in r𝜋  
+
+> D𝑝 00 –05
+
+@100 , suggesting that the Positive-CE and the REINFORCE recommender are less prone to retrieving actions considered negative in long-term. This observation is a natural consequence of the RL objective: the model should be less likely to reproduce actions associated with low future reward. Based on 
+
+D𝑝 95 –100 , all models seem to perform on-par. 
+
+Off-policy evaluation. We first evaluate the user feedback model, which is a key component of off-policy evaluation. Table 2 shows the prediction quality of the user feedback model. The listened ratio, which is an important signal since it serves as a dense component of the reward, is predicted reasonably accurately. Like prediction is more challenging due to the high sparsity of likes. Note that the fraction of liked tracks in the data is 1.13%, resulting in a PR-AUC of random guessing of around 0.0113. Nevertheless, the reward MAE 
+
+Table 3: Off-policy evaluation comparison. Behavior return is calculated directly from the test data to measure the scale of the expected return.                     
+
+> Model Behavior Return Step-IS DM DR Behavior Policy 0.5855 –––NIP-CE –1.3065 0.5279 0.6046 Positive-CE –1.3317 0.5384 0.6184 REINFORCE –1.4677 0.5395 0.6306
+
+remains low, which enables the model to be used for model-based and doubly robust evaluation. The OPE results are presented in Table 3. First, they confirm that the REINFORCE recommender achieves the best results across all OPE metrics. This is the main experi-mental evidence that the explicit optimization of the discounted per-session return improves long-term utility compared to the su-pervised objectives. Second, Positive-CE also outperforms NIP-CE across all metrics. This indicates that optimizing immediate positive feedback can par-tially improve long-term metrics. However, the gains of Positive-CE are smaller than those of the REINFORCE recommender, illustrat-ing the difference between the local optimization of positive actions and the explicit optimization of cumulative per-session return. An additional insight comes from comparing the Step-IS, DM, and DR estimate values with the mean return of the true behavior policy. The Step-IS estimate differs substantially from the behavior return scale, whereas DM matches it better. This suggests that, in our setting, DM has lower empirical bias than Step-IS. The discrep-ancy in Step-IS can be explained by importance-weight clipping and imperfect estimation of the true behavior policy. More interest-ingly, DR produces the estimate closest to the behavior return scale, which is consistent with its design: it combines historical samples and model-based estimates and can partially offset the biases of both components (See Equation 1). 
+
+## 4.3 Test-Time Scaling (RQ2) 
+
+The goal of the test-time scaling experiments is to determine whether additional roll-out selection at inference, using the learned user feedback model, can improve quality relative to the same model. In other words, we assess whether increasing inference-time com-pute allows the model to discover actions with higher predicted long-term reward. At the same time, it is important to note the limitation of this evaluation. Since both roll-out selection and subsequent evaluation are performed using the same user feedback model, these results do not constitute independent evidence that the real policy quality improves. They only show that the proposed procedure can improve the model-based reward estimate. Nevertheless, this result is non-trivial: under ineffective scaling or an insufficiently informative user feedback model, the dependence of quality on the number of roll-outs could have degenerated into an almost constant curve. Another interesting observation is that such inference-time se-lection allows long-term reward to be captured even for models that were trained with immediate-feedback objectives. In particular, KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea Matveev, Makeev et al. 1 2 4 8 16 
+
+> number of rollouts
+> 0.52
+> 0.54
+> 0.56
+> 0.58
+> 0.60
+> 0.62
+> DM
+> 0.529
+> 0.564
+> 0.588
+> 0.605
+> 0.617
+> Off-Policy RL
+> NIP-CE
+> Positive-CE
+
+Figure 4: DM estimate versus the number of inference-time roll-outs in multi-step test-time scaling with top-𝑘 genera-tion ( 𝑘 = 4) and roll-out length 𝑇 = 8. Increasing the roll-out budget improves the predicted long-term return across all models. Table 4: Ablation on off-policy correction in REINFORCE training.              
+
+> Model Step-IS DM DR r𝜋
+> D𝑝 95 –100 @100 off-policy correction 1.4677 0.5395 0.6306 0.2655 w/o off-policy correction 1.2900 0.5315 0.6130 0.2689
+
+Figure 4 shows that the Positive-CE baseline becomes comparable to Off-Policy RL (REINFORCE) and even slightly outperforms it in terms of the DM estimate. This occurs because, at inference time, we explicitly choose the action that leads to the highest predicted cumulative reward among the considered roll-outs. The NIP-CE baseline performs the worst. Increasing the number of parallel roll-outs yields higher DM estimates for all models. This shows that test-time scaling can provide an additional mechanism for improving model-based long-term utility without changing the parameters of the policy itself. 
+
+## 4.4 Ablation Study 
+
+Off-policy correction. Table 4 demonstrates the importance of off-policy correction when training REINFORCE on data collected under a different policy. Without importance weights, the model ignores the distribution shift between the behavior policy and the target policy. This leads to worse Step-IS, DM, and DR values. At the same time, the variant without correction achieves higher r𝜋  
+
+> D𝑝 95 –100
+
+@100 . This result highlights the limitations of recall-based proxy metrics: a stronger ability to reproduce behavior high-return actions does not necessarily imply a better estimate of the new policy in terms of off-policy value. Therefore, such recall slices are useful as diagnostic checks, but should not be treated as the primary metric of long-term effectiveness. 
+
+Multi-step importance correction. Table 5 shows that using only one factor in the correction weight is insufficient for achieving the best performance. This differs from the setting of Chen et al . [3] ,
+
+Table 5: Ablation on the number of importance-weight fac-tors in off-policy REINFORCE training.                      
+
+> # factors Step-IS DM DR r𝜋
+> Dall @100 11.4109 0.5385 0.6250 0.3106
+> 51.4728 0.5390 0.6292 0.3092 10 1.4677 0.5395 0.6306 0.3086 15 1.4536 0.5395 0.6295 0.3085
+
+Table 6: Ablation on importance-weight capping in off-policy REINFORCE training.                      
+
+> IW cap Step-IS DM DR r𝜋
+> Dall @100 0.50 1.4677 0.5395 0.6306 0.3086
+> 1.00 1.4558 0.5388 0.6295 0.3051 5.00 1.2700 0.5364 0.6249 0.2895 10.00 1.1611 0.5352 0.6306 0.2810
+
+where only the first factor is used. The best result is achieved with 10 factors. Increasing the number of factors beyond 10 does not capture additional gains and may increase variance. Therefore, we use 10 factors in the main experiments. 
+
+Importance-weight capping. Table 6 shows the effect of the clip-ping value for importance weights. A higher cap retains larger correction weights, but also increases gradient variance and may lead to degradation in retrieval quality. In our experiments, a cap of 0.5 achieves the best balance between improving off-policy metrics and maintaining training stability. Therefore, we use it in the main configuration. 
+
+## 5 Discussion 
+
+In our current implementation, the behavior policy, target policy, and user feedback model are trained as separate models. This de-sign makes the experimental setup explicit. However, this is not a fundamental limitation. A practical alternative is a shared backbone with separate behavior, target, and feedback heads. Our prelimi-nary experiments suggest that this parameterization preserves both recall-based and off-policy metrics while simplifying training and deployment. Such a unified architecture would also make test-time scaling more practical. A single model could generate candidate trajectories and estimate their expected utility, turning test-time scaling into an inference-time reranking stage without a separate reward-model stack. This provides a path toward a unified genera-tive recommender rather than a classical cascaded recommendation system. The main limitation of our study is that all results are obtained in an offline setting. Although we use OPE estimators, offline eval-uation cannot fully replace online A/B testing. 
+
+## 6 Conclusion and Future Work 
+
+In this work, we studied off-policy long-term optimization for large-scale generative retrieval. We formulated recommendation Long-Term Optimization for Large-Scale Generative Retrieval with Off-Policy REINFORCE KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea 
+
+as session-level sequential decision-making and trained an autore-gressive generative policy with off-policy REINFORCE on the pre-collected data. Experiments on Yambda-5B show that our method improves off-policy estimates of per-session discounted return com-pared to both next-item prediction and positive-only supervised training, while largely preserving retrieval quality. We also showed that the user feedback model enables off-policy evaluation estima-tions and multi-step test-time scaling, where additional inference-time roll-outs improve model-based long-term return estimates without updating the policy. As the next step, we plan to study the correlation between the offline metrics and online A/B test results in a production candidate generation setting for a short-video platform. Another important direction is model scaling and analyzing how increased model ca-pacity and inference-time compute affect long-term reward opti-mization in generative recommendation. 
+
+## References 
+
+[1] Anirudhan Badrinath, Prabhat Agarwal, Laksh Bhasin, Jaewon Yang, Jiajing Xu, and Charles Rosenberg. 2025. PinRec: Outcome-Conditioned, Multi-Token Generative Retrieval for Industry-Scale Recommendation Systems. arXiv preprint arXiv:2504.10507 (2025). arXiv:2504.10507 [cs.IR] [2] Claes M Cassel, Carl E Särndal, and Jan H Wretman. 1976. Some results on generalized difference estimation and generalized regression estimation for finite populations. Biometrika 63, 3 (1976), 615–620. [3] Minmin Chen, Alex Beutel, Paul Covington, Sagar Jain, Francois Belletti, and Ed H. Chi. 2018. Top-K Off-Policy Correction for a REINFORCE Recommender System. arXiv preprint arXiv:1812.02353 (2018). arXiv:1812.02353 [cs.LG] [4] Minmin Chen, Can Xu, Vince Gatto, Devanshu Jain, Aviral Kumar, and Ed H. Chi. 2022. Off-Policy Actor-Critic for Recommender Systems. In Proceedings of the 16th ACM Conference on Recommender Systems . doi:10.1145/3523227.3546758 [5] Maurizio Ferrari Dacrema, Simone Boglio, Paolo Cremonesi, and Dietmar Jannach. 2021. A Troubling Analysis of Reproducibility and Progress in Recommender Systems Research. ACM Transactions on Information Systems 39, 2, Article 20 (2021), 49 pages. doi:10.1145/3434185 [6] Miroslav Dudik, John Langford, and Lihong Li. 2011. Doubly Robust Policy Evaluation and Learning. In Proceedings of the 28th International Conference on Machine Learning .[7] Mehrdad Farajtabar, Yinlam Chow, and Mohammad Ghavamzadeh. 2018. More robust doubly robust off-policy evaluation. In International Conference on Machine Learning . PMLR, 1447–1456. [8] Chengcheng Guo, Kuo Cai, Yu Zhou, Qiang Luo, Ruiming Tang, Han Li, Kun Gai, and Guorui Zhou. 2026. PROMISE: Process Reward Models Unlock Test-Time Scaling Laws in Generative Recommendations. arXiv preprint arXiv:2601.04674 
+
+(2026). arXiv:2601.04674 [cs.IR] [9] Xuegang Hao, Ming Zhang, Alex Li, Xiangyu Qian, Zhi Ma, Yanlong Zang, Shi-jie Yang, Zhongxuan Han, Xiaolong Ma, Jinguang Liu, Zhen Li, Zhida Jiang, Shusheng Wang, Ning Tang, Yanchen Qiao, Chenxiang Yang, Chen Sun, Jincheng Yuan, Chunhua Peng, Heng Hu, Peijun Yang, Baopeng Yuan, Caiyun Qiu, Zhao-long Xing, Haofei Yuan, Haipeng Zhang, Yuzhang Guo, Weijie Ding, Jiahua Gao, Hao Huang, Zhen Chen, Tongxuan Liu, and Pinghua Gong. 2025. OxygenREC: An Instruction-Following Generative Framework for E-commerce Recommendation. 
+
+arXiv preprint arXiv:2512.22386 (2025). arXiv:2512.22386 [cs.IR] [10] Yitong Ji, Aixin Sun, Jie Zhang, and Chenliang Li. 2023. A critical study on data leakage in recommender system offline evaluation. ACM Transactions on Information Systems 41, 3 (2023), 1–27. [11] Nan Jiang and Lihong Li. 2016. Doubly Robust Off-policy Value Evaluation for Reinforcement Learning. In Proceedings of the 33rd International Conference on Machine Learning . 652–661. [12] Kirill Khrylchenko and Alexander Fritzler. 2023. Personalized Transformer-based Ranking for e-Commerce at Yandex. arXiv preprint arXiv:2310.03481 (2023). [13] Kirill Khrylchenko, Artem Matveev, Sergei Makeev, and Vladimir Baikalov. 2025. Scaling Recommender Transformers to One Billion Parameters. arXiv preprint arXiv:2507.15994 (2025). arXiv:2507.15994 [cs.IR] [14] B Ravi Kiran, Ibrahim Sobh, Victor Talpaert, Patrick Mannion, Ahmad A Al Sallab, Senthil Yogamani, and Patrick Pérez. 2021. Deep reinforcement learning for autonomous driving: A survey. IEEE transactions on intelligent transportation systems 23, 6 (2021), 4909–4926. [15] Jens Kober, J Andrew Bagnell, and Jan Peters. 2013. Reinforcement learning in robotics: A survey. The International Journal of Robotics Research 32, 11 (2013), 1238–1274. [16] Sergey Levine and Vladlen Koltun. 2013. Guided policy search. In International conference on machine learning . PMLR, 1–9. [17] Zhanyu Liu, Shiyao Wang, Xingmei Wang, Rongzhou Zhang, Jiaxin Deng, Honghui Bao, Jinghao Zhang, Wuchao Li, Pengfei Zheng, Xiangyu Wu, Yifei Hu, Qigen Hu, Xinchen Luo, Lejian Ren, Zixing Zhang, Qianqian Wang, Kuo Cai, Yunfan Wu, Hongtao Cheng, Zexuan Cheng, Lu Ren, Huanjie Wang, Yi Su, Ruiming Tang, Kun Gai, and Guorui Zhou. 2025. OneRec-Think: In-Text Reasoning for Generative Recommendation. arXiv preprint arXiv:2510.11639 
+
+(2025). arXiv:2510.11639 [cs.IR] [18] Yu A Malkov and Dmitry A Yashunin. 2018. Efficient and robust approximate nearest neighbor search using hierarchical navigable small world graphs. IEEE transactions on pattern analysis and machine intelligence 42, 4 (2018), 824–836. [19] Zaiqiao Meng, Richard McCreadie, Craig Macdonald, and Iadh Ounis. 2020. Ex-ploring data splitting strategies for the evaluation of recommendation models. In 
+
+Proceedings of the 14th acm conference on recommender systems . 681–686. [20] Nikil Pancha, Andrew Zhai, Jure Leskovec, and Charles Rosenberg. 2022. Pinner-Former: Sequence Modeling for User Representation at Pinterest. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining .ACM, 3702–3712. doi:10.1145/3534678.3539156 [21] Alexander Ploshkin, Vladislav Tytskiy, Alexey Pismenny, Vladimir Baikalov, Evgeny Taychinov, Artem Permiakov, Daniil Burlakov, Eugene Krofto, and Niko-lay Savushkin. 2025. Yambda-5B: A Large-Scale Multi-modal Dataset for Ranking and Retrieval. arXiv preprint arXiv:2505.22238 (2025). arXiv:2505.22238 [cs.IR] [22] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan H. Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Ma-ciej Kula, Ed H. Chi, and Maheswaran Sathiamoorthy. 2023. Recommender Systems with Generative Retrieval. arXiv preprint arXiv:2305.05065 (2023). arXiv:2305.05065 [cs.IR] [23] David Silver, Aja Huang, Chris J Maddison, Arthur Guez, Laurent Sifre, George Van Den Driessche, Julian Schrittwieser, Ioannis Antonoglou, Veda Panneershel-vam, Marc Lanctot, et al . 2016. Mastering the game of Go with deep neural networks and tree search. nature 529, 7587 (2016), 484–489. [24] Charlie Snell, Jaehoon Lee, Kelvin Xu, and Aviral Kumar. 2024. Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters. 
+
+arXiv preprint arXiv:2408.03314 (2024). arXiv:2408.03314 [cs.LG] [25] Dan Tito Svenstrup, Jonas Hansen, and Ole Winther. 2017. Hash Embeddings for Efficient Word Representations. In Advances in Neural Information Processing Systems , Vol. 30. [26] Peiyi Wang, Lei Li, Zhihong Shao, Runxin Xu, Damai Dai, Yifei Li, Deli Chen, Yu Wu, and Zhifang Sui. 2024. Math-Shepherd: Verify and Reinforce LLMs Step-by-step without Human Annotations. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . Association for Computational Linguistics, 9426–9439. doi:10.18653/v1/2024.acl-long.510 [27] Peiyao Wang, Zhan Shi, Amina Shabbeer, and Ben London. 2025. Off-policy eval-uation of candidate generators in two-stage recommender systems. In Proceedings of the Nineteenth ACM Conference on Recommender Systems . 350–359. [28] Ruoxi Wang, Rakesh Shivanna, Derek Zhiyuan Cheng, Sagar Jain, Dong Lin, Lichan Hong, and Ed H. Chi. 2020. DCN V2: Improved Deep & Cross Network and Practical Lessons for Web-scale Learning to Rank Systems. arXiv preprint arXiv:2008.13535 (2020). arXiv:2008.13535 [cs.IR] [29] Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2022. Self-consistency improves chain of thought reasoning in language models. arXiv preprint arXiv:2203.11171 (2022). [30] Ronald J. Williams. 1992. Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning. Machine Learning 8 (1992), 229–256. doi:10.1007/BF00992696 [31] Xue Xia, Pong Eksombatchai, Nikil Pancha, Dhruvil Deven Badani, Po-Wei Wang, Neng Gu, Saurabh Vishwas Joshi, Nazanin Farahpour, Zhiyuan Zhang, and Andrew Zhai. 2023. TransAct: Transformer-based Realtime User Action Model for Recommendation at Pinterest. arXiv preprint arXiv:2306.00248 (2023). arXiv:2306.00248 [cs.IR] [32] Doris Xin, Nicolas Mayoraz, Hubert Pham, Karthik Lakshmanan, and John R Anderson. 2017. Folding: Why good models sometimes make spurious recommen-dations. In Proceedings of the eleventh ACM conference on recommender systems .201–209. [33] Ji Yang, Xinyang Yi, Derek Zhiyuan Cheng, Lichan Hong, Yang Li, Simon Xiaom-ing Wang, Taibai Xu, and Ed H Chi. 2020. Mixed negative sampling for learning two-tower neural networks in recommendations. In Companion proceedings of the web conference 2020 . 441–447. [34] Xinyang Yi, Ji Yang, Lichan Hong, Derek Zhiyuan Cheng, Lukasz Heldt, Aditee Kumthekar, Zhe Zhao, Li Wei, and Ed H. Chi. 2019. Sampling-Bias-Corrected Neural Modeling for Large Corpus Item Recommendations. In Proceedings of the 13th ACM Conference on Recommender Systems . ACM, 269–277. doi:10.1145/ 3298689.3346996 [35] Guorui Zhou, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Qiang Luo, Qianqian Wang, Qigen Hu, et al . 2025. OneRec Technical Report. arXiv preprint arXiv:2506.13695 (2025). arXiv:2506.13695 [cs.IR] KDD ’26, August 09–13,2026, Jeju Island, Republic of Korea Matveev, Makeev et al. 
+
+[36] Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, et al . 2025. OneRec-V2 Technical Report. arXiv preprint arXiv:2508.20900 (2025). arXiv:2508.20900 [cs.IR]
