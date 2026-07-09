@@ -1,0 +1,594 @@
+Title: Stage-Aware Adaptation and Distribution Calibration for Subject-Driven Personalized Text-to-Image Generation
+
+URL Source: https://arxiv.org/pdf/2607.07173v1
+
+Published Time: Thu, 09 Jul 2026 00:39:12 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Stage-Aware Adaptation and Distribution Calibration for Subject-Driven Personalized Text-to-Image Generation 
+
+# Wenyan Xu 1,∗ Alizer Wong 2,3,∗
+
+> 1
+
+# School of Computer Science, Guangdong University of Technology 
+
+> 2
+
+# School of Computer Science, Peking University 3ManXis 
+
+3223004777@mail2.gdut.edu.com aliiiiezer@gmail.com 
+
+> ∗
+
+# Equal contribution 
+
+# Abstract 
+
+Subject-driven personalized text-to-image generation re-quires a pretrained diffusion model to acquire a specific subject from a few reference images while preserving sub-ject identity, following novel text prompts, and maintaining sample diversity. Existing optimization-based methods in-stantiate subject adaptation through full fine-tuning, textual embedding optimization, or low-rank parameter updates; PaRa further constrains personalization from the perspective of parameter rank reduction. However, a uniform low-rank constraint or a uniform adapter strength cannot explicitly distinguish the capacity requirements of different denoising stages. Moreover, inference-time candidate selection driven mainly by identity similarity may compress the selected sam-ples in the visual representation space. We decompose the problem into two complementary components: SPaRa de-notes training-side stage-aware low-rank adaptation, DCAL denotes inference-side distribution-calibrated candidate se-lection, and SPaRa–DCAL denotes the combined framework. Theoretical analysis shows that timestep-dependent scaling controls the effective perturbation magnitude of a low-rank adapter, while identity-biased candidate selection restricts the radius of selected features around the reference cen-ter under explicit conditions. Auditable experiments under the SDXL and DreamBooth 30-subject protocol show that DCAL improves 1-LPIPS, CLIP-I, DINO-I, and CLIP-T on a fixed LoRA candidate pool, while revealing a clear trade-off with CLIP/DINO pairwise diversity and pairwise LPIPS. These results indicate that personalized generation should be evaluated through identity consistency, text alignment, and representation diversity rather than identity metrics alone. 
+
+# 1 Introduction 
+
+Text-to-image diffusion models have evolved from general-purpose image synthesis systems into controllable genera-
+
+Figure 1. Motivation. Stage-agnostic adaptation and identity-only selection may both limit personalization quality. 
+
+tive infrastructure for real content production. Latent Diffu-sion Models and SDXL substantially improve visual fidelity, semantic compositionality, and cross-style transfer under natural-language conditions, which enables generative sys-tems to support e-commerce material creation, intellectual-property assets, personal digital avatars, advertising design, and interactive visual authoring [ 1, 2]. Practical generation targets, however, are rarely abstract categories alone. Many applications require a model to reproduce a concrete sub-ject with stable identity, such as a particular pet, backpack, toy, commodity, or character. Subject-driven personalized text-to-image generation therefore asks a model to capture the fine-grained appearance that distinguishes one instance from other category members using only a few reference images, and then reuse those subject-specific attributes un-der new prompts describing unseen scenes, poses, materials, and styles [ 3, 4 ]. This ability determines whether diffusion models can move beyond open-domain synthesis toward user-level customization and asset-level reuse. 1arXiv:2607.07173v1 [cs.CV] 8 Jul 2026 As illustrated in Fig. 1, few-shot subject personalization is difficult because reference images provide the desired iden-tity and incidental factors at the same time. Backgrounds, camera viewpoints, lighting conditions, occlusions, and lo-cal compositions are entangled with subject appearance in the small reference set. Excessive adaptation can absorb these incidental correlations, causing generated images to remain near the reference-image neighborhood and weak-ening scene editing, pose variation, and style transfer under novel prompts. Insufficient adaptation preserves more of the pretrained category prior, but the generated subject may lose color patterns, silhouettes, textures, local components, or distinctive structures of the target instance. Subject per-sonalization is therefore not a single reconstruction problem. The task is a constrained optimization problem over iden-tity consistency, text editability, and generation diversity. A successful adaptation strategy must regulate the parameter-update subspace, the capacity allocation along the diffusion denoising chain, and the selection bias introduced during inference-time candidate choice. Otherwise, an apparent improvement in identity similarity may be accompanied by degraded prompt responsiveness or visual distribution shrinkage. The evolution of personalized generation methods can be understood as a gradual transition from injecting a new subject into a pretrained model toward constraining how that injection is performed. Textual Inversion links a rare identi-fier to a new subject by optimizing only the corresponding text embedding, which preserves the diffusion backbone but limits the representational bandwidth available for instance-level geometry, local texture, and appearance variations [ 3 ]. DreamBooth expands the optimization target to the diffusion model parameters and introduces a class-prior preservation loss, allowing a rare identifier to bind more strongly to the target subject [ 4]. The additional expressive power also in-creases training cost and overfitting risk, especially when only a few reference images are available. Custom Diffusion subsequently restricts trainable parameters to cross-attention-related weights, reducing the per-subject update scale while retaining compositional concept editing [ 5]. These devel-opments reveal that the central issue is not whether the pre-trained model should be updated, but where adaptation sig-nals should be constrained in parameter space and how those constraints affect identity preservation and text editability. Parameter-efficient adaptation methods further formulate the constraint as optimization within a low-dimensional pa-rameter subspace. LoRA reduces trainable degrees of free-dom through low-rank matrix factorization and has become a common per-subject adaptation mechanism for diffusion fine-tuning [ 6, 7]. SVDiff constructs compact updates in the singular-value space, enabling personalized training with a smaller parameter budget [ 8]. PaRa advances the per-spective from low-rank update addition to parameter rank reduction: instead of adding a low-rank residual to pretrained weights, PaRa learns a low-dimensional projection subspace and removes effective output directions of pretrained pa-rameters, thereby directly shrinking the personalized gen-eration space [ 9 ]. These methods show that low-rank or rank-reduction constraints can mitigate excessive freedom in few-shot fine-tuning. Most constraints, however, still act on the entire denoising process with a uniform rank, a uniform projection, or a uniform adapter strength. Since high-noise steps are closer to the formation of global struc-ture and semantic layout whereas low-noise steps are closer to texture refinement and local appearance correction, stage-independent capacity control implicitly assumes that dif-ferent timesteps demand similar adaptation budgets. This assumption may introduce capacity mismatch among sub-ject identity, text editing, and distribution diversity, which motivates the training-side analysis in Sec. 4. PaRa offers a useful lens for interpreting few-shot overfit-ting as a generative-space constraint problem. By reducing the effective output directions of pretrained weights, param-eter rank reduction encourages the personalized trajectory to remain in a more restricted subspace. This view clarifies the tension between pulling generation toward the target subject and preserving the open-domain variation of the pretrained model. Nevertheless, a uniform rank constraint or a uni-form adapter scaling still imposes the same adaptation bud-get along the denoising chain. For subject personalization, high-noise stages usually influence global subject layout and semantic binding, whereas low-noise stages refine textures, local marks, and fine-grained appearance. A single low-rank strength across all stages may suppress text-driven structural change when the constraint is too strong, or fail to preserve local subject details when the constraint is too weak. A more natural training-side design is to redistribute adaptation ca-pacity over timesteps inside a fixed low-rank subspace rather than expanding the trainable parameter set. SPaRa follows this motivation by defining stage-aware low-rank adaptation through a timestep-dependent scaling function α(t), which modulates the effective perturbation strength of the adapter without changing the shapes of the low-rank matrices or rebranding empirical rank search as a new training objective. Inference also contributes to the final identity-diversity balance. When multiple candidates are sampled for the same subject and prompt, an identity-oriented selector tends to favor candidates near the reference center in CLIP or DINO feature space. Such a selector can improve identity-related scores, but the selected outputs may occupy a smaller feature region and exhibit reduced pairwise diversity. This obser-vation suggests that personalization errors are not solely induced by the training parameters. Candidate selection can also reshape the output distribution after sampling. DCAL is introduced as an inference-side distribution-calibrated candi-date selection rule that combines identity consistency, text 2alignment, and candidate redundancy. The design objective is not to claim a universal Pareto improvement, but to make the selection preference explicit and measurable under a shared evaluation protocol. This paper makes three contributions within clearly stated evidence boundaries. First, we reorganize the error sources of subject-driven personalized diffusion models from the per-spectives of parameter-subspace restriction and candidate-distribution shrinkage, and provide a formal analysis of low-rank reachable subspaces, stage-dependent perturba-tion budgets, and identity-threshold radius constraints in Sec. 4. Second, we formulate SPaRa–DCAL as a modular framework: SPaRa denotes training-side stage-aware low-rank adaptation through the timestep-dependent scaling func-tion α(t), and DCAL denotes inference-side distribution-calibrated selection over a fixed candidate pool. These two components operate on training-side capacity allocation and inference-side candidate choice, respectively, and can be ana-lyzed independently before full combined evaluation. Third, we report auditable controlled results under the SDXL and DreamBooth 30-subject protocol. DCAL improves 1-LPIPS, CLIP-I, DINO-I, and CLIP-T on a fixed LoRA candidate pool, but decreases CLIP/DINO pairwise diversity and pair-wise LPIPS. Stage-aware inference scaling is used only as a boundary experiment that reuses a LoRA checkpoint and changes α(t) during sampling; this result does not replace full training-side validation of SPaRa or SPaRa–DCAL. The resulting claims are therefore limited to the conclusions sup-ported by the available data. 
+
+# 2 Related Work 
+
+2.1 Optimization-Based and Parameter-Efficient Per-sonalization 
+
+Subject-driven text-to-image personalization was first widely formulated as a per-subject optimization problem. Given a few reference images, a pretrained diffusion model is aug-mented with a new concept representation so that the concept can be recomposed under unseen prompts. Textual Inversion compresses a new subject into a learnable text embedding, leaving the backbone model fixed but limiting the amount of instance-level visual information that the conditioning space can encode [ 3 ]. DreamBooth instead fine-tunes the diffu-sion model with a class-prior preservation objective, which strengthens subject appearance preservation at the cost of per-subject optimization and higher overfitting risk [ 4]. These methods establish the key evaluation requirement of person-alized generation: identity preservation and text editability must hold simultaneously, while the few-reference setting naturally induces a trade-off among update scale, training cost, and distribution collapse. Subsequent optimization-based methods reduce the train-able subspace to improve efficiency and stability. Custom Diffusion restricts updates to cross-attention-related weights, which improves multi-concept composition while lowering the optimization footprint [ 5]. LoRA reduces adaptation to low-rank residual matrices and has become a practical mech-anism for efficient diffusion fine-tuning [ 6 , 7]. SVDiff adapts diffusion models through compact singular-value updates, yielding another parameter-efficient formulation for subject customization [ 8 ]. PaRa differs from low-rank residual ad-dition by learning a projection subspace and reducing the effective rank of pretrained parameters, thereby constraining the personalized generation space itself [ 9 ]. The present work follows this rank-constrained perspective, but focuses on the stage dependence of low-rank capacity rather than enlarging the trainable parameter set. Recent optimization-based approaches refine the inter-action among identity, text alignment, and resource ef-ficiency. DisenBooth disentangles identity-relevant and identity-irrelevant factors to reduce the entanglement of sub-ject appearance with background or pose [ 10 ]. AttnDream-Booth separates concept embedding alignment, attention-map learning, and subject identity learning to improve text-aligned personalization [ 11 ]. Hollowed Net targets on-device personalization by temporarily removing deep structures dur-ing training and restoring the original network before infer-ence, reducing memory requirements for LoRA-style adap-tation [ 12 ]. SPaRa is aligned with this parameter-efficient personalization line, but the central question is different: instead of expanding or pruning trainable modules, SPaRa analyzes how a uniform low-rank constraint can mismatch the heterogeneous capacity requirements across diffusion denoising stages. 
+
+2.2 Encoder-Based, Tuning-Free, and Inference-Time Personalization 
+
+A parallel line of work aims to reduce or remove test-time per-subject optimization. InstantBooth maps reference im-ages into conditions that can be injected into a diffusion model through an image encoder and adapter layers, en-abling personalization without test-time fine-tuning [ 13 ]. MS-Diffusion extends zero-shot personalization to multi-subject layout control through grounding tokens, feature resampling, and multi-subject cross-attention [ 14 ]. Univer-salBooth studies model-agnostic personalization by training a visual encoder that can transfer across diffusion backbones with different architectures and functions [15]. These meth-ods typically encode subject information into visual condi-tions or virtual tokens and rely on large-scale offline training of a general mapper, which improves inference usability but changes the fairness boundary of comparison with per-subject optimization methods. Recent tuning-free or plug-in methods also model the separation between intrinsic subject attributes and incidental reference-image factors. CustomContrast introduces a multi-3level contrastive perspective to identify intrinsic subject at-tributes while reducing the influence of viewpoint, pose, and background [ 16 ]. DisEnvisioner decomposes visual prompts into subject-related and subject-irrelevant tokens and en-hances subject-related features for single-image customized generation [ 17 ]. DreamMatcher treats personalization as semantic appearance matching between generated and ref-erence images, using appearance-matching self-attention to strengthen reference fidelity while preserving the structural generation path of the pretrained model [ 18 ]. In contrast to encoder-based or plug-in approaches, our setting does not introduce a large offline-trained encoder and does not modify the SDXL backbone architecture. The study focuses on a controlled per-subject, parameter-efficient adaptation protocol and examines how low-rank capacity scheduling and candidate distribution calibration jointly affect identity consistency, text alignment, and diversity. 
+
+# 3 Preliminary 
+
+3.1 Personalized Diffusion Modeling 
+
+Let s ∈ S denote a subject to personalize, where S is the set of all subjects. The reference image set of subject s is denoted by Ds = {xsi }Ns
+
+> i=1
+
+, where xsi is the i-th reference image and Ns is the number of references. Let pm denote the 
+
+m-th text prompt, where m ∈ { 1, . . . , M }. If K candidates are generated for the same subject and prompt, the k-th candidate is denoted by ysm,k , and the final selected image is denoted by ˆysm. These symbols remain fixed throughout the paper: xsi denotes a reference image, ysm,k denotes a generated candidate, and ˆysm denotes the selected output. We adopt latent diffusion as the base generative frame-work [ 1, 2]. Let z0 denote the clean latent variable encoded from an image x by a variational autoencoder, zt denote the noisy latent variable at diffusion timestep t ∈ { 0, . . . , T −1},
+
+c(pm) denote the text-conditioning representation of prompt 
+
+pm, ϵ denote standard Gaussian noise, and ϵθ (zt, t, c (pm)) 
+
+denote the noise-prediction network with parameters θ. The pretrained model parameters are denoted by θ0, and the subject-adapted parameters are denoted by θs. The standard diffusion objective used during subject adaptation is 
+
+Ldiff (θs) = Ez0,t,ϵ,p m
+
+h
+
+∥ϵ − ϵθs (zt, t, c (pm)) ∥22
+
+i
+
+. (1) Equation (1) defines the base noise-prediction objective and does not introduce an additional supervision loss. The theo-retical analysis does not assume global optimality of the full nonlinear U-Net. Instead, the analysis uses local linear lay-ers and normalized candidate features to derive conditional statements that can be checked empirically. 
+
+3.2 Low-Rank Adaptation and Stage-Aware Scaling 
+
+Let ℓ ∈ L be the index of a network layer equipped with an adapter, where L denotes all adapted layers. The pretrained weight of the ℓ-th layer is W 0 
+
+> ℓ
+
+∈ Rdout   
+
+> ℓ×din
+> ℓ
+
+, and the input feature at timestep t is hℓ,t ∈ Rdin  
+
+> ℓ
+
+. LoRA-style parameter-efficient adaptation writes the layer weight as [6, 7] 
+
+Wℓ(t) = W 0 
+
+> ℓ
+
++ α(t)
+
+r BℓAℓ, (2) where Aℓ ∈ Rr×din  
+
+> ℓ
+
+and Bℓ ∈ Rdout   
+
+> ℓ×r
+
+are low-rank matri-ces, r is the rank, and α(t) is the adapter scaling at diffusion timestep t. Constant α(t) recovers conventional LoRA scal-ing. Timestep-dependent α(t) gives a stage-aware low-rank adaptation form. SPaRa schedules the effective strength 
+
+α(t)/r of the low-rank update and does not change the shapes or rank of Aℓ and Bℓ across timesteps. PaRa describes personalization through parameter rank reduction [ 9 ]. Let Qℓ ∈ Rdℓ×qℓ be a low-dimensional sub-space basis for the ℓ-th layer, with Q⊤ 
+
+> ℓ
+
+Qℓ = I. The corre-sponding orthogonal projection is Pℓ = QℓQ⊤ 
+
+> ℓ
+
+. PaRa-style methods modify effective output directions through projec-tion or residual projection, which provides a baseline per-spective for analyzing how rank constraints restrict reachable update directions. To avoid an undefined notion of denoising-stage differ-ence, the timestep set T = {0, . . . , T − 1} is partitioned into high-noise, middle-noise, and low-noise subsets denoted by 
+
+Thi , Tmid , and Tlo . These subsets satisfy Thi ∪T mid ∪T lo = T
+
+and are pairwise disjoint. Hard, linear, and smooth schedules only change the value rule of α(t); all schedules share the same low-rank matrices Aℓ and Bℓ.
+
+3.3 Candidate Feature Space and Evaluation Quanti-ties 
+
+Let ϕC (·) denote the CLIP image encoder [ 19 ], τC (·) denote the CLIP text encoder, and ϕD (·) denote the DINOv2 image encoder [ 20 ]. For any nonzero vectors a and b, the cosine similarity is 
+
+sim( a, b ) = a⊤b
+
+∥a∥2∥b∥2
+
+. (3) The normalized CLIP image feature is csm,k =
+
+ϕC (ysm,k )/∥ϕC (ysm,k )∥2, the normalized DINOv2 image feature is dsm,k = ϕD (ysm,k )/∥ϕD (ysm,k )∥2, and the normal-ized CLIP text feature is qm = τC (pm)/∥τC (pm)∥2. Be-cause the analysis uses normalized features and cosine simi-larity, normalized CLIP features lie on the unit sphere SdC −1
+
+and normalized DINOv2 features lie on SdD −1. The sphere appears only as the value range induced by ℓ2 normaliza-tion; no tangent-space, geodesic, or manifold-optimization assumption is introduced. Identity consistency, text alignment, and diversity are evaluated by three groups of quantities. M1-LPIPS denotes a subject similarity metric based on the perceptual distance LPIPS [ 21 ]. MCLIP -I and MDINO -I denote identity consis-tency in CLIP and DINOv2 feature spaces. MCLIP -T denotes 4CLIP text-image alignment. MCLIP -Div and MDINO -Div de-note pairwise diversity in CLIP and DINOv2 feature spaces. SSIM is used only as an auxiliary structural similarity re-port [ 22 ]. The experimental interpretation of metrics is given in Sec. 6. The theory uses only normalized features, center similarity, candidate radius, and pairwise distance, avoiding unformalized terms such as divergence or gap. 
+
+# 4 Theoretical Motivation 
+
+This section develops the formal motivation for stage-aware adaptation and distribution-calibrated selection. The analysis does not aim to prove that a particular schedule or selector improves every metric on every data distribution. Instead, the analysis establishes three conditional statements under explicit linearization, bounded-norm, and candidate-ranking assumptions: the effective perturbation of a low-rank adapter is controlled by α(t)/r ; uniform scaling can become infea-sible under heterogeneous stage requirements; and identity-oriented candidate selection can shrink the radius of selected features around a reference center. Complete proofs and boundary discussions are provided in Sec. A. 
+
+4.1 Reachable Subspace of Low-Rank Updates 
+
+The first restriction of low-rank adaptation arises from the rank constraint of the update matrix. For any layer ℓ ∈L, denote the low-rank update by ∆Wℓ(t) = α(t)BℓAℓ/r .Since Aℓ ∈ Rr×din  
+
+> ℓ
+
+and Bℓ ∈ Rdout   
+
+> ℓ×r
+
+, the column space of 
+
+∆Wℓ(t) is restricted by the column space of Bℓ, and the row space is restricted by the row space of Aℓ. This constraint explains why LoRA-style methods reduce trainable freedom, and also clarifies why low-rank adaptation is not equivalent to arbitrary full fine-tuning. 
+
+Proposition 4.1 (Low-rank subspace). 
+
+For any timestep t and adapted layer ℓ, if ∆Wℓ(t) =
+
+α(t)BℓAℓ/r , then rank(∆ Wℓ(t)) ≤ r. Moreover, for any input feature hℓ,t ∈ Rdin  
+
+> ℓ
+
+, the perturbation output 
+
+∆Wℓ(t)hℓ,t belongs to Col( Bℓ).
+
+Proposition 4.1 follows from the submultiplicativity of matrix rank and column-space containment. The proposition is distribution-free and does not depend on training samples. The result shows that the output directions of a low-rank adapter are determined by Col( Bℓ), whereas α(t) changes only the scale of perturbations inside the same column space. SPaRa is therefore formulated as a mechanism for reallo-cating perturbation strength across timesteps inside a fixed low-rank subspace, not as a method that increases reachable directions. 
+
+4.2 Stage-Dependent Perturbation Bound 
+
+The role of α(t) can be analyzed through a local linear layer inside the nonlinear U-Net. Let hℓ,t be the input feature of layer ℓ at timestep t, and assume ∥hℓ,t ∥2 ≤ Hℓ,t for a finite constant Hℓ,t . According to Eq. (2), the output perturbation induced by the low-rank adapter is 
+
+δℓ,t = α(t)
+
+r BℓAℓhℓ,t . (4) 
+
+Lemma 4.2 (Adapter perturbation). 
+
+If ∥Aℓ∥2 ≤ aℓ, ∥Bℓ∥2 ≤ bℓ, and ∥hℓ,t ∥2 ≤ Hℓ,t , then the perturbation in Eq. (4) satisfies 
+
+∥δℓ,t ∥2 ≤ |α(t)|
+
+r bℓaℓHℓ,t . (5) Proposition 4.2 identifies the precise quantity affected by stage-aware scaling. With fixed Aℓ, Bℓ, and feature-norm bound, |α(t)|/r controls the maximum perturbation strength at timestep t. Uniform scaling assigns the same perturbation budget to all timesteps, whereas stage-aware scaling allows different denoising stages to use different budgets. The derivation does not assume that high-noise or low-noise stages are always more important. The stage de-mand depends on the data distribution, prompt type, training dynamics, and evaluation metric. 
+
+Corollary 4.3 (Uniform budget). 
+
+If α(t) = α0 for every t ∈ T , then layer ℓ shares the same scaling factor |α0|/r across all timesteps. In a local region where Hℓ,t varies mildly over t, uniform scaling is equivalent to assigning approximately the same adapter perturbation budget to different denoising stages. 
+
+Proposition 4.3 is not a performance guarantee. The corollary only exposes the temporal constraint implicit in conventional LoRA. Uniform scaling is adequate when dif-ferent timesteps require similar adaptation strength. Uniform scaling may induce capacity mismatch when the sensitivi-ties to subject identity, global layout, or fine-grained texture differ across timesteps. 
+
+4.3 Capacity Mismatch under Heterogeneous Stage Re-quirements 
+
+To avoid treating capacity mismatch as an informal in-tuition, we characterize the adaptation requirement of a timestep through a feasible perturbation-budget interval. For layer ℓ and timestep t, let [Lℓ,t , U ℓ,t ] denote an accept-able perturbation-budget interval under a fixed data distri-bution and evaluation objective, where 0 ≤ Lℓ,t ≤ Uℓ,t .The lower bound Lℓ,t represents the budget below which subject-relevant information may be insufficient, and the upper bound Uℓ,t represents the budget above which text ed-itability or diversity may be affected by excessive adaptation. This interval is an abstract object for analyzing the feasibility of uniform scaling; estimating such intervals would require additional sensitivity experiments. 
+
+Proposition 4.4 (Uniform-scaling feasibility). 
+
+Consider a finite timestep set T . Suppose a nonnegative 
+
+5uniform scaling α0 must satisfy all perturbation-budget con-straints induced by Eq. (5) . Such an α0 exists if and only if the intervals 
+
+ rL ℓ,t 
+
+bℓaℓHℓ,t 
+
+, rU ℓ,t 
+
+bℓaℓHℓ,t 
+
+
+
+, t ∈ T , (6) 
+
+have a nonempty intersection. If the intersection is empty, any uniform scaling violates the budget constraint of at least one timestep. If α(t) is allowed to vary with t and each interval is nonempty, then timestep-wise scaling can satisfy all budget constraints by choosing α(t) inside the corresponding interval. 
+
+Proposition 4.4 provides the mathematical motivation for SPaRa. Stage-aware scaling is not necessary because every task must use a different scaling at every timestep. The necessity arises from a weaker feasibility fact: once the acceptable intervals of different timesteps do not overlap, uniform scaling cannot satisfy all constraints simultaneously. Stage-aware scaling enlarges the feasible family by allowing timestep-specific perturbation budgets. The proposition does not imply that stage-aware scaling is empirically superior by itself, because the actual positions of [Lℓ,t , U ℓ,t ] depend on data, training, and metrics. 
+
+4.4 Contraction of Projection-Based Rank Reduction 
+
+PaRa views personalization as parameter rank reduction through effective output-direction restriction [ 9]. To connect PaRa with stage-aware low-rank adaptation, consider the or-thogonal projection Pℓ = QℓQ⊤ 
+
+> ℓ
+
+defined in Sec. 3.2. For any vector u ∈ Rdℓ , the residual projection (I − Pℓ)u removes the component lying in the subspace spanned by Qℓ.
+
+Proposition 4.5 (Residual projection). 
+
+If Q⊤ 
+
+> ℓ
+
+Qℓ = I, then for any u ∈ Rdℓ ,
+
+∥(I − Pℓ)u∥22 = ∥u∥22 − ∥ Pℓu∥22
+
+≤ ∥ u∥22. (7) Proposition 4.5 supports a limited and precise statement: PaRa-style residual projection cannot increase the Euclidean norm of a projected vector and removes components in-side the subspace spanned by Qℓ. The proposition explains parameter-output contraction, but does not guarantee im-proved identity consistency or text alignment. Accordingly, PaRa is used as the conceptual source of the rank-constrained view, and a same-protocol Full30 result is required before PaRa can serve as a fully comparable main baseline. 
+
+4.5 Conditional Distribution Shrinkage from Identity-Prioritized Selection 
+
+Candidate selection can also reshape the output distribution. Let gsm,k ∈ Sdg −1 denote a normalized image feature, which may be a CLIP feature or a DINOv2 feature. Let ¯gs ∈ Sdg −1
+
+denote the normalized reference center of subject s. The identity score is Ism,k = sim( gsm,k , ¯gs). Given a threshold 
+
+η ∈ [−1, 1] , the identity-constrained candidate set is 
+
+Csm,η = { k : Ism,k ≥ η }. (8) 
+
+Proposition 4.6 (Identity-threshold radius). 
+
+If gsm,k and ¯gs are unit vectors and k ∈ C sm,η , then the candidate feature satisfies 
+
+∥gsm,k − ¯gs∥22 ≤ 2(1 − η). (9) 
+
+Furthermore, if every candidate in a selected set As satisfies the identity threshold η, then the mean squared radius of As
+
+around the reference center is at most 2(1 − η).
+
+Proposition 4.6 shows that a hard identity constraint or a dominant identity ranking signal restricts selected samples to a Euclidean ball around the reference center. The result is not a claim that identity-based selection always decreases every diversity metric. The candidate pool may already be concentrated, and high-identity candidates may still vary in background or pose. The result only identifies an observable risk: if the candidate pool contains samples that are farther from the reference center but stronger in text response or visual variation, identity-prioritized selection may remove those candidates and reduce feature radius, covariance trace, or pairwise diversity. 
+
+4.6 Selection Conflict between Identity and Diversity 
+
+DCAL must handle conflicts among identity consistency, text alignment, and candidate redundancy. Fix a subject s and prompt pm, and let the candidate index set be {1, . . . , K }.Let Ik ∈ [0 , 1] be a normalized identity score, Tk ∈ [0 , 1] 
+
+be a normalized text score, and Dk ∈ [0 , 1] be a normalized diversity or novelty score. A deterministic selector π outputs one candidate index in {1, . . . , K }.
+
+Theorem 4.7 (Single-candidate conflict). 
+
+Assume that two candidates a and b satisfy Ia > I b and 
+
+Da < D b. If a is the unique identity-optimal candidate and 
+
+b is the unique diversity-optimal candidate, no determinis-tic single-candidate selector can simultaneously select the identity maximizer and the diversity maximizer. 
+
+Proposition 4.7 only proves single-output incompatibility when candidate rankings conflict. The theorem does not state that identity and diversity must conflict in every can-didate pool. If one candidate maximizes both Ik and Dk, a deterministic selector can satisfy both objectives. When the optimal candidates differ, the selection rule must explicitly encode a preference over objectives. This observation moti-vates a weighted selection rule instead of treating any single metric as a global optimum. 
+
+Corollary 4.8 (Weighted-selection dominance). 
+
+Let Sk = λI Ik + λT Tk + λD Dk, where λI , λ T , λ D ≥ 0.
+
+6For any two candidates a and b, if λI (Ia −Ib)+ λT (Ta −Tb)
+
+is larger than λD (Db − Da), then the weighted rule ranks a
+
+ahead of b.
+
+Proposition 4.8 shows that the identity, text, and diver-sity weights in DCAL are not decorative hyperparameters. Larger identity and text weights prioritize identity consis-tency and prompt alignment, while a larger diversity weight increases the penalty for redundant candidates. The corollary also explains the empirical pattern in Sec. 6: a selector that improves identity and text metrics can reduce pairwise diver-sity, and recovering diversity may require a joint adjustment of candidate-pool size, guidance scale, selection weights, or additional diversity constraints. 
+
+# 5 Methodology 
+
+Our method operates on top of a per-subject parameter-efficient personalization baseline. Given pretrained diffusion parameters θ0 and a subject reference set Ds, the baseline first trains subject-adapted parameters θs with Eq. (1), and then generates images for each evaluation prompt pm. The complete framework is decomposed into two independent but composable modules. SPaRa denotes training-side stage-aware low-rank adaptation, whose goal is to redistribute adapter perturbation budgets over diffusion timesteps inside a fixed low-rank subspace. DCAL denotes inference-side distribution-calibrated candidate selection, whose goal is to select the final output from a fixed candidate pool by com-bining identity consistency, text alignment, and candidate redundancy. SPaRa–DCAL denotes the complete form in which a training-side SPaRa model generates candidates and DCAL selects the output. The Full30 anchor in Sec. 6 reuses a LoRA checkpoint and changes α(t) only during sampling, so that experiment is named stage-aware inference scaling rather than training-side SPaRa. Figure 2 illustrates the position of each component. SPaRa modifies the adapter scaling function α(t) during subject adaptation, and therefore belongs to the training-side module. DCAL re-scores a candidate pool after model parameters are fixed, and therefore belongs to the inference-side module. This distinction is important for interpreting ex-periments: the completed Full30 evidence evaluates DCAL on LoRA, not a fully trained and evaluated SPaRa–DCAL model. 
+
+5.1 SPaRa: Stage-Aware Low-Rank Adaptation 
+
+Conventional LoRA personalization uses a constant adapter scaling at all diffusion timesteps, corresponding to α(t) = 
+
+α0 in Eq. (2). According to Propositions 4.1 and 4.4, uniform scaling shares a perturbation budget across all stages and cannot satisfy heterogeneous timestep budget constraints when the feasible intervals have no common intersection. SPaRa therefore defines α(t) as a timestep-dependent func-tion while keeping Aℓ, Bℓ, and r unchanged. This design avoids additional adapter matrices and avoids treating stage scheduling as dynamic rank switching. Let the normalized timestep be 
+
+ρ(t) = tT − 1 , ρ(t) ∈ [0 , 1] . (10) A larger t corresponds to a higher-noise stage, and a smaller 
+
+t corresponds to a lower-noise stage. Given thresholds 0 ≤
+
+τlo ≤ τhi ≤ 1, the three stages are represented as follows: 
+
+ρ(t) ≥ τhi corresponds to the high-noise stage, τlo < ρ (t) <τhi corresponds to the middle-noise stage, and ρ(t) ≤ τlo 
+
+corresponds to the low-noise stage. A two-stage schedule uses a single threshold τ in place of τlo and τhi .The two-stage hard schedule is 
+
+αhard (t) = 
+
+(
+
+αhi , ρ(t) ≥ τ, αlo , ρ(t) < τ, (11) where αhi and αlo denote the scaling values for high-noise and low-noise stages. To avoid discontinuity near the thresh-old, a smooth gate β(t) ∈ [0 , 1] can be used: 
+
+αsmooth (t) = αlo + ( αhi − αlo )β(t). (12) The gate β(t) may take a linear, cosine, or sigmoid form, but every valid gate must satisfy the range constraint β(t) ∈
+
+[0 , 1] . If αhi = αlo = α0, SPaRa reduces to conventional LoRA scaling. If β(t) is constant over all timesteps, the smooth schedule also reduces to stage-independent adapta-tion. These boundary cases make SPaRa a strict extension of conventional low-rank adaptation rather than an incompa-rable training objective. 
+
+5.2 Relation to LoRA and PaRa 
+
+LoRA, PaRa, and SPaRa constrain different aspects of per-sonalization. LoRA restricts the trainable parameter scale through the low-rank residual BℓAℓ. PaRa restricts effective output directions of pretrained parameters through projec-tion or residual projection. SPaRa does not change the rank of the low-rank matrices and does not learn an additional projection space; it introduces timestep dependence into the scaling term of Eq. (2). When SPaRa is applied to a LoRA baseline, the training objective remains Eq. (1), and the train-able variables remain Aℓ and Bℓ. When SPaRa is applied to a PaRa-style baseline, stage scheduling only changes the effective strength of the corresponding low-rank or projec-tion module across timesteps. This relation separates three result types in the experiments: LoRA baseline, stage-aware inference scaling that changes α(t) only during sampling, and genuine training-side SPaRa that uses α(t) during adap-tation. 
+
+5.3 Candidate Pool Generation 
+
+After training θs, the candidate generation stage fixes model parameters and performs no gradient update. Let Gθs de-note the generation function jointly defined by the adapted 7Figure 2. Overview of SPaRa–DCAL. Given reference images and a text prompt, SPaRa introduces timestep-dependent low-rank adaptation strength during subject-specific training. Candidate generation produces multiple images for each prompt. DCAL selects the final output using identity consistency, text alignment, and candidate redundancy. 
+
+diffusion model, sampler, and decoder. Let ξk denote the 
+
+k-th random seed or initial noise, and let ω denote fixed sampling settings including the number of sampling steps, classifier-free guidance scale, resolution, and other inference configurations. For subject s and prompt pm, the candidate pool is 
+
+Ysm = ysm,k | ysm,k = Gθs (pm, ξ k, ω ), k = 1 , . . . , K .
+
+(13) When K = 1 , candidate-pool generation reduces to con-ventional single-sample inference. When K > 1, DCAL selects ˆysm from Ysm. A larger K provides more potentially high-identity or high-text-alignment candidates, but linearly increases sampling and feature-extraction cost. Since the additional cost is decoupled from training, DCAL affects only inference. 
+
+5.4 DCAL: Distribution-Calibrated Candidate Selec-tion 
+
+DCAL replaces default random-seed selection or single identity-score selection with three signals: identity consis-tency, text alignment, and candidate redundancy. The CLIP and DINOv2 reference centers of subject s are 
+
+¯cs =
+
+PNs 
+
+> i=1
+
+ϕC (xsi )
+
+PNs 
+
+> i=1
+
+ϕC (xsi ) 2
+
+, ¯ds =
+
+PNs 
+
+> i=1
+
+ϕD (xsi )
+
+PNs 
+
+> i=1
+
+ϕD (xsi ) 2
+
+. (14) For candidate ysm,k , the normalized features csm,k , dsm,k , and 
+
+qm are defined in Sec. 3.3. The identity consistency score and text-alignment score are 
+
+Ism,k = 12 sim( csm,k , ¯cs) + 12 sim( dsm,k , ¯ds),T sm,k = sim( csm,k , q m).
+
+(15) To avoid scale mismatch among scores, DCAL applies min-max normalization inside each candidate pool, denoted by 8Norm sm(·). Let As be the set of images selected for subject 
+
+s during greedy selection. If As is empty, set Dsm,k = 0 .Otherwise, define the diversity reward as 
+
+Dsm,k = 1 − max 
+
+> ˆy∈A s
+
+sim 
+
+
+
+csm,k , ϕC (ˆ y)
+
+∥ϕC (ˆ y)∥2
+
+
+
+. (16) Equation (16) penalizes candidates that are too close to al-ready selected images, corresponding to the diversity objec-tive discussed in Proposition 4.7. The final candidate score is 
+
+Ssm,k = λI Norm sm(Ism,k ) + λT Norm sm(T sm,k )+ λD Norm sm(Dsm,k ). (17) where λI , λT , and λD control identity consistency, text alignment, and diversity reward. The final output is 
+
+ˆysm = ysm,k ∗ , k∗ = arg max  
+
+> k∈{ 1,...,K }
+
+Ssm,k . (18) Equations (17) and (18) show that DCAL acts only at the candidate-selection stage. DCAL does not change θs, the training loss in Eq. (1), or the internal sampler update. If 
+
+λD = 0 , DCAL reduces to identity/text weighted selec-tion. If λI = λT = 0 , DCAL reduces to pure diversity selection. These degenerate forms define natural ablation boundaries, but numerical conclusions require corresponding experiments. 
+
+5.5 Computational Complexity 
+
+SPaRa does not add extra low-rank matrices beyond Aℓ and 
+
+Bℓ compared with conventional LoRA. The only additional computation is evaluating α(t) at the current timestep during training or sampling. Under the same adapted layer set 
+
+L and the same rank r, SPaRa has the same number of trainable parameters as conventional LoRA. The additional cost of DCAL comes from candidate sampling, candidate feature extraction, and candidate scoring. For |S| subjects, 
+
+M prompts per subject, and K candidates per prompt, both CLIP and DINOv2 feature extraction require O(|S| M K )
+
+forward passes. The score computation in Eq. (17) is linear in the number of candidates. These operations occur only at inference time and do not change per-subject training parameter count. 
+
+# 6 Experiments 
+
+6.1 Experimental Setup 
+
+Experiments are conducted on subject-driven personalized text-to-image generation. The dataset follows the Dream-Booth 30-subject protocol [ 4]. Each subject contains a small set of reference images and is personalized through prompts containing the unique identifier [V ]. The generative back-bone is SDXL 1.0 [ 2 ]. Unless otherwise stated, controlled comparisons use the same SDXL backbone, the same Dream-Booth subject split, and the same evaluation scripts. Full30 denotes the complete evaluation over 30 subjects. Held-out9 denotes a nine-subject held-out subset. Min3 is used only for fast screening and early ablation. To avoid turning screening experiments into final claims, the main table pri-oritizes Full30 results, while Heldout9 and Min3 results are used only for module analysis, parameter sensitivity, and supplementary discussion. Baselines include DreamBooth LoRA r = 16 , stage-aware inference scaling, DCAL on LoRA, and reserved rows for PaRa, training-side SPaRa, and SPaRa–DCAL. Dream-Booth LoRA adapts SDXL per subject with rank 16 , LoRA alpha 16 , maximum training steps 200 , batch size 1, learn-ing rate 10 −4, resolution 1024 , DDIM sampling steps 50 ,classifier-free guidance scale 7.5, training seed 42 , and sam-pling seed 0. Stage-aware inference scaling reuses the same LoRA checkpoint and changes only the sampling-time scal-ing configuration with αhi = 14 and αlo = 16 ; this setting is not training-side SPaRa and is used only as a boundary analysis of timestep-dependent scaling. DCAL on LoRA reuses the DreamBooth LoRA r = 16 checkpoint, performs no additional adapter training, generates K = 4 candidates for each prompt, and selects the final output using Eq. (17). Evaluation metrics follow the definitions in Sec. 3. Iden-tity consistency is measured by best-train SSIM, best-train 1-LPIPS, CLIP-I, and DINO-I. Text alignment is measured by CLIP-T. Diversity is measured by CLIP pairwise diver-sity, DINO pairwise diversity, and pairwise LPIPS. Except for context-dependent SSIM-style distances, all metrics ex-plicitly marked with an upward arrow in Tabs. 1 to 4 and 6 are interpreted as higher-is-better. The completed experiments do not provide complete same-protocol SDXL Full30 results for Textual Inversion, Custom Diffusion, SVDiff, DisenBooth, AttnDreamBooth, DreamMatcher, or recent encoder-based methods. These methods are therefore not included in the main numerical table. Table 1 lists the relation among LoRA, PaRa, SPaRa, DCAL, and SPaRa–DCAL, together with the available data boundary. The purpose of this table is to prevent mixing methods from different protocols, backbones, or incomplete result sets. 
+
+6.2 Full30 Controlled Comparison 
+
+Table 2 reports the Full30 controlled comparison. Com-pared with DreamBooth LoRA r = 16 , DCAL on LoRA improves 1-LPIPS, CLIP-I, DINO-I, and CLIP-T by 0.0191 ,
+
+0.0235 , 0.0746 , and 0.0034 , respectively. The same metrics improve on 23, 29, 28, and 22 out of 30 subjects, respec-tively. These results indicate that candidate selection can more consistently favor samples with stronger subject con-sistency and better text matching when the trained adapter is fixed. The improvement, however, comes with a clear 9Table 1. Method relation and available data status. Method Position Relation to baseline Available data LoRA r = 16 Training DreamBooth-LoRA baseline Full30 complete results available PaRa Training Parameter rank-reduction baseline Only a five-subject rank sweep; same-protocol Full30 missing SPaRa Training Stage-aware low-rank adaptation us-ing α(t) during training Strict training-side Full30 missing; no numerical claim reported Stage-aware inference scaling Inference Reuses LoRA checkpoint and changes α(t) only at sampling Full30 anchor available; used as boundary analysis DCAL on LoRA Inference Distribution-calibrated selection over a LoRA candidate pool Full30 complete results available SPaRa–DCAL Training + inference SPaRa generates candidates and DCAL selects outputs Same-protocol Full30 missing; no nu-merical claim reported Table 2. Full30 controlled comparison. Method N BT-SSIM ↑ 1-LPIPS ↑ CLIP-I ↑ DINO-I ↑ CLIP-T ↑ CLIP-Div ↑ DINO-Div ↑ Pair-LPIPS ↑                             
+
+> DreamBooth LoRA r= 16 30 0.2418 0.3585 0.8011 0.6704 0.3219 0.2669 0.4445 0.6753 Stage-aware inference scaling 30 0.2330 0.3537 0.7906 0.6544 0.3234 0.2778 0.4618 0.6751 DCAL on LoRA 30 0.2401 0.3775 0.8246 0.7450 0.3253 0.2366 0.3279 0.6439
+> PaRa, training-side SPaRa, and SPaRa–DCAL are omitted because complete same-protocol SDXL Full30 results are unavailable.
+
+diversity cost. CLIP-Div, DINO-Div, and pairwise LPIPS decrease by 0.0302 , 0.1166 , and 0.0313 , respectively; these three diversity metrics improve over the LoRA baseline on only 4, 1, and 1 subject, respectively. This pattern is con-sistent with Proposition 4.6: identity-biased selection can shrink the selected feature distribution. DCAL should there-fore be interpreted as a selector that strengthens identity and text metrics while sacrificing part of the distributional diver-sity, rather than as a method that dominates the baseline on every axis. Stage-aware inference scaling exhibits a different trade-off on Full30. Compared with the LoRA baseline, CLIP-Div and DINO-Div increase by 0.0109 and 0.0173 , and both metrics improve on 21 out of 30 subjects. In con-trast, 1-LPIPS, CLIP-I, and DINO-I decrease by 0.0048 ,
+
+0.0106 , and 0.0160 . The Full30 anchor therefore only shows that inference-time timestep scaling can change the identity-diversity balance. This result is not evidence that training-side SPaRa outperforms LoRA. Figure 3 visualizes CLIP-I and DINO-Div from Tab. 2. DCAL on LoRA lies in the region with higher CLIP-I and lower DINO-Div. Stage-aware inference scaling lies in the region with lower CLIP-I and higher DINO-Div. The dis-tribution supports the view that personalization should be evaluated as a multi-objective problem rather than a single identity-maximization problem. 
+
+6.3 Module Analysis 
+
+Table 3 reports module-level comparisons on Heldout9. Stage-aware scaling anchor, Soft-strata LoRA, and Soft-
+
+Figure 3. Full30 identity-diversity trade-off. DCAL on LoRA im-proves CLIP-I but lowers DINO-Div, while stage-aware inference scaling moves in the opposite direction. 
+
+strata lateboost do not show stable identity-consistency ad-vantages over DreamBooth LoRA r = 16 . CLIP-I and DINO-I remain below the LoRA baseline, and the change in 1-LPIPS is small. Soft-strata lateboost increases best-train 1-LPIPS only from 0.3795 to 0.3804 , and CLIP-Div and DINO-Div are close to or slightly below the baseline. The current stage-aware adaptation experiments therefore support only the claim that capacity scheduling changes the identity-diversity trade-off; these experiments do not sup-port a stronger conclusion that stage-aware adaptation stably outperforms LoRA on Heldout9. 10 Table 3. Heldout9 module analysis. Method N 1-LPIPS ↑ CLIP-I ↑ DINO-I ↑ CLIP-T ↑ CLIP-Div ↑ DINO-Div ↑ Pair-LPIPS ↑                                          
+
+> LoRA r= 16 90.3795 0.8158 0.6754 0.3259 0.2450 0.4295 0.6512 Stage-aware scaling anchor 90.3744 0.8049 0.6645 0.3265 0.2573 0.4387 0.6539 Soft-strata LoRA 90.3792 0.8066 0.6663 0.3247 0.2542 0.4390 0.6495 Soft-strata lateboost 90.3804 0.8094 0.6720 0.3243 0.2467 0.4282 0.6514 DCAL on LoRA 90.3993 0.8431 0.7720 0.3253 0.2080 0.2804 0.6196
+
+DCAL on LoRA improves CLIP-I and DINO-I on Held-out9 and increases 1-LPIPS from 0.3795 to 0.3993 . At the same time, Tab. 3 shows that DCAL on LoRA reduces CLIP-Div from 0.2450 to 0.2080 , DINO-Div from 0.4295 
+
+to 0.2804 , and pairwise LPIPS from 0.6512 to 0.6196 . This module analysis is consistent with the Full30 results in Tab. 2: the main contribution of candidate selection is to improve identity and part of the text-related metrics, not diversity. Training-side SPaRa, SPaRa–DCAL, and DCAL variants without the identity, text, or diversity term have not com-pleted same-protocol evaluation. These missing rows are not reported numerically, and their trends are not inferred. The complete checklist is moved to Sec. B. 
+
+6.4 Sensitivity and Stability Boundary 
+
+Table 4 analyzes DCAL parameter changes on Heldout9. All listed DCAL variants exceed the LoRA r = 16 baseline on 1-LPIPS, CLIP-I, and DINO-I, indicating a degree of sta-bility for identity-related metrics under candidate selection. Variants with lower guidance scale and more candidates preserve relatively high identity and text-oriented perfor-mance. DINO-Div and pairwise LPIPS, however, remain substantially lower than the LoRA baseline. Increasing the candidate count, changing guidance scale, or adjusting se-lection weights can improve identity and text metrics, but the completed data do not show a stable recovery of DINO representation diversity. Since these sensitivity results cover only Heldout9, the analysis is not extrapolated as a Full30 conclusion. Robustness evidence remains incomplete. The main text reports only the completed Heldout9 sensitivity analysis and Full30 comparison. Experiments over random seeds, candidate number K, guidance scale, subject type, prompt type, reference image count, and feature-level covariance trace, effective rank, and mean pairwise distance before and after candidate selection require additional data. The full list is provided in Sec. B. For available indirect evidence, Tab. 2 and Fig. 3 support conclusions about pairwise diversity, but do not replace covariance or effective-rank analysis. 
+
+6.5 PaRa Baseline and Rank Sweep 
+
+SPaRa is motivated by the parameter rank-reduction per-spective of PaRa. A formal PaRa baseline should therefore be included in the final experimental design. The currently available PaRa data contain only a five-subject rank sweep, shown in Tab. 5. These results are not comparable with the Full30 main table in subject count, evaluation purpose, or protocol. Accordingly, PaRa is reserved as a missing base-line. A final claim about improvement over PaRa requires an official implementation or a strict reproduction under the same SDXL Full30 protocol with 1-LPIPS, CLIP-I, DINO-I, CLIP-T, CLIP-Div, DINO-Div, and pairwise LPIPS. 
+
+6.6 Efficiency and Cost 
+
+Table 6 summarizes auditable cost information. Dream-Booth LoRA r = 16 and DCAL on LoRA use the same trained adapter and the same 200-step per-subject training. DCAL therefore does not add training parameters or train-ing steps. The additional cost of DCAL occurs mainly at inference: each prompt requires selecting one result from 
+
+K = 4 candidates and encoding candidate and reference im-ages with CLIP and DINOv2. Under K = 4 , the sampling cost is approximately four times that of single-sample LoRA inference, plus representation-encoding cost for candidate selection. Completed logs do not contain training wall-clock time, peak memory, or per-image inference latency, and the paper therefore does not report unrecorded timing or memory values. 
+
+6.7 Visualization and Failure Modes 
+
+The quantitative visualization in Fig. 3 highlights the main failure mode in the Full30 comparison: when a selection rule strengthens identity consistency, DINOv2 pairwise diversity decreases. In addition to the quantitative scatter plot, Fig. 4 provides a schematic qualitative visualization aligned with the task setting. Each row contains reference images, a prompt, LoRA output, SPaRa output, DCAL selected output, and a failure case. The figure is used to illustrate visual patterns and failure-case categories considered in this work, not as additional evidence of method superiority. The rightmost column in Fig. 4 corresponds to two fail-ure categories that require examination in future real-output examples. The first category is insufficient subject preserva-tion: the generated image follows the scene prompt but drifts in color, texture, local structure, or distinctive components. The second category is excessive concentration around can-11 Table 4. Heldout9 DCAL parameter sensitivity. Method K CFG floor λI λT λD 1-LPIPS ↑ CLIP-I ↑ DINO-I ↑ DINO-Div ↑
+
+LoRA r = 16 1 7.5 – – – – 0.3795 0.8158 0.6754 0.4295 DCAL original 4 7.5 – 1.00 0.35 0.15 0.3993 0.8431 0.7720 0.2804 DCAL-diverse-1 8 7.5 0.03 0.75 0.35 0.60 0.4057 0.8511 0.8159 0.2249 DCAL-diverse-2 8 7.5 0.06 0.65 0.35 0.90 0.4069 0.8449 0.8114 0.2386 DCAL-multiseed-1 9 7.5 0.06 0.75 0.35 0.30 0.4103 0.8609 0.8104 0.2251 DCAL-multiseed-2 9 7.5 0.10 0.65 0.35 0.50 0.4067 0.8590 0.8021 0.2310 DCAL-cfg5.5-K9 9 5.5 0.12 0.60 0.35 0.20 0.4154 0.8555 0.8056 0.2289 DCAL-cfg6.5-K9 9 6.5 0.10 0.65 0.35 0.30 0.4087 0.8599 0.8133 0.2267 Table 5. Five-subject PaRa rank sweep. 
+
+Method N BT-SSIM 1-LPIPS CLIP-T Pair-SSIM PaRa r = 1 5 0.0354 0.2963 0.3199 0.0106 PaRa r = 2 5 0.0917 0.2968 0.3217 0.0369 PaRa r = 4 5 0.0616 0.2360 0.3176 0.0214 PaRa r = 8 5 0.0859 0.2961 0.3268 0.0312 PaRa r = 16 5 0.0996 0.2847 0.3206 0.0376 
+
+Table 6. Cost-performance trade-off. Full30 metrics are reported in the order 1-LPIPS / CLIP-I / DINO-Div.                   
+
+> Method Steps KExtra Full30 metrics LoRA r= 16 200 1No 0.3585 / 0.8011 / 0.4445 Stage-aware scaling 200 1No 0.3537 / 0.7906 / 0.4618 DCAL on LoRA 200 4No 0.3775 / 0.8246 / 0.3279 SPaRa–DCAL –––Full30 missing; not reported
+
+didates with strong identity scores, which can reduce visual variation among selected outputs. Taken together, Fig. 3 and Tab. 4 support a limited conclusion: DCAL can stably improve identity- and text-related metrics under the current data, but imposes an observable diversity cost. Training-side SPaRa and SPaRa–DCAL still require complete Full30 visualization and robustness experiments. 
+
+# 7 Conclusion 
+
+We study the trade-off among identity consistency, text align-ment, and generation diversity in subject-driven personalized text-to-image generation. The proposed framework distin-guishes SPaRa, a training-side stage-aware low-rank adap-tation module, from DCAL, an inference-side distribution-calibrated candidate selection module; the combination is denoted by SPaRa–DCAL. Theoretical analysis shows that timestep-dependent scaling controls the effective perturba-tion magnitude of a low-rank adapter, PaRa-style residual projection provides a structural explanation of output-space contraction, and identity-prioritized selection restricts can-didate features around the reference center under explicit conditions. Empirically, the completed Full30 data most strongly support the conclusion for DCAL on LoRA: DCAL improves 1-LPIPS, CLIP-I, DINO-I, and CLIP-T over the LoRA baseline, while decreasing CLIP/DINO pairwise diver-sity and pairwise LPIPS. Stage-aware inference scaling im-proves diversity-related metrics in the current Full30 anchor but does not show a stable identity-consistency advantage; this result cannot replace the full validation of training-side SPaRa. The current version has several limitations. PaRa lacks a same-protocol SDXL Full30 official or strictly reproduced baseline, and the available five-subject rank sweep cannot replace the main comparison. SPaRa–DCAL lacks complete Full30 results, and no numerical claim is reported for the full combined method. Ablations that remove the identity, text, and diversity terms from DCAL, robustness experiments over seeds and reference-image counts, prompt-type group-ing, and feature covariance trace or effective-rank analysis before and after candidate selection also remain to be com-pleted. Future work should first fill these experimental gaps before promoting the current DCAL-supported analysis into a fully validated SPaRa–DCAL paper. 
+
+# References 
+
+[1] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2022. [Online]. Available: https://arxiv.org/abs/2112.10752 [2] D. Podell, Z. English, K. Lacey, A. Blattmann, T. Dockhorn, J. Müller, J. Penna, and R. Rombach, “Sdxl: Improving latent diffusion models for high-resolution image synthesis,” 
+
+arXiv preprint arXiv:2307.01952 , 2023. [Online]. Available: https://arxiv.org/abs/2307.01952 [3] R. Gal, Y. Alaluf, Y. Atzmon, O. Patashnik, A. H. Bermano, G. Chechik, and D. Cohen-Or, “An image is worth one word: Personalizing text-to-image generation using textual inversion,” arXiv preprint arXiv:2208.01618 , 2022. [Online]. Available: https://arxiv.org/abs/2208.01618 
+
+12 Figure 4. Schematic qualitative comparison. Each row shows reference images, a text prompt, LoRA output, SPaRa output, DCAL selected output, and a failure case. The figure illustrates identity consistency, text alignment, and failure patterns and is not used as additional quantitative or qualitative superiority evidence. [4] N. Ruiz, Y. Li, V. Jampani, Y. Pritch, M. Rubinstein, and K. Aberman, “Dreambooth: Fine tuning text-to-image diffusion models for subject-driven generation,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023. [Online]. Available: https://arxiv.org/abs/2208.12242 [5] N. Kumari, B. Zhang, R. Zhang, E. Shechtman, and J.-Y. Zhu, “Multi-concept customization of text-to-image diffusion,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023. [Online]. Available: https://arxiv.org/abs/2212.04488 [6] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, “Lora: Low-rank adaptation of large language models,” arXiv preprint arXiv:2106.09685 , 2021. [Online]. Available: https://arxiv.org/abs/2106.09685 [7] cloneofsimo, “Low-rank adaptation for fast text-to-image diffusion fine-tuning,” https://github.com/cloneofsimo/lora, 2022. [8] L. Han, Y. Li, H. Zhang, P. Milanfar, D. Metaxas, and F. Yang, “Svdiff: Compact parameter space for diffusion fine-tuning,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2023. [Online]. Available: https://arxiv.org/abs/2303.11305 [9] S. Chen et al. , “Para: Personalizing text-to-image diffusion via parameter rank reduction,” arXiv preprint arXiv:2406.05641 , 2024. [Online]. Available: https: //arxiv.org/abs/2406.05641 [10] H. Chen, Y. Zhang, S. Wu, X. Wang, X. Duan, Y. Zhou, and W. Zhu, “Disenbooth: Identity-preserving disentangled tuning for subject-driven text-to-image generation,” in International Conference on Learning Representations , 2024. [11] L. Pang, J. Yin, B. Zhao, F. Wu, F. L. Wang, Q. Li, and X. Mao, “Attndreambooth: Towards text-aligned personalized text-to-image generation,” in Advances in Neural Information Processing Systems , 2024. [12] W. Cho, S. Choi, D. Das, M. Reisser, T. Kim, S. Yun, and F. Porikli, “Hollowed net for on-device personalization of text-to-image diffusion models,” in Advances in Neural Infor-mation Processing Systems , 2024. [13] J. Shi, W. Xiong, Z. Lin, and H. J. Jung, “Instantbooth: Per-sonalized text-to-image generation without test-time finetun-
+
+13 ing,” in Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , 2024. [14] X. Wang, S. Fu, Q. Huang, W. He, and H. Jiang, “Ms-diffusion: Multi-subject zero-shot image personalization with layout guidance,” in International Conference on Learning Representations , 2025. [15] S. Liu, R. Yu, and X. Wang, “Universalbooth: Model-agnostic personalized text-to-image generation,” in Proceedings of the IEEE/CVF International Conference on Computer Vision ,2025. [16] N. Chen, M. Huang, Z. Chen, Y. Zheng, L. Zhang, and Z. Mao, “Customcontrast: A multilevel contrastive perspective for subject-driven text-to-image customization,” in AAAI Confer-ence on Artificial Intelligence , 2025. [17] J. He, H. Li, Y. Hu, G. Shen, Y. Cai, W. Qiu, and Y.-C. Chen, “Disenvisioner: Disentangled and enriched visual prompt for customized image generation,” in International Conference on Learning Representations , 2025. [18] J. Nam, H. Kim, D. Lee, S. Jin, S. Kim, and S. Chang, “Dreammatcher: Appearance matching self-attention for semantically-consistent text-to-image personalization,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , 2024. [19] A. Radford et al. , “Learning transferable visual models from natural language supervision,” in International Conference on Machine Learning , 2021. [Online]. Available: https://arxiv.org/abs/2103.00020 [20] M. Oquab et al. , “Dinov2: Learning robust visual features without supervision,” Transactions on Machine Learning Research , 2024. [Online]. Available: https: //arxiv.org/abs/2304.07193 [21] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2018. [Online]. Available: https://arxiv.org/abs/1801.03924 [22] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: From error visibility to structural similarity,” IEEE Transactions on Image Processing , vol. 13, no. 4, pp. 600–612, 2004. 
+
+14 A Proof Details 
+
+This appendix provides proof details for the statements in Sec. 4. All variables follow the definitions in Sec. 3. 
+
+A.1 Proof of Proposition 4.1 
+
+Because ∆Wℓ(t) = α(t)BℓAℓ/r , rank submultiplicativ-ity gives rank(∆ Wℓ(t)) ≤ min {rank( Bℓ), rank( Aℓ)} ≤ 
+
+r. For any hℓ,t , the product Aℓhℓ,t lies in Rr , and 
+
+Bℓ(Aℓhℓ,t ) is a linear combination of columns of Bℓ. Hence 
+
+∆Wℓ(t)hℓ,t ∈ Col( Bℓ).
+
+A.2 Proof of Proposition 4.2 
+
+From Eq. (4), 
+
+∥δℓ,t ∥2 = |α(t)|
+
+r ∥BℓAℓhℓ,t ∥2. (19) The spectral norm is submultiplicative, and therefore 
+
+∥BℓAℓhℓ,t ∥2 ≤ ∥ Bℓ∥2∥Aℓ∥2∥hℓ,t ∥2. (20) Substituting the assumptions ∥Aℓ∥2 ≤ aℓ, ∥Bℓ∥2 ≤ bℓ, and 
+
+∥hℓ,t ∥2 ≤ Hℓ,t yields Eq. (5). 
+
+A.3 Proof of Proposition 4.4 
+
+The bound in Eq. (5) implies that satisfying an acceptable perturbation budget [Lℓ,t , U ℓ,t ] at timestep t requires 
+
+Lℓ,t ≤ α0
+
+r bℓaℓHℓ,t ≤ Uℓ,t (21) for a nonnegative uniform scaling α0. Rearranging the in-equalities gives the interval in Eq. (6). A single α0 satisfies every timestep constraint if and only if the intersection of these intervals is nonempty. If the intersection is empty, no scalar can satisfy all constraints simultaneously. If α(t) is timestep-dependent and each interval is nonempty, one can choose α(t) independently from the corresponding interval for every t, which satisfies all constraints. 
+
+A.4 Proof of Proposition 4.5 
+
+Since Q⊤ 
+
+> ℓ
+
+Qℓ = I, the matrix Pℓ = QℓQ⊤ 
+
+> ℓ
+
+is an orthogonal projection and satisfies P ⊤ 
+
+> ℓ
+
+= Pℓ and P 2 
+
+> ℓ
+
+= Pℓ. For any u ∈
+
+Rdℓ , the vectors Pℓu and (I − Pℓ)u are orthogonal because 
+
+Pℓ(I −Pℓ)u = ( Pℓ −P 2 
+
+> ℓ
+
+)u = 0 . Since u = Pℓu+( I −Pℓ)u,the Pythagorean identity gives 
+
+∥u∥22 = ∥Pℓu∥22 + ∥(I − Pℓ)u∥22. (22) Rearranging establishes Eq. (7). 
+
+A.5 Proof of Proposition 4.6 
+
+Both gsm,k and ¯gs are unit vectors. Therefore, 
+
+∥gsm,k − ¯gs∥22 = ∥gsm,k ∥22 + ∥¯gs∥22 − 2( gsm,k )⊤ ¯gs
+
+= 2 − 2( gsm,k )⊤ ¯gs. (23) For normalized vectors, (gsm,k )⊤ ¯gs = sim( gsm,k , ¯gs) =
+
+Ism,k . If k ∈ C sm,η , then Ism,k ≥ η, and hence ∥gsm,k −¯gs∥22 ≤
+
+2(1 − η). If every candidate in As satisfies the same thresh-old, averaging the inequality over As gives the same upper bound on the mean squared radius. 
+
+A.6 Proof of Proposition 4.7 
+
+Assume, for contradiction, that a deterministic selector π
+
+simultaneously selects the identity maximizer and the diver-sity maximizer. Since a is the unique identity maximizer, selecting the identity maximizer requires π = a. Since b
+
+is the unique diversity maximizer, selecting the diversity maximizer requires π = b. The candidates a and b are distinct because Ia > I b and Da < D b. Therefore, the equalities π = a and π = b cannot both hold, contradict-ing the assumed simultaneous optimality. No deterministic single-candidate selector can satisfy both objectives under the stated ranking conflict. 
+
+A.7 Proof of Proposition 4.8 
+
+The weighted-score difference between candidates a and b is 
+
+Sa −Sb = λI (Ia −Ib)+ λT (Ta −Tb)+ λD (Da −Db). (24) The condition in Proposition 4.8 is equivalent to Sa −Sb > 0.Hence the weighted rule ranks a ahead of b.
+
+# B Experimental Data Gaps and Additional Protocol Details 
+
+The appendix records missing results that should not be converted into numerical claims in the main paper. First, a formal PaRa baseline requires the same SDXL backbone, the same DreamBooth Full30 subject set, the same prompt set, the same sampling configuration, and the same evalua-tion scripts. Second, SPaRa–DCAL requires a training-side SPaRa model to generate the candidate pool before DCAL selection, using the same candidate number K and selection weights as the reported DCAL setting. DCAL-on-LoRA re-sults cannot be used as a substitute. Third, DCAL ablations should fix the candidate pool and remove the identity, text, or diversity term separately before reporting the same metric set. Fourth, feature-level theoretical evidence requires saved CLIP and DINOv2 embeddings before and after candidate selection in order to compute covariance trace, effective rank, and mean pairwise distance. Without these embeddings, only the available pairwise diversity metrics can be reported. 15 Table 7. Missing ablation checklist. Ablation Status Writing treat-ment LoRA baseline Full30 avail-able Included in main table Stage-aware inference scaling Full30 anchor and Held-out9/Min3 variants available Report only boundary trends; do not claim training-side SPaRa per-formance DCAL on LoRA Full30 avail-able Included in main table Training-side SPaRa Full30 miss-ing Do not re-port numer-ical conclu-sion SPaRa–DCAL Full30 miss-ing Define framework only; do not report effect DCAL without identity Missing Do not report ablation con-clusion DCAL without text Missing Do not report ablation con-clusion DCAL without diversity Missing Do not report ablation con-clusion Table 8. Additional experiments to be completed. Dimension Required data Current status Random-seed stability Full metrics with means and vari-ances over multi-ple seeds Full30 missing; only Heldout9 variants avail-able Candidate number K Full30 results for 
+
+K ∈ {1, 4, 9}
+
+with other pa-rameters fixed Complete Full30 missing CFG scale Full30 results for different CFG values with fixed candidate count Complete Full30 missing Subject type Metrics grouped by animals, ob-jects, toys, back-packs, and other types Grouping possible only after complete comparable PaRa/SPaRa– DCAL results Prompt type Metrics grouped by scene, pose, style, and mate-rial prompts Prompt-type an-notation missing Reference count Controlled 1-shot, 3-shot, and 5-shot results Experiment missing Theoretical evidence Covariance trace, effective rank, and mean pair-wise distance before and after selection Candidate-level features or saved embeddings missing 
+
+16

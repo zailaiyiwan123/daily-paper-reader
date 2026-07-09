@@ -1,0 +1,707 @@
+Title: HGenPush: A Heterogeneous Generative Recommendation Architecture for Industrial Push Notification Systems
+
+URL Source: https://arxiv.org/pdf/2607.03362v1
+
+Published Time: Tue, 07 Jul 2026 01:03:18 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# HGenPush: A Heterogeneous Generative Recommendation Architecture for Industrial Push Notification Systems 
+
+# Xiao Liang ∗
+
+Kuaishou Technology Beijing, China liangxiao@kuaishou.com 
+
+# Jiali Feng ∗
+
+Kuaishou Technology Beijing, China fengjiali05@kuaishou.com 
+
+# Xin Feng 
+
+Kuaishou Technology Beijing, China fengxin05@kuaishou.com 
+
+# Yiqing Wang 
+
+Kuaishou Technology Beijing, China wangyiqing05@kuaishou.com 
+
+# Baolin Ye 
+
+Kuaishou Technology Beijing, China yebaolin@kuaishou.com 
+
+# Siyao Feng 
+
+Kuaishou Technology Beijing, China fengsiyao@kuaishou.com 
+
+# Zhihui Deng 
+
+Kuaishou Technology Beijing, China dengzhihui@kuaishou.com 
+
+# Cunyi Zhang 
+
+Kuaishou Technology Beijing, China zhangcunyi@kuaishou.com 
+
+# Huajin Sun 
+
+Kuaishou Technology Beijing, China sunhuajin@kuaishou.com 
+
+# Xuanping Li †
+
+Kuaishou Technology Beijing, China lixuanping@kuaishou.com 
+
+# Kaiqiao Zhan 
+
+Kuaishou Technology Beijing, China zhankaiqiao@kuaishou.com 
+
+# Yanan Niu 
+
+Kuaishou Technology Beijing, China niuyanan@kuaishou.com 
+
+# Kun Gai 
+
+Kuaishou Technology Beijing, China gai.kun@qq.com 
+
+## Abstract 
+
+With the explosive growth of content platforms, recommendation systems need to better satisfy user demands to enhance user sat-isfaction and retention. Taking short-video platforms as an exam-ple, users not only seek high-quality content but also trusted au-thors. Although generative recommendation systems have achieved breakthroughs in recent years, existing methods primarily gener-ate single-type recommendation content and typically employ the inefficient autoregressive paradigm to generate semantic IDs. In this paper, we propose an end-to-end heterogeneous generative recommendation architecture called HGenPush. First, we design a hybrid user behavior understanding module that integrates multi-scenario and multi-perspective behaviors to capture precise user interest. Then, we design a dual-branch heterogeneous generative recommendation module that integrates video recommendation and author recommendation within a unified framework. In ad-dition, to improve generation efficiency, we design a lightweight  
+
+> ∗Both authors contributed equally to this research.
+> †Corresponding author.
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> KDD ’26, Jeju Island, Republic of Korea
+> ©2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2259-2/2026/08 https://doi.org/10.1145/3770855.3818429
+
+multi-token prediction method that discards the autoregressive par-adigm. Finally, we design a user consumption preference alignment module, which leverages user feedback as reward signals to guide the model toward generating higher-quality content, thereby en-hancing user experience and engagement. Through these designs, HGenPush simultaneously fulfills users’ demands for high-quality content and trusted authors. We have deployed HGenPush on the push notification system of Kuaishou, a large-scale short-video platform, achieving a significant 0.181% increase in daily active users. 
+
+## CCS Concepts 
+
+• Information systems → Mobile information processing systems .
+
+## Keywords 
+
+Push Notification System, Generative Recommendation, Multi-token Prediction, Preference Alignment 
+
+ACM Reference Format: 
+
+Xiao Liang, Jiali Feng, Xin Feng, Yiqing Wang, Baolin Ye, Siyao Feng, Zhihui Deng, Cunyi Zhang, Huajin Sun, Xuanping Li, Kaiqiao Zhan, Yanan Niu, and Kun Gai. 2026. HGenPush: A Heterogeneous Generative Recommenda-tion Architecture for Industrial Push Notification Systems. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 (KDD ’26), August 09–13, 2026, Jeju Island, Republic of Korea. ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/3770855.3818429  
+
+> arXiv:2607.03362v1 [cs.IR] 3 Jul 2026 KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Xiao Liang et al.
+
+## 1 Introduction 
+
+In short-video platforms, users are drawn not only to remarkable video content but also to the personalities of authors. The similar phenomenon also exists in other content platforms. For instance, news readers follow both breaking events and trusted media outlets, while e-commerce consumers not only purchase desired products but also explore new products from trusted merchants. Therefore, building a heterogeneous recommendation system that integrates both high-quality content and trusted source recommendations has significant practical value. In recent years, generative large language models have revo-lutionized recommendation systems. Many studies [ 5 , 8, 9, 19 ]demonstrate that Transformer-based sequence models can pro-vide personalized recommendation to users in an end-to-end way. These methods learn user interest from user behavior sequences and output items that users may be interested in, without rely-ing on traditional multi-stage filtering pipeline. As a pioneering method, TIGER [ 12 ] introduces RQ-VAE to encode item content information into semantic IDs, enabling knowledge sharing among similar items. OneRec [ 3] proposes a generative recommendation approach that leverages reward models to match user preference. Subsequently, methods such as OneSug [ 5], EGA [ 23 ], and One-Loc [ 18 ] introduce adaptive enhancements for scenario-specific requirements, further advancing the implementation of generative recommendation paradigm in industrial systems. Despite demonstrating significant potential, existing generative recommendation methods face two critical challenges. First, cur-rent methods primarily focus on homogeneous content (i.e., items of a single type), struggling to jointly recommend heterogeneous content such as videos and authors. Second, mainstream autoregres-sive semantic IDs generation limits inference speed and demands substantial computational resources, restricting the deployment of generative recommendation models in production systems. To address these challenges, we propose HGenPush, an end-to-end heterogeneous generative recommendation architecture for short-video push notification systems. As illustrated in Figure 1, the architecture adopts a decoder-only structure that takes user behav-ior sequences and important static features as inputs, then employs a carefully designed heterogeneous generative recommendation module to generate videos and authors aligned with user interest. HGenPush comprises three core modules: (1) Hybrid User Behavior Understanding Module. Considering the synergistic effects between push and feed recommendation, we design a multi-perspective user behavior fusion solution. We integrate users’ long-term and short-term feed behaviors to establish foundational user interest, incor-porate the push click sequence to model push-specific behavior patterns, and introduce the push send sequence to ensure recom-mendation validity. (2) Heterogeneous Generative Recommendation Module. To efficiently generate semantic IDs for videos and authors, we propose Chained Multi-Token Prediction (Chained-MTP), which replaces autoregressive computation by using user interest repre-sentation as stable context and modeling semantic dependencies through cumulative embeddings of preceding semantic IDs. Then, in the video recommendation branch, we utilize semantic IDs en-coded from multimodal video information to represent videos and execute generative recommendation processes based on this rep-resentation, thereby enabling the matching of video content with user interest. The essence of author recommendation is identifying users’ willingness to consistently follow an author based on their behaviors. Therefore, the author recommendation branch learns author encoding that captures user behavior preference through representation alignment, and discretizes it into semantic IDs for generation. (3) User Consumption Preference Alignment (UCPA) Module. Since clicks primarily reflect initial interest rather than content value or satisfaction, we follow the Reinforcement Learning with Verifiable Rewards (RLVR) paradigm [ 7], utilizing reward sig-nals generated from real user feedback to continuously optimize the model. Inspired by CISPO [ 1] and GSPO [ 22 ], we propose Group Se-quence Importance Sampling Policy Optimization (GSISPO), which employs sequence-level rewards and importance sampling weights to prevent semantic fragmentation and uses importance sampling weight clipping to preserve gradient signals from niche but high-value behaviors. Overall, the main contributions of this paper are as follows: 
+
+• We systematically summarized the two types of user de-mands during content consumption and propose HGenPush, a novel end-to-end heterogeneous generative recommenda-tion architecture that jointly recommends videos and au-thors. 
+
+• We design a lightweight multi-token prediction method called Chained-MTP. It avoids interest drift through user interest representation and preserves semantic dependencies via cu-mulative embeddings of semantic IDs, while significantly improving inference speed. 
+
+• We design a user consumption preference alignment mod-ule that leverages real user feedback to optimize the model toward generating high-quality content, enhancing user ex-perience and retention. 
+
+• We have successfully deployed HGenPush on Kuaishou’s push notification system. Extensive experiments demon-strate its effectiveness and efficiency in heterogeneous rec-ommendation. 
+
+## 2 Related Work 2.1 Generative Recommendation 
+
+In recent years, generative recommendation [ 16 , 17 ], as an emerging paradigm, has been profoundly transforming the methodological framework of recommendation technologies. Generative recom-mendation reframes the recommendation task as a sequence gen-eration problem, employing Transformer-based architectures to deeply model user behaviors and directly generate items matching user interest in an end-to-end manner. This paradigm has opened a new pathway for enhancing the performance of recommendation systems. TIGER [ 12 ] innovatively encodes items into meaning-ful semantic ID tuples via RQ-VAE to enable knowledge sharing among similar items. It then decodes target item’s semantic IDs through autoregressive decoding, thus achieving end-to-end recom-mendation. Considering the semantic gap between large language models and recommendation systems, LC-REC [ 21 ] integrates lan-guage and collaborative semantics into large language models for HGenPush: A Heterogeneous Generative Recommendation Architecture for Industrial Push Notification Systems KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+recommendation. OneRec [ 3 ] employs an encoder-decoder archi-tecture to generate videos and enhances generation quality through a session-level preference alignment strategy. EGA [ 23 ] integrates user interest modeling, ad slot and creative generation, position allocation, and payment optimization within a single model, en-abling the practical application of generative architectures in indus-trial advertising system. While these generative recommendation methods demonstrate significant potential, they primarily focus on single-type recommendation, struggling to simultaneously meet heterogeneous recommendation objectives. 
+
+## 2.2 Reinforcement Learning 
+
+For generative recommendation systems, relying solely on sequence generation task is insufficient to satisfy diverse recommendation requirements or business constraints. Therefore, most methods utilize reinforcement learning to guide model iteration, thereby effectively aligning recommendation results with practical needs. GRPO [ 14 ] calculates relative ranking advantages within groups for multiple candidate outputs from generative recommendation models, updating policies using the PPO-style [ 13 ] objective func-tion without requiring additional critic model. GSPO [ 22 ] employs sequence-level optimization to avoid the logical fragmentation prob-lem caused by traditional token-level optimization. CISPO [ 1] uses clipped importance sampling weight and gradient clipping to ad-dress contribution loss due to gradient blocking. 
+
+## 3 Methodology 
+
+In this section, we introduce the overall architecture of HGenPush. Specifically, Section 3.1 details the modeling process of hybrid user behavior understanding module. Section 3.2 describes the specific workflow of different branches within the heterogeneous generative recommendation module. Section 3.3 explains how to further en-hance the quality of model-generated results through reinforcement learning. Section 3.4 presents the joint training loss and inference strategy. The overall architecture of HGenPush is illustrated in Figure 1. 
+
+## 3.1 Hybrid User Behavior Understanding 
+
+Precise user interest modeling is the core challenge for recommen-dation systems. While push notification recommendation and feed recommendation differ in user interaction formats, they exhibit syn-ergistic effects in user behaviors. For example, users who frequently watch gaming videos or deeply browse an author’s feed content are more likely to return when receiving relevant push notifications. This cross-scenario behavior correlation can not only enhance user experience but also deepen users’ recognition of the platform’s value. Considering this characteristic, we introduce multi-scenario and multi-perspective behaviors into our recommendation system. Simultaneously, we also introduce important static features (such as user gender and age) as foundational user information. Finally, we generate the user interest representation through a decoder-only architecture. 
+
+3.1.1 Feature Representation. We denote user behavior sequences as 𝑆 , which includes both feed sequences 𝑆 𝑓 𝑒𝑒𝑑 and push notification sequences 𝑆 𝑝𝑢𝑠ℎ . 𝑆 𝑓 𝑒𝑒𝑑 integrates long-term ( 𝑆 𝑙𝑜𝑛𝑔 ) and short-term (𝑆 𝑠ℎ𝑜𝑟𝑡 ) behavior sequences to model foundational user interest. 
+
+𝑆 𝑝𝑢𝑠ℎ incorporates the push click sequence ( 𝑆 𝑐𝑙𝑖𝑐𝑘 ) capturing users’ push-specific behavior patterns and the push send sequence ( 𝑆 𝑠𝑒𝑛𝑑 )ensuring recommendation validity. Each video 𝑣 is represented by semantic IDs generated through its multimodal embedding, and the generation method is consistent with OneRec [ 3]. We define the semantic IDs as 𝑠 𝑣 = (𝑠 1
+
+> 𝑣
+
+, 𝑠 2
+
+> 𝑣
+
+, · · · , 𝑠 𝐿 𝑣  
+
+> 𝑣
+
+), where 𝐿 𝑣 denotes the number of codebooks and the size of each codebook is 𝑁 .First, we transform each semantic token into a dense embed-ding and concatenate them to obtain video semantic representation 
+
+𝑒 𝑣 𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐 = [𝑒 𝑠 1 
+
+> 𝑣
+
+; 𝑒 𝑠 2 
+
+> 𝑣
+
+; · · · ; 𝑒 𝑠 𝐿𝑣 𝑣 ]. Then, we introduce additional fea-tures to further distinguish the impact differences of videos. For each video in the long-term behavior sequence 𝑆 𝑙𝑜𝑛𝑔 , we introduce author identifier (aid), topic tag (tag), and playtime (play-time). And we map the concatenated result of feature embeddings to a unified dimension 𝑑 ℎ as the final representation for the video. Therefore, the representation of the 𝑖 -th video 𝑣 𝑖 𝑙𝑜𝑛𝑔 in 𝑆 𝑙𝑜𝑛𝑔 is de-fined as follows: 
+
+ℎ𝑖 𝑣 𝑙𝑜𝑛𝑔 = 𝜎 (Dense ([ 𝑒 𝑣 𝑖 𝑙𝑜𝑛𝑔  
+
+> 𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐
+
+; 𝑒 𝑣 𝑖 𝑙𝑜𝑛𝑔  
+
+> 𝑎𝑖𝑑
+
+; 𝑒 𝑣 𝑖 𝑙𝑜𝑛𝑔  
+
+> 𝑡𝑎𝑔
+
+; 𝑒 𝑣 𝑖 𝑙𝑜𝑛𝑔  
+
+> 𝑝𝑙𝑎𝑦𝑡𝑖𝑚𝑒
+
+])) , (1) where 𝜎 (·) denotes the activation function. The overall representation of long-term behavior sequence is denoted as: 
+
+ℎ𝑙𝑜𝑛𝑔 = {ℎ1 
+
+> 𝑣 𝑙𝑜𝑛𝑔
+
+, ℎ 2 
+
+> 𝑣 𝑙𝑜𝑛𝑔
+
+, · · · , ℎ 𝐿 𝑙𝑜𝑛𝑔  
+
+> 𝑣 𝑙𝑜𝑛𝑔
+
+}, (2) where 𝐿 𝑙𝑜𝑛𝑔 is the length of 𝑆 𝑙𝑜𝑛𝑔 and ℎ𝑙𝑜𝑛𝑔 ∈ R 𝐿 𝑙𝑜𝑛𝑔 ×𝑑 ℎ . This repre-sentation is primarily used to construct stable and comprehensive user interest preference. The short-term sequence 𝑆 𝑠ℎ𝑜𝑟𝑡 consists of videos that the user actively engaged with in recent times, reflecting changing user interest. Its representation generation process aligns with the one mentioned above: 
+
+ℎ𝑖 𝑣 𝑠ℎ𝑜𝑟𝑡 = 𝜎 (Dense ([ 𝑒 𝑣 𝑖 𝑠ℎ𝑜𝑟𝑡  
+
+> 𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐
+
+; 𝑒 𝑣 𝑖 𝑠ℎ𝑜𝑟𝑡  
+
+> 𝑎𝑖𝑑
+
+; 𝑒 𝑣 𝑖 𝑠ℎ𝑜𝑟𝑡  
+
+> 𝑡𝑎𝑔
+
+; 𝑒 𝑣 𝑖 𝑠ℎ𝑜𝑟𝑡  
+
+> 𝑝𝑙𝑎𝑦𝑡𝑖𝑚𝑒
+
+])) , (3) 
+
+ℎ𝑠ℎ𝑜𝑟𝑡 = {ℎ1 
+
+> 𝑣 𝑠ℎ𝑜𝑟𝑡
+
+, ℎ 2 
+
+> 𝑣 𝑠ℎ𝑜𝑟𝑡
+
+, · · · , ℎ 𝐿 𝑠ℎ𝑜𝑟𝑡  
+
+> 𝑣 𝑠ℎ𝑜𝑟𝑡
+
+}. (4) Here, 𝐿 𝑠ℎ𝑜𝑟𝑡 denotes the length of 𝑆 𝑠ℎ𝑜𝑟𝑡 and ℎ𝑠ℎ𝑜𝑟𝑡 ∈ R 𝐿 𝑠ℎ𝑜𝑟𝑡 ×𝑑 ℎ .User behaviors in the push notification scenario directly reflect their preferences and habits toward notifications. Therefore, we in-troduce user push click sequence. Specifically, we add a notification type (type) feature to learn which content types the user is more likely to click. The representation generation process for push click sequence is as follows: 
+
+ℎ𝑖 𝑣 𝑐𝑙𝑖𝑐𝑘 = 𝜎 (Dense ([ 𝑒 𝑣 𝑖 𝑐𝑙𝑖𝑐𝑘  
+
+> 𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐
+
+; 𝑒 𝑣 𝑖 𝑐𝑙𝑖𝑐𝑘  
+
+> 𝑎𝑖𝑑
+
+; 𝑒 𝑣 𝑖 𝑐𝑙𝑖𝑐𝑘  
+
+> 𝑡 𝑦𝑝𝑒
+
+])) , (5) 
+
+ℎ𝑐𝑙𝑖𝑐𝑘 = {ℎ1 
+
+> 𝑣 𝑐𝑙𝑖𝑐𝑘
+
+, ℎ 2 
+
+> 𝑣 𝑐𝑙𝑖𝑐𝑘
+
+, · · · , ℎ 𝐿 𝑐𝑙𝑖𝑐𝑘  
+
+> 𝑣 𝑐𝑙𝑖𝑐𝑘
+
+}, (6) where 𝐿 𝑐𝑙𝑖𝑐𝑘 denotes the length of 𝑆 𝑐𝑙𝑖𝑐𝑘 and ℎ𝑐𝑙𝑖𝑐𝑘 ∈ R 𝐿 𝑐𝑙𝑖𝑐𝑘 ×𝑑 ℎ .In addition, we introduce push send sequence to construct contex-tual information, thereby enhancing the rationality of generation: 
+
+ℎ𝑖 𝑣 𝑠𝑒𝑛𝑑 = 𝜎 (Dense ([ 𝑒 𝑣 𝑖 𝑠𝑒𝑛𝑑  
+
+> 𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐
+
+; 𝑒 𝑣 𝑖 𝑠𝑒𝑛𝑑  
+
+> 𝑎𝑖𝑑
+
+; 𝑒 𝑣 𝑖 𝑠𝑒𝑛𝑑  
+
+> 𝑡 𝑦𝑝𝑒
+
+])) , (7) 
+
+ℎ𝑠𝑒𝑛𝑑 = {ℎ1 
+
+> 𝑣 𝑠𝑒𝑛𝑑
+
+, ℎ 2 
+
+> 𝑣 𝑠𝑒𝑛𝑑
+
+, · · · , ℎ 𝐿 𝑠𝑒𝑛𝑑  
+
+> 𝑣 𝑠𝑒𝑛𝑑
+
+}, (8) where 𝐿 𝑠𝑒𝑛𝑑 denotes the length of 𝑆 𝑠𝑒𝑛𝑑 and ℎ𝑠𝑒𝑛𝑑 ∈ R 𝐿 𝑠𝑒𝑛𝑑 ×𝑑 ℎ .User static features serve as the "stabilizer" for user interest modeling. They can provide reliable signals when user behaviors are sparse. Therefore, we introduce supplementary features such KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Xiao Liang et al. 
+
+Figure 1: The overall architecture of HGenPush, where "\\" denotes stop gradient. 
+
+as user age (age) and gender (gender). Then, we concatenate their embeddings and map them to a unified dimension 𝑑 ℎ :
+
+ℎ𝑠𝑡𝑎𝑡𝑖𝑐 = 𝜎 (Dense ([ 𝑒 𝑎𝑔𝑒 ; 𝑒 𝑔𝑒𝑛𝑑𝑒𝑟 ; · · · ])) . (9) Finally, we concatenate all representations to form the complete input representation ℎ𝑓 :
+
+ℎ𝑓 = [ℎ𝑙𝑜𝑛𝑔 ; ℎ𝑠ℎ𝑜𝑟𝑡 ; ℎ𝑐𝑙𝑖𝑐𝑘 ; ℎ𝑠𝑒𝑛𝑑 ; ℎ𝑠𝑡𝑎𝑡𝑖𝑐 ; ℎ[cls ]𝑎 ; ℎ[cls ]𝑣 ]. (10) Notably, we append special tokens ℎ[cls ]𝑎 and ℎ[cls ]𝑣 at the end of the sequence features and static features, which are used for the author recommendation branch and video recommendation branch respectively. These two special tokens can summarize user interest and provide initial context for the decoder. 
+
+3.1.2 Interest Understanding. To efficiently fuse user static features with dynamic behavior sequences for precise personalized recom-mendations, we design a decoder-only architecture for the user interest understanding module. As shown in Figure 1, this module stacks multiple blocks with identical structures. Each block primarily consists of a causal self-attention structure and a feed forward neural network, supple-mented by residual networks to stabilize gradients. We define the input to the initial layer as ℎ(0) = ℎ𝑓 . The overall computational flow of this module is as follows: 
+
+ℎ(𝑙 +1) 
+
+> 𝑎𝑡𝑡𝑛
+
+= CausalSelfAttn (RMSNorm (ℎ(𝑙 ) )) , (11) 
+
+ℎ(𝑙 +1) 
+
+> 𝑎𝑑𝑑
+
+= ℎ(𝑙 ) + ℎ(𝑙 +1) 
+
+> 𝑎𝑡𝑡𝑛
+
+, (12) 
+
+ℎ(𝑙 +1) = ℎ(𝑙 +1) 
+
+> 𝑎𝑑𝑑
+
++ FFN SwiGLU (RMSNorm (ℎ(𝑙 +1) 
+
+> 𝑎𝑑𝑑
+
+)) . (13) We utilize RMSNorm [ 20 ] to enhance training stability and em-ploy SwiGLU FFNs [ 15 ] to further improve the expression ability of the model. By stacking 𝐿 𝑏 layers, we can obtain the hidden represen-tation ℎ(𝐿 𝑏 ) of the final block. Then, we normalize it to obtain the final output ℎ′ = {ℎ1
+
+> 𝑣 𝑙𝑜𝑛𝑔
+> ′
+
+, ℎ 2
+
+> 𝑣 𝑙𝑜𝑛𝑔
+> ′
+
+, · · · , ℎ ′[cls ]𝑎 , ℎ ′[cls ]𝑣 }. Here, ℎ′[cls ]𝑎 
+
+and ℎ′[cls ]𝑣 serve as sequence endpoints with a global perspective. They not only encode static features but also comprehensively in-tegrate all preceding behaviors, forming temporal-aware interest representations. Therefore, we feed ℎ′[cls ]𝑎 and ℎ′[cls ]𝑣 into subse-quent heterogeneous generative recommendation module. 
+
+## 3.2 Heterogeneous Generative Recommendation 
+
+The heterogeneous generative recommendation module optimizes video and author recommendation branches synchronously. In the video recommendation branch, we propose a novel multi-token prediction method called Chained-MTP to generate semantic IDs efficiently. In the author recommendation branch, we design an end-to-end generative architecture with behavior-based representa-tion alignment, which simultaneously optimizes preference-aware author encoding and trusted author generation. 
+
+3.2.1 Video Recommendation Branch. The video recommendation branch aims to generate results matching user interest from a con-tent perspective. To achieve this, we leverage the global interest representation ℎ′[cls ]𝑣 learned from user behavior sequences for gen-eration, which encodes both video semantic features and temporal evolution patterns. 
+
+Chained Multi-token Prediction (Chained-MTP) . Mainstream generative recommendation methods typically rely on multiple forward passes, resulting in inefficient inference. This limitation hinders the deployment of generative recommendation systems in resource-constrained scenarios. Therefore, inspired by RQ-Kmeans [3 , 11 ], we propose a novel chained multi-token prediction method, which can maintain semantic dependencies and avoid the multi-round decoding. Specifically, defining the semantic IDs of target video 𝑣 𝑡 as 𝑠 𝑣 𝑡 = (𝑠 1 
+
+> 𝑣 𝑡
+
+, 𝑠 2 
+
+> 𝑣 𝑡
+
+, · · · , 𝑠 𝐿 𝑣  
+
+> 𝑣 𝑡
+
+), we utilize ℎ′[cls ]𝑣 as the stable interest anchor and compute the cumulative embedding of the pre-ceding semantic IDs at each step to model conditional dependencies across semantic levels: 
+
+𝑝 𝑠 𝑘 𝑣𝑡 
+
+= softmax (FFN (𝑘 ) (ℎ′[cls ]𝑣 +∑︁  
+
+> 𝑗 <𝑘
+
+Emb ( 𝑗 ) (𝑠 𝑗 𝑣 𝑡 ))) 𝑠 𝑘 𝑣𝑡 
+
+, (14) where 𝑝 𝑠 𝑘 𝑣𝑡 
+
+denotes the generation probability of the 𝑘 -th semantic token 𝑠 𝑘 𝑣 𝑡 , and 𝑘 ∈ { 1, 2, · · · , 𝐿 𝑣 }. As shown in the equation, we maintain a set of learnable embedding tables {Emb (𝑘 ) }𝑘 ∈ { 1,2,··· 𝐿 𝑣 }
+
+for hierarchical codebooks, where each Emb (𝑘 ) ∈ 𝑅 𝑁 ×𝑑 ℎ encodes the semantic tokens at level 𝑘 , thereby characterizing semantic HGenPush: A Heterogeneous Generative Recommendation Architecture for Industrial Push Notification Systems KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+spaces at different granularities. It can be seen that we discard the complex autoregressive paradigm and significantly reduce com-putations through parallel feedforward network. In the training stage, we employ the cross-entropy loss function for optimization. Specifically, the loss function for the video recommendation branch is defined as follows: 
+
+L𝑣 −𝑀𝑇 𝑃 = − 1
+
+𝐵 
+
+> 𝐵
+
+∑︁ 
+
+> 𝑏 =1
+> 𝐿 𝑣
+
+∑︁ 
+
+> 𝑘 =1
+
+log (𝑝 𝑠 𝑘 𝑣 𝑏 
+
+), (15) where 𝐵 denotes training batch size and 𝑝 𝑠 𝑘 𝑣 𝑏 
+
+represents the gen-eration probability of the 𝑘 -th semantic token for sample 𝑏 . We construct training samples based on user click data in the push notification system. 
+
+3.2.2 Author Recommendation Branch. The author recommenda-tion branch identifies authors likely to sustain user engagement and pushes their videos to users. In practice, user trust in authors is strongly reflected in their behaviors: even when two authors belong to similar categories, users may favor only one based on behavior preference that cannot be inferred from content alone. We therefore design the author recommendation branch as an end-to-end generative architecture with behavior-based representation alignment, which simultaneously learns preference-aware author encoding and trusted author generation. 
+
+Behavior-based Representation Alignment . Semantic IDs gen-erated solely from author features struggle to distinguish user pref-erences among category-similar authors. To address this, we align author representation with user interest representation using user click data, thereby learning bidirectional audience information be-tween users and authors to break through the limitation. First, we encode target author features (e.g., author identifier and multimodal embeddings) into latent embeddings ℎ′ 
+
+> 𝑎
+
+. Next, we project both user interest representation ℎ′[cls ]𝑎 and author representation ℎ′ 
+
+> 𝑎
+
+into a unified feature space, yielding new representations ℎ𝑢 and ℎ𝑎 .We then align these representations using the InfoNCE contrastive loss: 
+
+L𝑎𝑙𝑖𝑔𝑛 = − 1
+
+𝐵 
+
+> 𝐵
+
+∑︁ 
+
+> 𝑏 =1
+
+log exp (cos (ℎ𝑢 𝑏 , ℎ 𝑎 𝑏 )/ 𝜏 )
+
+Í𝐵 𝑏 ′=1 exp (cos (ℎ𝑢 𝑏 , ℎ 𝑎 𝑏 ′ )/ 𝜏 ) , (16) where 𝐵 denotes training batch size, 𝜏 is the temperature coeffi-cient, and cos (·) calculates the cosine similarity between two input embeddings. 
+
+Author Semantic IDs Construction . To enable efficient trusted author generation, we discretize the aligned author embeddings into semantic IDs. Specifically, we employ the RQ-Kmeans algorithm for discretization and synchronously update the codebook during model training. Let 𝐿 𝑎 denotes the number of author codebooks, 𝑁 
+
+denotes the size of each codebook, and ℎ𝑎 𝑡 denote the embedding representation of target author 𝑎 𝑡 . At the first layer, the initial residual is defined as 𝒓 1 
+
+> 𝑎 𝑡
+
+= ℎ𝑎 𝑡 . We obtain the index of the nearest centroid node embedding for layer 𝑙 through the following formula: 
+
+𝑠 𝑙 𝑎 𝑡 = arg min  
+
+> 𝑛
+
+∥𝒓 𝑙 𝑎 𝑡 − 𝒄 𝑛 𝑙 ∥22, (17) where 𝒄 𝑛 𝑙 denotes the embedding of the 𝑛 -th centroid node in the 𝑙 -th codebook, with 𝑙 ∈ { 1, 2, · · · , 𝐿 𝑎 }. After obtaining 𝑠 𝑙 𝑎 𝑡 , the residual for the next layer is generated via 𝑟 𝑙 +1 
+
+> 𝑎 𝑡
+
+= 𝑟 𝑙 𝑎 𝑡 − 𝒄 𝑠 𝑙 𝑎𝑡  
+
+> 𝑙
+
+.Through iterative computation, we can obtain the author seman-tic IDs 𝑠 𝑎 𝑡 = (𝑠 1 
+
+> 𝑎 𝑡
+
+, 𝑠 2 
+
+> 𝑎 𝑡
+
+, · · · , 𝑠 𝐿 𝑎  
+
+> 𝑎 𝑡
+
+). We employ the SimVQ strategy [ 24 ]to further stabilize the discretization process and prevent codebook collapse. Furthermore, we compute the Euclidean distance between the residual of each layer and its nearest centroid node embedding as the loss function to continuously update the codebook during training. The loss function formula is as follows: 
+
+L𝑐𝑜𝑑𝑒𝑏𝑜𝑜𝑘 = 1
+
+𝐵 
+
+> 𝐵
+
+∑︁ 
+
+> 𝑏 =1
+> 𝐿 𝑎
+
+∑︁ 
+
+> 𝑙 =1
+
+∥ sg (𝒓 𝑙 𝑎 𝑏 ) − 𝒄 𝑠 𝑙 𝑎 𝑏  
+
+> 𝑙
+
+∥22. (18) 
+
+Mixed Semantic IDs Generation . Since the author recommen-dation branch ultimately recommends videos from trusted authors, we propose mixed semantic IDs as the generation target. Specif-ically, we combine author semantic IDs and the first-level video semantic ID of target item to form 𝑠 𝑚 𝑡 = (𝑠 1 
+
+> 𝑎 𝑡
+
+, 𝑠 2 
+
+> 𝑎 𝑡
+
+, · · · , 𝑠 𝐿 𝑎  
+
+> 𝑎 𝑡
+
+, 𝑠 1 
+
+> 𝑣 𝑡
+
+) with length 𝐿 𝑚 = 𝐿 𝑎 + 1. We still apply Chained-MTP based on ℎ′[cls ]𝑎 
+
+for efficient generation. The loss function for the author recommen-dation branch is defined as follows: 
+
+L𝑎 −𝑀𝑇 𝑃 = − 1
+
+𝐵 
+
+> 𝐵
+
+∑︁ 
+
+> 𝑏 =1
+> 𝐿 𝑚
+
+∑︁ 
+
+> 𝑥 =1
+
+log (𝑝 𝑠 𝑥 𝑚 𝑏 ). (19) 
+
+## 3.3 User Consumption Preference Alignment 
+
+While the model achieves stable recommendation capability through supervised training, relying solely on click data fails to capture con-tent quality and user satisfaction, leading to clickbait recommenda-tions. In fact, users’ consumption behaviors within the application not only provide richer signals about their interest but also help the model identify the inherent value of content. Therefore, we design a user consumption preference alignment module following the Reinforcement Learning with Verifiable Rewards (RLVR) paradigm. The module utilizes post-click session feedback as rewards and optimizes the model via our proposed GSISPO algorithm. 
+
+3.3.1 Reward Signals. We define the 𝐺 videos consumed during the post-click session as 𝑉 = {𝑣 1, 𝑣 2, · · · , 𝑣 𝐺 }. For each video 𝑣 𝑔 in 
+
+𝑉 , we derive its reward score 𝑟 𝑔 by quantifying user consumption behavior according to fixed rules: 
+
+𝑟 𝑔 =
+
+
+
+𝑟 𝑔 + 2 if label 𝑔 ∈ { valid_play , enter_profile , comment_stay }
+
+𝑟 𝑔 + 1 if label 𝑔 ∈ { like , follow , share , comment }
+
+𝑟 𝑔 − 2 if label 𝑔 ∈ { short_play }
+
+𝑟 𝑔 − 5 if label 𝑔 ∈ { dislike }
+
+𝑟 𝑔 − 10 if label 𝑔 ∈ { report }
+
+,
+
+(20) where 𝑟 𝑔 is initialized to 0 and accumulates rewards from all matched conditions. This reward structure incentivizes engaging content generation while discouraging low-quality or user-disliked videos through negative feedback. 
+
+3.3.2 Group Sequence Importance Sampling Policy Optimization. 
+
+Let 𝑅 = {𝑟 1, 𝑟 2, · · · , 𝑟 𝐺 } denote the rewards for the set of videos 
+
+𝑉 . We first normalize all rewards to obtain each video’s relative KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Xiao Liang et al. 
+
+advantage within the group: 
+
+b𝐴 𝑔 = 𝑟 𝑔 − mean (𝑟 1, 𝑟 2, · · · , 𝑟 𝐺 )
+
+std (𝑟 1, 𝑟 2, · · · , 𝑟 𝐺 ) . (21) Chained-MTP generates the next semantic ID based on cumula-tive embedding of preceding results to ensure semantic coherence of the entire sequence. Therefore, we reference GSPO [ 22 ] to com-pute sequence-level importance sampling weight and generation probability, avoiding disruption to sequences’ complete semantics and enhancing training stability. Moreover, since the relative ad-vantage is specific to the video rather than individual semantic ID, sequence-level computation also aligns with our optimization objec-tive. Simultaneously, we follow the CISPO [ 1 ] algorithm by moving the clipping operation to the importance sampling weight, preserv-ing gradient signals for niche yet high-value behaviors. Ultimately, the optimization objective is defined as follows: 
+
+LGSISPO (𝜃 ) = − 1
+
+𝐺 
+
+> 𝐺
+
+∑︁ 
+
+> 𝑔 =1
+
+sg (𝑤 𝑔 (𝜃 )) b𝐴 𝑔 log 𝜋 𝜃 (𝑠 𝑣 𝑔 |ℎ′[cls ]𝑣 ), (22) where 𝑠 𝑣 𝑔 = {𝑠 1 
+
+> 𝑣 𝑔
+
+, 𝑠 2 
+
+> 𝑣 𝑔
+
+, · · · , 𝑠 𝐿 𝑣  
+
+> 𝑣 𝑔
+
+} denotes the semantic IDs of video 𝑣 𝑔 .
+
+𝑤 𝑔 (𝜃 ) and 𝜋 𝜃 (𝑠 𝑣 𝑔 |ℎ′[cls ]𝑣 ) are the sequence-level importance sam-pling weight and model generation probability, respectively. The computation of 𝑤 𝑔 (𝜃 ) is as follows: 
+
+𝑤 𝑔 (𝜃 )′ = 𝜋 𝜃 (𝑠 𝑣 𝑔 |ℎ′[cls ]𝑣 )
+
+𝜋 𝜃 old (𝑠 𝑣 𝑔 |ℎ′[cls ]𝑣 )
+
+! 1
+
+> 𝐿𝑣
+
+= exp 1
+
+𝐿 𝑣 𝐿 𝑣 ∑︁ 
+
+> 𝑘 =1
+
+log 𝜋 𝜃 (𝑠 𝑘 𝑣 𝑔 |ℎ′[cls ]𝑣 , 𝑠 <𝑘 𝑣 𝑔 )
+
+𝜋 𝜃 old (𝑠 𝑘 𝑣 𝑔 |ℎ′[cls ]𝑣 , 𝑠 <𝑘 𝑣 𝑔 )
+
+!
+
+,
+
+(23) 
+
+𝑤 𝑔 (𝜃 ) = clip  𝑤 𝑔 (𝜃 )′, 1 − 𝜖, 1 + 𝜖  . (24) Since LGSISPO and L𝑣 −𝑀𝑇 𝑃 jointly guide model parameter up-dates, and L𝑣 −𝑀𝑇 𝑃 ensures model stability, our reinforcement learn-ing optimization objective does not additionally introduce KL di-vergence. 
+
+## 3.4 Training and Inference 
+
+Through the above modules, HGenPush achieves joint optimization of video recommendation, author recommendation, author code-book construction, and user consumption preference alignment. The overall training loss is defined as: 
+
+L = L𝑣 −𝑀𝑇 𝑃 + L 𝑎 −𝑀𝑇 𝑃 + L 𝑐𝑜𝑑𝑒𝑏𝑜𝑜𝑘 + L GSISPO . (25) In the inference phase, both the video and author recommenda-tion branches utilize Beam Search to generate multiple candidates. Our online system follows a standard cascaded recommendation architecture consisting of retrieval, pre-ranking, and ranking stages. Unlike traditional retrieval methods, candidates generated by HGen-Push bypass the pre-ranking stage and are fed directly into the ranking model. 
+
+## 4 Experiments 
+
+In this section, we will introduce the datasets, baseline methods, evaluation metrics, implementation details, as well as offline and online experimental analysis. 
+
+## 4.1 Experimental Settings 
+
+4.1.1 Datasets. To evaluate the effectiveness of HGenPush, we conduct experiments on Kuaishou’s push notification system. This system records daily interactions from over 400 million active users, providing extensive and diverse real-world data for model training and evaluation. We continuously train our model using the online streaming data generated by the system. For offline evaluation, we load each model’s checkpoint saved at the same time and evaluate them on the same dataset collected from the online system, ensuring comparability and reliability of experimental results. 
+
+4.1.2 Baseline Methods. We compare HGenPush with competitive traditional and generative recommendation models. The baseline methods are as follows: 
+
+• SASRec [ 6 ] employs a unidirectional Transformer architec-ture, which effectively models the user sequence via self-attention mechanisms to predict the next item. 
+
+• TIGER [12 ] proposes to replace item ID with hierarchical semantic IDs generated by RQ-VAE, and employs autoregres-sive generation techniques to implement sequence recom-mendations based on these IDs. 
+
+4.1.3 Evaluation Metrics. The model can generate multiple candi-dates at once through Beam Search. To evaluate model performance, we define HitRate@100 as our evaluation metric. Specifically, we calculate the proportion of samples whose true semantic IDs appear among the top 100 candidates: HitRate@100 = 1
+
+𝑆 
+
+> 𝑆
+
+∑︁ 
+
+> 𝑖 =1
+
+𝐼 (𝑠 𝑖 ∈ 𝐶 𝑖 
+
+> 100
+
+), (26) where 𝑆 denotes the number of samples, 𝑠 𝑖 is the true semantic IDs for the 𝑖 -th sample, and 𝐶 𝑖  
+
+> 100
+
+represents the top 100 candidates gen-erated by the model for the 𝑖 -th sample. 𝐼 (·) is the binary indicator function, taking the value 1 when 𝑠 𝑖 is in 𝐶 𝑖  
+
+> 100
+
+and 0 otherwise. This metric directly reflects the model’s recommendation accuracy in real-world scenarios. A higher value indicates the model’s greater ability to accurately capture user interest. 
+
+4.1.4 Implementation Details. HGenPush employs the Adam opti-mizer for training dense parameters and the AdamW optimizer for training sparse parameters, with both learning rates set to 1 × 10 −4.The weight decay is set to 1 × 10 −4, and the batch size is set to 64. Model training is performed on NVIDIA L20 GPUs. We set the number of decoder layers 𝐿 𝑏 to 16, with a uniform representation dimension 𝑑 ℎ of 512. The number of video codebooks is 3 ( 𝐿 𝑣 = 3), and the size of each codebook is 8192 ( 𝑁 = 8192 ). The number of author codebooks is 2 ( 𝐿 𝑎 = 2) and the size of each codebook is also 8192. In the reinforcement learning stage, we limit the number of videos per group to no more than 50. 
+
+## 4.2 Offline Performance 
+
+As shown in Table 1, both HGenPush and TIGER outperform SAS-Rec, validating the power of semantic IDs and generative reasoning. Furthermore, HGenPush achieves optimal performance in both tasks due to its tailored designs. In the video recommendation branch, integrating the better-suited decoder-only architecture with HGenPush: A Heterogeneous Generative Recommendation Architecture for Industrial Push Notification Systems KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 1: Offline performance comparison between HGenPush and baseline methods. The best results are shown in bold. 
+
+Model HitRate@100 Video Branch Author Branch SASRec 0.3093 0.3495 TIGER 0.3802 0.4677 HGenPush 0.3915 0.4848 Table 2: Comparison of different main architectures. 
+
+Architecture Model Size HitRate@100 Loss Encoder-Decoder 0.026B 0.3400 11.73 Decoder-Only 0.016B 0.3432 12.12 Chained-MTP enables HGenPush to surpass the encoder-decoder-based TIGER in both effectiveness and efficiency (detailed analysis in Section 4.3). In the author recommendation branch, superior performance stems from two reasons: author semantic IDs can capture nuanced user preference for specific authors via behavior-based representation alignment, while mixed semantic IDs not only achieve author-level recommendation but also model which videos from preferred authors users favor, delivering more precise results. 
+
+## 4.3 Architecture Design Validation 
+
+HGenPush employs a unified architecture for heterogeneous rec-ommendation: both video and author branches share the same decoder-only backbone and Chained-MTP method for semantic IDs generation. To validate these core design choices, we conduct comparative experiments on the main model architecture and the multi-token prediction method. Since both branches adopt identical architectural components, we report HitRate@100 on the video recommendation task as a representative effectiveness metric (the author recommendation task exhibits consistent trends), while re-porting model size and inference throughput (QPS) for the complete dual-branch model to reflect practical deployment. 
+
+4.3.1 Main Architecture. In this section, we compare decoder-only and encoder-decoder architectures. In the encoder-decoder variant, the encoder takes sequence features (excluding the push send se-quence) and static features as input, while the decoder generates semantic IDs conditioned on the encoder’s output and push send se-quence. The offline metric comparison results are shown in Table 2. As observed, the decoder-only architecture achieves comparable performance to the encoder-decoder structure but requires fewer parameters. This reduction directly translates to lower memory footprint and faster inference latency. Therefore, we ultimately adopt the decoder-only architecture for HGenPush. 
+
+4.3.2 Multi-token Prediction. To validate the effectiveness of Chained-MTP, we compare it with two baselines: 
+
+• Parallel-MTP predicts all semantic IDs independently with-out modeling semantic dependencies. 
+
+Table 3: Offline performance and inference efficiency com-parison of different MTP methods. 
+
+Method HitRate@100 Max QPS per Device Parallel-MTP 0.1150 2.40k DeepSeek-MTP 0.3954 1.27k Chained-MTP 0.3915 1.70k 
+
+• DeepSeek-MTP [10 ] employs a hierarchical Transformer-based structure to generate semantic IDs. The effectiveness and efficiency comparison results are shown in Table 3. As observed, Parallel-MTP suffers from significant per-formance degradation, demonstrating the necessity of modeling dependencies among semantic IDs. Compared with Parallel-MTP, DeepSeek-MTP substantially improves effectiveness through its Transformer-based cascaded structure, but at the cost of 47.09% throughput reduction (1.27k vs 2.40k QPS). In the trade-off between effectiveness and efficiency, Chained-MTP demonstrates superior comprehensive capability. It maintains competitive effectiveness metric to DeepSeek-MTP while delivering 33.86% higher throughput. Chained-MTP’s balance of effectiveness and efficiency stems from two design choices: (1) employing user interest representation as a stable global context baseline to prevent interest drift, and (2) computing cumulative embedding of preceding semantic IDs, which preserves semantic dependencies without the complex computations of Transformer. 
+
+Figure 2: Offline performance comparison of different model sizes. 
+
+## 4.4 Scaling Law Analysis 
+
+We evaluate HGenPush’s performance across different model sizes and report HitRate@100 on the video recommendation task as the primary effectiveness metric, while the author recommendation branch exhibits consistent trends. Specifically, we scale the model through two stages: first, we increase the size from 0.016B to 0.064B by expanding the number of decoder layers from 8 to 16 and hidden dimensions from 256 to 
+
+512 . Second, we further scale from 0.064B to 0.170B by replacing KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Xiao Liang et al. 
+
+dense feed-forward networks with sparse Mixture-of-Experts (MoE) modules [ 2, 4], which efficiently increases model capacity with manageable computational overhead. As shown in Figure 2, HGenPush demonstrates favorable scal-ing properties across the full range. The HitRate@100 metric im-proves consistently from 0.3432 (0.016B) to 0.3915 (0.064B) to 0.4043 (0.170B). Notably, the first scaling stage achieves a substantial 14.07% relative improvement, while the second stage yields a more modest 3.27% gain, reflecting the law of diminishing returns. These results validate that HGenPush can effectively leverage increased model capacity for improved recommendation quality. 
+
+## 4.5 Reinforcement Learning Performance 
+
+While click behaviors reflect users’ initial interest, they cannot fully capture content quality and user satisfaction. To address this, we propose introducing real user feedback to help the model identify and boost high-value content, thereby enhancing user experience and the health of the system ecosystem. We compare different methods for incorporating user consumption signals, with offline results shown in Table 4. 
+
+Table 4: Offline performance comparison of different meth-ods for incorporating user consumption signals. 
+
+Training Strategy HitRate@100 Loss Base (Click Labels Only) 0.3964 11.22 Base + Sample Reweighting 0.3394 12.31 Base + UCPA 0.3915 11.29 First, we explore sample reweighting based on user watch time, aiming to boost videos with higher user engagement. However, this direct reweighting strategy severely impacts the primary training objective, causing substantial HitRate@100 degradation. In contrast, our user consumption preference alignment (UCPA) module takes a different method: it groups users’ video consumption behaviors within the session following a push click, then computes relative advantage scores for reinforcement learning. This design incorporates much richer consumption signals while maintaining near-baseline performance with only minimal HitRate@100 decline. To further validate the effectiveness of UCPA, we conduct online A/B testing. Table 5 shows the improvements in consumption metrics when adding the UCPA module. It can be observed that UCPA achieves consistent improvements across all consumption metrics, demon-strating its effectiveness in promoting high-value content. Notably, Forward Rate increases by 7.57%, indicating that users are more willing to share recommended content with others. Complete Play Rate and Like Rate also show substantial gains, validating that UCPA successfully guides the model toward content with higher user satisfaction and long-term value. 
+
+## 4.6 Online A/B Testing 
+
+To comprehensively evaluate HGenPush’s real-world effectiveness, we conduct rigorous online A/B testing against the online multi-stage cascading architecture of Kuaishou’s push notification system. We primarily report results for the following core metrics: 
+
+Table 5: Online consumption metrics improvement when adding UCPA module compared to click-only baseline. 
+
+Metric Improvement Push Play Duration +0.43% Valid Play Rate +0.37% Long Play Rate +0.57% Complete Play Rate +0.90% Like Rate +0.75% Forward Rate +7.57% 
+
+• DAU indicates daily active users. 
+
+• CTR is user click-through rate for all notifications received in one day. 
+
+• App Usage Duration is the total time users spend on the application per day. The results in Table 6 demonstrate consistent improvements through iterative enhancements. First, v1 significantly outperforms the production system across all metrics (+0.126% DAU, +0.998% CTR, +0.095% App Usage Duration), validating that our video rec-ommendation branch can accurately capture user interest in video content. Building upon v1, v2 integrates the UCPA module, yield-ing further gains. This enhancement stems from UCPA leveraging user consumption signals to strengthen alignment between our generative recommendation and the downstream ranking module, which enables more effective identification of high-quality candi-dates and ultimately improves experience and engagement. The complete HGenPush (v3) further integrates the author recommen-dation branch for heterogeneous generation and achieves additional improvements, demonstrating its effectiveness in discovering user trust in authors, thereby satisfying users’ follow preference. In summary, the complete HGenPush achieves +0.181% DAU, +1.577% CTR, and +0.148% App Usage Duration over the production system, validating the effectiveness of our approach. Given the scale of our platform and the maturity of the production baseline, these improvements demonstrate substantial business value and prove the practical viability of HGenPush in large-scale production systems. 
+
+## 5 Conclusion 
+
+Existing generative recommendation systems struggle with hetero-geneous recommendation and suffer from low inference efficiency due to autoregressive generation. To address this, we propose HGen-Push, a heterogeneous generative recommendation architecture for industrial push notification systems. The key contributions of our approach are as follows: First, we achieve joint recommendation of heterogeneous content (videos and authors) in the generative recommendation paradigm. Second, we innovatively propose a multi-token prediction method called Chained-MTP, which utilizes user interest representation and cumulative semantic embedding to prevent interest drift and preserve semantic dependencies, while enhancing inference efficiency. Additionally, we design a user con-sumption preference alignment module to encourage the recom-mendation of content with long-term value. Experimental results HGenPush: A Heterogeneous Generative Recommendation Architecture for Industrial Push Notification Systems KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 6: Online performance comparison of different HGenPush variants. In parentheses are p-values. 
+
+Model Variant DAU CTR App Usage Duration (v1) Video Branch w/ Chained-MTP +0.126% (0.00) +0.998% (0.00) +0.095% (0.01) (v2) v1 + UCPA +0.153% (0.00) +1.075% (0.02) +0.145% (0.05) (v3) HGenPush (v2 + Author Branch) +0.181% (0.04) +1.577% (0.11) +0.148% (0.75) demonstrate that HGenPush achieves significant improvements in both effectiveness and efficiency for real-world deployment. 
+
+## References 
+
+[1] Aili Chen, Aonian Li, Bangwei Gong, Binyang Jiang, Bo Fei, Bo Yang, Boji Shan, Changqing Yu, Chao Wang, Cheng Zhu, et al . 2025. MiniMax-M1: Scal-ing Test-Time Compute Efficiently with Lightning Attention. arXiv preprint arXiv:2506.13585 (2025). [2] Damai Dai, Chengqi Deng, Chenggang Zhao, RX Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai Yu, Yu Wu, et al . 2024. Deepseekmoe: Towards ultimate expert specialization in mixture-of-experts language models. In Proceed-ings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 1280–1297. [3] Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. 2025. Onerec: Unifying retrieve and rank with generative recommender and iterative preference alignment. arXiv preprint arXiv:2502.18965 
+
+(2025). [4] Nan Du, Yanping Huang, Andrew M Dai, Simon Tong, Dmitry Lepikhin, Yuanzhong Xu, Maxim Krikun, Yanqi Zhou, Adams Wei Yu, Orhan Firat, et al .2022. Glam: Efficient scaling of language models with mixture-of-experts. In 
+
+International conference on machine learning . PMLR, 5547–5569. [5] Xian Guo, Ben Chen, Siyuan Wang, Ying Yang, Chenyi Lei, Yuqing Ding, and Han Li. 2025. OneSug: The Unified End-to-End Generative Framework for E-commerce Query Suggestion. arXiv preprint arXiv:2506.06913 (2025). [6] Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recom-mendation. In 2018 IEEE international conference on data mining (ICDM) . IEEE, 197–206. [7] Nathan Lambert, Jacob Morrison, Valentina Pyatkin, Shengyi Huang, Hamish Ivison, Faeze Brahman, Lester James V Miranda, Alisa Liu, Nouha Dziri, Shane Lyu, et al . 2024. Tulu 3: Pushing frontiers in open language model post-training. 
+
+arXiv preprint arXiv:2411.15124 (2024). [8] Jiacheng Li, Ming Wang, Jin Li, Jinmiao Fu, Xin Shen, Jingbo Shang, and Julian McAuley. 2023. Text is all you need: Learning language representations for sequential recommendation. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 1258–1267. [9] Yaoyiran Li, Xiang Zhai, Moustafa Alzantot, Keyi Yu, Ivan Vulić, Anna Korhonen, and Mohamed Hammad. 2024. Calrec: Contrastive alignment of generative llms for sequential recommendation. In Proceedings of the 18th ACM Conference on Recommender Systems . 422–432. [10] Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Cheng-gang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, et al . 2024. Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 (2024). [11] Xinchen Luo, Jiangxia Cao, Tianyu Sun, Jinkai Yu, Rui Huang, Wei Yuan, Hezheng Lin, Yichen Zheng, Shiyao Wang, Qigen Hu, et al . 2025. Qarm: Quantitative alignment multi-modal recommendation at kuaishou. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 5915– 5922. [12] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al .2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [13] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 
+
+(2017). [14] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, et al . 2024. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 (2024). [15] Noam Shazeer. 2020. Glu variants improve transformer. arXiv preprint arXiv:2002.05202 (2020). [16] Dongsheng Wang, Yuxi Huang, Shen Gao, Yifan Wang, Chengrui Huang, and Shuo Shang. 2025. Generative next poi recommendation with semantic id. In 
+
+Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 . 2904–2914. [17] Yidan Wang, Zhaochun Ren, Weiwei Sun, Jiyuan Yang, Zhixiang Liang, Xin Chen, Ruobing Xie, Su Yan, Xu Zhang, Pengjie Ren, et al . 2024. Enhanced generative recommendation via content and collaboration integration. CoRR (2024). [18] Zhipeng Wei, Kuo Cai, Junda She, Jie Chen, Minghao Chen, Yang Zeng, Qiang Luo, Wencong Zeng, Ruiming Tang, Kun Gai, et al . 2025. Oneloc: Geo-aware generative recommender systems for local life service. arXiv preprint arXiv:2508.14646 (2025). [19] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhao-jie Gong, Fangda Gu, Michael He, et al . 2024. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. arXiv preprint arXiv:2402.17152 (2024). [20] Biao Zhang and Rico Sennrich. 2019. Root mean square layer normalization. 
+
+Advances in neural information processing systems 32 (2019). [21] Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming Chen, and Ji-Rong Wen. 2024. Adapting large language models by integrating collaborative semantics for recommendation. In 2024 IEEE 40th International Conference on Data Engineering (ICDE) . IEEE, 1435–1448. [22] Chujie Zheng, Shixuan Liu, Mingze Li, Xiong-Hui Chen, Bowen Yu, Chang Gao, Kai Dang, Yuqiong Liu, Rui Men, An Yang, et al . 2025. Group sequence policy optimization. arXiv preprint arXiv:2507.18071 (2025). [23] Zuowu Zheng, Ze Wang, Fan Yang, Jiangke Fan, Teng Zhang, and Xingxing Wang. 2025. EGA: A Unified End-to-End Generative Framework for Industrial Advertising Systems. arXiv preprint arXiv:2505.17549 (2025). [24] Yongxin Zhu, Bocheng Li, Yifei Xin, Zhihua Xia, and Linli Xu. 2025. Addressing representation collapse in vector quantized models with one linear layer. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision . 22968– 22977.
