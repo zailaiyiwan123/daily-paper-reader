@@ -1,0 +1,182 @@
+Title: IntentTune: Using user demand and personalization to resolve "unknown" query intents for e-commerce search
+
+URL Source: https://arxiv.org/pdf/2607.01530v1
+
+Published Time: Fri, 03 Jul 2026 00:18:32 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# IntentTune: Using user demand and personalization to resolve “unknown” query intents for e-commerce search 
+
+Rachith Aiyappa, Ishita Khan, Chester Palen-Michel, Jayanth Yetukuri, Samarth Agrawal, Mehran Elyasi, Shuang Zhou 
+
+eBay Inc., USA 
+
+Abstract 
+
+Understanding user intent is fundamental to de-livering relevant search results in e-commerce. However, substantial fraction of real-world queries are under-specified (e.g., “watch” or “shirt”), lacking explicit attributes such as gen-der or age group. This ambiguity poses a significant challenge for query intent detec-tion models in e-commerce search systems, which must accurately infer latent user intent (e.g., age, gender) to support effective down-stream retrieval. We introduce IntentTune , a framework for resolving ambiguous or under-specified query intents by leveraging either (1) user-specific behavioral signals including search history, browsing activity, and profile at-tributes or (2) population-level demand patterns aggregated across all users. Through experi-ments on real-world e-commerce data, we first demonstrate that population-level demand pat-terns alone are insufficient to reliably infer in-tent in under-specified queries. We then demon-strate that user-specific behavioral signals — particularly prior search queries — outperform both population-level statistics and static pro-file information for inferring gender, age group, product category, and size intent from under-specified queries. 
+
+1 Introduction 
+
+Retrieving relevant products for a user query is a central problem in e-commerce search. Modern search engines typically rely on two complementary families of retrieval approaches: (i) keyword-based lexical retrieval methods such as inverted indexing and query-document lex-ical matching (Robertson et al., 1994), and (ii) embedding-based retrieval (EBR) methods that map queries and products into a shared semantic vector space (Lin et al., 2024; Huang et al., 2020, 2013; Kumar and Sarkar, 2021). Despite their ef-fectiveness, both paradigms struggle with the am-biguity inherent in under-specified user queries. A substantial fraction of real-world queries are ex-tremely short — often single tokens such as “boots,” “watch,” or “shirt” — and omit critical attributes such as gender, age group, style, or size. As a result, both lexical and semantic retrieval models frequently assign such queries to “unknown” or “unspecified” intent categories, or distribute them across coarse-grained buckets that fail to reflect the user’s true intent. This uncertainty propagates downstream, degrading recall, ranking quality, and overall user experience. In e-commerce settings, users exhibit strong and persistent preferences: browsing history, past pur-chases, saved items, and long-term category affini-ties provide powerful signals about what a user likely intends when issuing queries such as “boots” or “sneakers.” For instance, a query like “boots” from a user with a history of purchasing women’s ankle boots conveys a markedly different intent than the same query issued by a user who typically shops for toddler footwear or men’s work boots. Ignoring such personalization signals leaves sub-stantial intent information unexploited. We present IntentTune , a framework for resolv-ing missing or ambiguous query intents produced by existing Query Understanding (QU) systems. IntentTune leverages two complementary sources of information: (1) population-level demand pat-terns , which capture aggregate trends across users, and (2) fine-grained user-specific signals , derived from individual browsing and interaction histories. This dual conditioning enables the inference of la-tent intent dimensions that are not expressed in the query text alone. We focus on fashion-related queries and show that IntentTune can reliably infer gender, age group, and size (when applicable) for a large fraction of previously unresolved queries. We first demon-strate that models based solely on population-level demand achieve only a modest accuracy, leaving significant room for improvement. We then show 
+
+> arXiv:2607.01530v1 [cs.IR] 1 Jul 2026
+
+that incorporating user-specific behavioral signals consistently matches or outperforms demand-based models across multiple intent dimensions. Finally we demonstrate that leveraging historical query behavior enables more accurate refinement of sub-category predictions — a key component of the search stack — beyond what population-level sig-nals alone can achieve. Overall, IntentTune highlights an important prin-ciple in e-commerce search: query understanding should not be static or generic, but personalized, context-aware, and grounded in user behavior . Our framework provides a systematic approach for in-tegrating personalization into intent inference, en-abling more accurate and user-aligned search expe-riences. 
+
+2 Related Work 
+
+Query Understanding in E-Commerce Query Understanding (QU) is foundational to traditional e-commerce search, enabling the inference of latent attributes from queries (Chang and Deng, 2020; Lee et al., 2005; Baeza-Yates et al., 2006; Chistova, 2023). It encompasses a diverse set of tasks, in-cluding category classification (Duraj et al., 2025; Cheng et al., 2024), aspect-value extraction (Joshi et al., 2015; Papenmeier et al., 2021; Farzana et al., 2023; Loughnane et al., 2024), query segmenta-tion (Palen-Michel et al., 2024), and query reformu-lation (Yetukuri and Khan, 2025). More recently, large language models (LLMs) have been used both for direct inference and for generating datasets of aspects (Blume et al., 2023) and intents (Tigunova et al., 2025). Despite this breadth of work, most ap-proaches focus on extracting signals directly from the query itself or assigning labels to it. Relatively less attention has been paid to leveraging historical user behavior to infer attributes that are not readily identifiable from the query alone. 
+
+Personalization in Search and Recommendation 
+
+A substantial body of work has explored person-alization in web search and recommendation sys-tems. Personalized search leverages user profiles, long-term interest patterns, location, and session-level signals to re-rank retrieved documents (Tee-van et al., 2005; Speretta and Gauch, 2005; Bennett et al., 2011). In parallel, collaborative filtering and latent factor models (Koren et al., 2009; Rendle, 2010) have demonstrated the effectiveness of user-item interaction histories for modeling preferences. While these approaches underscore the importance of personalization, they primarily operate after re-trieval , influencing ranking rather than retrieval itself. In contrast, IntentTune incorporates person-alization directly into the intent inference stage, shaping the retrieval problem at its source rather than adjusting results post hoc. 
+
+Implicit Attribute and Intent Identification 
+
+Prior work on attribute identification for underspec-ified queries has combined knowledge graphs (Luo et al., 2021; Yu et al., 2024) with signals such as past user co-clicks at both individual and aggre-gate levels (Luo et al., 2023). However, Luo et al. (2023) do not explicitly model missing attributes using personalized individual user search histories. IntentTune extends this line of work by integrating per-user preference distributions, global demand signals, and LLM-based reasoning to more accu-rately infer attributes such as gender, age group, size, and category. Overall, IntentTune bridges two historically dis-tinct lines of research — Query Understanding and personalized retrieval — by introducing a unified framework that conditions low-level intent infer-ence on both individual user behavior and aggre-gate marketplace demand. 
+
+3 Current Pipeline and IntentTune 
+
+While IntentTune is agnostic to application do-mains, Figure 1 illustrates how it integrates into our existing pipeline for fashion query understanding. The overall pipeline combines semantic intent mod-els with user-level contextual signals or population-level demand patterns to produce refined, person-alized intent predictions. The key components are summarized below. 
+
+3.1 Baseline Intent Models 
+
+Given a user query, the system first applies existing QU models to infer several core intent dimensions: 
+
+gender intent , age-group intent , size intent , and 
+
+category prediction . Each model independently outputs either an assignment which could include an unspecified label when the query text does not provide sufficient information. Many popular but coarse queries (e.g., “nike shoes”) can fall into the “unspecified” bucket across one or more intent dimensions. We note here that all our baseline intent models have a performance of greater than 0.9 (macro-F and micro-F). The Size Intent Model is a BERT-based token classification model which predicts fine-grained Boots    
+
+> shirt
+> watch
+> Query
+> Size
+> Intent Model
+> Gender
+> Intent Model
+> Age
+> Intent Model
+> Category
+> Prediction
+> Model
+> Unspecified
+> -AllCats > Clothing, Shoes & Accessories >
+> - Men > Men' s Shoes > Boots
+> - Women > Women' s Shoes > Boots
+> - Men > Men' s Shoes > Athletic Shoes
+> - Kids > Boys > Boys' Shoes
+> - Kids > Girls > Girls' Shoes
+> Size : 5Y
+> Gender : female
+> Age : kids
+> Catgeory :
+> AllCats > Clothing, Shoes &
+> Accessories > Kids > Girls
+> > Girls' Shoes
+> Size : -
+> Gender : male
+> Age : adult
+> Catgeory ~ Category
+> Prediction Model
+> Demand- based
+
+IntentTune     
+
+> Personalization
+> -Previous queries
+> -User Profile
+> -Reformulated queries
+> -Previous aspects
+
+Figure 1: Overview of the IntentTune framework. Queries that are labeled as “unspecified” by existing intent models (e.g., size, gender, and age) or insufficiently refined by category prediction models are routed to IntentTune. The framework resolves such ambiguous queries by leveraging both population-level demand patterns and user-specific behavioral signals (e.g., browsing history and prior queries), enabling more accurate inference of latent intent attributes and refined category predictions. 
+
+size entities such as clothing_size , shoe_size ,and size_type in buyer-generated queries (De-vlin et al., 2019). It is inherently limited to cases where size is explicitly mentioned in the query. For queries where size intent is implicit or omitted (e.g., “women’s sweater”), the model is unable to infer the appropriate size signal, motivating the need for additional context-aware approaches such as IntentTune. The Gender Intent Model is a BERT-based classification model query into one of four in-terpretable classes: male , female , unisex , and 
+
+unspecified . Similar to the Gender Intent Model, the Age Intent Model is a BERT-based classifi-cation model to categorize each query into one of eight interpretable classes: infant , toddler ,
+
+kids , teen , young adult , adult , senior , and 
+
+unspecified . Since both the gender and age in-tent models rely solely on query text and does not incorporate population-level or user-specific sig-nals, it defaults to the unspecified class for in-herently ambiguous queries such as “sweatshirt,” where intent is not explicitly expressed. The Category Prediction Model is also a BERT based model and maps search queries to the most suitable categories in our taxonomy. Unlike the size, gender, and age models, this model is trained using historical search data to align predictions with population preferences. However, the pre-dicted categories can still be inaccurate or in-sufficiently personalized for ambiguous or under-specified queries. This can lead to coarse or sub-optimal category assignments which affects down-stream retrieval. When one or more of the baseline intent mod-els returns “unspecified,” our pipeline invokes the IntentTune framework. 
+
+3.2 IntentTune framework 3.2.1 Unspecified Intent Resolution via Demand 
+
+Despite its limitations, the category prediction model provides useful demand-based signals that can help resolve unspecified gender and age intents by leveraging information embedded in the pre-dicted categories. For instance, a query such as “dell shirt” is assigned to the following two cate-gories in our taxonomy: • AllCats > Clothing, Shoes, & Accessories > Men > Men’s Clothing – Shirts > T-Shirts 
+
+– Shirts > Polos 
+
+We infer gender and age by selecting the category with the highest confidence score produced by the model. In this example, the model assigns the high-est confidence to AllCats > Clothing, Shoes, & Accessories > Men > Men’s Clothing >Shirts > T-Shirts , which implies a Male gender and Adult age group. Size-related intents, however, cannot be reliably inferred from the category hier-archy, and constraining retrieval based on demand-derived size signals may negatively impact recall. Therefore, we do not use this module for size infer-ence. While this approach provides a reasonable baseline, it relies solely on the top-ranked category prediction. Extending this method to incorporate multiple candidate categories for intent inference is an interesting direction for future work. 
+
+3.2.2 Unspecified Intent Resolution via Personalization 
+
+This component is designed to leverage a rich set of user-level contextual signals. In this work we limit ourselves to two sources: • User Profile Attributes: Non-sensitive infor-mation provided at account creation, such as broad age group and gender. These attributes do not include their size preferences and we do not use them for size-related evaluation. • Historical queries : The user’s past search queries, from which we consider activity within a one-month window. These signals provide strong priors over a user’s likely intent, enabling more informed disambigua-tion of under-specified queries. For example, as illustrated in Figure 1, a user with a history of browsing girls’ footwear is more likely to intend “girls’ boots” when issuing the ambiguous query “boots.” By conditioning on such user-specific con-text, the system can infer latent intent dimensions that are not explicitly expressed in the query text. In this work, we employ an internally hosted LLM to infer gender, and age, size, and category for ambiguous queries. The model is prompted with (i) definitions of the intent classes, (ii) the ambigu-ous query, and (iii) relevant user-specific context (historical queries or user profile attributes). In the case of category, we also provide the LLM with the list of categories predicted by the category predic-tion model to choose from. For historical queries, we include only those within a one-month window for which the baseline intent models produce high-confidence predictions —specifically, queries with gender intent confidence greater than 0.8 or non-
+
+unspecified age intent confidence greater than 0.9. These thresholds are chosen to balance the quality and quantity of contextual signals (Liu et al., 2023). It also reflects realistic deployment scenarios where only a limited number of past interactions are avail-able. We leave it to future work to incorporate addi-tional sources of user context, such as previously selected aspects, saved items, and click interactions, to further improve intent inference. 
+
+3.3 IntentTune Outputs 
+
+The framework outputs a set of demand-based or 
+
+personalized intent assignments , including refined predictions for size, gender, age group, and final category. For example, for a user with a history of browsing girls’ footwear, the personalization module in Figure 1 for the query “boots,” outputs: Size: 5Y, Gender: female , Age: kids .
+
+While the category output of the “Demand-based” module is the same as the category pre-diction model, Personalization further refines it to (AllCats > Clothing, Shoes & Accessories > Kids > Girls > Girls’ Shoes ). This way, IntentTune has the ability to trans-form ambiguous queries into fully specified, user or population aligned intent representations, enabling more accurate downstream retrieval and ranking. 
+
+4 Dataset 
+
+Existing public personalization datasets are for broader domains (Serdyukov et al., 2014; Zhao et al., 2025; Wu et al., 2020) or target e-commerce assistants (Bernard and Balog, 2023), but none of these examines personalization for item retrieval using past user queries in the e-commerce domain. The closest to our use case is Ai et al. (2017) but this dataset generates the queries synthetically from products rather than actual user queries. We therefore construct and manually annotate a dataset of user queries and past user identities to evaluate the IntentTune framework. From a large corpus of fashion related search queries, we first identify queries with unspecified size, age, and gender intent (using the baseline intent models), and sample 30 such ambiguous queries to form the base query set. To incorporate user context, we further sample 30 users with sufficient search activity to provide meaningful behavioral signals. Specifically, selected users must have viewed at least 20 search result pages within a session and have participated in more than one search session over a six-month period. We pair each ambiguous query with each selected user, resulting in a total of 30 × 30 = 900 query-user pairs. Each pair is manually annotated to determine the intended size, age, and gender attributes, enabling evaluation of intent resolution under personalized context. The manual annotation process incorporates mul-tiple sources of user context, including user profile attributes and historical queries. In addition to past queries, users may specify aspect filters such as size, gender, or category during their search ses-sions. We include these user-selected aspects as an additional source of context to aid in disambiguat-ing otherwise unspecified queries. The objective of the annotation process is to assign a single gender, age, and category label to each user-query pair. For size, we allow for multiple labels per user–query pair. Table 1 summarizes the resulting class dis-tributions for size, gender, and age intents derived from the annotated dataset. We note that despite allowing for multiple labels per user—query pair, most of the pairs still have just a single annotated la-bel. Additionally, the size, gender, and age intents of many queries still cannot be inferred despite hav-ing access to user context reflecting the challenging nature of the problem. 
+
+5 Evaluation 
+
+To evaluate the performance of the IntentTune framework for resolving size, age, and gender intents, we report accuracy, weighted precision, weighted recall, and weighted F1-score. The weighted variants of these metrics account for class imbalance by averaging per-class performance pro-portional to the number of instances in each class, providing a more reliable estimate of overall perfor-mance in skewed distributions (Table 1). In the case of size we are only evaluating the historical-query based personalization (§3.2.2 and §3.2.1) and re-ward the module if it gets atleast one of the possible size intents of a given user-query pair right. For category prediction, we do not directly evalu-ate the demand-based component of IntentTune, as it relies on the same underlying category prediction model. Our focus is not on improving category pre-diction itself, but rather on assessing the additional value introduced by personalization. Therefore, we evaluate the effectiveness of personalization by selecting the better-performing approach between profile-based and historical-query-based personal-ization (as determined by prior evaluation), and measuring the extent to which personalization im-proves category resolution. Specifically, we report the percentage of cases in which personalization successfully reduces the number of candidate cate-gories produced by the demand-based model while preserving correctness.                                                                                              
+
+> Dimension Class Support %Age
+> Adult 762 84.67% Unspecified 107 11.89% Young Adult 15 1.67% Kids 15 1.67% Infant 10.11%
+> Total 900 100%
+> Size
+> Unspecified 707 73.72% XXL 48 4.97% 819 1.97% XL 17 1.76% 12 17 1.76% L13 1.35% 8.5 13 1.35% 7 1/2 12 1.24% 7 3/8 12 1.24% M10 1.04% Small 90.93% Large 90.93% 3XL 80.83% 52 60.62% US 9.5 60.62% 960.62% 42 50.52% 750.52% 11 50.52% 13 50.52% 36 40.41% S40.41% 16 40.41% 9.5 40.41% 10 40.41% 15.5 30.31% 38 30.31% Boys Small 20.21% Small Petite 10.10% 15.15 10.10% 2C 10.10% US 4–10 10.10% US 4–16 10.10%
+> Total 965 100%
+> Gender
+> Unspecified 362 40.22% Male 354 39.33% Female 183 20.33% Unisex 10.11%
+> Total 900 100%
+
+Table 1: Class distribution across the intent dimensions in the human judgment set. 
+
+6 Results 
+
+We first observe that the demand-based module pre-dicts age and gender intent for 77.3% and 76.56% of ambiguous queries, respectively. The person-alization based on historical queries (user pro-file attributes) predicts age and gender intent for 90.22% (73.44%) and 75.44% (86.44%) of ambigu-ous queries, respectively. In Table 2, we compare demand-based, profile-based personalization, and historical-query-based Dim. Metric Demand Profile Hist. Queries Age                                     
+
+> Acc 0.674 0.650 0.833
+> Pw0.728 0.746 0.802
+> Rw0.674 0.650 0.833
+> F1 w0.698 0.687 0.816 Size
+> Acc --0.743
+> Pw--1.000
+> Rw--0.743
+> F1 w--0.853 Gender
+> Acc 0.387 0.387 0.741
+> Pw0.356 0.460 0.765
+> Rw0.387 0.387 0.741
+> F1 w0.330 0.382 0.726
+
+Table 2: IntentTune performance across intent dimen-sions. Best values per row are in bold. Metrics are weighted based on support sizes of classes belonging to each intent. Acc. is accuracy, Pw, R w, F w are weighted precision, recall, and F respectively. 
+
+personalization across size, age, and gender intent resolution. We observe that personalization based on historical queries consistently outperforms both demand-based and profile-based approaches across all evaluated dimensions. For age, historical-query-based personalization yields substantial improve-ments over the demand baseline, achieving a gain of 17% in weighted F1 score. For gender, which is a more balanced dataset, the improvements are even more pronounced. Historical-query-based per-sonalization nearly doubles the accuracy relative to both demand-based and profile-based approaches, with a gain of more than >90% in weighted F scores. In contrast, profile-based personalization performs comparably to the demand-based model, suggesting that coarse-grained user attributes alone may not be sufficient for fine-grained intent disam-biguation. In other words static user attributes are less informative than dynamic behavioral context. For size, evaluation is restricted to the historical-query-based personalization module due to the multi-valued nature of size intent and the lack of reliable size signals in demand-based and profile-based approaches. The results indicate that histori-cal queries provide meaningful context for resolv-ing size ambiguity when explicit size mentions are absent. Fig. 2 shows personalization based on histori-cal queries effectively refines category predictions produced by the category prediction model for am-biguous queries. Specifically, 68.5% of the can-didate categories generated by the demand-based module are correctly reduced to a single category 
+
+Figure 2: Historical-query-based personalization (right; “Personalized”) refines category predictions produced by the category prediction model (left; “Demand”) for am-biguous queries. Numbers adjacent to the gray blocks indicate the number of candidate categories predicted by each module. Flows represent how personalization reduces or maintains the number of candidate categories, with “Insufficient Information” denoting cases where personalization cannot further refine predictions due to limited user context or incorrect candidate categories. Blue (orange) edges indicate cases where the refined prediction is correct (incorrect) according to manual annotation. 
+
+through personalization. Among these cases, 10% are flagged for further review, indicating instances where the candidate set produced by the category prediction model may require expansion or correc-tion. 
+
+7 Discussion 
+
+The IntentTune framework to resolve ambiguous queries by relying on demand-based or person-alized modules Our results demonstrate that the choice of personalization signal plays a critical role in intent resolution. User behavioral signals de-rived from historical queries are significantly more effective than both population-level demand pat-terns and static profile attributes. Our work is not focused on achieving state-of-the-art performance; rather, it serves as a proof of concept demonstrating the gains achievable by incorporating user context into query understanding. We leave to future work the evaluation of these improvements using online e-commerce metrics such as user satisfaction, click-through rate, and engagement. In sum, our work contributes to the more effec-tive search systems by leveraging both demand-based and user-specific personalization signals. 8 Limitations 
+
+A central challenge in the IntentTune setting is re-solving conflicting intent signals arising from mul-tiple sources of user context, including population-level demand and user-specific information. For example, user profile attributes may suggest an adult-oriented intent, while historical queries in-dicate a preference for children’s items, and pre-viously selected aspects reflect adult preferences. Such inconsistencies across multiple sources of context make intent inference non-trivial, requiring mechanisms that can reconcile competing signals to arrive at a coherent interpretation of user intent. Another limitation of IntentTune in its current de-sign is the cold-start problem, where insufficient user-level or demand-level information is available to reliably infer intent. This occurs, for example, when a user has little to no historical activity, when demand signals are sparse, or when queries are intentionally exploratory and not tied to prior in-tent. In such cases, the lack of contextual signals makes it difficult to provide accurate personalized predictions. 
+
+References 
+
+Qingyao Ai, Yongfeng Zhang, Keping Bi, Xu Chen, and W. Bruce Croft. 2017. Learning a hierarchical embedding model for personalized product search. In Proceedings of the 40th International ACM SIGIR Conference on Research and Development in Infor-mation Retrieval , SIGIR ’17, page 645–654, New York, NY, USA. Association for Computing Machin-ery. Ricardo Baeza-Yates, Liliana Calderón-Benavides, and Cristina González-Caro. 2006. The intention behind web queries. In International symposium on string processing and information retrieval , pages 98–109. Springer. Paul N. Bennett, Filip Radlinski, Ryen W. White, and Emine Yilmaz. 2011. Inferring and using location metadata to personalize web search. In Proceedings of the 34th International ACM SIGIR Conference on Research and Development in Information Retrieval ,SIGIR ’11, page 135–144, New York, NY, USA. As-sociation for Computing Machinery. Nolwenn Bernard and Krisztian Balog. 2023. Mg-shopdial: A multi-goal conversational dataset for e-commerce. In Proceedings of the 46th Interna-tional ACM SIGIR Conference on Research and De-velopment in Information Retrieval (SIGIR ’23), July 23–27, 2023, Taipei, Taiwan , SIGIR ’23. Ansel Blume, Nasser Zalmout, Heng Ji, and Xian Li. 2023. Generative models for product attribute ex-traction. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing: Industry Track , pages 575–585, Singapore. Associa-tion for Computational Linguistics. Yi Chang and Hongbo Deng. 2020. Query understand-ing for search engines . Springer. Zhu Cheng, Wen Zhang, Chih-Chi Chou, You-Yi Jau, Archita Pathak, Peng Gao, and Umit Batur. 2024. E-commerce product categorization with LLM-based dual-expert classification paradigm. In Proceedings of the 1st Workshop on Customizable NLP: Progress and Challenges in Customizing NLP for a Domain, Application, Group, or Individual (CustomNLP4U) ,pages 294–304, Miami, Florida, USA. Association for Computational Linguistics. Elena Chistova. 2023. Representation learning for hier-archical classification of entity titles. In Proceedings of the 6th International Conference on Natural Lan-guage and Speech Processing (ICNLSP 2023) , pages 43–50. Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. Bert: Pre-training of deep bidirectional transformers for language understand-ing. In Proceedings of the 2019 conference of the North American chapter of the association for com-putational linguistics: human language technologies, volume 1 (long and short papers) , pages 4171–4186. Jetlir Duraj, Ishita Khan, Kilian Merkelbach, and Mehran Elyasi. 2025. A chain-of-thought approach to semantic query categorization in e-commerce tax-onomies. In Proceedings of the ACM SIGIR Work-shop on eCommerce 2025 co-located with the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR 2025) .Shahla Farzana, Qunzhi Zhou, and Petar Ristoski. 2023. Knowledge graph-enhanced neural query rewriting. In Companion Proceedings of the ACM Web Confer-ence 2023 , pages 911–919. Jui-Ting Huang, Ashish Sharma, Shuying Sun, Li Xia, David Zhang, Philip Pronin, Janani Padmanab-han, Giuseppe Ottaviano, and Linjun Yang. 2020. Embedding-based retrieval in facebook search. In 
+
+Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining ,pages 2553–2561. Po-Sen Huang, Xiaodong He, Jianfeng Gao, Li Deng, Alex Acero, and Larry Heck. 2013. Learning deep structured semantic models for web search using clickthrough data. In Proceedings of the 22nd ACM international conference on Information & Knowl-edge Management , pages 2333–2338. Mahesh Joshi, Ethan Hart, Mirko Vogel, and Jean-David Ruvini. 2015. Distributed word representations im-prove NER for e-commerce. In Proceedings of the 1st Workshop on Vector Space Modeling for Natural Language Processing , pages 160–167, Denver, Col-orado. Association for Computational Linguistics. Yehuda Koren, Robert Bell, and Chris Volinsky. 2009. Matrix factorization techniques for recommender sys-tems. Computer , 42(8):30–37. Lakshya Kumar and Sagnik Sarkar. 2021. Neu-ral search: Learning query and product represen-tations in fashion e-commerce. arXiv preprint arXiv:2107.08291 .Uichin Lee, Zhenyu Liu, and Junghoo Cho. 2005. Au-tomatic identification of user goals in web search. In 
+
+Proceedings of the 14th international conference on World Wide Web , pages 391–400. Juexin Lin, Sachin Yadav, Feng Liu, Nicholas Rossi, Praveen R Suram, Satya Chembolu, Prijith Chan-dran, Hrushikesh Mohapatra, Tony Lee, Alessandro Magnani, and 1 others. 2024. Enhancing relevance of embedding-based retrieval at walmart. In Pro-ceedings of the 33rd ACM International Conference on Information and Knowledge Management , pages 4694–4701. Nelson F Liu, Kevin Lin, John Hewitt, Ashwin Paran-jape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. 2023. Lost in the middle: How language models use long contexts, 2023. URL https://arxiv. org/abs/2307.03172 , 2. Robyn Loughnane, Jiaxin Liu, Zhilin Chen, Zhiqi Wang, Joseph Giroux, Tianchuan Du, Benjamin Schroeder, and Weiyi Sun. 2024. Explicit attribute extraction in e-commerce search. In Proceedings of the Sev-enth Workshop on e-Commerce and NLP @ LREC-COLING 2024 , pages 125–135, Torino, Italia. ELRA and ICCL. Chen Luo, Rahul Goutam, Haiyang Zhang, Chao Zhang, Yangqiu Song, and Bing Yin. 2023. Implicit query parsing at amazon product search. In Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval ,SIGIR ’23, page 3380–3384, New York, NY, USA. Association for Computing Machinery. Xusheng Luo, Le Bo, Jinhang Wu, Lin Li, Zhiy Luo, Yonghua Yang, and Keping Yang. 2021. Alicoco2: Commonsense knowledge extraction, representation and application in e-commerce. In Proceedings of the 27th ACM SIGKDD Conference on Knowledge Dis-covery & Data Mining , KDD ’21, page 3385–3393, New York, NY, USA. Association for Computing Machinery. Chester Palen-Michel, Lizzie Liang, Zhe Wu, and Con-stantine Lignos. 2024. QueryNER: Segmentation of E-commerce queries. In Proceedings of the 2024 Joint International Conference on Computational Linguistics, Language Resources and Evaluation (LREC-COLING 2024) , pages 13455–13470, Torino, Italia. ELRA and ICCL. Andrea Papenmeier, Dagmar Kern, Daniel Hienert, Al-fred Sliwa, Ahmet Aker, and Norbert Fuhr. 2021. Dataset of natural language queries for e-commerce. In Proceedings of the 2021 Conference on Human In-formation Interaction and Retrieval , pages 307–311. Steffen Rendle. 2010. Factorization machines. In 2010 IEEE International conference on data mining , pages 995–1000. IEEE. Stephen Edward Robertson, Steve Walker, Susan Jones, Micheline M Hancock-Beaulieu, Mike Gatford, and 1 others. 1994. Okapi at trec. Pavel Serdyukov, Georges Dupret, and Nick Craswell. 2014. Log-based personalization: the 4th web search click data (wscd) workshop. In Proceedings of the 7th ACM International Conference on Web Search and Data Mining , WSDM ’14, page 685–686, New York, NY, USA. Association for Computing Machin-ery. Mirco Speretta and Susan Gauch. 2005. Personalized search based on user search histories. In The 2005 IEEE/WIC/ACM International Conference on Web Intelligence (WI’05) , pages 622–628. IEEE. Jaime Teevan, Susan T Dumais, and Eric Horvitz. 2005. Personalizing search via automated analysis of inter-ests and activities. In Proceedings of the 28th annual international ACM SIGIR conference on Research and development in information retrieval , pages 449– 456. Anna Tigunova, Philipp Schmidt, and Damla Ezgi Ak-cora. 2025. FABRIC: Fully-automated broad intent categorization in E-commerce. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing: Industry Track , pages 442– 450, Suzhou (China). Association for Computational Linguistics. Fangzhao Wu, Ying Qiao, Jiun-Hung Chen, Chuhan Wu, Tao Qi, Jianxun Lian, Danyang Liu, Xing Xie, Jianfeng Gao, Winnie Wu, and Ming Zhou. 2020. MIND: A large-scale dataset for news recommenda-tion. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 3597–3606, Online. Association for Computational Linguistics. Jayanth Yetukuri and Ishita Khan. 2025. Intent-aware neural query reformulation for behavior-aligned prod-uct search. In Proceedings of the ACM SIGIR Work-shop on eCommerce 2025 co-located with the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR 2025) .Changlong Yu, Xin Liu, Jefferson Maia, Yang Li, Tianyu Cao, Yifan Gao, Yangqiu Song, Rahul Goutam, Haiyang Zhang, Bing Yin, and Zheng Li. 2024. Cosmo: A large-scale e-commerce common sense knowledge generation and serving system at amazon. In Companion of the 2024 International Conference on Management of Data , SIGMOD ’24, page 148–160, New York, NY, USA. Association for Computing Machinery. Zheng Zhao, Clara Vania, Subhradeep Kayal, Naila Khan, Shay B Cohen, and Emine Yilmaz. 2025. Per-sonaLens: A benchmark for personalization evalua-tion in conversational AI assistants. In Findings of the Association for Computational Linguistics: ACL 2025 , pages 18023–18055, Vienna, Austria. Associa-tion for Computational Linguistics.
