@@ -1,0 +1,1033 @@
+Title: Optimal Mixture-of-Experts Model Averaging for Conditional Generative Models
+
+URL Source: https://arxiv.org/pdf/2607.04360v1
+
+Published Time: Tue, 07 Jul 2026 02:15:44 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# Optimal Mixture-of-Experts Model Averaging for Conditional Generative Models 
+
+## Shijin Gong 1∗ Baihua He 1 Xinyu Zhang 2,1 †
+
+> 1
+
+School of Management, University of Science and Technology of China 
+
+> 2
+
+Academy of Mathematics and Systems Science, Chinese Academy of Sciences 
+
+Abstract 
+
+Conditional generative models have emerged as powerful tools for sampling from target conditional distributions, driving substantial advances across a wide range of scientific and applied domains. As these models proliferate, practitioners often face multiple plausible generators whose performance can vary with the task, data, or input condition. We propose an optimal model averaging framework for conditional genera-tive models, allowing candidate generators to be combined even when they are acces-sible only through conditional samples without tractable densities. Specifically, we use a sample-based maximum mean discrepancy between conditional distributions, which first leads to a static model averaging method, StaticMA , assigning fixed weights to different candidates. In addition, we develop MoEMA (mixture-of-experts model averaging), an input-adaptive method that parameterizes covariate-dependent weights through a softmax neural-network gate. We establish in-sample and out-of-sample asymptotic optimality for the proposed methods, together with consistency of the es-timated adaptive weight function under regularity conditions. The framework applies directly to Euclidean responses and extends to unstructured data by combining our formulation with fixed representation maps. Across a broad set of simulations and real-data studies spanning tabular, image, and text modalities, MoEMA generally improves over competing baselines, demonstrating the effectiveness of our proposed methods. 
+
+Keywords: conditional generative model, frequentist model averaging, mixture-of-experts, maximum mean discrepancy, asymptotic optimality 
+
+# 1 Introduction 
+
+Over the past five years, generative artificial intelligence has moved rapidly from a frontier research area into widespread practical use. Modern generative models can produce natural-
+
+> ∗
+
+The authors are listed in alphabetical order and recognized as co-first authors. 
+
+> †
+
+Corresponding author: Xinyu Zhang. Email: xinyu@amss.ac.cn. 
+
+1
+
+> arXiv:2607.04360v1 [stat.ML] 5 Jul 2026
+
+language text and code (e.g., OpenAI, 2023), synthesise images from textual or multimodal inputs (e.g., Rombach et al., 2022), and generate dynamic video content (e.g., Brooks et al., 2024). These multimodal generative capabilities have expanded the role of AI from content creation to broader forms of human augmentation, supporting key activities such as writing, design, programming, and scientific discovery, while also enabling a wide range of applications across many other domains. At the methodological core of this progress lies a statistical object that has been studied for decades: the conditional distribution of a response given an input. In generative AI, the input may be a prompt, a covariate vector, or other objects, and the goal is not merely to predict a single response, but to represent the range of plausible responses and their asso-ciated distribution. From a statistical perspective, two lines of work are especially relevant. The first, with a long and well-developed history, models the response distribution explicitly, as in kernel density estimation (e.g., Silverman, 1986), conditional density estimation (e.g., Fan et al., 1996), and distributional regression (e.g., Hothorn et al., 2014). The second strand is more recent and closely connected to modern generative modelling: it learns a conditional sampler from data, a procedure that takes an input and generates samples approximating the corresponding conditional distribution (e.g., Zhou et al., 2023). The rapid development of generative modelling has produced a diverse collection of con-ditional generative models, so practitioners often face several plausible generators and model choice itself becomes a source of uncertainty. Rather than selecting a single generator, a nat-ural alternative is to aggregate candidate generators. Existing work in generative modelling supports this perspective, showing that leveraging multiple generative models or compo-nents can improve generation performance relative to relying on a single model (Balaji et al., 2022; Rezaei et al., 2025). Frequentist model averaging (FMA) provides a classical statisti-cal framework for such aggregation under model selection uncertainty, assigning weights to candidate estimators under a risk criterion (e.g., Hansen, 2007). However, classical FMA is not directly tailored to conditional generative models, and adapting it to this setting calls for new methodological and theoretical development. In this paper, we propose an optimal model averaging framework for conditional gen-erative models, where the goal is to approximate a target conditional distribution and the 2candidate conditional distributions are accessible only through samples generated by the corresponding models. In this setting, classical criteria that require evaluating likelihoods, such as Kullback–Leibler (KL) divergence, are not fully feasible across candidates. We therefore apply an integral probability metric (IPM) (M¨ uller, 1997) to conditional distribu-tions. Choosing the function class in the IPM to be the unit ball of a reproducing kernel Hilbert space (RKHS), whose reproducing kernel is defined on the response space, yields the maximum mean discrepancy (MMD), a sample-based criterion estimable through kernel mean embeddings (Gretton et al., 2012). This leads to the proposed static model averaging method, StaticMA , which assigns weights on the simplex and, under the MMD objective, reduces to a quadratic programming problem. 
+
+StaticMA uses a single weight vector over the entire covariate space, thereby treating the relative importance of the candidate generators as the same for all inputs. This restriction can be strong for modern conditional generation. For example, large-scale evaluations show that no single language model dominates uniformly across tasks or domains (Bommasani et al., 2023). Candidate generators may differ in architecture, training objective, or training data, and therefore may better approximate the target conditional distribution in different regions of the input space. To capture this heterogeneity, we introduce a covariate-dependent weight function, drawing on ideas from mixture-of-experts models (Jacobs et al., 1991). This gives the proposed input-adaptive method, MoEMA (mixture-of-experts model averaging), which parameterises the weight function by a softmax-gated neural network and is fitted using the same MMD-based objective. The framework accommodates generators that are trained as part of the procedure or adopted from pretrained sources. In either case, the aggregation step requires only the ability to generate conditional samples from each candidate model, and no generator needs to expose a tractable density. On the theoretical side, the criterion for conditional distributions and the input-adaptive weight function introduce complications largely absent from classical optimal FMA, where the weights live in a finite-dimensional simplex and the criterion is a residual- or likelihood-based scalar risk. In this setting, we develop asymptotic theory for MoEMA and establish three results. The first two are asymptotic optimality results in the classical sense: both the in-sample risk (Theorem 4) and the out-of-sample risk (Theorem 5) of the method with 3data-driven weights are asymptotically equivalent to those of the infeasible oracle using the population-optimal weight function. The third is a weight-consistency result (Theorem 6): the estimated weight function itself converges to the population-optimal weight set, so the learned gate identifies which generators are locally relevant. The proofs address two com-plications that are not covered by existing FMA theory: the neural-network approximation error of a H¨ older-class weight function and the dependence of the criterion on the fitted generators, the latter via an algorithmic-stability argument. Parallel results for StaticMA 
+
+hold under strictly weaker conditions (Theorem 1-3). To our knowledge, this provides the first model averaging theory for conditional generative models, and the first optimal model averaging theory built around a sample-based MMD criterion for comparing conditional dis-tributions. Together with the input-adaptive extension realised by MoEMA , these results extend optimal FMA along three axes: from point prediction to conditional distribution esti-mation, from evaluable likelihoods to sample-based discrepancies, and from constant weights to input-adaptive weight functions. This framework accommodates a broad range of tasks with different response types. For Euclidean responses, it applies directly with a kernel on the response space; for unstructured data, including images, text, or others, it extends through a feature-space variant (Sec-tion 4.3) that composes the kernel with a fixed representation map and leaves the criterion otherwise unchanged. We validate the methodology with extensive simulation and real-data studies spanning Euclidean, image, and text responses. Across these regimes, MoEMA 
+
+improves over both the best single generator and other competing baselines. The remainder of the paper is organised as follows. Section 2 reviews related work. Section 3 formalises the problem and introduces the MMD criterion. Section 4 develops the proposed StaticMA and MoEMA methods together with their feature-space exten-sion to unstructured data. Section 5 establishes our theoretical results, Sections 6–7 report simulation and real-data studies, and Section 8 concludes. 42 Related Work 
+
+## 2.1 Conditional Generative Modelling and Ensembles 
+
+Conditional generative modelling aims to learn the distribution of an output given covariates, labels, prompts, or other contextual information. Existing approaches include conditional ad-versarial generators (Mirza and Osindero, 2014), conditional variational autoencoders (Sohn et al., 2015), normalising flows (Papamakarios et al., 2021), diffusion and score-based meth-ods for conditional sampling and forecasting (Ho et al., 2020; Song et al., 2021), and autore-gressive language models that sample continuations conditional on prompts (Radford et al., 2019; OpenAI, 2023). Other related lines include statistically grounded methods for condi-tional sampling and distributional regression (Zhou et al., 2023; Song et al., 2025), as well as generators for tabular data (Kotelnikov et al., 2022; Chang et al., 2024; Madhusudhanan et al., 2025). Generator mixtures, ensembles, and model-composition methods provide another related perspective. Earlier work based on generative adversarial networks (GANs) used multiple generators to improve mode coverage (e.g., Ghosh et al., 2018). More recent work combines pretrained generators at inference time, including diffusion composition through score- or energy-based operations (e.g., Du et al., 2023) and decoding-time expert composition for controlled text generation (e.g., Liu et al., 2021). Closest in spirit to model averaging, Rezaei et al. (2025) study global mixture optimisation for unconditional generative models. These approaches show that combining generators can improve diversity or performance, but many of them are tied to particular architectures. In contrast, our method treats each model as an arbitrary conditional sampler, uses only samples from them, allows input-adaptive weights, and is accompanied by theoretical guarantees. 
+
+## 2.2 Frequentist Model Averaging 
+
+Model averaging is a classical alternative to model selection, motivated by the instability and underreported uncertainty that can arise when inference proceeds as if a selected model were fixed in advance (Buckland et al., 1997; Claeskens and Hjort, 2008). In FMA, candidate 5estimators or predictions are combined with data-dependent weights. Early and influential developments include focused and local-misspecification FMA (Hjort and Claeskens, 2003), least-squares or Mallows model averaging (Hansen, 2007), and jackknife model averaging (Hansen and Racine, 2012), among others. Later work extends FMA beyond linear mean regression to richer responses and losses. Examples include model averaging for mixed-effects models (Zhang et al., 2014), Kullback-Leibler loss (Zhang et al., 2015), generalised linear and generalised linear mixed-effects models (Zhang et al., 2016), quantile regression (Lu and Su, 2015), threshold models (Gao et al., 2019), nonlinear regression (Feng et al., 2022) and time-varying or covariate-dependent weights (Sun et al., 2021; Gao et al., 2026). More general formulations allow broader candi-date classes and broader loss functions, including K-fold cross-validation averaging (Zhang and Liu, 2023) and unified general-loss criteria (Yu et al., 2025). These developments are close to our work because they show that FMA can be adapted to richer losses and struc-tures. Our contribution takes this direction further in a new way: we average conditional generators, and we choose weights by a sample-based conditional discrepancy between dis-tributions. 
+
+## 2.3 Mixture-of-Experts 
+
+Our input-adaptive method is related to mixture-of-experts methods, in which a gating func-tion assigns inputs to specialised experts. Classical mixture-of-experts models introduced input-dependent routing among local predictors (Jacobs et al., 1991; Jordan and Jacobs, 1994), and mixture density networks use neural networks to parameterise the mixing weights and components of conditional densities (Bishop, 1994). Recent statistical work has further studied inference and prediction sets for high-dimensional MoE regression models (Javan-mard et al., 2025), as well as the use of MoE weighting to combine multiple prediction tools in prediction-powered inference (Gu et al., 2026). The same routing principle is also cen-tral to modern sparse MoE architectures for scaling deep networks, especially Transformer language models, where token-level gates activate a subset of internal experts to increase model capacity efficiently (e.g., Shazeer et al., 2017; Dai et al., 2024); see Cai et al. (2024) for a recent survey. MoEMA shares the idea of input-dependent weighting. However, the 6weighted objects are not internal components of a single architecture, but separate condi-tional generators, which can be of arbitrary types. 
+
+# 3 Problem Setting and the MMD Criterion 
+
+Let P (· | x) denote the target conditional distribution on the response space Y given x ∈ X .Depending on the task, the response y may be a scalar, a vector, an image, or another com-plex object. Data are observed as Dn =   xi, {yi,j }Ni
+
+> j=1
+
+ ni=1 , where xi ∈ X is a covariate and 
+
+yi, 1, . . . , y i,N i are independent realisations from P (· | xi). Although many applications in-volve only a single response per covariate value, i.e., Ni = 1, this notation also accommodates settings in which multiple responses are observed at the same covariate value. For a positive integer N , we define [ N ] = {1, . . . , N }. For each m ∈ [M ], let Q(m) : X → P(Y) denote the conditional distribution induced by the m-th generative model, where P(Y)is the set of probability distributions on Y. The generative model is a sampler that, at each input x ∈ X , produces samples from Q(m)(· | x), which is specified up to trainable parameters (for example, the weights of a neural-network generative architecture), and bQ(m) denotes the conditional distribution corresponding to parameters fitted on a training set D(m) (which may be different from Dn) under some training algorithm and loss, or inherited from a pretrained model. Different generators in the pool may further differ in model class, architecture, or hyperparameters. We define the fitted pool as bQ = { bQ(m)}m∈[M ], and treat each bQ(m) as a black-box sampler accessed through conditional samples bY (m)(x) ∼ bQ(m)(· | x), without requiring access to its conditional density. Section D of the Supplementary Material reviews the main families of conditional generators and summarises whether each provides a tractable density. To compare two conditional distributions on Y using only samples, we use an integral probability metric (IPM). Let F be a class of measurable functions on Y. For two conditional distributions P (· | x) and Q(· | x) on Y, the IPM between them is defined by 
+
+dF
+
+ P (· | x), Q (· | x) = sup  
+
+> f∈F
+
+n
+
+EY ∼P (·| x)
+
+f (Y ) − EeY ∼Q(·| x)
+
+f ( eY ) o
+
+.
+
+7Different choices of the function class F yield different IPMs. Our criterion is induced by a reproducing kernel Hilbert space (RKHS; Aronszajn, 1950), a choice that makes the resulting discrepancy estimable from samples through kernel evaluations alone. We first recall its definition. 
+
+Definition 1. Let Y be a measurable space. A RKHS on Y is a Hilbert space H of real-valued functions on Y such that there exists a positive-definite kernel k : Y × Y → R satisfying: (i) 
+
+k(·, y ) ∈ H for every y ∈ Y ; and (ii) f (y) = ⟨f, k (·, y )⟩H for every f ∈ H and y ∈ Y . The kernel k is called the reproducing kernel of H.
+
+We choose F = {f ∈ H : ∥f ∥H ≤ 1}, where H is an RKHS on Y with kernel k : Y × Y → 
+
+R. Under this choice, the IPM between the two conditional distributions at x specialises to the maximum mean discrepancy (MMD): MMD 2 P (· | x), Q (· | x) = EY,Y ′∼P (·| x)
+
+k(Y, Y ′)
+
+− 2 EY ∼P (·| x), eY ∼Q(·| x)
+
+k(Y, eY ) + EeY , eY ′∼Q(·| x)
+
+k( eY , eY ′).
+
+This MMD measures discrepancy at each condition x. To compare the two conditional distributions, we average it over the covariate distribution PX and define conditional MMD (cMMD) as follows: for any two conditional distributions P and Q on Y,cMMD 2(P, Q ) = EX∼PX
+
+MMD 2 P (· | X), Q (· | X) . (1) This definition is similar in spirit to averaged MMD of Huang et al. (2022). Note that (1) involves only expectations of kernel evaluations, so cMMD can be estimated from observed responses and generated conditional samples, making it usable without closed-form densities. The technical conditions ensuring that cMMD is well defined and identifiable, in the sense that cMMD( P, Q ) = 0 entails P (· | x) = Q(· | x) for PX -almost every x, are provided in Section A.2 of the Supplementary Material. 84 Mixture-of-Experts Model Averaging Methodology 
+
+In this section, we derive the empirical cMMD objective for a weighted mixture of conditional generators, propose fixed-weight StaticMA and input-adaptive MoEMA , and extend the framework to unstructured responses through response and condition representations. 
+
+## 4.1 Sample-Based cMMD Criterion 
+
+We begin with the population mixture associated with a weight function w : X → ∆M −1.For a generator pool Q = {Q(m)}m∈[M ], define 
+
+Q(· | x; w) = 
+
+> M
+
+X
+
+> m=1
+
+wm(x)Q(m)(· | x).
+
+Fix an arbitrary condition x ∈ X , the MMD between P (· | x) and the mixture Q(· | x; w)can be expressed as a function of the weights: MMD 2 P (· | x), Q (· | x; w) = A(x) − 2
+
+> M
+
+X
+
+> m=1
+
+wm(x) Bm(x) + 
+
+> M
+
+X
+
+> m=1
+> M
+
+X
+
+> m′=1
+
+wm(x)wm′ (x) Cm,m ′ (x),
+
+where A(x) = EY,Y ′∼P (·| x)[k(Y, Y ′)], Bm(x) = EY ∼P (·| x), eY ∼Q(m)(·| x)[k(Y, eY )], and Cm,m ′ (x) = 
+
+EeY ∼Q(m)(·| x), eY ′∼Q(m′)(·| x)[k( eY , eY ′)]. Empirically, we approximate these terms by Monte Carlo samples. For any generator pool Q, we define its generated samples Sn(Q) = y(m) 
+
+> i,ℓ
+
+(Q) ∼
+
+Q(m)(· | xi) : i ∈ [n], ℓ ∈ [Ng], m ∈ [M ] and the estimators obtained by Sn(Q): 
+
+bBi,m (Q) = 1
+
+NiNgNiX
+
+> j=1
+> Ng
+
+X
+
+> ℓ=1
+
+k yi,j , y (m) 
+
+> i,ℓ
+
+(Q),
+
+bCi,m,m ′ (Q) = 
+
+
+
+1
+
+Ng(Ng − 1) 
+
+> Ng
+
+X
+
+> ℓ=1
+
+X 
+
+> ℓ′̸=ℓ
+
+k y(m) 
+
+> i,ℓ
+
+(Q), y (m) 
+
+> i,ℓ ′
+
+(Q), m = m′,
+
+1
+
+N 2
+
+> gNg
+
+X
+
+> ℓ=1
+> Ng
+
+X
+
+> ℓ′=1
+
+k y(m) 
+
+> i,ℓ
+
+(Q), y (m′) 
+
+> i,ℓ ′
+
+(Q), m̸ = m′.
+
+For the diagonal terms m = m′, the pairs with ℓ = ℓ′ are excluded so that bCi,m,m (Q) is an unbiased estimator of the corresponding Cm,m (xi). Although A(xi) cannot be estimated 9from a single response when Ni = 1, it does not depend on w and can therefore be omitted when estimating the weights. We define the empirical criterion 
+
+Ln(w, Q) = − 2
+
+n
+
+> n
+
+X
+
+> i=1
+> M
+
+X
+
+> m=1
+
+wm(xi) bBi,m (Q) + 1
+
+n
+
+> n
+
+X
+
+> i=1
+> M
+
+X
+
+> m=1
+> M
+
+X
+
+> m′=1
+
+wm(xi)wm′ (xi) bCi,m,m ′ (Q).
+
+## 4.2 StaticMA and MoEMA 
+
+We now introduce our proposed methods, starting with a fixed-weight version of the aggrega-tion criterion. StaticMA restricts the weight to be constant over X , so that wm(x) ≡ wm
+
+for each m. We estimate the fixed weight vector by solving the quadratic programming problem 
+
+bw = arg min  
+
+> w∈∆M−1
+
+Ln(w, bQ).
+
+This adopts the common model averaging perspective of combining candidate models through a weight vector optimised by the sample-based cMMD criterion. 
+
+MoEMA allows the mixture weights to depend on the input. Let W be a class of mea-surable functions w : X → ∆M −1, where w(x) = ( wm(x)) ⊤ 
+
+> m∈[M]
+
+, and let wXn = ( w(xi)) ⊤
+
+> i∈[n]
+
+with Xn = {xi}i∈[n]. We model the weight function using a softmax gate, as in the MoE literature. Specifically, let g = ( gm)⊤  
+
+> m∈[M]
+
+: X → RM be a score function satisfying the normalisation gM (x) ≡ 0, and set 
+
+wm(x) = exp {gm(x)}
+
+PMm′=1 exp {gm′ (x)}, m ∈ [M ]. (2) Here, the normalisation gM (x) ≡ 0 ensures the identifiability of the score function g. For estimation, we parameterise an unrestricted score function eg = ( egm)⊤  
+
+> m∈[M]
+
+: X → RM by a fully connected neural network: 
+
+eg(x) = EDσD−1{ED−1 · · · σ1(E1x + b1) · · · + bD−1} + bD, (3) where El and bl are network parameters, the hidden activations σl are ReLU functions, and the output dimension is M . The normalised score is then obtained as gm(x) = egm(x)−egM (x), 
+
+m ∈ [M ], which does not affect either the empirical criterion or the training implementation 10 since w = softmax( g) = softmax( eg) . We denote by Wn the resulting estimation class of softmax-gated networks of depth D and width W . The weight function is then obtained by minimising the sample criterion directly over this class, 
+
+bw ∈ arg min 
+
+> w∈W n
+
+Ln(w, bQ), (4) and we write bwXn = ( bw(x1), . . . , bw(xn)) ⊤ for its values at the observed covariates Xn. For a new input x, prediction or generation proceeds by selecting a generator index bm(x) with 
+
+P{ bm(x) = m} = bwm(x), m ∈ [M ], and then sampling bY ∼ bQ( bm(x)) (· | x). Algorithm 1 in Section E of the Supplementary Material summarises the full implementation. In principle, the Monte Carlo size Ng can be any positive integer. Larger values of 
+
+Ng reduce the estimator variance but increase the cost of computing the empirical kernel statistics. For each condition xi, the bB-terms require O(M N iNg) kernel evaluations, while the bC-terms require O(M 2N 2 
+
+> g
+
+). In practice, Ng can therefore be chosen as large as com-putationally feasible. Other tuning parameters, including the kernel bandwidth and the neural-network hyperparameters in the adaptive gate, can be selected by cross-validation on the fitting criterion. 
+
+## 4.3 Feature-Space Aggregation for Unstructured Data 
+
+For image and text tasks, the response and the covariate may both be non-Euclidean. We use a response representation to compute discrepancies between conditional output distributions and a condition representation to evaluate the adaptive weight function. For Euclidean responses, Algorithm 1 can be used directly with a kernel on Y. For unstructured responses, direct comparison in the raw response space is often not appropriate. We apply a pretrained representation model ψ : Y → Z that transforms raw responses into Euclidean features. Then, we consider a kernel kZ on Z, which induces the kernel 
+
+kψ(y, y ′) = kZ (ψ(y), ψ (y′)), y, y ′ ∈ Y , on the original response space. Consequently, the 11 MMD computed with kψ can be expressed as MMD 2
+
+> kψ
+
+ P (· | x),Q (· | x) = EY,Y ′∼P (·| x)
+
+kZ (ψ(Y ), ψ (Y ′)) 
+
+− 2 EY ∼P (·| x), eY ∼Q(·| x)
+
+kZ (ψ(Y ), ψ ( eY ))  + EeY , eY ′∼Q(·| x)
+
+kZ (ψ( eY ), ψ ( eY ′)) .
+
+The criterion therefore compares the conditional distributions of ψ(Y ) and ψ( eY ), while generated samples remain elements of the original response space Y.Next, we consider the covariate type. The gate function defined in (3) requires x to be represented as a vector. When x is an unstructured input, we combine a pretrained representation model φ : X → U with the same construction in (2), and parameterise the weight function by 
+
+wm(x) = exp {gm(φ(x)) }
+
+PMr=1 exp {gr(φ(x)) }, m ∈ [M ].
+
+Here, taking φ(x) = x recovers the original version, and StaticMA is unchanged because its weights do not vary with x. The generic implementation for such feature-space method is given in Algorithm 2 in Section E of the Supplementary Material. 
+
+# 5 Theoretical Results 
+
+In this section, we establish three types of asymptotic guarantees for the proposed methods: in-sample optimality, out-of-sample optimality, and consistency of the estimated weights. We first analyse StaticMA , whose weight vector w takes values in ∆ M −1, and then MoEMA ,whose weight function w(·) maps X into ∆ M −1.All asymptotic regimes considered in this paper correspond to n → ∞ , whereas the within-block sample sizes Ni are allowed to be fixed. Define N = min 1≤i≤n Ni. For a generator pool Q, define 
+
+\cMMD 2
+
+(w, Dn, Sn(Q)) = A(Dn) + Ln(w, Q), A(Dn) = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+A(xi).
+
+Since A(Dn) is independent of the weights, minimising Ln(w, Q) is equivalent to minimising 
+
+\cMMD 2
+
+(·, Dn, Sn( bQ)) over the same admissible weight class. Here, for fixed weights method 12 StaticMA, we have wm(xi) ≡ wm. Define D′ 
+
+> n
+
+= {(x′
+
+> i
+
+, {y′ 
+
+> i,j
+
+}Ni
+
+> j=1
+
+)}ni=1 as an independent copy of 
+
+Dn. We use the same notational conventions for D′ 
+
+> n
+
+and define the corresponding generated sample set as S′
+
+> n
+
+(Q) = {y′(m) 
+
+> i,ℓ
+
+(Q) ∼ Q(m)(· | x′
+
+> i
+
+) : i ∈ [n], ℓ ∈ [Ng], m ∈ [M ]}. Let 
+
+X ′ 
+
+> n
+
+= {x′
+
+> i
+
+}ni=1 . For any generator pool Q, define the in-sample and out-of-sample cMMD risks, respectively, by IcMMD 2(·, Q) = EDn
+
+n
+
+ESn(Q)
+
+h \cMMD 2
+
+(·, Dn, Sn(Q)) | D n, Q
+
+io 
+
+,
+
+OcMMD 2(·, Q) = ED′
+
+> n,S′
+> n(Q)
+
+h \cMMD 2
+
+(·, D′
+
+> n
+
+, S′
+
+> n
+
+(Q)) | D n, Q
+
+i
+
+.
+
+Here, \cMMD 2
+
+(w, D′
+
+> n
+
+, S′
+
+> n
+
+(Q)) is computed by the same formula, with ( Dn, Sn(Q)) replaced by ( D′
+
+> n
+
+, S′
+
+> n
+
+(Q)). Note that when Q = bQ, the generators trained on Dn are plugged into these definitions and held fixed inside the out-of-sample expectation. We first state the assumptions used in the analyses of both methods. 
+
+Assumption 1. For each m ∈ [M ], there exists a limiting conditional generator Q(m) 
+
+> ∗
+
+such that 
+
+max   
+
+> m∈[M]
+
+sup 
+
+> x∈X
+
+MMD   bQ(m)(· | x), Q (m) 
+
+> ∗
+
+(· | x) = Op(an).
+
+Assumption 1 characterises the approximation properties of the candidate generators. A similar property has also been established in Liang (2021). Throughout the remainder of this section, let Q∗ denote the collection of limiting generators {Q(m) 
+
+> ∗
+
+}m∈[M ]. The corresponding limiting in-sample risk is then IcMMD 2(·, Q∗), where the observed responses in Dn remain distributed according to P but the generated samples in Sn(Q∗) are drawn from the limiting generator pool. The quantities IcMMD 2(w, Q∗) and IcMMD 2(wXn , Q∗) serve as the limiting risks for the static and input-adaptive analyses, respectively. 
+
+Assumption 2. The kernel k on Y is measurable, and there exists a finite constant K > 0
+
+such that sup y,y ′∈Y |k(y, y ′)| ≤ K. 
+
+Assumption 2 is a mild kernel boundedness condition that ensures the per-condition MMD is well defined uniformly in x, and hence so is the cMMD criterion; it is satisfied with 
+
+K = 1 by any bounded kernel, including the Gaussian and Laplace kernels. In the remainder of this section, we study the asymptotic properties of our proposed methods. 13 5.1 Asymptotic Properties for Static Model Averaging 
+
+We first analyse StaticMA , whose weight vector w takes values in ∆ M −1. Let ξn =inf w∈∆M −1 IcMMD 2(w, Q∗) denote the minimum limiting in-sample risk over the simplex. The following assumption couples ξn with the number of candidate generators M and the approximation rate an from Assumption 1. 
+
+Assumption 3. max {n−1/2, a n, (log M )1/2N −1/2 
+
+> g
+
+}/ξ n = o(1) ,
+
+q
+
+M n −1(N −1 + N −1 
+
+> g
+
+) log( Kn )/ξ n =
+
+o(1) , and M log( Kn )/(nξ n) = o(1) .
+
+The first condition controls the empirical fluctuation and the generator approximation error, while the second and third conditions characterise the interplay among the number of candidate generators, the sample size, the generator sample size, and the complexity of the weight-function class relative to the oracle risk level ξn. Similar conditions have also been imposed in Yu et al. (2025). 
+
+Theorem 1. Under Assumptions 1–3, as n → ∞ ,
+
+sup  
+
+> w∈∆M−1
+
+\cMMD 2
+
+(w, Dn, Sn( bQ)) − IcMMD 2(w, Q∗) p
+
+−→ 0
+
+and 
+
+IcMMD 2( bw, Q∗)inf w∈∆M −1 IcMMD 2(w, Q∗)
+
+> p
+
+−→ 1.
+
+Theorem 1 shows that \cMMD 2
+
+(w, Dn, Sn( bQ)) is a uniformly consistent estimator of the limiting risk IcMMD 2(w, Q∗) and establishes the optimality of the proposed StaticMA ,showing that its in-sample risk is asymptotically equivalent to that of the infeasible best model averaging method. The proof of Theorem 1 is deferred to Subsection C.1 in the Supplementary Material. We next establish an analogous optimality result for the out-of-sample risk. In the out-of-sample setting, expectation is taken over a fresh sample D′ 
+
+> n
+
+while the fitted generators 
+
+bQ(m) are held fixed at the values obtained from Dn, so the analysis requires quantitative control on the sensitivity of each bQ(m) to its training data. This is provided by the uniform 14 stability framework of Bousquet and Elisseeff (2002). We introduce the definition of uniform stability for learning the generators in the following. 
+
+Definition 2. An algorithm A has uniform stability βn with respect to the loss function T
+
+if for all Dn = {Vi}ni=1 , V i = ( xi, {yi,j }Ni
+
+> j=1
+
+), and all i ∈ [n],
+
+T (V ; ADn ) − T (V ; AD\in ) ≤ βn,
+
+where V is an independent copy of (xi, {yi,j }Ni
+
+> j=1
+
+) , T (V ; A) denotes the loss function eval-uated at the data point V , and D\in denotes the dataset with the i-th element removed. 
+
+The parameter βn bounds the supremum-norm change in the learned generator when a single training point is removed; for standard regularised learning algorithms one has 
+
+βn = O(n−1) (Bousquet and Elisseeff, 2002). Let ξ′ 
+
+> n
+
+= inf w∈∆M −1 OcMMD 2(w, bQ). The next assumption couples this stability rate with ξ′
+
+> n
+
+, n, and M .
+
+Assumption 4. n1/2βn/ξ ′ 
+
+> n
+
+= o(1) and βn(M n log( Kn )) 1/2/ξ ′ 
+
+> n
+
+= o(1) , where βn is the uniform-stability rate for learning bQ(m) for each m ∈ [M ].
+
+Assumption 4 imposes a comprehensive constraint on the stability-induced generalisation error to be asymptotically negligible relative to the oracle out-of-sample risk. In addition, As-sumption 4 controls the accumulation of stochastic errors caused by the number of candidate generators and the complexity of the weight-function class. 
+
+Theorem 2. Under Assumptions 1–4, as n → ∞ ,
+
+OcMMD 2( bw, bQ)inf w∈∆M −1 OcMMD 2(w, bQ)
+
+> p
+
+−→ 1.
+
+Theorem 2 is the out-of-sample counterpart of Theorem 1, which is of greater practi-cal relevance, since out-of-sample performance is typically of primary interest. The proof is provided in Subsection C.2 of the Supplementary Material. We further show that the estimated weight vector bw is itself consistent for the set of population minimisers of the limiting in-sample risk. Define W∗ = {w : w = arg min w∈∆M −1 IcMMD 2(w, Q∗)} and 
+
+d(w, W∗) = inf w′∈W ∗ ∥w − w′∥2.15 Theorem 3. Under Assumptions 1–3, as n → ∞ , d( bw, W∗) p
+
+−→ 0.
+
+Theorem 3 shows the weak consistency of bw, in the sense that its distance to W∗ vanishes asymptotically. Similar results have been established by Feng et al. (2022). However, our analysis is developed from a different perspective, as we explicitly account for the possible nonuniqueness of the optimal weight function w∗. The proof of Theorem 3 is given in Subsection C.3 of the Supplementary Material. 
+
+## 5.2 Asymptotic Properties for Input-Adaptive Mixture-of-Experts Averaging 
+
+We now analyse MoEMA , whose weight function is approximated by a softmax-gated neural network as in Section 4. The asymptotic analysis requires (i) a smoothness condition on the population-optimal weight function and (ii) a corresponding approximation-rate bound for the neural-network class. Both ingredients are encoded through a H¨ older class, a standard smoothness class in nonparametric estimation. Throughout this subsection, the score func-tion g is the function defined in (2), with its M th coordinate fixed to zero for identifiability. 
+
+Definition 3. Let κ = α + ν > 0, ν ∈ (0 , 1] and α = ⌊κ⌋ ∈ N0, where ⌊κ⌋ denotes the largest integer strictly smaller than κ and N0 denotes the set of nonnegative integers. For a finite constant c0 > 0, define the H¨ older class Gκ(X , c 0) as 
+
+Gκ(X , c 0) = 
+
+
+
+g : X → R : max  
+
+> ∥a∥1≤α
+
+∥∂ag∥∞ ≤ c0, max  
+
+> ∥a∥1=α
+
+sup 
+
+> x̸=x′
+
+|∂ag(x) − ∂ag(x′)|∥x − x′∥ν
+
+> 2
+
+≤ c0
+
+
+
+,
+
+where ∂a = ∂a1 · · · ∂aq with a = ( ak)⊤ 
+
+> k∈[q]
+
+∈ Nq
+
+> 0
+
+, and ∥a∥1 = Pqk=1 ak.
+
+By definition, a function in Gκ(X , c 0) is α-times differentiable over X , with derivatives up to order α uniformly bounded by c0, and its α-th derivatives are H¨ older continuous with exponent ν.
+
+Assumption 5. For the score function g = ( gm)⊤ 
+
+> m∈[M]
+
+, each coordinate gm belongs to the H¨ older class Gκ(X , c 0), and max m∈[M ] sup x∈X |gm(x)| ≤ Bg for some finite constant Bg.
+
+16 Assumption 5 introduces a basic smoothness condition on the continuous function g,together with a uniform bound. Although the smoothness parameter may not be directly inferred in practice, the smoothness condition is rather reasonable and general because it encompasses a large subset of continuous functions. For example, by conservatively setting 
+
+κ = 1, Assumption 5 implies that the function is Lipschitz continuous. 
+
+Assumption 6. The covariate support X ⊂ Rq is contained in a compact p-dimensional Riemannian manifold isometrically embedded in Rq, with p ≤ q.
+
+Assumption 6 assumes that X lies on a low-dimensional manifold. While this assumption is not required to establish the convergence rate of the weight function, it enables a faster con-vergence rate when the ambient dimension q is large. Denote W = w(x) lies in ∆ M −1 : gm(x) ∈ G κ(X , c 0)
+
+and recall from Section 4 the neural-network gate class Wn = w(x) lies in ∆ M −1 : gm(x) ∈Gn(X , D, W ) , where Gn is the neural network with depth D and width W . We further de-note WXn = {w(x1), . . . , w (xn) : w(xi) ∈ W} and Wn, Xn = {w(x1), . . . , w (xn) : w(xi) ∈ W n}.Define ξXn = inf wXn ∈W Xn IcMMD 2(wXn , Q∗). 
+
+Assumption 7. 
+
+q
+
+M (N −1 + N −1 
+
+> g
+
+)SD log( S) log( KnM )/(n1/2ξXn ) = o(1) , M 2n− κ   
+
+> 2κ+plog q
+
+/ξ Xn =
+
+o(1) , M SD log( S) log( KnM )/(nξ Xn ) = o(1) , and max {n−1/2, a n}/ξ Xn = o(1) , where S is the size of the deep neural network. 
+
+Assumption 7 pertains to the dimensionality of the covariates, the depth and size of the neural network, and the number of generators in relation to n and ξXn . Assumption 7 also imposes a condition on the generator convergence rate relative to ξXn .
+
+Theorem 4. Under Assumptions 1–2 and 5–7, if the network width and depth are chosen as 
+
+W = 114( ⌊κ⌋+1)( p log q)⌊κ⌋+1 and D = 21( ⌊κ⌋+1) 2⌈n(p log q)/2( p log q+2 κ) log 2(8 n(p log q)/2( p log q+2 κ))⌉,then as n → ∞ ,
+
+sup  
+
+> wXn∈W n, Xn
+
+\cMMD 2
+
+(wXn , Dn, Sn( bQ)) − IcMMD 2(wXn , Q∗) p
+
+−→ 0
+
+and 
+
+IcMMD 2( bwXn , Q∗)inf wXn ∈W Xn IcMMD 2(wXn , Q∗)
+
+> p
+
+−→ 1.
+
+17 Theorem 4 establishes the optimality of the proposed MoEMA , showing that its in-sample risk is asymptotically equivalent to that of the infeasible best model averaging method. In contrast to prior work on optimal model averaging, our analysis explicitly incor-porates the approximation error induced by using a neural network to approximate the true weight function in the H¨ older class, thereby providing a more complete characterisation of its performance. The proof of Theorem 4 is technically challenging due to the complicated struc-ture of the empirical cMMD criterion. In particular, the adaptive weight function w(·) enters the criterion in a highly complex manner. Moreover, the oracle risk is defined over an infinite-dimensional continuous function space, whereas the estimated weight function is restricted to a neural-network function class. Consequently, the analysis must simultaneously con-trol the neural-network approximation error and the estimation error. We defer the proof to Subsection C.4 of the Supplementary Material. Denote ξ′X ′ 
+
+> n
+
+= inf wX ′ 
+
+> n∈W X ′
+> n
+
+OcMMD 2(wX ′ 
+
+> n
+
+, bQ). 
+
+Assumption 8. n1/2βn/ξ ′X ′ 
+
+> n
+
+= o(1) and M SDnβ 2   
+
+> nlog( S) log( KM n )(ξ′X ′
+> n)2
+
+= o(1) .
+
+Bousquet and Elisseeff (2002) also impose constraints on the stability of the learning algorithm. Assumption 8 further imposes constraints on the dimensionality of the covariates, the depth and size of the neural network, and the number of generators in relation to n and 
+
+ξ′X ′ 
+
+> n
+
+.
+
+Theorem 5. Under Assumptions 1–2 and 5–8, if the network width and depth are chosen as 
+
+W = 114( ⌊κ⌋+1)( p log q)⌊κ⌋+1 and D = 21( ⌊κ⌋+1) 2⌈n(p log q)/2( p log q+2 κ) log 2(8 n(p log q)/2( p log q+2 κ))⌉,then as n → ∞ ,
+
+OcMMD 2( bwX ′ 
+
+> n
+
+, bQ)inf wX ′ 
+
+> n∈W X ′
+> n
+
+OcMMD 2(wX ′ 
+
+> n
+
+, bQ)
+
+> p
+
+−→ 1.
+
+Theorem 5 establishes the asymptotic out-of-sample optimality of the proposed adap-tive model averaging procedure. Specifically, the out-of-sample risk achieved by the learned weight function asymptotically matches that of the infeasible oracle weight function within the entire neural-network weight class. In parallel with Theorem 3, we further show that the estimated weight function is consistent for the set of population minimisers of the limiting in-sample risk over WXn . Define W∗Xn = {w(x) : w(x) = arg min wXn ∈W Xn IcMMD 2(wXn , Q∗)}
+
+18 and d(wXn , W∗Xn ) = inf w′Xn ∈W ∗Xn EXn
+
+∥wXn −w′Xn ∥2
+
+ = Pni=1 inf w′Xn ∈W ∗Xn Exi
+
+∥w(xi)−w′(xi)∥2
+
+/n. 
+
+Theorem 6. Under Assumptions 1–2 and 5–7, if the network width and depth are chosen as 
+
+W = 114( ⌊κ⌋+1)( p log q)⌊κ⌋+1 and D = 21( ⌊κ⌋+1) 2⌈n(p log q)/2( p log q+2 κ) log 2(8 n(p log q)/2( p log q+2 κ))⌉,then as n → ∞ , d( bwXn , W∗Xn ) p
+
+−→ 0.
+
+Theorem 6 establishes the consistency of the learned adaptive weight function. Specif-ically, the weight vector bwXn obtained from (4) converges to the optimal weight set W∗Xn ,in the sense that its distance to W∗Xn vanishes asymptotically. This result is substantially stronger than risk consistency, as it guarantees that the learned adaptive weights themselves recover the oracle weighting structure asymptotically. The proof of Theorem 6 is given in Subsection C.6 of the Supplementary Material. 
+
+# 6 Simulation Studies 
+
+We conduct two simulation designs, one varying the model family with a fixed training sample and the other varying the training covariate distribution with a fixed model family. We compare BestSingle , SimpleAvg (the equal-weight baseline), StaticMA , and MoEMA ;
+
+BestSingle denotes the best individual generator on test set for each metric and is used as an oracle per-metric model-selection benchmark. We further verify the weight-consistency result of Theorem 6 on a separate experiment; see Section F.2 of the Supplementary Material. Both designs use the same structured conditional Gaussian mixture. Let Kmix = 12, and let Θ = {(μxk , μ yk , A k, σ yk )}Kmix  
+
+> k=1
+
+be a fixed set of component parameters, drawn once for each dimension and then held fixed. The components are chosen to induce heterogeneous local conditional distributions across the covariate space. Conditional on a latent component 
+
+C ∼ Unif([ Kmix ]), 
+
+X | C = k ∼ N (μxk , σ 2 
+
+> X
+
+Idx ), Y | X = x, C = k ∼ N { μyk + Ak(x − μxk ), σ 2
+
+> yk
+
+Idy }.
+
+In other words, P (y|x) = PKmix  
+
+> k=1
+
+πk(x) ϕdy{y; μyk + Ak(x − μxk ), σ 2
+
+> yk
+
+Idy }, where ϕd(·; μ, Σ) de-notes the d-dimensional Gaussian density and πk(x) = ϕdx (x; μxk , σ 2 
+
+> X
+
+Idx )/PKmix  
+
+> ℓ=1
+
+ϕdx (x; μxℓ , σ 2 
+
+> X
+
+Idx ).
+
+19 We consider ( dx, d y) ∈ { (1 , 1) , (5 , 1) , (10 , 1) , (5 , 3) }, vary n ∈ { 250 , 500 , 1000 , 2000 }, and eval-uate all methods on an independent test sample of size 1000. The construction of the fixed parameter set Θ is given in Section F.3 of the Supplementary Material. 0.5                     
+
+> 1.0
+> 1.5
+> 2.0
+> MMD 2
+> (dx,dy) = (1, 1)
+> 0.8
+> 1.0
+> 1.2
+> (dx,dy) = (5, 1)
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> (dx,dy) = (10, 1)
+> 0.90
+> 0.95
+> 1.00
+> 1.05
+> 1.10
+> 1.15
+> (dx,dy) = (5, 3)
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Mean AE
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> 250 500 1,000 2,000
+> n
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50
+> Quantile loss
+> 250 500 1,000 2,000
+> n
+> 0.8
+> 1.0
+> 1.2
+> 250 500 1,000 2,000
+> n
+> 0.8
+> 1.0
+> 1.2
+> 250 500 1,000 2,000
+> n
+> 0.95
+> 1.00
+> 1.05
+> not applicable
+> (dy> 1 )
+> MoEMA, model-class
+> MoEMA, X-marginal
+> BestSingle, model-class
+> BestSingle, X-marginal
+> SimpleAvg, model-class
+> SimpleAvg, X-marginal
+> StaticMA = 1
+
+Figure 1: Simulation results across sample sizes. Rows report MMD 2, MeanAE, and QuantileLoss; columns show dimension settings. Values are normalised by StaticMA ;solid/dashed lines denote architecture/training-data heterogeneity. 
+
+## 6.1 Heterogeneous Architectures 
+
+In the first design, the candidate pool consists of four conditional generators from variational autoencoder, diffusion, and normalising-flow families, with architecture or hyperparameter differences. All candidates are trained on the same observed sample Dn, on which the static and adaptive weights are also fit. We report three metrics: sample MMD 2 measures the full conditional distribution P (· | x), while QuantileLoss and MeanAE measure the accuracy of conditional quantiles and conditional means computed from the generated samples. Details of the simulation settings and metric definitions are given in Section F of the Supplementary Material. 20 The results are shown by the solid curves in Figure 1, where each curve reports the ratio of a method’s metric value to that of StaticMA under the same setting. The aggregation methods generally improve over the per-metric best single generator and equal-weight base-line, and MoEMA further improves on StaticMA throughout the four dimension settings. Relative reductions range from 1 .0% to 25 .5% for MMD 2, from 1 .7% to 17 .8% for MeanAE, and from 1 .1% to 10 .0% for QuantileLoss. See Table S1 for the full numerical results. 
+
+## 6.2 Heterogeneous Training Data 
+
+In the second design we use the same DGP as in the first design but keep the model family fixed and vary only the training covariate distribution. The candidate pool consists of three diffusion-based generative regressors with the same architecture and optimisation settings. With u(x) = d−1/2
+
+> x
+
+Pdx 
+
+> j=1
+
+xj , the three candidates are trained on samples from the original DGP conditional on u(X) < −1, |u(X)| ≤ 1, and u(X) > 1, respectively. The dataset Dn
+
+used to fit StaticMA and MoEMA is drawn from the original DGP. The dashed curves in Figure 1 show that MoEMA continues to outperform the non-adaptive baselines. Relative to the second best method StaticMA , MoEMA reduces MMD 2, MeanAE, and QuantileLoss by 1 .9%–75 .9%, 16 .5%–86 .5%, and 15 .8%–55 .5%, re-spectively. These gains are substantially larger than those in the first design. The input-adaptive gate selects the locally relevant specialist for each input, which a constant weight vector cannot achieve. See Table S2 for the full numerical results. 
+
+# 7 Real-Data Studies 
+
+We evaluate the proposed methods on real-world tasks spanning several response modalities and generator families. We begin with tabular probabilistic regression on two scalar-response benchmarks, then turn to image generation and inpainting, and finally consider a short-text continuation task with autoregressive language models. In all real-data tables, for each baseline cell value b, ∆ = 100 ×(b−MoEMA )/b reports the relative error reduction achieved by MoEMA , where positive values indicate lower error under MoEMA .21 7.1 Tabular Studies 
+
+In this experiment, the condition is a covariate vector and we learn the conditional distribu-tion of a scalar response. We use two datasets from the UCI Machine Learning Repository, 
+
+CT Slices 1 and Protein 2. As in the simulation study, we consider two sources of gen-erator diversity. The first varies the generator family while using a common training split: we combine a diffusion-based model (Han et al., 2022), a conditional F¨ ollmer-flow model (Chang et al., 2024), a diffusion-boosted tree model (Han and Zhou, 2024), and the spline-flow model TabResFlow (Madhusudhanan et al., 2025), all trained on the full dataset. The second keeps the generator family fixed and varies the training covariate distribution: the candidate models are TabResFlow generators trained on different subsets, including one random subset Dn and three subsets with different marginal distributions. Full details are provided in Section G.1 of the Supplementary Material. 
+
+Dataset Model RMSE ↓ ∆ Energy ↓ ∆ Pinball ↓ ∆
+
+Panel A: Different generator families, common full split 
+
+CT Slices BestSingle 1.776 +13 .1% 1.421 +10 .6% 0.318 +9 .3% SimpleAvg 2.177 +29 .1% 2.357 +46 .1% 0.591 +51 .2% StaticMA 1.703 +9 .3% 1.408 +9 .8% 0.316 +8 .8% 
+
+MoEMA 1.544 – 1.270 – 0.289 –
+
+Protein BestSingle 4.476 +0 .0% 4.523 +0 .0% 0.998 −0.0% SimpleAvg 4.513 +0 .8% 4.624 +2 .2% 1.022 +2 .3% StaticMA 4.476 +0 .0% 4.523 +0 .0% 0.998 −0.0% 
+
+MoEMA 4.476 – 4.523 – 0.999 –
+
+Panel B: TabResFlow generators, different training supports 
+
+CT Slices BestSingle 5.448 +42 .7% 4.743 +56 .3% 1.072 +55 .1% SimpleAvg 9.301 +66 .5% 6.417 +67 .7% 1.518 +68 .3% StaticMA 9.329 +66 .6% 6.255 +66 .8% 1.481 +67 .5% 
+
+MoEMA 3.121 – 2.074 – 0.481 –
+
+Protein BestSingle 5.170 +15 .0% 5.389 +21 .4% 1.179 +20 .4% SimpleAvg 4.980 +11 .8% 5.077 +16 .6% 1.112 +15 .6% StaticMA 4.914 +10 .6% 4.994 +15 .2% 1.101 +14 .7% 
+
+MoEMA 4.393 – 4.236 – 0.939 –
+
+Table 1: Tabular real-data experiments comparing aggregation rules across generator pools. Reported values are averages over five random repeats. 
+
+> 1https://archive.ics.uci.edu/dataset/206/relative+location+of+ct+slices+on+axial+axis
+> 2https://archive.ics.uci.edu/dataset/265/physicochemical+properties+of+protein+ tertiary+structure
+
+22 Table 1 shows different patterns across the two scenarios. In Panel A, StaticMA im-proves over the best single generator on CT Slices , and MoEMA further reduces the reported metrics by 8 .8%–51 .2% relative to the other methods. On Protein , the candi-date generators provide less complementary information, and the learned mixtures perform similarly to the strongest individual generator. In Panel B, the role of input-dependent weighting is more pronounced. On CT Slices , the generators perform differently on dif-ferent region subsets, and MoEMA improves across metrics by 42 .7%–68 .3% relative to the other methods. On Protein , StaticMA improves over the BestSingle and Sim-pleAvg , and MoEMA further reduces the reported metrics by 10 .6%–21 .4% relative to the other methods. Overall, MoEMA is the strongest method across different scenarios. 
+
+## 7.2 Image Studies 
+
+We conduct three image studies, including handwritten digits generation on MNIST 3, natural-image generation on ImageNet-100 4, and masked-image inpainting on MNIST and CIFAR-10 5. Since the responses are images, these experiments use the feature-space version intro-duced in Section 4.3. We evaluate generated images in a fixed feature space using Fr´ echet Inception Distance (FID) and Kernel Inception Distance (KID), two commonly used metrics for image generative models. See Section G.2 of the Supplementary Material for mathemat-ical formulations and implementation details. 
+
+7.2.1 Class-Conditional Generation on MNIST 
+
+We first consider class-conditional generation on MNIST, using the digit class as the condi-tioning variable. The candidate pool consists of three conditional diffusion generators (Ho et al., 2020) trained on the same handwritten-digit data with different class distributions. The static and adaptive mixtures are fitted from MNIST training images grouped by digit class, and final performance is evaluated on the MNIST test set. In MoEMA , the gate maps the digit label to mixture weights. Table 2 shows that MoEMA improves both criteria over 
+
+> 3https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.MNIST.html
+> 4https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.ImageNet.html
+> 5https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.CIFAR10.html
+
+23 every baseline by a wide margin, with relative reductions ranging from 60% to over 90%. 
+
+7.2.2 Prompt-Conditional Generation on ImageNet-100 
+
+We next consider image generation task on ImageNet-100, conditional on class names. The candidate pool is a heterogeneous collection of pretrained conditional generators from prior work (e.g., Dhariwal and Nichol, 2021; Brock et al., 2019). We fit the methods on ImageNet-100 training images grouped by class and evaluate them on a disjoint set of real images. The 
+
+MoEMA uses a Contrastive Language–Image Pretraining (CLIP) text encoder (Radford et al., 2021) as the condition representation model φ in Section 4.3.                                          
+
+> MNIST ImageNet-100 Method FID ↓∆KID ( ×10 −4)↓∆FID ↓∆KID ( ×10 −3)↓∆BestSingle 0.018 +75 .3% 1.001 +94 .7% 13.021 +9 .8% 1.964 +31 .9% SimpleAvg 0.011 +60 .1% 0.471 +88 .7% 17.889 +34 .3% 4.871 +72 .5% StaticMA 0.016 +71 .1% 0.783 +93 .2% 11.802 +0 .5% 1.317 −1.6%
+> MoEMA 0.004 –0.053 –11.747 –1.338 –
+
+Table 2: Conditional image generation on MNIST and ImageNet-100 evaluated by FID and KID. Reported values are averages over five random repeats. On ImageNet-100, Table 2 shows that simple averaging fails to improve on the best single generator. StaticMA obtains most of the available improvement (about 10% on FID and 32% on KID relative to the per-metric best single generator) and performs similarly to 
+
+MoEMA .
+
+7.2.3 Masked-Image Inpainting on MNIST and CIFAR-10 
+
+We then consider masked-image inpainting, with the centrally masked image as the condition and the completed image as the response. We use handwritten digits on MNIST and natural images on CIFAR-10, two settings in which a single partially observed input can have several plausible completions. For each dataset, we use five DDPMs (Ho et al., 2020) from the same architecture family, trained under different subsets so that each candidate is exposed more heavily to a different subset of image classes. The static and adaptive mixtures are fitted on a random subset of the original dataset images and evaluated on held-out test images. 24 MNIST CIFAR-10 Method FID ↓ ∆ KID ( ×10 −3)↓ ∆ FID ↓ ∆ KID ( ×10 −2)↓ ∆BestSingle 0.192 +73 .1% 2.152 +82 .0% 1.291 +12 .7% 3.222 +21 .0% SimpleAvg 0.062 +16 .4% 0.531 +27 .1% 1.351 +16 .5% 3.345 +23 .9% StaticMA 0.059 +12 .4% 0.388 +0 .1% 1.323 +14 .8% 3.360 +24 .2%         
+
+> MoEMA 0.052 –0.387 –1.128 –2.545 –
+
+Table 3: Masked-image inpainting on MNIST and CIFAR-10 evaluated by FID and KID. Reported values are averages over five random repeats. Table 3 shows that on both datasets the gain reflects input-adaptive weighting rather than the selection of a single dominant generator: both StaticMA and MoEMA outperform the per-metric best individual DDPM, with relative reductions of roughly 14%–78% across datasets and metrics. Among the averaging rules, MoEMA improves over StaticMA by about 10%–13% on FID across both datasets and by roughly a quarter on CIFAR-10 KID, while on MNIST KID the two adaptive rules are essentially tied. 
+
+## 7.3 Text Continuation Study 
+
+We consider short-text continuation, where a generator produces a 24-token continuation from a 16-token prompt. We use four source domains from Hugging Face Datasets: AG News , IMDb , DBPedia-14 , and Yahoo Answers Topics . We fine-tune four GPT-2 language models (Radford et al., 2019), one per source domain. These four generators are then aggregated with our proposed methods. Although token-level likelihoods are available, the static and adaptive weights are fitted on a balanced held-out prompt-continuation set using the same sample-based MMD objective in a frozen GPT-2 feature space. After fitting, each method is evaluated on held-out prompts from the mixture of the four domains by comparing its continuation distribution with the observed continuations through MMD 2 and energy distance in the same feature space. We also report the perplexity (PPL) induced by the fitted weights and the generators’ token probabilities. Implementation details are given in Section G.3 of the Supplementary Material. Table 4 shows that every averaging rule outperforms the per-metric best single generator by a wide margin, about 6%–9% on MMD 2 and Energy and roughly 40% on perplexity. On this comparison MoEMA improves over StaticMA on all three metrics by roughly 2%– 25 Method MMD 2 ↓ ∆ Energy ↓ ∆ PPL ↓ ∆BestSingle 0.432 +6 .8% 0.082 +9 .5% 77.606 +39 .4% SimpleAvg 0.413 +2 .5% 0.077 +4 .0% 47.681 +1 .4% StaticMA 0.412 +2 .3% 0.077 +3 .7% 47.809 +1 .7%       
+
+> MoEMA 0.402 –0.074 –47.004 –
+
+Table 4: Multi-domain short-continuation text generation evaluated in GPT-2 feature space. Reported values are averages over five random repeats. 5%, showing that the same sample-based aggregation mechanism extends to autoregressive language models without changing the generator training objective or relying on likelihood-based weight fitting. 
+
+# 8 Discussion 
+
+This paper studies the optimal model averaging under conditional generative models. The framework defines aggregation through a sample-based MMD between conditional distribu-tions, and proposes both fixed-weight StaticMA and input-adaptive MoEMA , the latter parameterised by a covariate-dependent weight function. The two methods are shown to be asymptotically optimal in both in-sample and out-of-sample risk, and the input-adaptive weight function is consistent for the optimal gate. Empirically, StaticMA and MoEMA 
+
+generally improve over competing alternatives across simulations and real-data studies span-ning tabular regression, conditional and inpainting image generation, and short-continuation text generation, showing the benefit of aggregating conditional generative models. MoEMA 
+
+further improves on StaticMA .Two natural directions are left to future work. The first is to extend the method and the asymptotic theory beyond the i.i.d. setting, in particular to time-series data, where the independence assumptions underlying the present analysis no longer apply. The second is to extend both the methodology and the asymptotic theory to joint-distribution criteria and other IPM choices (see Subsections H.1 and H.2 of the Supplementary Material for details), which would broaden the class of distributional comparisons available for aggregation. 26 References 
+
+N. Aronszajn. Theory of reproducing kernels. Transactions of the American mathematical society , 68(3):337–404, 1950. Y. Balaji, S. Nah, X. Huang, A. Vahdat, J. Song, Q. Zhang, K. Kreis, M. Aittala, T. Aila, S. Laine, et al. ediff-i: Text-to-image diffusion models with an ensemble of expert denoisers. 
+
+arXiv preprint arXiv:2211.01324 , 2022. C. M. Bishop. Mixture density networks. 1994. R. Bommasani, P. Liang, and T. Lee. Holistic evaluation of language models. Annals of the New York Academy of Sciences , 1525(1):140–146, 2023. O. Bousquet and A. Elisseeff. Stability and generalization. Journal of machine learning research , 2(Mar):499–526, 2002. A. Brock, J. Donahue, and K. Simonyan. Large scale gan training for high fidelity natural image synthesis. In International Conference on Learning Representations , 2019. T. Brooks, B. Peebles, C. Holmes, W. DePue, Y. Guo, L. Jing, D. Schnurr, J. Taylor, T. Luhman, E. Luhman, et al. Video generation models as world simulators. OpenAI Blog , 1(8):1, 2024. S. T. Buckland, K. P. Burnham, and N. H. Augustin. Model selection: An integral part of inference. Biometrics , 53(2):603–618, 1997. W. Cai, J. Jiang, F. Wang, J. Tang, S. Kim, and J. Huang. A survey on mixture of experts. 
+
+arXiv preprint arXiv:2407.06204 , 2024. J. Chang, Z. Ding, Y. Jiao, R. Li, and J. Z. Yang. Deep conditional distribution learning via conditional f¨ ollmer flow. arXiv preprint arXiv:2402.01460 , 2024. G. Claeskens and N. L. Hjort. Model Selection and Model Averaging . Cambridge University Press, 2008. 27 D. Dai, C. Deng, C. Zhao, R. Xu, H. Gao, D. Chen, J. Li, W. Zeng, X. Yu, et al. Deepseek-moe: Towards ultimate expert specialization in mixture-of-experts language models. In 
+
+Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 1280–1297, 2024. P. Dhariwal and A. Nichol. Diffusion models beat gans on image synthesis. Advances in Neural Information Processing Systems , 34:8780–8794, 2021. Y. Du, C. Durkan, R. Strudel, J. B. Tenenbaum, S. Dieleman, R. Fergus, J. Sohl-Dickstein, A. Doucet, and W. S. Grathwohl. Reduce, reuse, recycle: Compositional generation with energy-based diffusion models and mcmc. In International conference on machine learning ,pages 8489–8510. PMLR, 2023. J. Fan, Q. Yao, and H. Tong. Estimation of conditional densities and sensitivity measures in nonlinear dynamical systems. Biometrika , 83(1):189–206, 1996. Y. Feng, Q. Liu, Q. Yao, and G. Zhao. Model averaging for nonlinear regression models. 
+
+Journal of Business & Economic Statistics , 40(2):785–798, 2022. Y. Gao, X. Zhang, S. Wang, T. T.-L. Chong, and G. Zou. Frequentist model averaging for threshold models. Annals of the Institute of Statistical Mathematics , 71(2):275–306, 2019. Z. Gao, B. He, and Y. Yang. Combining pre-trained models via localized model averaging. 
+
+arXiv preprint arXiv:2605.13421 , 2026. A. Ghosh, V. Kulharia, V. P. Namboodiri, P. H. Torr, and P. K. Dokania. Multi-agent diverse generative adversarial networks. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 8513–8521, 2018. A. Gretton, K. M. Borgwardt, M. J. Rasch, B. Sch¨ olkopf, and A. J. Smola. A kernel two-sample test. Journal of Machine Learning Research , 13(25):723–773, 2012. Y. Gu, L. Kong, and D. Xia. Prediction-powered inference by mixture of experts. arXiv preprint arXiv:2604.27892 , 2026. X. Han and M. Zhou. Diffusion boosted trees. arXiv preprint arXiv:2406.01813 , 2024. 28 X. Han, H. Zheng, and M. Zhou. Card: Classification and regression diffusion models. arXiv preprint arXiv:2206.07275 , 2022. B. E. Hansen. Least squares model averaging. Econometrica , 75(4):1175–1189, 2007. B. E. Hansen and J. S. Racine. Jackknife model averaging. Journal of Econometrics , 167 (1):38–46, 2012. N. L. Hjort and G. Claeskens. Frequentist model average estimators. Journal of the American Statistical Association , 98(464):879–899, 2003. J. Ho, A. Jain, and P. Abbeel. Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , volume 33, pages 6840–6851, 2020. T. Hothorn, T. Kneib, and P. B¨ uhlmann. Conditional transformation models. Journal of the Royal Statistical Society: Series B (Statistical Methodology) , 76(1):3–27, 2014. Z. Huang, H. Lam, and H. Zhang. Evaluating aleatoric uncertainty via conditional generative models. arXiv preprint arXiv:2206.04287 , 2022. R. A. Jacobs, M. I. Jordan, S. J. Nowlan, and G. E. Hinton. Adaptive mixtures of local experts. Neural Computation , 3(1):79–87, 1991. A. Javanmard, S. Shao, and J. Bien. Prediction sets for high-dimensional mixture of experts models. Journal of the Royal Statistical Society Series B: Statistical Methodology , 87(3): 850–871, 2025. M. I. Jordan and R. A. Jacobs. Hierarchical mixtures of experts and the em algorithm. 
+
+Neural Computation , 6(2):181–214, 1994. A. Kotelnikov, D. Baranchuk, I. Rubachev, and A. Babenko. Tabddpm: Modelling tabular data with diffusion models. arXiv preprint arXiv:2209.15421 , 2022. T. Liang. How well generative adversarial networks learn distributions. Journal of Machine Learning Research , 22(228):1–41, 2021. 29 A. Liu, M. Sap, X. Lu, S. Swayamdipta, C. Bhagavatula, N. A. Smith, and Y. Choi. Dexperts: Decoding-time controlled text generation with experts and anti-experts. In Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) ,pages 6691–6706, 2021. X. Lu and L. Su. Jackknife model averaging for quantile regressions. Journal of Econometrics ,188(1):40–58, 2015. K. Madhusudhanan, V. K. Yalavarthi, J. Sonntag, M. Stubbemann, and L. Schmidt-Thieme. Tabresflow: A normalizing spline flow model for probabilistic univariate tabular regression. 
+
+arXiv preprint arXiv:2508.17056 , 2025. M. Mirza and S. Osindero. Conditional generative adversarial nets. arXiv preprint arXiv:1411.1784 , 2014. A. M¨ uller. Integral probability metrics and their generating classes of functions. Advances in applied probability , 29(2):429–443, 1997. OpenAI. Gpt-4 technical report. arXiv preprint arXiv:2303.08774 , 2023. G. Papamakarios, E. Nalisnick, D. Jimenez Rezende, S. Mohamed, and B. Lakshmi-narayanan. Normalizing flows for probabilistic modeling and inference. Journal of Machine Learning Research , 22(57):1–64, 2021. A. Radford, J. Wu, R. Child, D. Luan, D. Amodei, I. Sutskever, et al. Language models are unsupervised multitask learners. OpenAI blog , 1(8):9, 2019. A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, et al. Learning transferable visual models from natural language supervision. In International conference on machine learning , pages 8748–8763. PmLR, 2021. P. Rezaei, F. Farnia, and C. T. Li. Be more diverse than the most diverse: Optimal mixtures of generative models via mixture-ucb bandit algorithms. In International Conference on Learning Representations , volume 2025, pages 17446–17474, 2025. 30 R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10684–10695, 2022. N. Shazeer, A. Mirhoseini, K. Maziarz, A. Davis, Q. V. Le, G. E. Hinton, and J. Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538 , 2017. B. W. Silverman. Density Estimation for Statistics and Data Analysis . Chapman and Hall, 1986. K. Sohn, H. Lee, and X. Yan. Learning structured output representation using deep con-ditional generative models. In Advances in Neural Information Processing Systems , vol-ume 28, 2015. S. Song, T. Wang, G. Shen, Y. Lin, and J. Huang. Wasserstein generative regression. Journal of the Royal Statistical Society Series B: Statistical Methodology , 87(3):858–878, 2025. Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations , 2021. Y. Sun, Y. Hong, T.-H. Lee, S. Wang, and X. Zhang. Time-varying model averaging. Journal of Econometrics , 222(2):974–992, 2021. D. Yu, X. Zhang, and H. Liang. Unified optimal model averaging with a general loss function based on cross-validation. Journal of the American Statistical Association , 120(552):2697– 2708, 2025. X. Zhang and C.-A. Liu. Model averaging prediction by k-fold cross-validation. Journal of Econometrics , 235(1):280–301, 2023. X. Zhang, G. Zou, and H. Liang. Model averaging and weight choice in linear mixed-effects models. Biometrika , 101(1):205–218, 2014. 31 X. Zhang, G. Zou, and R. J. Carroll. Model averaging based on kullback–leibler distance. 
+
+Statistica Sinica , 25(4):1583–1598, 2015. X. Zhang, D. Yu, G. Zou, and H. Liang. Optimal model averaging estimation for general-ized linear models and generalized linear mixed-effects models. Journal of the American Statistical Association , 111(516):1775–1790, 2016. X. Zhou, C. Ma, Z. Lin, Z. Wang, and J. Huang. A deep generative approach to conditional sampling. Journal of the American Statistical Association , 118(542):1779–1792, 2023. 32
