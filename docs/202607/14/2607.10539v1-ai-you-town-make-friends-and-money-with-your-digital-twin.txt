@@ -1,0 +1,576 @@
+Title: AI YOU Town: Make Friends and Money with Your Digital Twin
+
+URL Source: https://arxiv.org/pdf/2607.10539v1
+
+Published Time: Tue, 14 Jul 2026 01:38:27 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# AI YOU Town: Make Friends and Money with Your Digital Twin 
+
+Yan Lin 1,2 *, Yuyang Dai 1*, Jiahui Geng 3, Yuxia Wang 1
+
+> 1
+
+INSAIT, Sofia University “St. Kliment Ohridski” 
+
+> 2
+
+Newcastle University 3Linköping University 
+
+y.lin64@ncl.ac.uk, y9657422@gmail.com, jiahui.geng@liu.se, yuxia.wang@insait.ai 
+
+Abstract 
+
+Existing approaches to infer user traits and gen-erate responses consistent with a persona rely on static prompting. They lack calibrated un-certainty, ignore sequential evidence, and drift during long interactions. We present AI YOU ,a framework that continually updates a person-ality profile with 22 dimensions from conversa-tion and embodies it in a personal digital twin. Practically, the system combines prompting, Bayesian updating, and conformal prediction for persona inference. A periodically refreshed memory anchor and cognitive memory with three layers preserve persona consistency over long interactions. Across the main results, AI YOU (i) achieves conformal coverage ranging from 0.921 to 0.976, (ii) improves uncertainty calibration and reasoning grounded in mem-ory, and (iii) enhances persona fidelity over static prompting in role playing over 100 turns while reducing trait drift, for most evaluated backbones under adversarial settings with mul-tiple agents. The prototype AI YOU Town ini-tializes an imaginative twin world for future interaction. The online demo is available at 
+
+quinnnnnne-ai-you.hf.space .
+
+1 Introduction 
+
+Imagine a virtual town populated by personal digi-tal twins that interact, socialize, and work on behalf of their users while preserving users’ personali-ties. Large Language Models (LLMs) have shown promising ability to infer personality traits from text and generate dialogue that reflects individ-ual communicative styles (Shao et al., 2023; Park et al., 2023; Peters et al., 2024; Jiang et al., 2024; Marengo et al., 2025), making such systems in-creasingly plausible. However, building a reliable personal digital twin requires solving three inter-twined challenges that existing systems address only in isolation.  
+
+> *Equal contribution.
+
+First, personality inference from conversation requires uncertainty-aware estimation: single-pass LLM predictions produce point estimates without calibrated confidence (Song et al., 2023; Lin, 2025). 
+
+Second, personality evidence accumulates across turns, yet most pipelines treat utterances indepen-dently, lacking mechanisms for sequential belief updating (Tan et al., 2025; Chen et al., 2025). Third, 
+
+personality inference and persona-driven gener-ation are typically treated as separate problems (Tseng et al., 2024; Zhong et al., 2025), creating a gap between understanding and embodying a user. Therefore, we present AI YOU , an interactive multi-agent framework that organically unifies iso-lated modules in one system. Modules interact cohesively: personality inference outputs serve as the input of persona modeling, persona-conditioned generations support persona updating, and a shared three-layer memory enables persona consistency and long-horizon reasoning. It is related to LLM-based personality simulation, dynamic persona inference, persona-conditioned generation, and digital-twin simulation. We provide a detailed re-lated work in Section 2. We further prototype the AI YOU Town , a virtual environment where personal digital twins (PDTs) interact, socialize, and work. As illustrated in Figure 1, it is a bidirectional ecosystem that con-nects the real world and AI YOU Town. The story begins when a real user initiates a conversation with either a twin or another real user logged into the town. Then, a specialized agent continually estimates a 22-dimensional profile based on user conversations, where Bayesian posterior inference and conformal prediction maintain calibrated un-certainty. The inferred persona would be used to initialize or stabilize the user’s digital twin, and a persona-conditioned agent that reproduces the in-ferred behavioral patterns in new interactions. We design a three-layer memory architecture (work-ing, episodic, and semantic) that grounds responses 1arXiv:2607.10539v1 [cs.AI] 12 Jul 2026 Real World  AI YOU Town               
+
+> Lily , a Chinese girl
+> pursuing psychology PhD
+> David , an US startup investor
+> like Chinese culture
+> Richel , a cofounder of an
+> AI startup
+> Persona
+> Infe \includegraphic
+> s[width= \textwidth ]
+> {fig/aiyou_overview
+> .pdf} rence
+> 22 Personality dims
+> Bayesian Updater
+> Conformal Calibrator
+> Persona Modeling
+> Working
+> (20 -turn window)
+> Episodic
+> (every 10 turns)
+> Semantic
+> (every 50 turns)
+> Lily -David
+> Conversation stored
+> in AI YOU Town
+> Inferred Calibrated
+> Persona (Lili)
+> Persona Context
+> Conversations
+> User input
+> profile info
+> Persona -aware
+> Generation
+> Lily’s twin
+> response
+> A s mall high school with
+> limited funding wants to
+> hire a psychotherapist to
+> guide teenagers in puberty.
+> Hiring a counselor is too
+> expensive.
+> Recruitment Agency
+> Personal Digital
+> Twins David -Richel
+> Startup
+> Pay Lily
+> Three -layer Memory
+
+Figure 1: AI YOU Overview: persona inference, modeling, persona-aware generation based on three-layer memory. 
+
+in accumulated interaction history, to support per-sona consistency and long-horizon reasoning. To summarize, our contributions are as below: • We design the initial prototype of a personal digital twin town: AI YOU, which organi-cally connects the real world and enables two functions: companion and consulting, leaving trading as an imaginative hook. • We unify personality inference, persona modeling and preservation, and persona-conditioned generation within a single sys-tem, where a grounded three-layer memory mechanism enables persona consistency and long-horizon reasoning. • Experiments show that the methods used in each module achieve superior performance over strong baselines, demonstrating high accuracy, and uncertainty estimation via Bayesian posterior inference and conformal prediction further enhances reliability. 
+
+2 Related Work 
+
+2.1 LLM-Based Personality Simulation 
+
+Large language models are increasingly used to simulate human-like personalities, enabling more engaging social agents (Chen et al., 2024). Three questions naturally arise: (i) What traits should be included in personality modeling? (ii) How can an LLM be conditioned on a specific persona? 
+
+(iii) How can persona consistency over time be evaluated, and through which tasks or applications can we rigorously assess its persistence? 
+
+Persona Traits Jiang et al. (2024) applied the Big Five traits to model and evaluate simulated personality, 1 which remains the dominant frame-work for LLM-based personality modeling (Safdari et al., 2023; Wang et al., 2025). Recent work adopts psychometric validation protocols using standard-ized assessments such as IPIP-NEO (Song et al., 2023), and proposes construct-grounded methods for more principled personality design (Huang et al., 2025; Lin, 2025). However, the Big Five alone cannot fully capture individual differences. It omits interpersonal constructs (e.g., attachment style), wellbeing-related aspects (e.g., self-efficacy, perceived loneliness), and emotional states (e.g., positive and negative affect). Recent work further shows that LLMs can model psychological struc-tures beyond the Big Five, predicting responses on nine additional validated scales from minimal personality inputs (Liu et al., 2025). In our work, we therefore extend beyond the Big Five to a 22-dimensional psychological profile. 
+
+Enabling and Preserving Persona Early work on dialogue personalization relied on meta-learning (Madotto et al., 2019), while recent gen-
+
+> 1
+
+Big Five is a model of personality that describes people based on five key traits: openness, conscientiousness, extraver-sion, agreeableness, and neuroticism. 
+
+2erative language models enable zero-shot prompt control and character-level fine-tuning (Ramirez et al., 2023; Shao et al., 2023; Safdari et al., 2023). Among these approaches, system prompting has be-come the dominant method for persona condition-ing because it requires no additional training and allows real-time, user-specific instantiation (Jiang et al., 2024). Empirical studies show that prompt-assigned personas are reflected in both personality test scores and generated linguistic patterns (Jiang et al., 2024). However, prompt-assigned personas often drift during extended conversations: mod-els contradict earlier statements, drift in tone, and gradually abandon role-appropriate behavior (Li et al., 2024; Choi et al., 2024). Simply assign-ing a persona at the beginning is insufficient to prevent this drift, and larger models may exhibit greater identity instability than smaller ones (Choi et al., 2024). Recent work proposes multi-turn rein-forcement learning to reduce persona inconsistency by over 55% (Abdulhai et al., 2025), but this re-quires costly fine-tuning for each persona. Further challenges include limited cross-cultural adaptabil-ity (Kwok et al., 2024). In our work, we address persona preservation through structured long-term memory and a three-layer cognitive architecture, improving persona consistency across extended in-teractions without per-persona fine-tuning. 
+
+Persona Consistency Evaluation Most prior work evaluates persona consistency through static post-hoc assessments such as personality question-naires or single-pass trait scoring (Song et al., 2023; Wang et al., 2025). However, persona consistency in real interaction is inherently sequential: user beliefs evolve over time as new conversational evi-dence accumulates. Our work therefore evaluates persona consistency through real-time probing and sequential Bayesian updating, dynamically main-taining trait estimates and uncertainty throughout multi-turn interaction. Our work combines these three aspects within a unified framework. We model personality using a 22-dimensional psycho-logical profile extending beyond the Big Five, in-stantiate personas through system prompting, and evaluate persona consistency through sequential Bayesian updating and real-time probing across conversation turns (Jiang et al., 2024; Safdari et al., 2023; Song et al., 2023; Wang et al., 2025). 
+
+2.2 Personality Inference 
+
+Personality inference needs multiple turns, but most LLM systems treat each utterance indepen-dently and lack a persistent user model. Recent work addresses this along three directions. First, 
+
+heuristic reflection methods summarize and refine user representations over dialogue history (Tan et al., 2025), using multi-granularity memory and iterative persona refinement (Chen et al., 2025). Second, structured memory architectures organize evidence into multiple stores (Li et al., 2025b), in-cluding event-level, episodic, and persona represen-tations (Yan et al., 2026), and have been applied to long-horizon interaction and multi-agent systems (Westhäußer et al., 2025). Third, probabilistic ap-proaches model belief updating explicitly, either by analyzing deviations from Bayesian reasoning (Qiu et al., 2026) or by maintaining external posteriors for preference inference (Austin et al., 2024). 
+
+Uncertainty Quantification for LLM Predictions 
+
+A key limitation of single-pass LLM inference is the lack of calibrated uncertainty: model confi-dence scores are often miscalibrated and lack for-mal guarantees (Kumar et al., 2023). Conformal prediction (Angelopoulos and Bates, 2021) pro-vides a model-agnostic, distribution-free frame-work that converts heuristic uncertainty into predic-tion sets with coverage guarantees. Recent work extends conformal methods to NLP settings, includ-ing API-only LLMs and open-ended generation (Campos et al., 2024; Su et al., 2024; Wang et al., 2024). AI YOU addresses this gap by combining Bayesian updating with Adaptive Prediction Sets to produce per-dimension prediction sets under se-quential evidence accumulation. 
+
+2.3 Persona-Conditioned Generation 
+
+In human-model interaction, persona-conditioned generation typically takes two forms, which Tseng et al. (2024) term personalization and role-playing .The first, personalization , generates responses aligned with the user’s preferences, needs, and com-munication style (Salemi et al., 2024; Tan et al., 2025). The primary challenge is accurate user modeling, since generation quality depends on the quality of the inferred personality profile, while user signals are often sparse, heterogeneous, and noisy (Chen et al., 2024). Prior work addresses this through retrieval-augmented generation, user-history conditioning, and online preference learn-ing (Li et al., 2025b; Chen et al., 2025). The second, role-playing , conditions the model on a fixed persona, requiring consistent behavior aligned with a specified personality rather than a generic assistant style. This is commonly imple-3mented through system prompting, a training-free approach that is simple, flexible, and transferable across models (Tseng et al., 2024; Chen et al., 2024). Alternatively, supervised fine-tuning and alignment training (e.g., SFT, RLHF) can improve persona fidelity, but at substantial computational cost, limited cross-persona generalizability, and po-tential degradation of general capabilities (Shao et al., 2023; Safdari et al., 2023). We adopt system prompting because it supports real-time persona instantiation without additional training, consistent with findings that prompt-based control achieves trait-consistent behavior comparable to fine-tuned alternatives (Jiang et al., 2024; Ramirez et al., 2023). The main challenge is maintaining persona consistency over long interactions, as off-the-shelf LLMs often drift from assigned personas, contra-dict earlier statements, or abandon role-appropriate behavior (Li et al., 2024; Choi et al., 2024; Abdul-hai et al., 2025). Our framework integrates both interpretations within a unified pipeline. It combines continuous user modeling for personalization with long-term memory mechanisms for persona preservation. We further distinguish among three persona types: de-mographic archetypes, fictional characters, and 
+
+real individuals , each introducing different simula-tion challenges (Section 2.4). 
+
+2.4 Differences of Three Types of Personas Demographic personas Demographic simula-tion assigns group-level attributes such as age, gen-der, occupation, and cultural background to an LLM, and evaluates whether its outputs reflect the expected distributional patterns of that group (Ar-gyle et al., 2023; Santurkar et al., 2023). The pri-mary challenge is avoiding stereotyping and cari-cature: LLMs often produce homogeneous and so-cially desirable outputs that fail to reflect real intra-group diversity, while simulation fidelity varies sub-stantially across demographic axes (Cheng et al., 2023; Li et al., 2025a). This type is inherently cross-sectional, capturing population-level tenden-cies rather than the behavior of a specific individual over time. 
+
+Character personas Character simulation tar-gets fictional or public figures, requiring the model to rely on stored knowledge about a person’s speech style, background, and behavioral patterns (Shao et al., 2023; Chen et al., 2024). The main challenge is character hallucination: models may generate plausible but factually inconsistent behavior when knowledge about the character is incomplete (Lu et al., 2024). Like demographic simulation, charac-ter simulation treats persona traits as largely fixed and does not model long-term behavioral evolution. 
+
+Individualized personas Simulating a real indi-vidual is fundamentally different from the above two settings. Demographic and character simula-tion both rely on externally specified traits, whereas an individualized simulation, which we term a Per-sonal Digital Twin (PDT), must instead model lon-gitudinal behavior, adaptive responses, and evolv-ing preferences (Saracco, 2019; Fuchs et al., 2023). This distinction is particularly important in compan-ion applications, where demographic information alone is often insufficient for accurate personaliza-tion (Huang et al., 2024). Recent work shows that fine-grained individual simulation is feasible: models conditioned on in-terview transcripts can reproduce individual survey responses at near test-retest reliability (Park et al., 2024), while probabilistic digital twin frameworks maintain uncertainty-aware latent representations of user identity (David, 2025). Crucially, inference and simulation form an iterative loop: simulated in-teractions generate new behavioral evidence, which updates the inferred profile and improves future simulation fidelity. This bidirectional process dis-tinguishes PDTs from demographic and character simulation. We primarily focus on twining individ-uals. 
+
+3 AI-YOU Town 
+
+AI YOU Town is a virtual environment, where users in the real world establish their personal digi-tal twins (PDTs). Twins can communicate with real users as friends and can also be employed by com-panies in real world in much lower price. As shown in Figure 1, Lily’s twin is the friend of David and also serves as a counselor in high school. Twins can be initiated by users who proactively fill out persona modeling features (e.g., demo-graphic, psychological), like David and Richel in Figure 1. Twins also can be passively estab-lished based on system-inferred persona according to users’ conversation and behavior patterns stored in the memory, like Lily. Regardless of the initial-ization point, all personas will be updated based on the new conversations and actions, evolving over time. Meanwhile, once the persona is accu-rately modeled, we preserve the persona across conversations and behaviors, simulating humans’ personality consistency. 4To achieve functions above and safeguards, our system consists of three major components includ-ing (i) persona inference, (ii) persona modeling and preservation, and (iii) affective, relationship and risk monitoring, along with a three-layer memory mechanism supporting long-term learning. 
+
+3.1 Persona Inference 
+
+Persona inference aims to estimate demographic attributes, personality traits, communication style, affective states, and interpersonal preferences from user’s dialogue history stored in memory. Formally, given the dialogue history D1: t and retrieved mem-ory Mt at time t, the estimator produces a struc-tured profile ˆzt covering 22 dimensions: Big Five scores in [0 , 1] ; Other fields are set to null when evidence is insufficient. The inferred profile serves two downstream roles: (i) initialize and continually update the user’s personal digital twin (Section 3.3), 
+
+(ii) condition persona-aware generation. Specifi-cally, we infer the following dimensions. 
+
+Persona Profiling Features The profiling fea-tures three layers. The first layer captures demo-graphic attributes (e.g., gender, age, occupation, education, geographic region), which provide con-textual grounding for downstream reasoning but are treated as optional and uncertain. The second layer encodes validated psychometric constructs from personality and clinical psychology, includ-ing the Big Five (John and Srivastava, 1999), adult attachment (anxiety and avoidance) (Hazan and Shaver, 1987; Brennan et al., 1998), self-efficacy (Bandura, 1977; Schwarzer and Jerusalem, 1995), perceived loneliness (Russell, 1996), and emotional state (positive and negative affect) (Watson et al., 1988). These constructs are used for quantitative inference, evidence attribution, and uncertainty es-timation. The third layer includes popular self-report frameworks commonly used in conversa-tional settings, specifically the Myers–Briggs Type Indicator (MBTI) (McCrae and Costa, 1989). We include MBTI to improve user interpretability, be-cause many users are familiar with it but not with the Big Five, while acknowledging its contested psychometric validity (Pittenger, 1993; Stein and Swan, 2019). 
+
+Persona Estimation Given the heterogeneity of the target schema: some attributes are numeric, some are categorical, some are free-text descriptors, and many are missing or only weakly supported in short conversations, we applied two prompting-based strategies ( Direct , CoT ) rather than a task-specific supervised classifier to estimate persona. 
+
+Direct prompt instructs the model to use null 
+
+under insufficient evidence, defines confidence 0 as no evidence and confidence 1 as strong evidence, and constrains Big Five and interest scores to the 
+
+0–1 interval. CoT variant first asks the model to in-spect topics, linguistic style, values, goals, Big Five cues, and interests before emitting the final out-puts. We report Direct and CoT results separately in Section 4. Detailed prompts are provided in Ap-pendix C. When sufficient context is available, the estimator additionally performs contrastive extrac-tion: it compares an estimate from the full recent context with an estimate from a minimal recent con-text and downweights attributes that appear only under weak contextual support. This step reduces spurious profile updates caused by isolated turns. 
+
+Uncertainty Estimation AI YOU maintains un-certainty through Bayesian posterior estimation and conformal prediction. For sequential numeric ob-servations, we use a Gaussian conjugate update. Given an observation xt with confidence score ct,the observation variance is defined as 
+
+σ2obs = max(10 −3, 1 − ct).
+
+Given prior mean μt−1 and variance σ2
+
+> t−1
+
+, the pos-terior is updated by precision-weighted averaging: 
+
+σ−2 
+
+> t
+
+= σ−2 
+
+> t−1
+
++ σ−2obs , μt = σ2
+
+> t
+
+ μt−1
+
+σ2
+
+> t−1
+
++ xt
+
+σ2obs 
+
+
+
+.
+
+Categorical variables are updated discretely rather than averaged: when conflicting labels are ob-served, the system retains the label with stronger ev-idence and confidence. For set-valued uncertainty, we apply conformal calibration with α = 0 .10 .The nonconformity score is defined as 1 − p(ytrue ),where p(ytrue ) is the probability assigned to the true label. Calibration is grouped by turn bucket and personality dimension, with a global fallback for groups with insufficient calibration data. Age, Big Five dimensions, and interests are discretized into bins for prediction-set construction. The final output includes point predictions, calibrated predic-tion sets, empirical coverage, average set size, and singleton counts. 
+
+3.2 Affective, Relationship, Risk Monitor 
+
+Persona inference alone is insufficient for safe long-term interaction. AI YOU therefore maintains aux-5iliary monitors for affective state tracking, relation-ship modeling, and risk detection throughout multi-turn conversations. These monitors are essential for maintaining relational health and safety: affective and relationship tracking helps users avoid misun-derstandings and make informed relational deci-sions, while risk monitoring identifies unsafe ma-nipulation, including online fraud, romance scams, and pig-butchering investment schemes. For exam-ple, given evidence of user financial stress and a PDT suggesting high-return investments, the moni-tor predicts an anxious/high-intensity affective state 
+
+Et, an asymmetric persuasion relationship state Rt,and a high-risk state Rrisk  
+
+> t
+
+.
+
+Affective Monitor: it estimates the user’s cur-rent emotional state, emotional intensity, and likely short-term emotional trajectory from the current ut-terance and recent emotional history. The method combines an LLM-based structured classifier with a history-aware transition model. The resulting af-fective state Et conditions downstream response strategies such as validation, low-pressure follow-up, boundary setting, and risk-sensitive support. 
+
+Relationship Monitor: it models interpersonal dynamics from dialogue context, emotional history, and compressed interaction logs. The system tracks relationship sentiment, interaction status, and po-tential relationship progression while retaining un-certain interpretations as hypotheses rather than stable facts unless supported by repeated evidence. The resulting relationship state Rt is used for long-term interaction planning and personalization. 
+
+Risk Monitor: it detects potentially unsafe in-teraction patterns from the current turn and conver-sation history. The method combines rule-based pattern matching with LLM-based semantic anal-ysis to identify manipulation, coercive interaction, romance scams, and unsafe emotional dependency. When the estimated risk state Rrisk  
+
+> t
+
+exceeds a threshold, the coordinator can issue warnings, re-strict unsafe personalization behaviors, or request additional verification before continuing. 
+
+3.3 Persona Modeling and Preservation 
+
+Given a calibrated persona profile pt, AI YOU must both construct a persona representation for downstream generation and preserve that persona consistently over long interactions. 
+
+Persona Building via Memory Anchor: in-stead of using a static persona prompt, AI YOU maintains a structured persona memory anchor At
+
+that is continuously updated throughout interac-tion. The anchor stores persistent identity infor-mation, speaking style, inferred values, behavioral boundaries, and recent commitments. For personas with explicit trait profiles, the anchor additionally includes trait-level behavioral constraints that dis-courage drift from the target personality. 
+
+Persona Preservation via Periodic Refresh: 
+
+LLMs often drift from assigned personas during extended conversations, gradually contradicting earlier statements or abandoning role-consistent behavior (Li et al., 2024; Choi et al., 2024). AI YOU addresses this through periodic memory re-fresh. Every k turns ( k=10 by default), a dedicated memory writer updates the anchor using the cur-rent anchor state, recent dialogue history, and trait constraints. The refreshed anchor preserves stable persona attributes while incorporating newly ex-pressed beliefs, preferences, and commitments. At generation time, the system conditions on the re-freshed anchor and recent local context rather than the entire dialogue history, improving long-horizon persona consistency without requiring unbounded context windows. 
+
+3.4 Three-Layer Cognitive Memory 
+
+AI YOU maintains memory using three operational layers inspired by working, episodic, and semantic memory systems (Park et al., 2023). The memory module preserves conversational evidence, com-presses long interaction histories, supports retrieval, and prevents unsupported inferences from being treated as stable facts. 
+
+Working Memory: working memory is a FIFO buffer containing up to 20 recent dialogue turns. It provides high-resolution local context for per-sona inference, monitoring, and response genera-tion. Every 10 turns, the oldest dialogue block is compressed into episodic memory and removed from the active buffer. 
+
+Episodic Memory: episodic memory stores com-pressed summaries of interaction events, emotional trends, and participant information grounded in di-alogue turns. Each episodic record is linked to the original conversation history for traceability. Pe-riodic consistency checks compare episodic sum-maries against archived dialogue and repair incon-sistent summaries when necessary. 
+
+Semantic Memory: semantic memory periodi-cally reflects over recent episodic memories to extract higher-level user patterns, feature updates, and relationship insights. These representations are treated as candidate long-term beliefs and are 6incorporated only when supported by sufficient ev-idence. At retrieval time, AI YOU uses embedding-based memory retrieval when available and falls back to keyword retrieval otherwise. Retrieved memories are used as supporting evidence rather than replacements for the current dialogue context, allowing the system to maintain calibrated uncer-tainty at anytime. 
+
+4 Experiments 
+
+We evaluate the calibrated user-state modeling of AI YOU. The experiments focus on evidence-based persona inference, Bayesian evidence ag-gregation, conformal uncertainty estimation, and modular state monitors for affect, risk, memory, and relationship reasoning. The complete 22-field profile schema is provided in Appendix B, the prompts used by all benchmarks are provided in Appendix C, and visual demonstrations of the eval-uated system are provided in Appendix D. 
+
+4.1 Experimental Setup Benchmarks Table 1 summarizes the evalua-tion suite. We use PANDORA (Gjurkovi´ c et al., 2021) and Essays (Pennebaker and King, 1999) for Big Five personality prediction. PANDORA predicts continuous Big Five labels based on user social media text, while Essays predicts five bi-nary Big Five labels from self-narratives. We use DailyDialog (Li et al., 2017) for affective-state prediction, where input is a target utterance with context, and output is one of the pre-defined emotion labels. PsyScam (Ma et al., 2025) eval-uates psychological manipulation and scam-risk detection by mapping a scam report to a set of psychological-technique labels. LoCoMo (Maha-rana et al., 2024) assesses long-session memory QA, and PersonaConflicts (Shen et al., 2025) for relationship-conflict classification. LoCoMo maps retrieved long-session evidence and a question to a short answer, and PersonaConflicts maps relation-ship context to conflict or nonconflict . These input-output formats describe the standardized eval-uation interface not dataset-specific samples. 
+
+Backbones and Deployment Settings We evalu-ate both API-served frontier models and locally de-ployed open-source models under the same JSON output protocol. The API-served models are GPT-5.4, Qwen-3.6-Max-Preview, and DeepSeek-V4-Pro. The local open-source models are OLMo-3-7B-Instruct and OLMo-3.1-32B-Instruct, served through Ollama on H100 GPUs. We keep the eval-uation harness, output schema, and scoring scripts aligned across both deployment settings. 
+
+Methods We compare Direct prompting, chain-of-thought prompting (CoT), AI YOU, and module-specific ablations. Direct prompting asks the model to produce the required JSON schema directly. CoT asks for evidence-guided reasoning before the fi-nal JSON, but only the parsed JSON is scored. AI YOU uses structured feature extraction, Bayesian updates for numerical state variables, conformal prediction for uncertainty sets, and task-specific state monitors. The ablations are: w/o Bayesian, w/o Conformal, and w/o CoT for Big Five pre-diction; w/o Context and w/o Intensity for Daily-Dialog; w/o Risk Monitor for PsyScam; and w/o Memory, w/o Semantic Memory, and w/o Episodic Memory for LoCoMo. 
+
+Metrics For Big Five prediction, we report MAE and RMSE over the five traits. We also report expected calibration error (ECE), empirical confor-mal coverage, and average prediction-set size when conformal sets are available. For DailyDialog, we report accuracy, macro-F1, and ECE. For PsyScam, exact accuracy requires the full predicted set of risk labels to match the gold set, while average score gives partial credit for partially correct multi-label predictions; this explains why exact accuracy can appear much lower than average scores (e.g., 0.399 vs. 0.830). For LoCoMo and PersonaConflicts, we report accuracy and average score when applicable. For generation-based benchmarks, we also report the JSON success rate, representing the fraction of outputs parseable as valid task JSON under the ex-pected schema; rows below 0.98 should be treated as diagnostic unless filtered or rerun. 
+
+4.2 Personality Prediction and Uncertainty 
+
+Table 2 reports Big Five prediction and uncertainty results. AI YOU improves point estimation across all reported dataset-backbone pairs, although the absolute MAE gains are modest. On PANDORA, MAE decreases from 0.268 to 0.265 for GPT-5.4, from 0.278 to 0.269 for Qwen-3.6-Max, and from 0.278 to 0.270 for OLMo-3-7B. The same pattern appears on Essays, where MAE decreases from 0.451 to 0.438 for GPT-5.4, from 0.469 to 0.448 for Qwen-3.6-Max, and from 0.473 to 0.454 for OLMo-3-7B. 7Module Benchmark Size Capability Metric                         
+
+> Persona inference PANDORA 2,415 Big Five prediction MAE / RMSE / ECE / coverage Persona inference Essays 2,466 Big Five prediction from self-narratives MAE / RMSE / ECE / coverage Affective monitor DailyDialog 564 Emotion prediction Accuracy / Macro-F1 / ECE Risk monitor PsyScam 730 Scam and manipulation detection Exact set acc. / partial score Memory monitor LoCoMo 1,542 Long-session memory QA Accuracy / average score Relationship monitor PersonaConflicts 6,012 Relationship conflict classification Accuracy
+
+Table 1: Evaluation Benchmarks Overview . Size here is the number of instances after uniform preprocessing and down-sampling, rather than the original dataset size. See more in Appendix A.1.                                                                                                                                                                                         
+
+> Dataset Model Method NMAE ↓RMSE ↓ECE ↓Coverage ↑Set Size ↓
+> PANDORA GPT-5.4 Direct 2415 0.268 0.316 0.109 ––PANDORA GPT-5.4 CoT 2415 0.270 0.320 0.094 ––PANDORA GPT-5.4 AI YOU 2415 0.265 0.303 0.071 0.976 2.896 PANDORA Qwen-3.6-Max Direct 2415 0.278 0.331 0.123 ––PANDORA Qwen-3.6-Max CoT 2415 0.279 0.334 0.135 ––PANDORA Qwen-3.6-Max AI YOU 2415 0.269 0.317 0.082 0.958 2.742 PANDORA OLMo-3-7B Direct 2415 0.278 0.333 0.275 ––PANDORA OLMo-3-7B CoT 2415 0.304 0.370 0.358 ––PANDORA OLMo-3-7B AI YOU 2415 0.270 0.314 0.196 0.946 2.684 PANDORA OLMo-3-7B w/o Bayesian 2415 0.274 0.321 0.244 0.917 2.931 PANDORA OLMo-3-7B w/o Conformal 2415 0.272 0.318 0.221 ––Essays GPT-5.4 Direct 2466 0.451 0.491 0.326 ––Essays GPT-5.4 CoT 2466 0.455 0.493 0.345 ––Essays GPT-5.4 AI YOU 2466 0.438 0.479 0.214 0.944 2.284 Essays Qwen-3.6-Max Direct 2466 0.469 0.514 0.358 ––Essays Qwen-3.6-Max CoT 2466 0.472 0.518 0.371 ––Essays Qwen-3.6-Max AI YOU 2466 0.448 0.486 0.232 0.936 2.417 Essays OLMo-3-7B Direct 2466 0.473 0.519 0.375 ––Essays OLMo-3-7B CoT 2466 0.482 0.551 0.430 ––Essays OLMo-3-7B AI YOU 2466 0.454 0.497 0.251 0.921 2.568 Essays OLMo-3-7B w/o Bayesian 2466 0.462 0.506 0.304 0.887 2.846 Essays OLMo-3-7B w/o Conformal 2466 0.459 0.502 0.287 ––
+
+Table 2: Big Five prediction and uncertainty results across models: shaded rows mark AI YOU method, blue cells with bold mark the best metric per dataset-model group. 
+
+These results suggest that the main advantage of AI YOU is not a large shift in raw regression accu-racy, but a more controlled way of accumulating uncertain evidence. Direct prompting is compet-itive because short user texts often contain only a few explicit behavioral cues, and a single struc-tured estimate can already capture much of the available signal. CoT is not uniformly better be-cause it can help when the relevant cues are ex-plicit, but the additional reasoning step may also amplify weak evidence or introduce variance be-fore the final JSON prediction. AI YOU gives the language model a more specific role: it extracts candidate observations and confidence estimates, while Bayesian updating determines how strongly each observation should move the user state. The larger and more consistent difference ap-pears in calibration. AI YOU reduces ECE for ev-ery reported dataset-backbone pair, often by more than one-third. On PANDORA, ECE decreases from 0.109 to 0.071 for GPT-5.4 and from 0.123 to 0.082 for Qwen-3.6-Max. On Essays, the decrease is sharper for GPT-5.4, from 0.326 to 0.214. Con-formal prediction sets achieve empirical coverage above the nominal 90% target in all AI YOU rows, ranging from 0.921 to 0.976. This pattern indicates that the system is better suited to represent ambigu-ous traits as uncertain rather than forcing a single high-confidence estimate, which is important for downstream persona conditioning. The ablation rows provide a mechanistic check. For OLMo-3-7B on PANDORA, removing Bayesian aggregation increases MAE from 0.270 to 0.274 and reduces coverage from 0.946 to 0.917, consistent with the role of sequential evidence-weighting in stabilizing trait estimates. Removing 8Benchmark Model Acc ↑ Score ↑ JSON                                              
+
+> PsyScam GPT-5.4 0.399 0.830 1.00 Qwen-3.6-Max 0.140 0.746 1.00 DeepSeek-V4 0.149 0.782 1.00 OLMo-3-7B 0.164 0.451 0.99 OLMo-3.1-32B 0.238 0.584 1.00 LoCoMo GPT-5.4 0.405 0.451 0.92 Qwen-3.6-Max 0.433 0.459 1.00 DeepSeek-V4 0.431 0.455 1.00 OLMo-3-7B 0.250 0.296 0.99 OLMo-3.1-32B 0.277 0.318 1.00 Persona-Conflicts GPT-5.4 0.716 0.716 0.94 Qwen-3.6-Max 0.909 0.909 1.00 DeepSeek-V4 0.796 0.796 0.91 OLMo-3-7B 0.501 0.501 1.00 OLMo-3.1-32B 0.527 0.527 1.00
+
+Table 3: State-monitoring results across models. Best Acc shaded sage , best Score bolded blue . JSON: fraction of valid task JSON outputs. 
+
+conformal calibration eliminates prediction sets and increases ECE, indicating that point predic-tions alone do not provide the same uncertainty control. Overall, the Big Five results support a cal-ibrated state-estimation claim rather than a claim of universal accuracy dominance: AI YOU is most useful when the system must both estimate traits and represent what remains uncertain. 
+
+4.3 State-Monitoring Results 
+
+Table 3 reports the state-monitoring benchmark results. A consistent pattern is that API-served models outperform the local OLMo backbones on the more complex multi-label and long-session set-tings. The difference is likely due to a combina-tion of stronger instruction following, more reliable long context understanding, and better adherence to structured JSON outputs. On PsyScam, exact-set accuracy is low because the task requires the complete predicted set of ma-nipulation labels to match the gold set. The sub-stantially higher partial scores indicate that mod-els often identify some relevant risk cues but fail to recover the full label set. Among API mod-els, GPT-5.4 obtains the strongest PsyScam re-sult, with 0.399 exact accuracy and 0.830 average score. Qwen-3.6-Max and DeepSeek-V4-Pro ob-tain lower exact accuracies but still maintain high partial scores (0.746 and 0.782). Local OLMo models are weaker, but scaling from 7B to 32B im-proves both exact accuracy (0.164 to 0.238) and av-erage score (0.451 to 0.584), suggesting that model scale helps with multi-label state monitoring, even                                                                 
+
+> Model Method Acc ↑F1 ↑ECE ↓
+> GPT-5.4 Direct 0.626 0.625 0.183 GPT-5.4 CoT 0.676 0.662 0.145 GPT-5.4 AI YOU 0.663 0.654 0.151 GPT-5.4 w/o Context 0.608 0.609 0.188 GPT-5.4 w/o Intensity 0.663 0.657 0.140
+> Qwen-3.6 Direct 0.582 0.590 0.317 Qwen-3.6 CoT 0.606 0.625 0.295 Qwen-3.6 AI YOU 0.638 0.647 0.233 Qwen-3.6 w/o Context 0.601 0.598 0.263 Qwen-3.6 w/o Intensity 0.633 0.646 0.213
+> DSV4-Pro Direct 0.516 0.508 0.380 DSV4-Pro CoT 0.610 0.605 0.271 DSV4-Pro AI YOU 0.629 0.639 0.232 DSV4-Pro w/o Context 0.555 0.561 0.286 DSV4-Pro w/o Intensity 0.608 0.613 0.179
+
+Table 4: DailyDialog emotion prediction ablation. Shadow rows mark AI YOU, bold is the best per model. 
+
+though a substantial gap remains. On LoCoMo, the API models cluster around similar full-run performance, with Qwen-3.6-Max obtaining the highest accuracy (0.433) and average score (0.459). The GPT-5.4 has lower JSON suc-cess (0.920), so this comparison should be treated as diagnostic unless invalid outputs are filtered or rerun. Local OLMo models remain below the API models, but scaling improves accuracy from 0.250 for OLMo-3-7B to 0.277 for OLMo-3.1-32B. This pattern is consistent with the view that memory-grounded QA depends on both retrieval quality and a backbone’s ability to integrate retrieved evidence under output-format constraints. PersonaConflicts shows a different model rank: Qwen-3.6-Max is the strongest API model, reach-ing 0.909 accuracy. The lower JSON success rates for GPT-5.4 and DeepSeek-V4-Pro compli-cate direct comparison, but the results suggest that relationship-boundary classification is sensitive to prompt formulation and label interpretation. The OLMo PersonaConflicts accuracy ranges from 0.50 to 0.53. This indicate that relationship-conflict reasoning remains difficult for the evaluated lo-cal backbones, particularly when the task requires mapping nuanced interpersonal evidence to a bi-nary label. 
+
+4.4 Affective-State Ablation 
+
+Table 4 evaluates affective-state prediction on Dai-lyDialog. AI YOU improves over Direct prompt-ing for all three API models: accuracy rises from 0.626 to 0.663 for GPT-5.4, from 0.582 to 0.638 for Qwen-3.6-Max, and from 0.516 to 0.629 for 9Model Direct CoT AI YOU w/o RM                        
+
+> GPT-5.4 0.813 0.817 0.830 0.809 Qwen-3.6-Max 0.721 0.707 0.746 0.692 DeepSeek-V4-Pro 0.746 0.731 0.782 0.709 OLMo-3-7B 0.472 0.418 0.451 0.459 OLMo-3.1-32B 0.604 0.619 0.584 0.605
+> Table 5: PsyScam ablation across API and local back-bones. Values are average partial multi-label scores. Higher is better. Bold blue marks the row-wise best, sage shading marks the AI YOU. RM: Risk Monitor.
+
+DeepSeek-V4-Pro. CoT achieves the highest ac-curacy for GPT-5.4 (0.676), which shows that evidence-guided prompting can be effective for some backbones when emotional cues are local-ized in the utterance. Since this evaluation uses a 564-utterance pool of DailyDialog, labels are highly imbalanced. Small gaps such as 0.663 ver-sus 0.676 should be interpreted as within-harness trends rather than statistically tested margins. The CoT advantage is not consistent across models, and it does not dominate the calibration metrics. Therefore, AI YOU is a more stable context-aware alternative. The ablations clarify which parts of the affect monitor contribute most directly to classification. Removing dialogue context reduces accuracy for all models, with the largest drop on DeepSeek-V4-Pro (0.629 to 0.555), indicating that the target utterance is often insufficient without the preceding conversational state. Removing intensity modeling has a smaller effect on accuracy and often improves ECE, as seen in the decrease from 0.151 to 0.140 for GPT-5.4. Thus, intensity is not shown to be necessary for the discrete emotion label. Its main role is operational. It gives the coordinator a graded signal for response selection: a mildly negative ut-terance and a high-intensity negative utterance may require different levels of validation, caution, or follow-up even when they share the same categori-cal label. 
+
+4.5 Risk-Monitor Ablation 
+
+Table 5 isolates the contribution of the risk monitor on PsyScam. For all API-served models, AI YOU achieves the highest average partial score: 0.830 for GPT-5.4, 0.746 for Qwen-3.6-Max, and 0.782 for DeepSeek-V4-Pro. Removing the risk monitor lowers performance in each case. This pattern is foreseen because PsyScam requires detecting latent manipulation tactics rather than only classifying surface topic. The risk monitor provides an explicit                            
+
+> Model Dir. CoT AI YOU w/o Mem. w/o Sem. w/o Epi.
+> GPT-5.4 0.629 0.643 0.628 0.417 0.625 0.630 Qwen-3.6 0.635 0.632 0.641 0.429 0.631 0.618 DSV4-Pro 0.553 0.568 0.563 0.381 0.545 0.532 OLMo-7B 0.277 0.284 0.296 0.193 0.271 0.265 OLMo-32B 0.304 0.309 0.318 0.216 0.302 0.294
+> Table 6: LoCoMo memory ablation on 300 diagnostic samples (avg. score). Bold is best per row. Dir. = Direct, Mem. = Memory, Sem. = Semantic, Epi. = Episodic.
+
+checklist of cues such as urgency, secrecy pressure, financial solicitation, and boundary pressure, which appears to help stronger backbones search the input for relevant evidence before assigning labels. The local OLMo rows show a boundary con-dition for this design. For OLMo-3-7B, Direct prompting (0.472) slightly outperforms AI YOU (0.451), and for OLMo-3.1-32B, CoT and the vari-ant without the risk monitor are both higher than AI YOU. This suggests that structured monitoring is not automatically beneficial for every backbone. When a model has limited capacity for simultane-ously following a checklist, selecting from a multi-label ontology, and producing valid JSON, a sim-pler prompt can sometimes preserve more of the task signal. The takeaway is therefore conditional: the risk monitor improves API-served backbones in this evaluation, but its prompt complexity should be tuned for smaller local models. 
+
+4.6 Memory Ablation 
+
+Table 6 evaluates memory ablations on a 300-instance LoCoMo diagnostic set. Removing mem-ory entirely leads to the strongest degradation con-sistently. Average scores drop from 0.628 to 0.417 for GPT-5.4 and from 0.641 to 0.429 for Qwen-3.6-Max. This result is expected since many questions in LoCoMo require information distributed across earlier sessions. Without retrieved conversational evidence, answers condition on the question alone or generic priors substantially weaken grounding. The effects of removing only semantic or episodic memory are smaller and model-dependent. For Qwen-3.6-Max and DeepSeek-V4-Pro, remov-ing episodic memory hurts more than removing semantic memory (e.g., 0.641 to 0.618 vs. 0.631 for Qwen-3.6-Max), suggesting that event-level summaries are useful for some long-session ques-tions. However, GPT-5.4 obtains comparable or slightly higher scores with CoT or with only one memory layer, which benefits from its strong prior 10 Persistent Personas (8 roles, 100 turns)                                  
+
+> Dimension Refresh ↑Static ↑∆
+> In-character 4.72 3.88 +0.84 Style 4.38 3.47 +0.91 Knowledge 4.33 3.48 +0.85 Overall fidelity 4.48 3.61 +0.87
+> Werewolf (7 agents, 100 turns)
+> Model Refresh ↓Static ↓∆
+> GPT-4o-mini 0.008 0.036 −0.028 Qwen-2.5-72B 0.014 0.019 −0.005 Gemini-2.5-Flash 0.015 0.013 +0.002 Llama-3.1-8B 0.015 0.024 −0.009
+> Table 7: Persona preservation evaluation. Top : LLM-as-judge fidelity scores (1–5, higher is better). Bottom :Big Five mean absolute deviation from target (lower is better). Refresh = periodic memory anchor; Static = fixed prompt with full history.
+
+knowledge in parametric memories. Thus, retrieval is the main driver, while the optimal weighting of working, episodic, and semantic evidence depends on the backbone and question type. 
+
+4.7 Persona Preservation Evaluation 
+
+The LoCoMo ablation evaluates whether memory supports long-session factual reasoning. In this section, we evaluate whether the same memory-anchor mechanism stabilizes persona-conditioned generation in two complementary settings. Persis-tent Personas (Luz de Araujo et al., 2026) evaluates eight fictional roles over 100-turn dialogues under persona-directed and goal-oriented probes. Were-wolf is a 7-agent, 100-turn adversarial interaction in which persona-conditioned agents with distinct Big Five targets face sustained accusation, persuasion, and strategic pressure. In both settings, Refresh 
+
+denotes periodic memory-anchor updates, while 
+
+Static uses the initial persona prompt with full dia-logue history. Table 7 shows that Refresh improves all Persistent Personas dimensions, with the largest gains in style consistency (+0.91) and knowledge grounding (+0.85). In the adversarial Werewolf setting, Refresh reduces trait drift for three of four models, most strongly for GPT-4o-mini (0.008 vs. 0.036). Gemini-2.5-Flash is the only exception (.015 vs. .013), suggesting that some backbones may already maintain strong instruction-level sta-bility and therefore gain less from external anchor-ing. Overall, these results are consistent with the intended role of the memory anchor for persona-conditioned generation: periodic refresh is not only a retrieval device, but also a stabilizer for persona fi-delity under long-horizon and adversarial dialogue. 
+
+4.8 Discussion 
+
+Across modules, two conclusions are most robust. First, AI YOU primarily improves uncertainty qual-ity: Big Five accuracy gains are modest, but ECE drops by 1.5-1.7 × and conformal coverage remains above 90% in every full-pipeline row. Second, memory is the most important auxiliary compo-nent, producing larger ablation drops than affect, risk, or individual memory layer variants. Benefits are nevertheless backbone-dependent: API models consistently exploit structured monitors, whereas weaker local backbones can be over-constrained by risk scaffolds. Overall, the results support AI YOU as a calibrated, memory-grounded user-state mod-eling framework rather than a prompt-only persona wrapper. 
+
+5 Conclusion 
+
+In this work, we establish personal digital twins as a longitudinal state-maintenance system instead of one-time static persona-prompting. We instan-tiate AI YOU Town, a personality-aware digital twin framework that connects structured persona inference, Bayesian evidence updating, conformal uncertainty calibration, and persona-conditioned generation within an interaction system. It uses a periodically refreshed three-layer memory anchor (working, episodic, and semantic) to reduce long-horizon drift. Across Big Five, affect, risk, relationship, mem-ory and persona-preservation evaluations, AI YOU improves calibration, memory-grounded reasoning, and reduces persona drift under extended interac-tion. These results suggest a design principle for future digital twin systems: evidence-governed, uncertainty-aware, and inspectable, with genera-tions and actions conditioned on supported and privacy-filtered state. Future work can move from module evaluations towards real-user longitudinal deployment with stronger consent controls, richer multimodal evidence, and more diverse cultural and application settings. 
+
+Limitations 
+
+This work has four main limitations. First, most experiments are module-level evaluations rather than an end-to-end longitudinal user study, so they do not fully capture deployment dynamics such as user trust, consent renewal, correction of inferred 11 traits, and long-term behavioral adaptation. Sec-ond, the persona-preservation benchmarks use fic-tional roles and simulated multi-agent stress tests; they are useful for measuring drift, but they do not by themselves validate fidelity for real individu-als. Third, the current profile is inferred primar-ily from text, which can be sparse, biased, or am-biguous. Sensitive or weakly supported attributes should therefore remain uncertain, filtered, and user-controllable rather than treated as stable facts. Fourth, some results depend on backbone reliabil-ity and JSON parse success, and closed API models do not expose all implementation details such as parameter counts or provider-side compute. These limitations motivate future evaluations with con-sented users, stronger privacy controls, multimodal evidence, and more transparent compute and im-plementation reporting. 
+
+Ethical Statement 
+
+AI YOU is a research prototype for studying uncertainty-aware persona modeling and should not be interpreted as a deployed system for pro-fessional advice, employment decisions, mental-health assessment, or identity verification. We use released benchmark datasets only for aggre-gate research evaluation. We do not redistribute raw benchmark data, attempt to identify individ-uals, or use benchmark instances outside their in-tended evaluation context. Because the evaluation sources may include social-media text, scam re-ports, relationship-conflict scenarios, or other sen-sitive content, all processing is limited to automated scoring pipelines and reported only in aggregate form. Personal digital twins introduce risks beyond standard dialogue systems, including unauthorized impersonation, overconfident inference of sensi-tive traits, emotional dependency, and misuse of persona-conditioned agents for persuasion or ma-nipulation. Our design therefore treats inferred attributes as uncertain observations rather than sta-ble facts unless supported by evidence, uses null outputs when evidence is insufficient, and filters sensitive or low-confidence state before generation. Any real-user deployment would require explicit consent, clear disclosure that the twin is an AI sys-tem, user access to inspect and correct inferred state, opt-out and deletion mechanisms, and safe-guards against using the twin to make high-stakes decisions about the user. The risk, affective, and relationship monitors are designed to support safer interaction, but they are not substitutes for human judgment or qualified professional support. Model outputs can still be wrong, culturally biased, or incomplete, especially for small evaluation pools, long-context tasks, and backbones with lower JSON reliability. For model APIs and locally served open-source models, we follow the corresponding provider terms and model licenses. Third-party visual assets used in the demo are attributed in Appendix D; any public release will either preserve upstream license and attribution notices or replace third-party visual assets with original or permissively licensed alternatives. 
+
+References              
+
+> Marwa Abdulhai, Ryan Cheng, Donovan Clay, Tim Althoff, Sergey Levine, and Natasha Jaques. 2025. Consistently simulating human personas with multi-turn reinforcement learning. CoRR , abs/2511.00222. Anastasios N. Angelopoulos and Stephen Bates. 2021. A gentle introduction to conformal prediction and distribution-free uncertainty quantification. CoRR ,abs/2107.07511. Lisa P. Argyle, Ethan C. Busby, Nancy Fulda, Joshua R. Gubler, Christopher Rytting, and David Wingate. 2023. Out of one, many: Using language mod-els to simulate human samples. Political Analysis ,31(3):337–351. David Austin, Anton Korikov, Armin Toroghi, and Scott Sanner. 2024. Bayesian optimization with llm-based acquisition functions for natural language preference elicitation. In 18th ACM Conference on Recom-mender Systems , RecSys ’24, pages 74–83. ACM. Albert Bandura. 1977. Self-efficacy: Toward a unifying theory of behavioral change. Psychological Review ,84(2):191–215. Kelly A. Brennan, Catherine L. Clark, and Phillip R. Shaver. 1998. Self-report measurement of adult at-tachment: An integrative overview. In Jeffry A. Simpson and W. Steven Rholes, editors, Attachment Theory and Close Relationships , pages 46–76. Guil-ford Press, New York. Margarida Campos, António Farinhas, Chrysoula Zerva, Mário A. T. Figueiredo, and André F. T. Martins. 2024. Conformal prediction for natural language pro-cessing: A survey. Transactions of the Association for Computational Linguistics , 12:1497–1516. Aili Chen, Chengyu Du, Jiangjie Chen, Jinghan Xu, Yikai Zhang, Siyu Yuan, Zulong Chen, Liangyue Li, and Yanghua Xiao. 2025. Deeper insight into your user: Directed persona refinement for dynamic
+
+12 persona modeling. In Proceedings of the 63rd An-nual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 24157– 24180. Association for Computational Linguistics. Jiangjie Chen, Xintao Wang, Rui Xu, Siyu Yuan, Yikai Zhang, Wei Shi, Jian Xie, Shuang Li, Ruihan Yang, Tinghui Zhu, Aili Chen, Nianqi Li, Lida Chen, Caiyu Hu, Siye Wu, Scott Ren, Ziquan Fu, and Yanghua Xiao. 2024. From persona to personalization: A survey on role-playing language agents. Trans. Mach. Learn. Res. , 2024. Myra Cheng, Esin Durmus, and Dan Jurafsky. 2023. Marked personas: Using natural language prompts to measure stereotypes in language models. In Proceed-ings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 1504–1532. Association for Computational Linguistics. Junhyuk Choi, Yeseon Hong, Minju Kim, and Bugeun Kim. 2024. Examining identity drift in conversations of llm agents. CoRR , abs/2412.00804. Daniel David. 2025. Probabilistic digital twins of users: Latent representation learning with statistically vali-dated semantics. CoRR , abs/2512.18056. Andrew Fuchs, Andrea Passarella, and Marco Conti. 2023. Modeling, replicating, and predicting hu-man behavior: A survey. ACM Transactions on Autonomous and Adaptive Systems , 18(2):1–47. Matej Gjurkovi´ c, Vanja Mladen Karan, Iva Vukojevi´ c, Mihaela Bošnjak, and Jan Snajder. 2021. PANDORA talks: Personality and demographics on Reddit. In 
+
+Proceedings of the Ninth International Workshop on Natural Language Processing for Social Media ,pages 138–152, Online. Association for Computa-tional Linguistics. Cindy Hazan and Phillip Shaver. 1987. Romantic love conceptualized as an attachment process. Journal of Personality and Social Psychology , 52(3):511–524. Muhua Huang, Xijuan Zhang, Christopher Soto, and James Evans. 2025. Designing ai-agents with personalities: A psychometric approach. CoRR ,abs/2410.19238. Yijun Huang, Jihan Zhang, Xi Chen, Alan H. F. Lam, and Ben M. Chen. 2024. From simulation to predic-tion: Enhancing digital twins with advanced gener-ative AI technologies. In 18th IEEE International Conference on Control & Automation, ICCA 2024, Reykjavík, Iceland, June 18-21, 2024 , pages 490–495. IEEE. Hang Jiang, Xiajie Zhang, Xubo Cao, Cynthia Breazeal, Deb Roy, and Jad Kabbara. 2024. Personallm: In-vestigating the ability of large language models to express personality traits. In Findings of the Associ-ation for Computational Linguistics: NAACL 2024, Mexico City, Mexico, June 16-21, 2024 , Findings of ACL, pages 3605–3627. Association for Computa-tional Linguistics. Oliver P. John and Sanjay Srivastava. 1999. The big five trait taxonomy: History, measurement, and theoreti-cal perspectives. In Lawrence A. Pervin and Oliver P. John, editors, Handbook of Personality: Theory and Research , 2 edition, pages 102–138. Guilford Press, New York. Bhawesh Kumar, Charlie Lu, Gauri Gupta, Aditya Palepu, David Bellamy, Ramesh Raskar, and Andrew Beam. 2023. Conformal prediction with large lan-guage models for multi-choice question answering. 
+
+CoRR , abs/2305.18404. Louis Kwok, Michal Bravansky, and Lewis D Griffin. 2024. Evaluating cultural adaptability of a large lan-guage model via simulation of synthetic personas. 
+
+CoRR , abs/2408.06929. Ang Li, Haozhe Chen, Hongseok Namkoong, and Tianyi Peng. 2025a. LLM generated persona is a promise with a catch. In Advances in Neural In-formation Processing Systems 38: Annual Confer-ence on Neural Information Processing Systems 2025, NeurIPS 2025 .Hao Li, Chenghao Yang, An Zhang, Yang Deng, Xiang Wang, and Tat-Seng Chua. 2025b. Hello again! llm-powered personalized agent for long-term dialogue. In Proceedings of the 2025 Conference of the Na-tions of the Americas Chapter of the Association for Computational Linguistics: Human Language Tech-nologies (Volume 1: Long Papers) , pages 5259–5276. Association for Computational Linguistics. Kenneth Li, Tianle Liu, Naomi Bashkansky, David Bau, Fernanda Viégas, Hanspeter Pfister, and Martin Wat-tenberg. 2024. Measuring and controlling instruc-tion (in) stability in language model dialogs. CoRR ,abs/2402.10962. Yanran Li, Hui Su, Xiaoyu Shen, Wenjie Li, Ziqiang Cao, and Shuzi Niu. 2017. Dailydialog: A manually labelled multi-turn dialogue dataset. In Proceedings of the Eighth International Joint Conference on Natu-ral Language Processing, IJCNLP 2017, Taipei, Tai-wan, November 27 - December 1, 2017 - Volume 1: Long Papers , pages 986–995. Asian Federation of Natural Language Processing. Zhicheng Lin. 2025. From prompts to constructs: A dual-validity framework for LLM research in psy-chology. CoRR , abs/2506.16697. Yi-Fei Liu, Yi-Long Lu, Di He, and Hang Zhang. 2025. From five dimensions to many: Large language mod-els as precise and interpretable psychological profil-ers. CoRR , abs/2511.03235. Keming Lu, Bowen Yu, Chang Zhou, and Jingren Zhou. 2024. Large language models are superpositions of all characters: Attaining arbitrary role-play via self-alignment. In Proceedings of the 62nd Annual Meeting of the Association for Computational Lin-guistics (Volume 1: Long Papers) , pages 7828–7840. Association for Computational Linguistics. 
+
+13 Pedro Henrique Luz de Araujo, Michael A. Hedderich, Ali Modarressi, Hinrich Schuetze, and Benjamin Roth. 2026. Persistent personas? role-playing, in-struction following, and safety in extended interac-tions. In Proceedings of the 19th Conference of the European Chapter of the Association for Computa-tional Linguistics (Volume 1: Long Papers) , pages 5329–5359. Association for Computational Linguis-tics. Shang Ma, Tianyi Ma, Jiahao Liu, Wei Song, Zhenkai Liang, Xusheng Xiao, and Yanfang Ye. 2025. Psyscam: A benchmark for psychological techniques in real-world scams. In Findings of the Associa-tion for Computational Linguistics: EMNLP 2025, Suzhou, China, November 4-9, 2025 , pages 12623– 12637. Association for Computational Linguistics. Andrea Madotto, Zhaojiang Lin, Chien-Sheng Wu, and Pascale Fung. 2019. Personalizing dialogue agents via meta-learning. In Proceedings of the 57th Con-ference of the Association for Computational Lin-guistics, ACL 2019, Florence, Italy, July 28- August 2, 2019, Volume 1: Long Papers , pages 5454–5459. Association for Computational Linguistics. Adyasha Maharana, Dong-Ho Lee, Sergey Tulyakov, Mohit Bansal, Francesco Barbieri, and Yuwei Fang. 2024. Evaluating very long-term conversational memory of LLM agents. In Proceedings of the 62nd Annual Meeting of the Association for Com-putational Linguistics (Volume 1: Long Papers), ACL 2024, Bangkok, Thailand, August 11-16, 2024 , pages 13851–13870. Association for Computational Lin-guistics. Davide Marengo, Christian Montag, and Michele Set-tanni. 2025. Inferring personality from social media activity using large language models: Cross-model agreement, temporal stability, and convergent validity with self-reports. Journal of Personality .Robert R. McCrae and Paul T. Costa. 1989. Reinterpret-ing the myers-briggs type indicator from the perspec-tive of the five-factor model of personality. Journal of Personality , 57(1):17–40. Joon Sung Park, Joseph C. O’Brien, Carrie Jun Cai, Meredith Ringel Morris, Percy Liang, and Michael S. Bernstein. 2023. Generative agents: Interactive simu-lacra of human behavior. In Proceedings of the 36th Annual ACM Symposium on User Interface Software and Technology, UIST 2023, San Francisco, CA, USA, 29 October 2023- 1 November 2023 , pages 2:1–2:22. ACM. Joon Sung Park, Carolyn Q Zou, Aaron Shaw, Ben-jamin Mako Hill, Carrie Cai, Meredith Ringel Morris, Robb Willer, Percy Liang, and Michael S Bernstein. 2024. Generative agent simulations of 1,000 people. 
+
+CoRR , abs/2411.10109. James W. Pennebaker and Laura A. King. 1999. Lin-guistic styles: Language use as an individual differ-ence. Journal of Personality and Social Psychology ,77(6):1296–1312. Heinrich Peters, Moran Cerf, and Sandra C. Matz. 2024. Large language models can infer personality from free-form user interactions. CoRR , abs/2405.13052. David J. Pittenger. 1993. The utility of the myers-briggs type indicator. Review of Educational Research ,63(4):467–488. Linlu Qiu, Fei Sha, Kelsey Allen, Yoon Kim, Tal Linzen, and Sjoerd van Steenkiste. 2026. Bayesian teach-ing enables probabilistic reasoning in large language models. Nature Communications , 17(1). Angela Ramirez, Mamon Alsalihy, Kartik Aggarwal, Cecilia Li, Liren Wu, and Marilyn A. Walker. 2023. Controlling personality style in dialogue with zero-shot prompt-based learning. CoRR , abs/2302.03848. Daniel W. Russell. 1996. Ucla loneliness scale (version 3): Reliability, validity, and factor structure. Journal of Personality Assessment , 66(1):20–40. Mustafa Safdari, Greg Serapio-García, Clément Crepy, Stephen Fitz, Peter Romero, Luning Sun, Marwa Abdulhai, Aleksandra Faust, and Maja J. Mataric. 2023. Personality traits in large language models. 
+
+CoRR , abs/2307.00184. Alireza Salemi, Sheshera Mysore, Michael Bendersky, and Hamed Zamani. 2024. LaMP: When large lan-guage models meet personalization. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 7370–7392, Bangkok, Thailand. Association for Computational Linguistics. Shibani Santurkar, Esin Durmus, Faisal Ladhak, Cinoo Lee, Percy Liang, and Tatsunori Hashimoto. 2023. Whose opinions do language models reflect? In In-ternational Conference on Machine Learning, ICML 2023, 23-29 July 2023, Honolulu, Hawaii, USA , vol-ume 202 of Proceedings of Machine Learning Re-search , pages 29971–30004. PMLR. Roberto Saracco. 2019. Digital twins: Bridging physi-cal space and cyberspace. Computer , 52(12):58–64. Ralf Schwarzer and Matthias Jerusalem. 1995. General-ized self-efficacy scale. In John Weinman, Stephen Wright, and Marie Johnston, editors, Measures in Health Psychology: A User’s Portfolio. Causal and Control Beliefs , pages 35–37. NFER-NELSON, Windsor, UK. Yunfan Shao, Linyang Li, Junqi Dai, and Xipeng Qiu. 2023. Character-llm: A trainable agent for role-playing. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Process-ing, EMNLP 2023, Singapore, December 6-10, 2023 ,pages 13153–13187. Association for Computational Linguistics. Jocelyn J Shen, Akhila Yerukola, Xuhui Zhou, Cynthia Breazeal, Maarten Sap, and Hae Won Park. 2025. Words like knives: Backstory-personalized modeling 
+
+14 and detection of violent communication. In Proceed-ings of the 2025 Conference on Empirical Methods in Natural Language Processing , pages 11596–11614, Suzhou, China. Association for Computational Lin-guistics. Xiaoyang Song, Akshat Gupta, Kiyan Mohebbizadeh, Shujie Hu, and Anant Singh. 2023. Have large lan-guage models developed a personality?: Applicabil-ity of self-assessment tests in measuring personality in llms. CoRR , abs/2305.14693. Randy Stein and Alexander B. Swan. 2019. Evaluating the validity of myers-briggs type indicator theory: A teaching tool and window into intuitive psychology. 
+
+Social and Personality Psychology Compass , 13(3). Jiayuan Su, Jing Luo, Hongwei Wang, and Lu Cheng. 2024. Api is enough: Conformal prediction for large language models without logit-access. In Findings of the Association for Computational Linguistics: EMNLP 2024 , pages 979–995. Association for Com-putational Linguistics. Zhen Tan, Jun Yan, I-Hung Hsu, Rujun Han, Zifeng Wang, Long Le, Yiwen Song, Yanfei Chen, Hamid Palangi, George Lee, Anand Rajan Iyer, Tianlong Chen, Huan Liu, Chen-Yu Lee, and Tomas Pfister. 2025. In prospect and retrospect: Reflective mem-ory management for long-term personalized dialogue agents. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Vol-ume 1: Long Papers) , pages 8416–8439. Association for Computational Linguistics. Yu-Min Tseng, Yu-Chao Huang, Teng-Yun Hsiao, Wei-Lin Chen, Chao-Wei Huang, Yu Meng, and Yun-Nung Chen. 2024. Two tales of persona in llms: A survey of role-playing and personalization. In Find-ings of the Association for Computational Linguistics: EMNLP 2024 , pages 16612–16631. Association for Computational Linguistics. Yilei Wang, Jiabao Zhao, Deniz S. Ones, Liang He, and Xin Xu. 2025. Evaluating the ability of large language models to emulate personality. Scientific Reports , 15(1). Zhiyuan Wang, Jinhao Duan, Lu Cheng, Yue Zhang, Qingni Wang, Xiaoshuang Shi, Kaidi Xu, Heng Tao Shen, and Xiaofeng Zhu. 2024. Conu: Conformal un-certainty in large language models with correctness coverage guarantees. In Findings of the Association for Computational Linguistics: EMNLP 2024 , pages 6886–6898. Association for Computational Linguis-tics. David Watson, Lee Anna Clark, and Auke Tellegen. 1988. Development and validation of brief mea-sures of positive and negative affect: The panas scales. Journal of Personality and Social Psychology ,54(6):1063–1070. Rebecca Westhäußer, Wolfgang Minker, and Sebatian Zepf. 2025. Enabling personalized long-term interac-tions in llm-based agents through persistent memory and user profiles. CoRR , abs/2510.07925. Shannan Yan, Jingchen Ni, Leqi Zheng, Jiajun Zhang, Peixi Wu, Dacheng Yin, Jing Lyu, Chun Yuan, and Fengyun Rao. 2026. Adamem: Adaptive user-centric memory for long-horizon dialogue agents. CoRR ,abs/2603.16496. Qishuai Zhong, Zongmin Li, Siqi Fan, and Aixin Sun. 2025. Evaluating llm adaptation to sociodemo-graphic factors: User profile vs. dialogue history. 
+
+CoRR , abs/2505.21362. 
+
+15 A Additional Experimental Results 
+
+This appendix documents auxiliary results and im-plementation details for the experiments in Sec-tion 4. To make the evaluation protocol auditable, we first specify how evaluation instances are con-structed and then report detailed Big Five and conformal-calibration results, full state-monitoring results, and module-level ablations for the risk mon-itor and the memory system. 
+
+A.1 Evaluation Instance Construction 
+
+Table 1 reports Eval. N , the number of scored units passed to the shared evaluation harness after pre-processing, rather than the released-corpus size. For each benchmark, we first convert the origi-nal data into task-specific scored units and remove records that cannot be scored reliably, including instances with missing gold labels, malformed or empty fields, or inputs exceeding the harness length limits. When the eligible pool exceeds the evalua-tion budget, we draw a fixed random subsample for inference-cost control; sampling is performed be-fore any model inference with seed 42. Within each benchmark setting, the resulting instance IDs are shared across Direct, CoT, AI YOU, ablations, and backbones, except for explicitly marked diagnostic or local runs. The reported values therefore corre-spond to uniformly filtered, sample-controlled eval-uation pools rather than full-corpus or leaderboard-scale counts. The counting unit is benchmark-specific. Essays is record-level and nearly full-corpus in our harness: we evaluate 2,466 of 2,468 essay records after drop-ping records with incomplete labels. PANDORA is counted at the trait-observation level rather than the unique-user or retained-record level: 2,415 corresponds to 483 retained text records scored on five Big Five dimensions, and MAE/RMSE are computed over these scalar trait targets. Dai-lyDialog comprises 564 utterance-level emotion-classification instances after preprocessing and fixed sampling from eligible utterances; because this pool is small and label-imbalanced, its accu-racy values constitute within-harness descriptive comparisons and are not directly comparable to results reported in prior literature. LoCoMo is counted at the question level: the reported 1,542 questions are selected after preprocessing and cost-controlled sampling from the eligible QA pool, while query-only retrieval affects the evidence sup-plied at inference time and does not define the question count. PsyScam and PersonaConflicts count processed classification instances rather than source reports or raw dialogues; PersonaConflicts uses 6,012 processed binary classification instances for API rows, while the 1,500-instance OLMo rows are explicitly marked diagnostic or local runs. 
+
+A.2 Additional Big Five Prediction Results 
+
+Table 8 provides expanded Big Five prediction re-sults for the API-served models reported in the main text, covering MAE, RMSE, ECE, confor-mal coverage, and prediction-set size. The point-estimation differences are small but consistent in favor of AI YOU Full, whereas the calibration im-provements are larger and more stable. All values are computed at the scored-unit level defined in Appendix A.1; for PANDORA in particular, each retained text record contributes five scalar trait ob-servations. 
+
+A.3 Additional State-Monitoring Module Results 
+
+Table 9 reports the full API-model results for the state-monitoring benchmarks. These experiments evaluate individual modules rather than the full 22-field persona schema: PsyScam evaluates risk-state monitoring, LoCoMo evaluates memory-grounded question answering, and PersonaConflicts evalu-ates relationship-boundary classification. The table exposes model-level variation that is aggregated in the main text. For rows with JSON success below 
+
+0.98 , parsing failures may confound the measured task score, and we therefore treat these rows as diagnostic rather than as definitive comparisons. 
+
+A.4 Risk-Monitor Ablation 
+
+Table 10 isolates the contribution of the risk moni-tor on PsyScam for API-served models. The abla-tion compares Direct prompting, evidence-guided prompting, AI YOU Full, and a variant without the risk-monitor scaffold. Across all API mod-els, AI YOU Full obtains the highest partial multi-label score, indicating that an explicit risk-cue checklist supports label selection for psychological-manipulation categories. Exact-set accuracy re-mains lower than the partial score because the task requires the entire predicted label set to match the gold set; the ablation therefore measures the effect of structured risk-label selection and does not con-stitute a standalone validation of real-world scam detection. 16 Dataset Model Method N MAE ↓ RMSE ↓ ECE ↓ Coverage ↑ Set Size ↓                                                                                                
+
+> PANDORA GPT-5.4 Direct 2415 0.268 0.316 0.109 ––PANDORA GPT-5.4 CoT 2415 0.270 0.320 0.094 ––PANDORA GPT-5.4 AI YOU Full 2415 0.265 0.303 0.071 0.976 2.896 PANDORA Qwen-3.6-Max Direct 2415 0.278 0.331 0.123 ––PANDORA Qwen-3.6-Max CoT 2415 0.279 0.334 0.135 ––PANDORA Qwen-3.6-Max AI YOU Full 2415 0.269 0.317 0.082 0.958 2.742 Essays GPT-5.4 Direct 2466 0.451 0.491 0.326 ––Essays GPT-5.4 CoT 2466 0.455 0.493 0.345 ––Essays GPT-5.4 AI YOU Full 2466 0.438 0.479 0.214 0.944 2.284 Essays Qwen-3.6-Max Direct 2466 0.469 0.514 0.358 ––Essays Qwen-3.6-Max CoT 2466 0.472 0.518 0.371 ––Essays Qwen-3.6-Max AI YOU Full 2466 0.448 0.486 0.232 0.936 2.417
+
+Table 8: Detailed Big Five prediction and conformal uncertainty results for API-served models. “AI YOU Full” denotes the complete pipeline with structured extraction, Bayesian updating, and conformal calibration. Coverage and set size are defined only for conformal AI YOU predictions. N follows the scored-unit definition in Appendix A.1; 
+
+bold marks the best value per dataset–model group.                                                   
+
+> Benchmark Model NAccuracy ↑Avg. Score ↑JSON Success ↑
+> PsyScam GPT-5.4 730 0.399 0.830 1.000 PsyScam Qwen-3.6-Max 730 0.140 0.746 1.000 PsyScam DeepSeek-V4-Pro 730 0.149 0.782 1.000 LoCoMo GPT-5.4 1542 0.405 0.451 0.920 LoCoMo Qwen-3.6-Max 1542 0.433 0.459 0.996 LoCoMo DeepSeek-V4-Pro 1542 0.431 0.455 0.998 PersonaConflicts GPT-5.4 6012 0.716 0.716 0.938 PersonaConflicts Qwen-3.6-Max 6012 0.909 0.909 1.000 PersonaConflicts DeepSeek-V4-Pro 6012 0.796 0.796 0.913
+
+Table 9: Full state-monitoring benchmark results for API-served models. N follows the processed-instance definitions in Appendix A.1; bold marks the best value per benchmark. Rows with JSON success below 0.98 are diagnostic, as parsing failures can affect the measured task score. 
+
+A.5 Memory Ablation 
+
+Table 11 reports a LoCoMo memory ablation on a 300-instance diagnostic sample. The most stable pattern is the degradation caused by removing re-trieved memory altogether, which appears for all API-served backbones. Removing only the seman-tic or episodic layer produces smaller and more model-dependent changes. This pattern supports the narrower conclusion that retrieved conversa-tional evidence is the main driver in this diagnostic setting, while the relative contribution of individ-ual memory layers depends on the backbone and prompt configuration. Because this diagnostic sam-ple differs from the full-run LoCoMo setting, its absolute scores are not directly comparable to the main-text LoCoMo results. 
+
+B Profile Schema 
+
+Table 12 lists the 22 fields maintained by AI YOU and distinguishes among evaluated psychometric targets, optional user-provided context, and fields that may be used for response generation after fil-tering. The schema is an operational representation for state maintenance, not a claim that every field is psychometrically validated or safely inferable from sparse dialogue. Quantitative evaluation in this pa-per is restricted to the Big Five and the auxiliary state-monitoring tasks. In deployment-facing gen-eration, inferred state is filtered by confidence and privacy checks; sensitive or weakly supported vari-ables are summarized conservatively or withheld rather than inserted as raw scalar values. 17 Model Method N Exact Acc. ↑ Avg. Score ↑ JSON Success ↑
+
+GPT-5.4 Direct 730 0.377 0.813 1.000 GPT-5.4 CoT 730 0.385 0.817 1.000 GPT-5.4 AI YOU Full 730 0.399 0.830 1.000 GPT-5.4 w/o Risk Monitor 730 0.390 0.809 1.000 Qwen-3.6-Max Direct 730 0.122 0.721 1.000 Qwen-3.6-Max CoT 730 0.092 0.707 1.000 Qwen-3.6-Max AI YOU Full 730 0.140 0.746 1.000 Qwen-3.6-Max w/o Risk Monitor 730 0.090 0.692 1.000 DeepSeek-V4-Pro Direct 730 0.130 0.746 1.000 DeepSeek-V4-Pro CoT 730 0.105 0.731 1.000 DeepSeek-V4-Pro AI YOU Full 730 0.149 0.782 1.000 DeepSeek-V4-Pro w/o Risk Monitor 730 0.077 0.709 1.000 
+
+Table 10: PsyScam risk-monitor ablation for API-served models. Avg. Score denotes the partial multi-label score; exact accuracy requires the complete predicted label set to match the gold set. Bold marks the best value per model. 
+
+Model Method N Accuracy ↑ Avg. Score ↑ JSON Success ↑
+
+GPT-5.4 Direct 300 0.587 0.629 0.920 GPT-5.4 CoT 300 0.577 0.643 0.917 GPT-5.4 AI YOU Full 300 0.597 0.628 0.913 GPT-5.4 w/o Memory 300 0.384 0.417 1.000 GPT-5.4 w/o Semantic Memory 300 0.580 0.625 0.917 GPT-5.4 w/o Episodic Memory 300 0.593 0.630 0.923 Qwen-3.6-Max Direct 300 0.607 0.635 1.000 Qwen-3.6-Max CoT 300 0.600 0.632 1.000 Qwen-3.6-Max AI YOU Full 300 0.610 0.641 1.000 Qwen-3.6-Max w/o Memory 300 0.397 0.429 1.000 Qwen-3.6-Max w/o Semantic Memory 300 0.607 0.631 1.000 Qwen-3.6-Max w/o Episodic Memory 300 0.590 0.618 0.997 DeepSeek-V4-Pro Direct 300 0.523 0.553 1.000 DeepSeek-V4-Pro CoT 300 0.540 0.568 1.000 DeepSeek-V4-Pro AI YOU Full 300 0.540 0.563 0.997 DeepSeek-V4-Pro w/o Memory 300 0.346 0.381 1.000 DeepSeek-V4-Pro w/o Semantic Memory 300 0.517 0.545 1.000 DeepSeek-V4-Pro w/o Episodic Memory 300 0.500 0.532 1.000 
+
+Table 11: LoCoMo memory ablation for API-served models. Results are computed on a 300-instance diagnostic sample drawn from the processed QA pool and are not directly comparable to the full LoCoMo runs with N =1542 .
+
+Bold marks the best value per model; rows with JSON success below 0.98 are diagnostic, as parsing failures can affect the measured task score. 
+
+18 ID Field Construct Type / Range Quant. Eval. User Provided Generation Prompt 
+
+1 age Demographic con-text Integer or bucketed age; adult deployment range 18–80 No Yes Yes, if confirmed 2 gender Demographic con-text Categorical / open-set; normalized when possi-ble No Yes Yes, if confirmed 3 occupation Demographic con-text Free text or normalized occupation category No Yes Yes, if confirmed 4 education Demographic con-text Categorical; e.g., high school, college, bachelor, master, PhD No Yes Yes, if confirmed 5 geographic_region Demographic con-text Free text or coarse location category No Yes Yes, if confirmed 6 openness Big Five Continuous score in [0 , 1] ; higher means more open to experience Main Optional Summary only 7 conscientiousness Big Five Continuous score in [0 , 1] ; higher means more organized / disciplined Main Optional Summary only 8 extraversion Big Five Continuous score in [0 , 1] ; higher means more extraverted Main Optional Summary only 9 agreeableness Big Five Continuous score in [0 , 1] ; higher means more cooperative / compassionate Main Optional Summary only 10 neuroticism Big Five Continuous score in [0 , 1] ; higher means higher emotional volatility Main Optional Summary only 11 attachment_anxiety Attachment Continuous score in [0 , 1] ; higher means stronger anxiety about rejection No Optional No raw value 12 attachment_avoidance Attachment Continuous score in [0 , 1] ; higher means stronger avoidance of dependence No Optional No raw value 13 self_efficacy Self-belief Continuous score in [0 , 1] ; higher means stronger perceived agency No Optional No raw value 14 loneliness Social need Continuous score in [0 , 1] ; higher means stronger perceived loneliness No Optional No raw value 15 positive_affect Affective state Continuous score in [0 , 1] or categorical affect mapped to positive valence Aux. No State summary only 16 negative_affect Affective state Continuous score in [0 , 1] or categorical affect mapped to negative valence Aux. No State summary only 17 mbti_ei MBTI abstraction Continuous axis in [0 , 1] ; 0=I, 1=E No Optional Display only 18 mbti_sn MBTI abstraction Continuous axis in [0 , 1] ; 0=S, 1=N No Optional Display only 19 mbti_tf MBTI abstraction Continuous axis in [0 , 1] ; 0=T, 1=F No Optional Display only 20 mbti_jp MBTI abstraction Continuous axis in [0 , 1] ; 0=P, 1=J No Optional Display only 21 communication_style Interaction style Categorical: direct, indirect, humorous, serious, casual, formal No Optional Yes 22 relationship_goals Relationship prefer-ence Categorical: casual, serious, friendship, unsure No Optional Yes, if confirmed 
+
+Table 12: AI YOU profile schema. The table defines the 22 profile fields used by the AI YOU environment. Demographic fields are treated as optional contextual variables rather than psychometric constructs. The main quantitative personality evaluation is conducted on the Big Five dimensions using PANDORA and Essays; affective variables are evaluated separately as state-monitoring modules. MBTI axes are included as user-facing commu-nicative abstractions and are not used as validated psychometric targets. “Generation Prompt” indicates whether a field may be exposed to the response generator after confidence filtering and privacy checks; sensitive or weakly supported inferred variables are summarized conservatively or withheld rather than inserted as raw scalar values. 
+
+19 C Prompt Design 
+
+This appendix documents the prompt templates used in the experiments and prototype modules. They are included for reproducibility, not as gen-eral deployment recommendations. Curly braces denote instance-specific placeholders supplied by the evaluation harness. Literal values such as 0.0 ,
+
+null , or label strings inside schema blocks are output-format placeholders rather than model out-puts or evaluation values. Fixed calibration anchors that appear inside prompts are prompt-design ar-tifacts and are not evaluation instances from the scored benchmark pools. All prompts follow three constraints. First, models receive only deployment-observable input, such as user utterances, dialogue history, retrieved memory snippets, or benchmark-provided scenario text; gold labels, annotation-side rationales, file names, and split identifiers are never provided. Second, prompts require a compact JSON object whenever the output is automatically scored. Third, confidence values, when requested, are scalars in [0 , 1] and are used for calibration or error analysis. Short evidence fields are included for auditability and are not treated as hidden chain-of-thought. 
+
+C.1 Big Five Personality Prediction 
+
+For PANDORA and Essays, each input text is wrapped as a one-turn dialogue, [{speaker :
+
+user , message : x}]. The model estimates five Big Five scores in [0 , 1] and optional confidence values. In PANDORA, the scored unit is a scalar trait observation; in Essays, each essay contributes five binary trait targets mapped to {0, 1}. The AI YOU Full condition subsequently applies Bayesian aggregation and conformal calibration when the corresponding experiment requires uncertainty es-timates. 
+
+Direct prompting. Direct prompting (Prompt 1) is the zero-shot structured generation baseline. The model estimates Big Five scores from the observed text and returns only a parseable JSON object.          
+
+> Prompt 1: Big Five — Direct Prompting
+> [SYSTEM] You are a personality analysis expert. Use only the provided conversation. Return valid JSON only. [USER]
+> Prompt 1 (continued)
+> Given the following conversation, infer the speaker 's Big Five personality scores. Each score must be a number in [0, 1], where 0 means low and 1 means high. Assign confidence values in [0, 1] based only on the strength of textual evidence. Conversation: {dialogue} Return exactly one JSON object with this schema: {"big_five": { "openness": 0.0, "conscientiousness": 0.0, "extraversion": 0.0, "agreeableness": 0.0, "neuroticism": 0.0 }, "confidences": { "openness": 0.0, "conscientiousness": 0.0, "extraversion": 0.0, "agreeableness": 0.0, "neuroticism": 0.0 }}
+
+Evidence-guided prompting. The CoT condi-tion in the tables corresponds to an evidence-guided prompt (Prompt 2). The model is asked to inspect behavioral evidence before returning the same JSON schema. Only the final JSON object is parsed and scored.   
+
+> Prompt 2: Big Five — Evidence-Guided Prompting (CoT)
+> [SYSTEM] You are a personality analysis expert. Use only the provided conversation. Return a compact evidence summary followed by valid JSON. [USER] Given the following conversation, infer the speaker 's Big Five personality scores. First identify brief evidence about communication style, emotional expression, social behavior, goals, and values. Then output the final JSON object. Conversation: {dialogue} Return the final answer as exactly one JSON object with this schema: {"big_five": { "openness": 0.0, "conscientiousness": 0.0,
+
+20 Prompt 2 (continued) 
+
+"extraversion": 0.0, "agreeableness": 0.0, "neuroticism": 0.0 }, "confidences": { "openness": 0.0, "conscientiousness": 0.0, "extraversion": 0.0, "agreeableness": 0.0, "neuroticism": 0.0 }}
+
+AI YOU Full. AI YOU Full (Prompt 3) uses the persona inference agent rather than a single end-to-end prediction prompt. The template below pro-duces structured profile observations. Unsupported fields are returned as null ; the resulting observa-tions are then passed to the Bayesian updater and, where applicable, the conformal calibrator. 
+
+Prompt 3: Big Five — AI YOU Full (structured extrac-tion) 
+
+[SYSTEM] You are an evidence-grounded persona estimation module. Use only the observable conversation and retrieved memory provided in the input. Do not infer sensitive or unsupported attributes. Return valid JSON only. [USER] Estimate the user 's profile from the evidence below. Use null when the evidence is insufficient. For every non-null field, assign a confidence value in [0, 1]. Dialogue evidence: {dialogue} Retrieved memory evidence: {retrieved_memory} Return exactly one JSON object with this schema: {"demographic_context": { "age": null, "gender": null, "occupation": null, "education": null, "geographic_region": null }, "big_five": { "openness": null, "conscientiousness": null, "extraversion": null, "agreeableness": null, "neuroticism": null }, "additional_constructs": { "attachment_anxiety": null, 
+
+Prompt 3 (continued) 
+
+"attachment_avoidance": null, "self_efficacy": null, "loneliness": null, "positive_affect": null, "negative_affect": null }, "interpretive_descriptors": { "mbti_ei": null, "mbti_sn": null, "mbti_tf": null, "mbti_jp": null, "communication_style": null, "relationship_goals": null }, "confidence": { "age": 0.0, "gender": 0.0, "occupation": 0.0, "education": 0.0, "geographic_region": 0.0, "openness": 0.0, "conscientiousness": 0.0, "extraversion": 0.0, "agreeableness": 0.0, "neuroticism": 0.0, "communication_style": 0.0, "relationship_goals": 0.0 }, "evidence": { "supporting_turns": [], "brief_summary": "" }}
+
+C.2 Affective-State Prediction 
+
+DailyDialog evaluates utterance-level emotion pre-diction. The allowed labels are no emotion ,
+
+anger , disgust , fear , happiness , sadness , and 
+
+surprise .
+
+DailyDialog Direct. Prompt 4 classifies the tar-get utterance in isolation. 
+
+Prompt 4: DailyDialog — Direct 
+
+[SYSTEM] You are an evaluation-time affective-state classifier. Use only the observable utterance. Return one compact JSON object only. [USER] Classify the emotion expressed by the target utterance. Allowed labels: no emotion, anger, disgust, fear, happiness, sadness, surprise. Use "no emotion" when the utterance is neutral or has no clear emotion. Target utterance: {target} Return exactly one JSON object: {
+
+21 Prompt 4 (continued) 
+
+"answer": "same as label", "label": "no emotion", "confidence": 0.0, "evidence": ["short target quote"], "rationale": "short reason" }
+
+DailyDialog AI YOU Full. AI YOU Full (Prompt 5) adds local dialogue context, fixed cal-ibration anchors, confidence, and affect intensity. The calibration anchors are prompt-template con-trols and are not drawn from the DailyDialog evalu-ation pool. The w/o Context ablation removes the dialogue-context block; the w/o Intensity ablation removes the intensity field from the schema. 
+
+Prompt 5: DailyDialog — AI YOU Full (context + inten-sity) 
+
+[SYSTEM] You are an evaluation-time affective-state monitor. Use only the observable dialogue. Return one compact JSON object only. [USER] Classify the emotion expressed by the target utterance. Allowed labels: no emotion, anger, disgust, fear, happiness, sadness, surprise. Use "no emotion" when the target utterance is neutral or has no clear emotion. Estimate confidence and affect intensity in [0, 1]. Few-shot calibration anchors: - Target: "I am so happy to hear that!" -> label=happiness, intensity=0.9 - Target: "I don 't know what to do now." -> label=sadness, intensity=0.6 - Target: "That is disgusting." -> label=disgust, intensity=0.8 - Target: "Are you serious?" -> label=surprise, intensity=0.7 - Target: "Okay, see you tomorrow." -> label=no emotion, intensity=0.2 Dialogue context: {dialogue_context} Target utterance: {target} Return exactly one JSON object: {"answer": "same as label", "label": "no emotion", "confidence": 0.0, "intensity": 0.0, "evidence": ["short target quote"], "rationale": "short reason" }
+
+C.3 Risk and Scam Monitoring 
+
+PsyScam is evaluated as psychological-manipulation and scam-technique detection. The target is a set of allowed technique labels, so we report both exact-set accuracy and a partial multi-label score. 
+
+PsyScam AI YOU Full. Prompt 6 embeds the risk-cue checklist used by the AI YOU risk moni-tor. 
+
+Prompt 6: PsyScam — AI YOU Full (risk-cue checklist) 
+
+[SYSTEM] You are an evaluation-time risk-state classifier. Use only the observable report and the allowed label set. Return compact JSON only, with no markdown and no prose outside JSON. [USER] Dataset: PsyScam Task: identify scam type and psychological manipulation techniques. Question: {question} Allowed technique labels: {allowed_technique_labels} Report: {scam_report} Before assigning labels, check for the following risk cues: - urgency escalation - financial solicitation - isolation or secrecy pressure - identity inconsistency - romance or trust manipulation - pressure to ignore boundaries Return exactly one JSON object: {"answer": "comma-separated labels or short answer", "label": "comma-separated allowed labels", "confidence": 0.0, "evidence": ["short quote"], "rationale": "short reason" }
+
+Ablation prompts. Direct removes the risk checklist and asks the model to classify directly from the report. The evidence-guided (CoT) con-dition asks for a short evidence summary before the final JSON. The w/o Risk Monitor condition removes the risk-state scaffold and uses only the generic benchmark instruction. 
+
+Online semantic risk monitor. The prototype monitor also uses a semantic risk prompt for online 22 conversations (Prompt 7). This prompt is not used as a gold-label classifier; it supplies a risk state to the coordinator. 
+
+Prompt 7: Online risk monitor — semantic scam analysis 
+
+[SYSTEM] You are a safety monitor for detecting scam risk and coercive interaction cues. Use only the conversation provided. Return valid JSON only. [USER] Analyze the current message for scam signals or manipulation tactics. Recent conversation history: {last_5_messages} Current message: {message} Check for: love bombing, financial manipulation, urgency tactics, requests to move to an external platform, unrealistic promises, identity inconsistency, isolation pressure, and emotional manipulation. Return exactly one JSON object: {"semantic_risk": 0.0, "detected_tactics": [], "red_flags": ["specific concerning phrase or behavior"], "rationale": "brief explanation" }
+
+C.4 Long-Term Memory QA 
+
+LoCoMo evaluates whether a model can answer questions over long multi-session conversations. To avoid using gold evidence, the harness retrieves snippets with a query-only retriever based on the question terms alone. Retrieval affects the evidence supplied to the model, not the question count re-ported as Eval. N, which follows the construction described in Appendix A.1. Prompt 8 shows the QA template. 
+
+Prompt 8: LoCoMo — query-only retrieval + memory QA 
+
+[SYSTEM] You are an evaluation-time memory QA model. Use only the provided question and retrieved context. Return compact JSON only. [USER] Dataset: LoCoMo Task: memory QA Question: {question} 
+
+Prompt 8 (continued) 
+
+Retrieved evidence snippets from the long conversation: {retrieved_snippets} Use the retrieved snippets as evidence. If the evidence is insufficient, answer "unknown" and assign low confidence. Return exactly one JSON object: {"answer": "short answer", "label": "short answer or unknown", "confidence": 0.0, "evidence": ["short quote"], "rationale": "short reason" }
+
+Memory ablations. The w/o Memory condition omits retrieved long-context evidence. w/o Se-mantic Memory removes stable-fact summaries. 
+
+w/o Episodic Memory removes compressed event-level summaries. 
+
+C.5 Relationship Conflict Prediction 
+
+PersonaConflicts evaluates relationship-state and boundary reasoning as binary classification with labels conflict and nonconflict . The prompt uses only observable scenario and dialogue content, and excludes annotation-side metadata. 
+
+Prompt 9: PersonaConflicts — relationship-boundary classifier 
+
+[SYSTEM] You are an evaluation-time relationship-boundary classifier. Use only deployment-observable input. Do not use metadata, gold labels, or annotation-side evidence. Return one compact JSON object only. [USER] Task family: relationship reasoning Dataset: PersonaConflicts Question: {question} Classify the exchange from the observable relationship context, scenario, and dialogue. Consider boundaries, coercion or control, blame, demands, repair, support, and whether the exchange respects the stated relationship boundary. The label must be exactly "conflict" or " nonconflict". Input: {scenario_and_dialogue} Return exactly one JSON object: {"answer": "short relationship or boundary reason", 
+
+23 Prompt 9 (continued) 
+
+"label": "conflict", "confidence": 0.0, "evidence": ["short quote"], "rationale": "short reason" }
+
+Online relationship-state prompts. The pro-totype relationship monitor uses two additional prompts: relationship-log compression (Prompt 10) and relationship-state estimation (Prompt 11). These prompts update internal state and are not used as gold-label classifiers. 
+
+Prompt 10: Online relationship monitor — log compres-sion 
+
+[SYSTEM] You compress recent dialogue into an evidence-grounded relationship log. Do not infer stable relationship facts without repeated evidence. [USER] Compress the following conversation into a structured relationship log of at most 15 lines. Focus on emotional shifts, trust signals, boundary negotiation, conflict, and repair. Conversation: {recent_50_turns} Return bullet points in this format: - Turn X: [event summary grounded in the dialogue] - Turn Y: [event summary grounded in the dialogue] 
+
+Prompt 11: Online relationship monitor — state estima-tion 
+
+[SYSTEM] You estimate relationship state from dialogue evidence. Return JSON only. Treat uncertain interpretations as candidates, not facts. [USER] Compressed relationship log: {compressed_relationship_log} Current user-state features: - Big Five: {predicted_big_five} - Interests: {predicted_interests} - Turn: {turn_count} - Current relationship status: { current_rel_status} Estimate the relationship state. The status can stay the same or advance only if there is clear repeated evidence. 
+
+Prompt 11 (continued) 
+
+Return exactly one JSON object: {"rel_type": "love|friendship|family| professional|other", "rel_type_probs": { "love": 0.0, "friendship": 0.0, "family": 0.0, "professional": 0.0, "other": 0.0 }, "rel_status": "stranger|acquaintance |familiar|close|committed", "rel_status_probs": { "stranger": 0.0, "acquaintance": 0.0, "familiar": 0.0, "close": 0.0, "committed": 0.0 }, "candidate_transitions": [], "blockers": [], "supporting_evidence": [] }
+
+C.6 Generation and Embodiment Prompts 
+
+The response generator receives approved state rather than unrestricted raw memory. Persona, memory, affective state, relationship state, and safety summaries are inserted as separate context blocks after filtering and confidence checks. These templates are therefore state-conditioned gener-ation templates, not unrestricted impersonation prompts; they also require truthful disclosure of AI status and prohibit unsupported real-world identity claims. Prompt 12 shows the persona-conditioned generation template; Prompt 13 shows the digital-twin role-play variant. 
+
+Persona-conditioned generation. 
+
+Prompt 12: Response generation — approved-state in-jection 
+
+[SYSTEM] You are a persona-conditioned dialogue agent operating in a research prototype. Respond consistently with the approved persona and memory context, but do not claim real-world identity, expertise, or experiences beyond the provided state. If asked whether you are an AI system or simulation, answer truthfully. Keep responses natural, concise, and aligned with the user 's language. [Approved persona summary] {high_confidence_persona_summary} [Approved memory context] {approved_working_episodic_semantic_memory} 
+
+24 Prompt 12 (continued) 
+
+[Affective-state context] {current_emotion_state_and_reply_strategy} [Relationship-state context] {relationship_state_summary} [Safety/risk context] {risk_warning_if_any} [USER] {user_message} 
+
+Digital-twin simulation mode. 
+
+Prompt 13: Digital-twin simulation system prompt 
+
+[SYSTEM] You are simulating an authorized digital-twin persona for a research prototype. Role-play according to the approved profile below while avoiding claims that you are the real person. Stay consistent with the profile and keep responses concise (1--3 sentences) unless the user asks for detail. Name or persona label: {twin_name} Big Five summary: {personality_summary} Interests: {interests} Communication style: {communication_style} Interpretive descriptors, if available: { interpretive_descriptors} Safety and boundary constraints: {safety_constraints} [USER] {message_to_twin} 
+
+D AI YOU Prototype Screenshots 
+
+Figures 2–7 provide illustrative screenshots of the AI YOU interactive demo. These screenshots doc-ument the prototype interface and are not used as quantitative evaluation evidence. The marketplace views use non-monetary routing tokens to illustrate request allocation among personal digital twins; they do not represent real transactions, compensa-tion, or service valuation. 25 Figure 2: Persona Playground and Role Calibration. The landing page illustrates the role-calibration interface used to start specialized interactions and navigate to the Marketplace or Digital Twin configuration flows. 
+
+Figure 3: AI YOU Town Marketplace Routing Interface. This view illustrates how a request can be routed to a personal digital twin for a prototype service such as a guidance session or interview simulation. The displayed bud-gets and prices are non-monetary routing tokens and should not be interpreted as real transactions or compensation. 
+
+26 Figure 4: Marketplace Delivery and Artifact Generation. The delivery view shows how the prototype records the completion of a routed request and displays a generated artifact. The artifact demonstrates persona-conditioned output and auditability within the prototype flow. 
+
+Figure 5: Evidence Audit and Interaction Ledger. The audit view records receipts, orders, graph edges, and generated artifacts associated with a routed request. This interface is intended to make prototype state transitions inspectable rather than to validate any real economic exchange. 
+
+27 Figure 6: Digital Twin Blueprint Configuration. The configuration panel shows how a user may provide or edit approved persona information, including demographic context, response style, memory preferences, and calibration partner. In deployment, such fields should remain user-controllable and subject to consent and privacy checks. 
+
+Figure 7: System Map and User-State Summary. The summary view visualizes the prototype-level routing among persona modeling, memory, affect, risk, and marketplace modules. It is included to show system organization and inspection affordances rather than as evidence of deployed performance. 
+
+28
