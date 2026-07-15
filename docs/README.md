@@ -6,37 +6,31 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-14
-- 运行时间：2026-07-14 21:33:09 UTC
+- 最新运行日期：2026-07-15
+- 运行时间：2026-07-15 21:32:56 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：4
+- 本次总论文数：3
+- 精读区：2
 - 速读区：1
 
 ### 今日简报（AI）
-今日精选5篇论文，重点精读数字孪生社交与情感AI推理两篇高分研究。  
-最值得关注的方向：数字孪生社交平台（AI You Town）和生成式AI中的个性化情感推理（符号情感推理）。  
-建议普通读者优先精读《AI YOU Town》和《Personalized Emotional Intelligence》两篇，探索数字孪生与情感AI的融合实践。
-- 详情：[/202607/14/README](/202607/14/README)
+今日聚焦3篇推荐系统论文，精读了两篇高分工作：个性化视频缩略图生成（9.0分）与轻量级智能模型（8.0分），另速读一篇零权重新闻推荐（6.0分）。  
+最值得深挖的是《What Would You Click?》通过偏好感知高亮检索实现用户专属缩略图，以及《SlimPer》在保持效果的同时大幅精简推荐模型。  
+建议优先尝试SlimPer的瘦身策略以降低线上资源消耗，同时可结合视频缩略图方法提升点击率，但需关注其计算开销。
+- 详情：[/202607/15/README](/202607/15/README)
 
 ### 精读区论文标签
-1. [AI YOU Town: Make Friends and Money with Your Digital Twin](/202607/14/2607.10539v1-ai-you-town-make-friends-and-money-with-your-digital-twin)  
+1. [What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval](/202607/15/2607.12882v1-what-would-you-click-personalized-video-thumbnail-generation-with-preference-aware-highlight-retrieval)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：持续更新人格画像的数字分身，实现用户个性化
-2. [Personalized Emotional Intelligence in Generative AI through Symbolic Affective Reasoning](/202607/14/2607.10678v1-personalized-emotional-intelligence-in-generative-ai-through-symbolic-affective-reasoning)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：通过视觉内容实现个性化情感增强
-3. [Latent-Identity Tuning in Text-to-Image Personalization Models](/202607/14/2607.11885v1-latent-identity-tuning-in-text-to-image-personalization-models)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：文本到图像个性化模型
-4. [LightMem-Ego: Your AI Memory for Everyday Life](/202607/14/2607.11487v1-lightmem-ego-your-ai-memory-for-everyday-life)  
+   evidence：个性化视频缩略图生成，通过偏好感知亮点检索
+2. [SlimPer: Make Personalization Model Slim and Smart](/202607/15/2607.12281v1-slimper-make-personalization-model-slim-and-smart)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：个性化AI记忆与答案生成
+   evidence：推荐中的个性化排序模型
 
 ### 速读区论文标签
-1. [Enhancing LLMs through human feedback: a journey towards self-improvement](/202607/14/2607.11267v1-enhancing-llms-through-human-feedback-a-journey-towards-self-improvement)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：基于人类反馈的大模型自适应
+1. [ZoRRO: A Zero-Weight Personalized Recommender System for Scalable News Recommendation](/202607/15/2607.10910v1-zorro-a-zero-weight-personalized-recommender-system-for-scalable-news-recommendation)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：零权重个性化推荐系统
 
 
 <div class="dpr-home-promo-card">

@@ -1,0 +1,881 @@
+Title: What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval
+
+URL Source: https://arxiv.org/pdf/2607.12882v1
+
+Published Time: Wed, 15 Jul 2026 11:58:35 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval 
+
+# Zhiyu He ∗
+
+hezy18@mails.tsinghua.edu.cn Tsinghua University Beijing, China 
+
+# Zecheng Zhao ∗
+
+uqzzha35@uq.edu.au The University of Queensland Brisbane, Australia 
+
+# Tong Chen 
+
+tong.chen@uq.edu.au The University of Queensland Brisbane, Australia 
+
+# Zi Huang 
+
+huang@itee.uq.edu.au The University of Queensland Brisbane, Australia 
+
+# Yiqun Liu 
+
+yiqunliu@tsinghua.edu.cn Tsinghua University Beijing, China 
+
+# Min Zhang †
+
+z-m@tsinghua.edu.cn Tsinghua University Beijing, China 
+
+## ABSTRACT 
+
+Video thumbnails are a key factor for attracting user clicks on video platforms, and are increasingly supported by automation. However, existing thumbnail generation methods typically produce generic results shared across users, overlooking the diversity of individual preferences. We therefore introduce personalized video thumbnail generation, a novel task that aims to create thumbnails tailored to user-specific preferences. It is challenging in two aspects: (i) identifying visual anchors (i.e., key frames) from each video to guide the generation, which requires a balance between personal-ization and informativeness that existing highlight detection meth-ods fail to achieve; and (ii) generating personalized thumbnails that are both visually coherent and faithful to the original video. As a response, we propose a two-stage framework that tightly couples preference-aware retrieval with controllable generation. In the first stage, a personalized highlight retriever captures fine-grained user-video interactions and incorporates video semantics through summarization, enabling the selection of diverse visual anchors aligned with both user preferences and video contexts. In the second stage, a VLM-guided diffusion pipeline transforms these anchors into thumbnails by extracting and injecting semantically grounded visual cues, improving personalization while preserving visual coherence and fidelity. Experiments on two public datasets show our method delivers state-of-the-art performance compared with both retrieval-based and generative baselines. A user study further demonstrates improved click preference, highlighting its effectiveness in enhancing user engagement. The code is available at https://github.com/hezy18/PVTG. 
+
+## CCS CONCEPTS 
+
+• Information systems → Personalization .
+
+## KEYWORDS 
+
+Video thumbnail generation, Personalized highlight detection, User interest modeling, Image editing. 
+
+## 1 INTRODUCTION 
+
+Video thumbnails serve as the primary visual entry point for video browsing and have a significant impact on user click behavior [ 9 ].           
+
+> ∗These authors contributed equally to this work.
+> †Corresponding Authors t
+> A travel Vlog
+> Location Portrait Architecture Cuisine
+> 5s 20s 55s 84s 120s
+> Scenery
+> User1 prefers delicacy
+> User3 likes history & culture
+> User2 is attracted by view
+> (a) Generic Thumbnail (b) Personalized Thumbnail
+> click
+> click
+> click
+> click
+> skip
+> skip
+
+Figure 1: Different users prefer different moments in the same video. A generic thumbnail cannot satisfy all users, while personalized thumbnails highlight user-specific inter-ests to increase click-through rates. 
+
+On modern video platforms, a well-designed thumbnail can dramat-ically increase a video’s click-through rate, making thumbnail selec-tion a critical component of the content delivery pipeline [18, 22]. To facilitate automation in this process, existing methods focus on selecting thumbnails as key frames from videos that maximize content alignment [ 9], visual quality and aesthetics [ 30 , 32 ], or in-formativeness [ 25 ]. However, existing methods typically produce a single, generic thumbnail for each video, which is then indis-criminately presented to all users. Those homogeneous thumbnails ignore the fact that different users’ interests are multifaceted within the same video. As illustrated in Figure 1, given a travel video blog (vlog), different users may be attracted to entirely different aspects of it: some may be drawn to the scenic landscapes, while others may find highlights from local food exploration. Clearly, a generic thumbnail cannot simultaneously cater to such diverse preferences, highlighting the need for personalized video thumbnails that can fully maximize a video’s appeal to individual users. With the increasing accessibility and volume of users’ interaction records on video platforms, a straightforward fix is resorting to personalized highlight detection [ 3, 12 , 29 ], which retrieves the video frame most relevant to a user’s historical interests and uses it directly as the thumbnail. Nonetheless, a single frame provides only a narrow view of the video, and can hardly guarantee coverage of all the interesting points for a user. In addition, the retrieval-only paradigm makes the visual presentation of the thumbnail arXiv:2607.12882v1 [cs.MM] 14 Jul 2026 Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. 
+
+entirely dictated by the original footage, with no flexibility to adapt to a target user’s preferred style. Ideally, an effective personalized thumbnail should not only encapsulate “what” a user likes about the video, but also take into account “how” such visual information is presented to the user. Thus, these limitations motivate a paradigm shift from retrieval-only methods to a solution with generation capability. Instead of pinpointing a key frame as the thumbnail for each user, a generative paradigm produces a tailored thumbnail image by binding and rendering the video-specific user interests, offering a larger degree of personalization. In this paper, we systematically study the pathway towards this paradigm shift, which is subsumed under a new, practical task of 
+
+personalized video thumbnail generation . Unfortunately, in the con-text of personalized thumbnail generation, two key challenges are currently hindering a workable solution. Firstly, it is non-trivial to 
+
+effectively identify personalized yet informative visual an-chors within each video . To ensure personalization, locating each user’s personal interests within the target video is an indispens-able step. This can be generally cast as identifying visual anchors (i.e., highlights/key frames) subject to user preferences [ 12 ], based on which the subsequent generation can be performed. However, when extracting frames from the target video, existing solutions mostly optimize alignment with annotations obtained from histori-cal user interactions [ 5, 29 ], neglecting their relevance to the video content. Consequently, the identified visual anchors risk overem-phasizing a thin slice of the video (e.g., consecutive frames showing user-preferred objectives), leading to substantial loss of contextual information for the downstream generation. Secondly, it is nec-essary to maintain control over both visual coherence and faithfulness for the generated thumbnails . After the personal-ized visual anchors are identified, they are used to fuel a generative model to produce thumbnails. On the one hand, while image fusion methods [ 19 , 21 ] are able to combine key frames via certain layouts, their splicing nature fail to meet the visual coherence demanded by video thumbnails. On the other hand, diffusion-based editing approaches [ 20 , 42 ] has more freedom but are prone to halluci-nating objects that deviate from the original video, undermining faithfulness. Hence, a mechanism has to be in place to make the generation process remain grounded in the source video, ensuring both visual coherence and content fidelity. To address the aforementioned challenges, we propose a novel personalized video thumbnail generation framework, which oper-ates in two main stages. In our solution, Personalized Highlight Retrieval (Stage 1) combines user-specific preferences with video context to identify visual anchors that are personalized and informa-tive. A user-video cross-attention captures fine-grained correlations between the user and each video shot, and a semantic summariza-tion module ensures coverage of the overall content. These signals are input to Hierarchical Gated Fusion to assign per-shot interest scores that reflect user preferences while preserving diverse, infor-mative parts of the video, addressing the first challenge. To tackle the second challenge of maintaining both visual coherence and faithfulness, Personalized Thumbnail Generation (Stage 2) gen-erates thumbnails by enhancing the top-ranked frames with salient cues from additional high-interest shots. A vision-language model converts these cues into structured editing instructions, which are injected into a controllable diffusion pipeline guided by personalized edit intensity prediction to produce visually distinct thumbnails tai-lored to user preferences. A verify-and-retry loop ensures fidelity to the source video, preventing hallucinations or incoherent splicing while enabling fine-grained style personalization. As such, for each video, our framework is able to produce meaningfully personalized thumbnails across users. The contributions of this work are as follows: 
+
+• We introduce personalized video thumbnail generation, a new task aiming to generate thumbnails tailored to individual user interests. It bridges user preference modeling and controllable image generation, opening up opportunities to optimize user engagement by personalizing how content is presented. 
+
+• We propose a two-stage framework for personalized video thumb-nail generation that integrates interest-aware highlight retrieval with diffusion-based editing. The retrieval stage models user pref-erence and video semantics via cross-attention and gated fusion, while the generation stage extracts visual cues from top-ranked frames and performs personalized editing with fidelity judgment. 
+
+• Extensive experiments on two benchmarks show that our frame-work leads all competitors in thumbnail quality, content fidelity, and style personalization. A user study further demonstrates the effectiveness of our approach to click preference, indicating its real-world utility. 
+
+## 2 RELATED WORK 2.1 Video Thumbnail Extraction 
+
+Automated video thumbnail extraction mainly treats the task as key-frame selection. Covington et al . [9] train deep neural networks on click-through data to rank frames by engagement, linking frame quality to viewer attraction. Aesthetic-driven methods [ 30 , 32 ]score frames covering sharpness, composition balance, and face saliency. Summarization-based approaches [ 25 ] reframe thumb-nail extraction as video summarization, choosing the frame that maximizes coverage of key events. Beyond single-frame selection, some work assembles multiple visual elements into a composite thumbnail layout, stitching together representative frames and fore-ground objects to define layouts [ 15 ]. Yang et al . [41] incorporate user perception into this design, showing that perceptually salient composites increase engagement. However, these methods produce identical thumbnails for all viewers, failing to capture users’ diverse content interests or adapt to their preferred visual style. 
+
+## 2.2 Personalized Highlight Detection 
+
+Personalized video highlight detection relates to automated thumb-nail generation, as both aim to select frames matching user prefer-ences [ 29 , 37 ], and our Stage 1 builds on this task to identify frames most aligned with a user’s historical interests. PHD-GIFs [ 12 ] is the first personalized video highlight detection technique that extracts highlight predictions guided by subjects’ manually cre-ated GIFs. Models are optimized based on individuals’ preferred clips to guide a content-based highlight detection network [ 6, 29 ]. ShowMe [ 3 ] builds upon this approach by employing a multi-head attention mechanism, achieving improved performance. More re-cently, KuaiHL [ 10 ] propose a multimodal Transformer for live streaming highlight prediction that jointly models visual, audio, What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval Conference’17, July 2017, Washington, DC, USA …
+
+> �푠� 
+> ��
+> 퐼 
+> verify-retry
+> loop
+
+Stage 1: Personalized Highlight Retrieval  
+
+> Hierarchical
+> Gated Fusion
+> Interest-
+> Aware
+> User–Video
+> Interaction
+> Video
+> Semantic
+> Summarization
+> p
+> 0
+> 1
+> ��
+> Text
+> Encoder
+> ID
+> Encoder
+> …
+> �퐼 
+> �퐼 
+> �푣�푠�  
+> �푣�푠�  
+> �푡푒 푡 …
+> Top 2-K
+> frames
+
+Stage 2: Personalized Thumbnail Generation          
+
+> Top 1
+> frame
+> Frames
+> scores
+> Top K
+> frames
+> …
+> Target
+> Video �Shots Sequence
+> ①②Ⓝ…
+> History
+> Interested Frames
+> User �
+> …
+> …
+> Title/tags
+> Video ID
+> User ID
+> Structured Visual Cues
+> Extraction
+> Controllable Diffusion-based
+> Edi ting
+> Ed iting Intensity Prediction
+> Fidelity
+> Judgment
+> Personalized
+> Thumb nail
+> �(�,푣)
+> realistic artistic
+> History Clicked
+> Thumbnails Vision
+> Encoder
+> …
+> ��
+> ��푠
+
+Figure 2: Overview framework with two stages: personalized highlight retrieval and thumbnail generation. 
+
+and textual streams, demonstrating strong performance in indus-trial short-video settings. Despite their progress, existing methods mainly infer highlights by matching candidate segments with users’ past annotations, focusing primarily on user preference modeling. 
+
+## 2.3 Image Editing and Generation 
+
+Image generation has been extensively studied in layout and poster design. LayoutLLM [ 23 ] and LayoutDiffuse [ 8] generate structured layouts under semantic constraints, while PosterLLaVa [ 40 ] and PosterO [ 15 ] optimize poster arrangements through multimodal modeling and iterative refinement. These methods operate over fixed design primitives for general visual tasks, without condi-tioning on individual user preferences. Another line of work fo-cuses on layout-aware image composition and diffusion-based edit-ing. NoiseCollage [ 31 ] and LAMIC [ 7 ] produce visually coherent composites under spatial constraints, while IP-Adapter [ 42 ] and FLUX.1 [ 20 ] enable reference-guided or fine-grained controllable editing. However, layout-based methods suffer from visual incoher-ence, while unconstrained diffusion editors may hallucinate content that deviates from the source video, undermining faithfulness. 
+
+## 3 METHOD 3.1 Problem Definition 
+
+Let U denote the set of users and V the set of videos. Each video 
+
+𝑣 ∈ V is represented as a sequence 𝑠 1, . . . , 𝑠 𝑁 , where each 𝑠 𝑖 denotes the representative frame of an automatically detected shot (see Ap-pendix for details). A user 𝑢 ∈ U has two types of historical signals: (1) clicked thumbnails H𝑇 𝑢 , and (2) sequence-level interaction his-tory H𝑆 𝑢 = {( 𝑣 1, 𝑆 + 
+
+> 1
+
+), (𝑣 2, 𝑆 + 
+
+> 2
+
+), . . . }, where 𝑆 + 
+
+> 𝑘
+
+⊆ { 𝑠 (𝑘 ) 
+
+> 1
+
+, . . . , 𝑠 (𝑘 ) 
+
+> 𝑁 𝑘
+
+} de-notes frames aligned with user interests. We adopt curated highlight annotations [ 12 ] as supervision, which naturally generalizes to in-dustrial platforms via implicit engagement signals such as repeated viewing [14, 43], commenting [13, 39], or content sharing [38]. Given a user 𝑢 and a new video 𝑣 unseen by 𝑢 , the goal is to generate a personalized thumbnail ˆ𝑇 (𝑢, 𝑣 ) reflecting 𝑢 ’s interest while remaining faithful to 𝑣 . The generated thumbnail is expected to jointly reflect personalized retrieved content and personalized generation style, thereby better aligning with user interests and improving click-through probability. 
+
+## 3.2 Model Overview 
+
+Figure 2 illustrates the proposed method that consists of two stages: personalized highlight retrieval and personalized thumbnail gener-ation. It takes as input the frame sequence {𝑠 1, . . . , 𝑠 𝑁 }, user history 
+
+(H 𝑇 𝑢 , H𝑆 𝑢 ), and video metadata (e.g., titles or tags), and produces a personalized thumbnail. 
+
+Stage 1: Personalized Highlight Retrieval. We estimate the interest score ˆ𝑦 𝑖 = 𝜙 (𝑠 𝑖 | 𝑢, 𝑣 ; Θ) to frame 𝑖 by jointly modeling user preference and video semantics. User and video embeddings of different modalities are jointly refined through cross-attention to extract fine-grained preference signals, while visual features are combined with textual context to encode global semantics. A hierarchical fusion module balances user preference with content coverage, producing scores and retrieving top-ranked frames. 
+
+Stage 2: Personalized Thumbnail Generation. Given retrieved frames, we generate a coherent thumbnail by injecting structured visual cues into a base frame. A vision-language model produces structured editing instructions, which are executed via controllable diffusion-based editing. Editing strength is modulated by person-alized intensity prediction derived from H𝑇 𝑢 . The verify-and-retry loop ensures coherence and adherence to the source video. This design naturally couples personalized retrieval with faithful thumb-nail generation, resulting in output thumbnail ˆ𝑇 (𝑢, 𝑣 ) that reflects user interests while maintaining visual consistency. 
+
+## 3.3 Stage 1: Personalized Highlight Retrieval 
+
+Personalized Highlight Retrieval relies on capturing fine-grained user preferences and the video’s semantic structure. It estimates per-frame interest score through Interest-Aware User-Video Interaction, Video Semantic Summarization, and Hierarchical Gated Fusion. 
+
+3.3.1 Interest-Aware User-Video Interaction. To capture fine-grained personalized interests, we introduce the Interest-Aware Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. 
+
+User–Video Interaction module, which distinguishes user history from video frame representations: user history encodes accumu-lated preferences, while video frames capture momentary visual content. Treating them uniformly can dilute critical user–video interactions essential for highlight prediction. Our design builds on cross-attention mechanisms [ 14 ] to maintain separate user and video representations and update them jointly. Each video has 𝑁 frames 𝑠 𝑖 represented in two modalities: visual embeddings Vvision ∈ R𝑁 ×𝑑 and ID embeddings VID ∈ R𝑁 ×𝑑 ; user history embeddings are Uvision ∈ R𝑀 ×𝑑 and UID ∈ R1×𝑑 . Cross-attention updates: 
+
+A(𝑙 ) 
+
+> 𝑉 𝑈
+
+= FFN (V(𝑙 ) ) · FFN (U(𝑙 ) )⊤/√𝑑, (1) 
+
+A(𝑙 ) 
+
+> 𝑉𝑉
+
+= FFN (V(𝑙 ) ) · FFN (V(𝑙 ) )⊤/√𝑑, (2) 
+
+V′ ( 𝑙 ) = Softmax (𝐴 (𝑙 ) 
+
+> 𝑉 𝑈
+
+⊕ 𝐴 (𝑙 ) 
+
+> 𝑉𝑉
+
+) · 
+
+
+
+FFN (𝑉 (𝑙 ) ) ⊕ 𝐹 𝐹 𝑁 (𝑈 (𝑙 ) )
+
+
+
+. (3) A symmetric update procedure is applied to U(𝑙 ) . Residual connec-tions and layer normalization ensure each frame integrates user history and intra-video context. The resulting embeddings xvis  
+
+> 𝑖
+
+and 
+
+xID  
+
+> 𝑖
+
+are passed to the decoder for scoring. 
+
+3.3.2 Video Semantic Summarization. Visual reasoning alone can-not distinguish videos with similar frames but different topics. To emphasize frames central to the video’s topic, we incorporate global context from titles and tags. Let the Text Encoder produce 
+
+Vtext ∈ R𝑑 from concatenated title and tag tokens. We compute a query q𝑡 = W𝑝 t𝑣 and attend over visual frames: 
+
+csem = FFN 
+
+
+
+LayerNorm (q𝑡 + CrossAttn (q𝑡 , V(𝐿 )
+
+> vision
+
+)) 
+
+
+
+∈ R𝑑 , (4) producing a frame-aligned semantic context vector that grounds the title and tags to frames. 
+
+3.3.3 Hierarchical Gated Fusion. Each frame has three signals: xvis 
+
+> 𝑖
+
+(visual-personalized), xID  
+
+> 𝑖
+
+(collaborative ID), and csem (semantic context). Different frames rely differently on user preference and semantic relevance. The Hierarchical Gated Fusion module inte-grates these signals in two steps: first, it combines the user-specific features, then it adaptively balances user preference against seman-tic context per dimension. We first merge the visual and ID modalities into a compact user interest vector that summarizes complementary appearance-based and collaborative signals, representing “what the user likes” for frames 𝑠 𝑖 :
+
+p𝑖 = LayerNorm  W𝑝 [xvis  
+
+> 𝑖
+
+; xID  
+
+> 𝑖
+
++ b𝑝 
+
+ ∈ R𝑑 . (5) An adaptive gate then modulates the contribution of user preference and semantic context, and the two are fused via a gate-modulated convex combination: 
+
+g𝑖 = 𝜎 (W𝑔 [p𝑖 ; csem ]+ b𝑔 ), r𝑖 = LayerNorm (g𝑖 ⊙p𝑖 +( 1−g𝑖 )⊙ csem ),
+
+(6) where g𝑖 adaptively controls the influence of user preference versus semantic coverage. Finally, the per-frame interest score is computed as ˆ𝑦 𝑖 = 𝜎 (MLP (r𝑖 )) .
+
+3.3.4 Training Process. In each video, only a small set of frames are highlights ( 𝑦 𝑖 = 1), while most are non-highlights ( 𝑦 𝑖 = 0). To prevent the model from being dominated by abundant negative frames, we adopt a focal loss that emphasizes the rare but semanti-cally critical positive frames. For each frame 𝑠 𝑖 with predicted score 
+
+ˆ𝑦 𝑖 and label 𝑦 𝑖 , the per-frame loss is: 
+
+L𝑖  
+
+> focal
+
+= 𝛼 𝑖 (1 − 𝑝 𝑡,𝑖 )𝛾 LBCE ( ˆ𝑦 𝑖 , 𝑦 𝑖 ), (7) where 𝑝 𝑡,𝑖 = ˆ𝑦 𝑖 if 𝑦 𝑖 = 1 and 1 − ˆ𝑦 𝑖 otherwise with class-balancing weight 𝛼 𝑖 = 𝛼 𝑦 𝑖 + ( 1 − 𝛼 )( 1 − 𝑦 𝑖 ).The overall loss averages L𝑖  
+
+> focal
+
+over all frames in the training set. During inference, the model computes ˆ𝑦 𝑖 for each frame and selects the top-ranked frame as the candidate for thumbnail generation. 
+
+## 3.4 Stage 2: Personalized Thumbnail Generation 
+
+Our personalized highlight retrieval model identifies the video frame most aligned with each user’s interests. However, the top-ranked key frame alone is insufficient as a thumbnail. It is a single uncontrolled snapshot that offers a narrow view of the video, and its visual composition is entirely determined by the original footage. Enhancing it through generation is necessary, yet this introduces a core difficulty: the generated thumbnail must be personalized and remain visually coherent and faithful to the source video. This core problem can be framed from three perspectives. (i) 
+
+What to edit : the injected visual cues should be semantically mean-ingful and derived from the user’s preferred moments, not arbi-trarily chosen. Naive layout-based methods [ 15 , 41 ] stitch visual regions rigidly without semantic understanding and cannot condi-tion on user preference. (ii) How much to edit : the degree of visual modification should reflect individual taste, as some users prefer near-original frames while others favor heavily stylized thumbnails. Yet current diffusion editing tools [ 7 , 20 ] apply a uniform editing intensity with no per-user calibration. (iii) How to ensure fidelity :the generated thumbnail must stay grounded in the source video to preserve visual coherence and content accuracy. Without struc-tured guidance, however, diffusion models can hallucinate details that deviate from the original footage, undermining faithfulness. To address these challenges, we develop a personalized pipeline that extracts visual cues from user-preferred frames, predicts per-user editing intensity, and applies controllable diffusion-based edit-ing with closed-loop judgment. 
+
+3.4.1 Structured Visual Cue Extraction. The first challenge is decid-ing what to edit: the injected cues must be semantically meaningful and traceable to the user’s preferred moments. The top-ranked frames from our retrieval model implicitly encode user visual pref-erences. To translate these implicit preferences into explicit editing instructions for the downstream diffusion model, we extract struc-tured visual cues that specify what to edit and where. Specifically, the cleaned key frames (with overlaid text removed), together with the video’s title and tags, are passed to a vision-language model (Qwen3.5-27B [ 27 ]). The model takes the ranked frames and video metadata as input, with the objective of producing a structured editing plan for the top-ranked base frame. It outputs three components: (i) a content summary of the base frame de-scribing its dominant subject and scene; (ii) a fusion decision that assesses semantic similarity across ranked frames and determines whether complementary cues from supporting frames should be integrated into the base frame; and (iii) a list of concrete editing operations covering topic visualization, composition adjustment, subject emphasis, and background control. The detailed prompt What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+design is provided in Appendix. This structured plan ensures that all downstream editing operations are grounded in user-preferred visual content rather than arbitrary design choices. 
+
+3.4.2 Editing Intensity Prediction. Beyond deciding what to edit, the pipeline predicts how much to edit, since users differ in their tolerance for visual modification. To introduce personalization into the editing process, we develop a training-free intensity predictor with offline calibration and online prediction. We first define four style axes that characterize how an edited thumbnail deviates from its source frame: subject pop-out (strength of the focal point), subject dominance (how tightly the subject is framed), semantic cue density (number of supporting elements that explain the topic), and scene stylization (mood lighting, color con-trast, and background design). Each axis 𝑗 is described by a pair of contrastive natural-language prompts (𝑡 low  
+
+> 𝑗
+
+, 𝑡 high  
+
+> 𝑗
+
+) representing its low and high extremes. We then define four editing intensity levels that follow a strict cumulative hierarchy, progressing from realistic preservation to artistic transformation. Low permits only surface treatments such as subject emphasis and background blur. Medium additionally allows composition adjustments. High further enables fusion of elements from supporting frames. Extra-high adds scene transformation in-cluding background replacement and topic-level visual elements. Each level filters the structured editing plan from Section 3.4.1 to retain only the operations it permits. 
+
+Offline calibration. For each intensity level 𝑙 ∈ L , we generate a set of reference thumbnails {𝑥 (𝑙 ) 
+
+> 𝑘
+
+}𝐾 𝑙  
+
+> 𝑘 =1
+
+from curated source frames using the diffusion-based editing model. Each reference is encoded by CLIP and scored against the axis prompts to yield a 4D style vector: 𝜓 𝑗 (𝑥 ) = sim (z𝑥 , thigh  
+
+> 𝑗
+
+) − sim (z𝑥 , tlow  
+
+> 𝑗
+
+) for 𝑗 = 1, . . . , 4, where 
+
+z𝑥 is the CLIP image embedding of thumbnail 𝑥 . The style prototype for level 𝑙 is the centroid: p(𝑙 ) = 1
+
+> 𝐾 𝑙
+
+Í𝐾 𝑙  
+
+> 𝑘 =1
+
+𝜓 (𝑥 (𝑙 ) 
+
+> 𝑘
+
+).
+
+Online prediction. Given a user 𝑢 with historical clicked thumb-nails H𝑇 𝑢 = {ℎ1, . . . , ℎ 𝑀 }, each thumbnail is scored by the same style scoring function to produce a user-level style profile: q(𝑢 ) =
+
+> 1
+> 𝑀
+
+Í𝑀 𝑚 =1 𝜓 (ℎ𝑚 ), where 𝜓 (·) denotes the 4D style vector. The pre-dicted intensity is determined by nearest-neighbor matching: 𝜆 𝑢 =
+
+arg min 𝑙 ∈ L ∥q(𝑢 ) − p(𝑙 ) ∥2, which filters the structured editing plan accordingly This ensures that the visual transformation is person-alized to the user’s style preferences. 
+
+3.4.3 verify-and-retry loop. Even with personalized content and user-calibrated editing intensity, diffusion models can still generate artifacts, such as unnatural compositions or hallucinated objects that deviate from the source video. To address this, we develop a VLM-as-judge mechanism that serves as the backbone of a verify-and-retry loop. Specifically, the VLM judge takes the intensity-aware editing plan from Section 3.4.2 and the generated thumbnail as input, and outputs a fidelity score assessing whether the thumbnail faithfully follows the edit-ing instructions. If the score falls below a threshold, the pipeline re-invokes the diffusion editor with resampled noise. This loop continues for up to 𝑁 attempts, after which the highest-scoring candidate is selected. This closed-loop design ensures that the per-sonalized editing instructions are faithfully executed. 
+
+## 4 OFFLINE QUANTITATIVE EXPERIMENTS 
+
+To validate our contributions and demonstrate the effectiveness of the proposed framework, we conduct extensive offline experiments. (i) We evaluate both highlight retrieval accuracy from Stage 1, and whether the produced thumbnails are aesthetically appealing, faith-ful to the source video, and personalized across users from Stage 2. (ii) We isolate the contribution of each key component to quantify their individual impact. (iii) We examine how key hyperparameters of our framework affect generation quality and personalization. 
+
+## 4.1 Experimental Setup 
+
+4.1.1 Dataset. We evaluate our framework on two public datasets with user highlight annotations. EEGSVRec [45 ] derives per-user highlight labels from EEG-based engagement signals, and 
+
+PHD 2 [ 12 ], where over 10 thousand users create GIF timestamps from YouTube videos, serving as explicit highlight annotations. Both datasets use an 8:1:1 user-based split. We use the full test set for Retrieval experiments. For all thumbnail generation experiments, we use a sampled subset with 30 users × 10 videos for EEGSVRec, and 800 users for PHD 2 due to per-instance inference cost. 
+
+4.1.2 Baselines. (i) Key Frame Selection Methods. These meth-ods select a single frame as the thumbnail without generation. We include five personalized highlight detector: HighlightMe [2], 
+
+PAC-Net [ 12 ], PR-Net [6], ShowMe [ 3], and KuaiHL [10 ], whose top-1 retrieved frame serves as the thumbnail. We additionally in-clude ClickorNot [32 ], a non-personalized thumbnail selector that produces a single generic thumbnail shared across all users. 
+
+(ii) Layout Generation Methods. These methods compose multiple visual elements into structured thumbnails. We include 
+
+HPCVTG [ 41 ] and PosterO [15 ], both of which require additional thumbnail-specific information and visual inputs. For fair compari-son, we supply them with frames retrieved by our Stage 1 model. Detailed descriptions of methods are provided in the Appendix. 
+
+4.1.3 Evaluation Metrics. (i) Highlight Retrieval Metrics. We adopt mAP for overall ranking quality, Recall@ 𝑘 (𝑘 ∈ { 1, 3, 5, 10 })for top-𝑘 hit rate, and nMSD for ranking displacement. (ii) Thumb-nail Generation Metrics. We evaluate generated thumbnails along three dimensions. Thumbnail Quality measures visual appeal using NIMA [33 ] and CLIP-IQA [36 ]. Content Fidelity measures whether the thumbnail faithfully represents the user’s highlighted content using LPIPS [44 ] and DINO-Sim [ 24 ]. For each sample, we compute average similarity between the key frame selected by each method and all ground-truth highlight key frames annotated for that user and video. Style Personalization measures whether dif-ferent users receive visually distinct thumbnails for the same video. We propose IUD (Inter-User Dissimilarity), computing the average pairwise CLIP embedding dissimilarity across users’ thumbnails for a shared video. IUD requires multiple users to receive thumbnails for the same video. In PHD 2, nearly every user is recommended a distinct video set, yielding very few shared user–video pairs. This sparsity makes pairwise dissimilarity unreliable, so we report IUD only on EEGSVRec. Detailed definitions are in Appendix. 
+
+4.1.4 Implementation Details. For Stage 1, we implement our model in PyTorch [ 16 ]. Visual features are extracted using Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. 
+
+Table 1: Performance on personalized highlight frame retrieval. The top and second-best results are highlighted in bold and underlined, respectively. Higher is better for mAP and Recall, while lower is better for NMSD. Model EEGSVRec PHD 2
+
+mAP ↑ R@1 ↑ R@3 ↑ R@5 ↑ R@10 ↑ NMSD ↓ mAP ↑ R@1 ↑ R@3 ↑ R@5 ↑ R@10 ↑ NMSD ↓
+
+HighlightMe [2] 0.21 0.13 0.32 0.42 0.61 52.41% 0.11 0.08 0.17 0.24 0.41 64.21% PR-Net [6] 0.30 0.20 0.52 0.65 0.80 51.52% 0.15 0.10 0.21 0.31 0.51 58.63% PAC-Net [12] 0.38 0.30 0.66 0.75 0.86 34.66% 0.18 0.12 0.26 0.37 0.56 55.20% ShowMe [3] 0.46 0.20 0.52 0.70 0.89 37.56% 0.23 0.16 0.34 0.47 0.68 45.21% KuaiHL [10] 0.24 0.20 0.43 0.58 0.74 46.25% 0.22 0.15 0.33 0.44 0.65 47.50% 
+
+Ours 0.60 0.39 0.67 0.78 0.92 31.99% 0.28 0.19 0.39 0.51 0.71 38.42% Table 2: Performance comparison of thumbnail generation across quality, fidelity, and style personalization. The top and second-best results are highlighted in bold and underlined, respectively. Higher is better for NIMA, CLIP-IQA and IUD, while lower is better for LPIPS. Category Model EEGSVRec PHD 2
+
+Thumbnail Quality Content Fidelity Style Personalization Thumbnail Quality Content Fidelity NIMA ↑ CLIP-IQA ↑ LPIPS ↓ DINO-Sim ↑ IUD ↑ NIMA ↑ CLIP-IQA ↑ LPIPS ↓ DINO-Sim ↑
+
+Key Frame Selection 
+
+ClickorNot [32] 4.86 0.72 0.57 0.49 0.00 4.35 0.67 0.61 0.45 KuaiHL [10] 4.77 0.71 0.56 0.47 0.03 4.26 0.70 0.58 0.48 
+
+ShowMe [3] 4.82 0.73 0.45 0.56 0.00 4.25 0.69 0.59 0.45 
+
+Layout Generation 
+
+PosterO [15] 4.92 0.70 0.45 0.56 0.00 4.58 0.68 0.58 0.47 hpcvtg [41] 5.01 0.71 0.45 0.56 0.00 4.77 0.61 0.58 0.47 
+
+Personalized Generation Ours 5.19 0.75 0.45 0.56 0.15 5.11 0.74 0.58 0.47 CLIP [ 28 ]. The model uses an embedding dimension of 𝑑 = 256 ,
+
+𝐿 = 2 cross-attention layers. The maximum user history length is 20. We train with the Adam optimizer [ 17 ] at a learning rate of 
+
+1×10 −4 and apply early stopping with a patience of 10 epochs based on mAP on the validation set. For Stage 2, we use Qwen3.5-27B [ 27 ]as the vision-language model for structured editing planning and fidelity judgment, and Qwen-Image-Edit-2511 [ 35 ] as the diffusion-based editor. The verify-and-retry loop runs for up to N=1 attempts. Style axis prototypes are calibrated from 𝐾 = 50 reference thumbnails per intensity level. All experiments are conducted on one NVIDIA H100 GPU, with the thumbnail generation taking around 210 seconds per video. For all offline thumbnail generation metrics, we evaluate the edited thumbnails without overlaid text captions, since large text elements would dominate perceptual quality measurements, obscuring the actual visual fidelity of the thumbnail. 
+
+## 4.2 Overall Performance 
+
+Table 3: Ablation study of key components of our model. PHR denotes Personalized Highlight Retrieval, PTG denotes Personalized Thumbnail Generation, and PIP denotes Per-sonalized Intensity Prediction.                                           
+
+> Model EEGSVRec
+> Thumbnail Quality Content Fidelity Style Personalization NIMA ↑CLIP-IQA ↑LPIPS ↓DINO-Sim ↑IUD ↑
+> Ours 5.19 0.75 0.45 0.56 0.15
+> w/o PHR 4.95 (-0.24) 0.71 (-0.04) 0.57 (+0.12) 0.48 (-0.08) 0.10 (-0.05)
+> w/o PTG 4.82 (-0.37) 0.71 (-0.04) 0.45 (0.00) 0.56 (0.00) 0.00 (-0.15)
+> w/o PIP 4.88 (-0.31) 0.70 (-0.05) 0.45 (0.00) 0.56 (0.00) 0.10 (-0.05)
+
+4.2.1 Personalized Highlight Shot Retrieval Performance. Table 1 presents personalized highlight retrieval results on EEGSVRec and PHD 2. Our method outperforms all baselines, showing that mod-eling user history and joint user-video interactions is crucial for accurate shot ranking. By combining collaborative filtering with vi-sual content, our approach captures both fine-grained user interests and global semantics, retrieving accurate personalized highlights and providing editable, user-aligned content for Stage 2. 
+
+4.2.2 Thumbnail Generation Performance. Table 2 compares thumbnail quality, content fidelity, and style personalization across all methods. We select the top-2 retrieval baselines from Table 1, KuaiHL and ShowMe, and use their top-1 retrieved frames as personalized thumbnails. For thumbnail quality, key frame selection methods score lowest because raw video frames often contain visual clutter such as overlaid text and suboptimal composition. Layout methods partially improve quality through structured composition but remain limited by rigid template-based stitching. Our structured visual cue extraction pipeline produces semantically grounded editing instructions, achieving the highest NIMA and CLIP-IQA on both datasets. For content fidelity, PosterO and hpcvtg use frames from our Stage 1 retrieval, so they match our fidelity scores. Notably, KuaiHL and ShowMe exhibit worse fidelity, indirectly confirming the effectiveness of our retrieval model. For style personalization, most baselines score 0.00 as they produce identical thumbnails across users. Our method achieves IUD of 0.15 by leveraging the personalized intensity predictor. It assigns user-specific editing strengths based on style profiles, producing visually distinct thumbnails from same base frame. What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+## 4.3 Effectiveness of Components 
+
+To validate each component’s contribution, we conduct ablation studies on EEGSVRec. Results are presented in Table 3. Removing any single module leads to consistent degradation. Removing Personalized Highlight Retrieval (PHR) replaces our retrieval model with random frame selection. This causes the largest fidelity drop. Randomly selected frames are poorly aligned with user-highlighted content. This confirms that Stage 1 provides the essential content anchor for downstream generation. Removing Personalized Thumbnail Generation (PTG) uses the retrieved frame directly as the thumbnail. This yields the largest thumbnail quality drop. This demonstrates that generation is indis-pensable for both visual enhancement and inter-user diversity. Removing Personalized Intensity Prediction (PIP) applies a uni-form editing intensity for all users. This removal leads both thumb-nail quality and style personalization decreases. This confirms that per-user intensity calibration provides orthogonal style-level per-sonalization beyond content selection. 0.06      
+
+> 0.09
+> 0.12
+> 0.15
+> 0.18
+> IUD
+> 0.06
+> 0.09
+> 0.12
+> 0.15
+> 0.18
+> IUD
+> 1234
+> # of Intensity Levels
+> 4.84
+> 4.94
+> 5.04
+> 5.14
+> 5.24
+> NIMA
+> NIMA
+> IUD
+> 135
+> Top-k Frame Selection
+> 4.84
+> 4.94
+> 5.04
+> 5.14
+> 5.24
+> NIMA
+> NIMA
+> IUD
+
+Figure 3: Effect of the hyper-parameters on thumbnail qual-ity (NIMA) and style personalization (IUD) on EEGSVRec. 
+
+## 4.4 Hyper-parameter Study 
+
+We investigate two key hyperparameters in Stage 2 on EEGSVRec. We report NIMA and IUD as representative metrics. Content fidelity remains constant since these parameters only affect generation, leaving the retrieved base frame unchanged. 
+
+Number of Intensity Levels. Both NIMA and IUD increase as more levels are introduced. With only one level, all users receive identical editing strength. This yields the lowest style personal-ization. Each additional level provides finer style granularity. The intensity predictor can better match individual preferences from a richer candidate set. We use all four levels as default setting. 
+
+Top-K Frame Selection. When 𝑘 = 1, no supporting frames are available for cue injection, limiting both quality and diversity. At 
+
+𝑘 = 5, although IUD continues to increase, NIMA drops notably. This is likely because incorporating too many heterogeneous frames introduces conflicting visual elements during fusion, degrading thumbnail coherence. In contrast, 𝑘 = 3 achieves the best balance: it provides sufficient visual cues for enrichment while preserving coherence. We thus select 𝑘 = 3 as the default setting. 
+
+## 5 USER-CENTRIC EVALUATION 
+
+Offline metrics can assess visual quality, but they do not answer a key question: do personalized thumbnails actually change user behavior? Since thumbnails primarily function as click triggers, their effectiveness should be evaluated through user interaction. Thus, we design a user study that directly measures how different 
+
+Table 4: Comparison of different methods across Top-k choices in User Study. ’Orig.’, ’CoN’, and ’Post.’ denote Origi-nal, ClickorNot, and PosterO, respectively. 
+
+Choices Orig. CoN ShowMe KuaiHL hpctvg Post. Ours 
+
+Top1 7.60% 7.60% 8.30% 7.40% 1.20% 4.50% 63.30% 
+
+Top2 7.60% 9.00% 8.50% 7.50% 1.00% 5.80% 60.60% 
+
+Top3 8.00% 10.20% 8.40% 7.80% 1.00% 6.00% 58.70% 
+
+thumbnail generation strategies influence user click choices, with a focus on whether aligning thumbnails with individual preferences improves click preference. 
+
+## 5.1 User Study Protocol Participant  
+
+> 1. Browse Thumbnails Grid
+
+A. Interest Collection 
+
+> 2. Select and Watch the Video
+> 3. Rate Interest Level (1-5 Likert)
+> 1. View Thumbnail Candidates
+
+B. Thumbnail Selection    
+
+> 2. Select Top-3 Appealing Ones
+> 3. Watch the Video
+> Repeat
+> 4. Rate Top-1 Thumbnail-Content
+> Consistency
+> Repeat
+> Thumbnail Candidate Generation
+
+Data Collection and Inference  
+
+> User View and Rating Data User Selection and Fidelity Data
+> Interest Colle
+
+(a) User Study Procedure 
+
+Figure 4: User study procedure with interest collection and thumbnail selection. 
+
+Personalized thumbnail generation relies on user preference signals. To simulate a realistic usage scenario, we develop a video browsing interface and design a two-module user study (Figure 4). This design enables direct measurement of click-through preference across generation strategies and injection intensity, and the two modules are introduced below: 
+
+Module A: Preference Collection. All participants were exposed to the same pool of 100 candidate videos , each displayed with its original platform thumbnail to avoid generation bias. They browsed the video pool and selected at least 20 videos of personal interest. For each selected video, they watched it and rated their interest level on a 5-point scale. These ratings serve as the user preference signal for personalized retrieval and thumbnail generation in Module B. 
+
+Module B: Thumbnail Evaluation. Using Module A ratings. 20 videos were recommended per participant. For each video, partici-pants were presented with thumbnails generated by our method at multiple injection-intensity levels alongside baseline thumbnails. Participants clicked the thumbnail they found most appealing, and then rated the consistency between the top-1 thumbnail and the video content after viewing the full video. 
+
+## 5.2 Thumbnail-Driven Click Performance 
+
+We recruited 30 participants (age 18–35, diverse video consump-tion habits), all of whom completed both modules in full. Each par-ticipant was recommended personalized thumbnails of 20 videos. Table 4 shows the proportion of top-𝑘 selections for each method. Our approach achieves a dominant 63.30% Top-1 click ratio, far Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. ours PosterO hpcvtg Show Me *KuaiHL ClickorNot Original 
+
+Figure 5: Qualitative comparison of thumbnails generated by different methods. Colored boxes indicate user click preference: red = 1st choice, orange = 2nd choice, blue = 3rd choice. Table 5: Quantitative comparison of different methods on user study dataset. 
+
+Method NIMA ↑ CLIP-IQA ↑ DINO-SIM ↑ LPIPS ↓ IUD ↑
+
+Original 4.76 0.74 0.46 0.57 0.00 ClickorNot [32] 4.75 0.73 0.44 0.56 0.00 KuaiHL [10] 4.66 0.72 0.45 0.56 0.00 ShowMe [3] 4.62 0.69 0.42 0.57 0.01 PosterO [15] 4.77 0.69 0.60 0.41 0.11 hpcvtg [41] 4.94 0.68 0.60 0.41 0.10 
+
+Ours 5.20 0.75 0.60 0.41 0.21 0 1 2 3 4      
+
+> Intensity Level
+> 0
+> 4
+> 8
+> 12
+> 16
+> 20
+> 24
+> Click Share (%)
+> 11.0 11.0
+> 8.3
+> 14.5
+> 18.6
+> (a)
+> Click Share (Top-1)
+> 01234
+> Intensity Level
+> 2
+> 1
+> 0
+> 1
+> 2
+> Consistency Score  1.109
+> 0.870 0.943
+> 0.705
+> 1.064
+> (b)
+> Consistency Score
+
+Figure 6: (a) Click share and (b) human fidelity rating of our method by editing intensity level under Top-𝑘 choices. 
+
+exceeding all baselines (the best baseline reaches 8.30%). Moreover, each editing intensity in our method consistently achieves a higher click ratio than all baselines. This gap suggests that thumbnail effec-tiveness depends less on generic visual quality and more on align-ment with user preference . Methods that produce a single universal thumbnail fail to capture this variability, while our personalized generation consistently ranks higher across Top-1/2/3. To verify that offline metric advantages transfer to the user study, Table 5 reports quantitative results on the same 30-user pool. Our method achieves the highest thumbnail quality while matching the best fidelity scores. Notably, our IUD nearly doubles the second-best baseline, indicating that our thumbnails are substantially more differentiated across users. These results directly align with the dominant click share reported in Table 4. To analyze the effect of editing intensity, Figure 6 reports click ratio and human-rated consistency scores across intensity levels 0–4 (from no editing to extra-high). Click ratio reveals two distinct user preferences: some users favor lower intensities (0–1) with more realistic thumbnails, while others prefer higher intensities (3–4) with stronger visual enhancement, reflecting a divergence in style preference. Meanwhile, user-evaluated consistency scores remain stable across all levels, with ratings consistently distributed within the [-2, 2] range. This indicates that even at higher intensities, thumbnails preserve alignment with the source content, suggesting that stronger editing can enhance visual appeal without compro-mising content consistency. Prefer:        
+
+> Artistic Style
+> Prefer:
+> Realistic Style
+> History Clicks
+> Best Frame Generated Thumbnail sBest Frame
+> History Clicks
+> Generated Thumbnail s
+
+# % \label{tab:click_method} 
+
+> Intensity
+
+Figure 7: Effect of editing intensity on personalized thumb-nail of the same video for two users with different click histories (artistic vs. realistic). Red boxes mark the model-predicted intensity levels, which are also selected by users. 
+
+## 5.3 Thumbnail Generation Case Analysis 
+
+To illustrate the practical benefits of personalization, Figure 5 com-pares thumbnails generated by different methods. Our method consistently receives the highest-ranked selections, while baseline thumbnails are distributed across lower preferences or left uncho-sen. This pattern reflects the advantage of grounding generation in personalized visual cues rather than optimizing a generic objective, and is consistent with the quantitative results in Table 4. What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+Figure 7 highlights the role of the editing intensity prediction. Users with a preference for stylized, artistic content are assigned higher intensity, producing visually enhanced thumbnails, while users favoring realistic content receive lower intensity, maintaining closer to the source frame. These cases show that the predictor successfully maps diverse style preferences to appropriate editing intensity, allowing the same generation pipeline to serve different user tastes while preserving content consistency. 
+
+## 6 CONCLUSIONS AND FUTURE WORK 
+
+We present the first study on personalized video thumbnail genera-tion, introducing a two-stage framework that combines highlight retrieval with VLM-guided diffusion editing under personalized intensity control. Our method achieves superior retrieval accuracy, generation performance in the quantitative experiments, and click share in the user study, demonstrating the effectiveness of inte-grating user preference signals into visual generation. Future work includes exploring end-to-end optimization to jointly learn retrieval and generation, and deploying the approach in real-world platforms to measure actual engagement gains beyond user study and offline experiments. Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. 
+
+## REFERENCES 
+
+[1] Yusuf Ahmed, Martin Ferguson-Pell, Kim Adams, and Adriana Ríos Rincón. 2025. EEG-based engagement monitoring in cognitive games. Sensors 25, 7 (2025), 2072. [2] Uttaran Bhattacharya, Gang Wu, Stefano Petrangeli, Viswanathan Swaminathan, and Dinesh Manocha. 2021. Highlightme: Detecting highlights from human-centric videos. In Proceedings of the IEEE/CVF International Conference on Com-puter Vision . 8157–8167. [3] Uttaran Bhattacharya, Gang Wu, Stefano Petrangeli, Viswanathan Swaminathan, and Dinesh Manocha. 2022. Show Me What I Like: Detecting user-specific video highlights using content-based multi-head attention. In Proceedings of the 30th ACM International Conference on Multimedia . 591–600. [4] Brandon Castellano. 2023. PySceneDetect: Python and OpenCV-based Scene Cut/-Transition Detection. https://github.com/Breakthrough/PySceneDetect. Version 0.6. [5] Brian Chen, Xiangyuan Zhao, and Yingnan Zhu. 2024. Personalized video sum-marization by multimodal video understanding. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 4382–4389. [6] Runnan Chen, Penghao Zhou, Wenzhe Wang, Nenglun Chen, Pai Peng, Xing Sun, and Wenping Wang. 2021. Pr-net: Preference reasoning for personalized video highlight detection. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 7980–7989. [7] Yuzhuo Chen, Zehua Ma, Jianhua Wang, Kai Kang, Shunyu Yao, and Weiming Zhang. 2026. Lamic: Layout-aware multi-image composition via scalability of multimodal diffusion transformer. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 40. 3174–3182. [8] Jiaxin Cheng, Xiao Liang, Xingjian Shi, Tong He, Tianjun Xiao, and Mu Li. 2023. Layoutdiffuse: Adapting foundational diffusion models for layout-to-image generation. arXiv preprint arXiv:2302.08908 (2023). [9] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep neural networks for youtube recommendations. In Proceedings of the 10th ACM conference on recommender systems . 191–198. [10] Jiaxin Deng, Shiyao Wang, Dong Shen, Liqin Zhao, Fan Yang, Guorui Zhou, and Gaofeng Meng. 2024. A multimodal transformer for live streaming highlight prediction. In 2024 IEEE International Conference on Multimedia and Expo (ICME) .IEEE, 1–6. [11] Abhishek Dhiman. 2023. Key-Frame based Video Summarization using Opti-mized K-means Clustering. In Proceedings of the IEEE International Conference on Electronics, Computing and Communication Technologies (CONECCT) . IEEE. [12] Ana Garcia del Molino and Michael Gygli. 2018. Phd-gifs: personalized highlight detection for automatic gif creation. In Proceedings of the 26th ACM international conference on Multimedia . 600–608. [13] Pan Gu and Haiyang Hu. 2024. A holistic view on positive and negative implicit feedback for micro-video recommendation. Knowledge-Based Systems 284 (2024), 111299. [14] Zhiyu He, Zhixin Ling, Jiayu Li, Zhiqiang Guo, Weizhi Ma, Xinchen Luo, Min Zhang, and Guorui Zhou. 2025. Short video segment-level user dynamic interests modeling in personalized recommendation. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval .1880–1890. [15] HsiaoYuan Hsu and Yuxin Peng. 2025. Postero: Structuring layout trees to enable language models in generalized content-aware layout generation. In Proceedings of the Computer Vision and Pattern Recognition Conference . 8117–8127. [16] Sagar Imambi, Kolla Bhanu Prakash, and GR Kanagachidambaresan. 2021. Py-Torch. In Programming with TensorFlow: solution for edge computing applications .Springer, 87–104. [17] Diederik P Kingma and Jimmy Ba. 2014. Adam: A method for stochastic opti-mization. arXiv preprint arXiv:1412.6980 (2014). [18] Byungwan Koh and Fuquan Cui. 2022. An exploration of the relation between the visual attributes of thumbnails and the view-through of videos: The case of branded video content. Decision Support Systems 160 (2022), 113820. [19] Boon Tatt Koik and Haidi Ibrahim. 2014. Image thumbnail based on fusion for better image browsing. In 2014 IEEE International Conference on Control System, Computing and Engineering (ICCSCE 2014) . IEEE, 547–552. [20] Black Forest Labs, Stephen Batifol, Andreas Blattmann, Frederic Boesel, Saksham Consul, Cyril Diagne, Tim Dockhorn, Jack English, Zion English, Patrick Esser, et al . 2025. FLUX. 1 Kontext: Flow Matching for In-Context Image Generation and Editing in Latent Space. arXiv preprint arXiv:2506.15742 (2025). [21] Kewei Liu, Dongliang Peng, Tao Li, Yu Gu, and Huajie Chen. 2025. Infrared and visible image fusion based on spatial correlation attention. Infrared Physics & Technology 150 (2025), 105985. [22] Wu Liu, Tao Mei, Yongdong Zhang, Cherry Che, and Jiebo Luo. 2015. Multi-task deep visual-semantic embedding for video thumbnail selection. In Proceedings of the IEEE conference on computer vision and pattern recognition . 3707–3715. [23] Chuwei Luo, Yufan Shen, Zhaoqing Zhu, Qi Zheng, Zhi Yu, and Cong Yao. 2024. Layoutllm: Layout instruction tuning with large language models for document understanding. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition . 15630–15640. [24] Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy V. Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Mido Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Hervé Jégou, Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski. 2024. DINOv2: Learning Robust Visual Features without Supervision. Trans. Mach. Learn. Res. 2024 (2024). [25] Costas Panagiotakis, Harris Papadakis, and Paraskevi Fragopoulou. 2020. Person-alized video summarization based exclusively on user preferences. In European conference on information retrieval . Springer, 305–311. [26] Alan T Pope, Edward H Bogart, and Debbie S Bartolome. 1995. Biocybernetic system evaluates indices of operator engagement in automated task. Biological psychology 40, 1-2 (1995), 187–195. [27] Qwen Team. 2026. Qwen/Qwen3.5-27B. https://huggingface.co/Qwen/Qwen3.5-27B. Model card, accessed April 2, 2026. [28] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al . 2021. Learning transferable visual models from natural language supervision. In International conference on machine learning . PMLR, 8748–8763. [29] Mrigank Rochan, Mahesh Kumar Krishna Reddy, Linwei Ye, and Yang Wang. 2020. Adaptive video highlight detection by learning from user history. In European conference on computer vision . Springer, 261–278. [30] Akari Shimono, Yuki Kakui, and Toshihiko Yamasaki. 2020. Automatic YouTube-thumbnail generation and its evaluation. In Proceedings of the 2020 joint workshop on multimedia artworks analysis and attractiveness computing in multimedia .25–30. [31] Takahiro Shirakawa and Seiichi Uchida. 2024. Noisecollage: A layout-aware text-to-image diffusion model based on noise cropping and merging. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition . 8921–8930. [32] Yale Song, Miriam Redi, Jordi Vallmitjana, and Alejandro Jaimes. 2016. To click or not to click: Automatic selection of beautiful thumbnails from videos. In Proceed-ings of the 25th ACM international on conference on information and knowledge management . 659–668. [33] Hossein Talebi and Peyman Milanfar. 2018. NIMA: Neural image assessment. 
+
+IEEE transactions on image processing 27, 8 (2018), 3998–4011. [34] Kailong Tan et al . 2024. Large Model based Sequential Keyframe Extraction for Video Summarization. In Proceedings of the International Conference on Computa-tional Intelligence and Machine Learning for Data Science (CMLDS) .[35] Qwen Team. 2025. Qwen-Image Technical Report. https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/Qwen_Image.pdf. Technical report, accessed April 2, 2026. [36] Jianyi Wang, Kelvin C. K. Chan, and Chen Change Loy. 2023. Exploring CLIP for Assessing the Look and Feel of Images. In AAAI . AAAI Press, 2555–2563. [37] Fanyue Wei, Biao Wang, Tiezheng Ge, Yuning Jiang, Wen Li, and Lixin Duan. 2022. Learning pixel-level distinctions for video highlight detection. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 3073–3082. [38] Kan Yang, Zhen Liu, Xiaohua Jia, and Xuemin Sherman Shen. 2016. Time-domain attribute-based access control for cloud-based video content sharing: A cryptographic approach. IEEE Transactions on Multimedia 18, 5 (2016), 940–950. [39] Rong Yang, Sarvjeet Singh, Pei Cao, Ed Chi, and Bo Fu. 2016. Video watch time and comment sentiment: Experiences from youtube. In 2016 Fourth IEEE Workshop on Hot Topics in Web Systems and Technologies (HotWeb) . IEEE, 26–28. [40] Tao Yang, Yingmin Luo, Zhongang Qi, Yang Wu, Ying Shan, and Chang Wen Chen. 2024. Posterllava: Constructing a unified multi-modal layout generator with llm. arXiv preprint arXiv:2406.02884 (2024). [41] Tao Yang, Fan Wang, Junfan Lin, Zhongang Qi, Yang Wu, Jing Xu, Ying Shan, and Changwen Chen. 2023. Toward human perception-centric video thumbnail generation. In Proceedings of the 31st ACM International Conference on Multimedia .6653–6664. [42] Hu Ye, Jun Zhang, Sibo Liu, Xiao Han, and Wei Yang. 2023. Ip-adapter: Text compatible image prompt adapter for text-to-image diffusion models. arXiv preprint arXiv:2308.06721 (2023). [43] Ruohan Zhan, Changhua Pei, Qiang Su, Jianfeng Wen, Xueliang Wang, Guanyu Mu, Dong Zheng, Peng Jiang, and Kun Gai. 2022. Deconfounding duration bias in watch-time prediction for video recommendation. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 4472–4481. [44] Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. 2018. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. In CVPR . Computer Vision Foundation / IEEE Computer Society, 586–595. [45] Shaorun Zhang, Zhiyu He, Ziyi Ye, Peijie Sun, Qingyao Ai, Min Zhang, and Yiqun Liu. 2024. Eeg-svrec: An eeg dataset with user multidimensional affective engagement labels in short video recommendation. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 698–708. What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+## A DATASETS A.1 Dataset Description 
+
+We conduct experiments on two public datasets that provide user-specific shot-level preference annotations: 
+
+EEGSVRec [45 ] is a short-video recommendation dataset that records users’ EEG signals while watching videos, from which per-user interest levels are derived using a standard neurophysiological engagement index [ 26 ], providing implicit yet fine-grained interest labels. 
+
+PHD 2 [ 12 ] is a personalized highlight detection dataset con-structed from users on gifs.com who create GIFs by selecting seg-ments from full YouTube videos. The timestamps of these user-generated GIFs are treated as explicit annotations of user-specific highlights, providing large-scale supervision of individual viewing preferences. 
+
+Table 6: Datasets statistics.               
+
+> Datasets #Users #Items #Views #Highlights #avg Shots
+> EEGSVRec 30 2,636 3,657 2.23 26.47 PHD 212,973 63,990 112,014 2.96 58.36
+
+For EEGSVRec, raw EEG signals are preprocessed as follows: per-second differential entropy is computed for the theta ( 4–8 Hz), alpha (8–13 Hz), and beta ( 13 –30 Hz) bands, and a per-second engagement index 𝑒 = 𝛽 /( 𝜃 + 𝛼 ) is computed following [ 1, 26 ]. Scores are then z-score normalized within each user, and the highlight sub-segment is defined as the continuous interval exceeding the per-video 60th-percentile engagement for at least 2 seconds; among all qualifying intervals, the one with the highest mean engagement is selected as the ground-truth highlight. We partition both datasets using an 8:1:1 user-based split for training, validation, and testing. The dataset statistics are shown in Table 6. 
+
+## A.2 Datapreprocess Details 
+
+Personalized highlight retrieval requires video representations that are both semantically meaningful and temporally structured. User interest naturally aligns with scenes and moments rather than fixed-frame intervals. We therefore represent each video 𝑣 ∈ V as an ordered sequence of shots 𝑠 1, . . . , 𝑠 𝑁 , detected by PySceneDetect [ 4 ], where each shot forms a temporally coherent and semantically consistent unit. From each shot 𝑠 𝑖 , a single representative key frame 𝑓 𝑖 is se-lected for both interest scoring and thumbnail generation. Can-didate frames are first identified via CLIP-based adaptive cluster-ing [ 11 , 34 ], then ranked by a composite score considering semantic diversity, visual quality, aesthetics, face ratio, contrast, and sharp-ness. Both the selected key frames and the video caption (title and tags) are encoded with CLIP [28]. 
+
+## B BASELINE DETAILS 
+
+(i) Key Frame Selection Methods. These types of baselines are de-rived from the video highlight detection task: HighlightMe [ 2 ] is a non-personalized highlight detector that identifies highlights with-out user-specific annotations. PAC-Net [ 12 ] conditions a content-based detector on user-annotated GIF preferences. PR-Net [6]constructs a preference reasoning graph to guide personalized high-light selection. ShowMe [ 3 ] employs multi-head attention over con-tent features and user history for personalized highlight detection. 
+
+KuaiHL [10 ] uses a multimodal Transformer to predict frame-level engagement in short-video scenarios. ClickorNot [ 32 ] is specif-ically designed for thumbnail selection by scoring frames with learned quality predictors, but produces a single generic thumbnail shared across all users. 
+
+(ii) Layout Generation Methods. HPCVTG [ 41 ] generates thumbnails following aesthetic and perception principles refined with human feedback. PosterO [15 ] leverages LLM-based in-context learning to produce content-aware poster layouts. In our experiments, both methods are supplied with frames retrieved by our Stage 1 model for fair comparison. 
+
+## C EVALUATION METRIC DETAILS C.1 Highlight Retrieval Metrics 
+
+We evaluate per-frame ranking quality from three complementary angles. mAP averages precision over all positive ranks per video and then over videos, capturing overall ranking quality independent of any cutoff. Recall@ 𝑘 (𝑘 ∈ { 1, 3, 5, 10 }) measures the fraction of ground-truth highlight frames retrieved in the top-𝑘 , with 𝑘 =1
+
+reflecting strict thumbnail-selection accuracy and larger 𝑘 tolerat-ing near-misses. nMSD (normalized Mean Squared Displacement) computes 1 
+
+> |𝑅 |
+
+Í𝑖 ∈𝑅 (rank (𝑖 ) − ideal (𝑖 )) 2 normalized by the worst-case displacement, penalizing relevant frames that drift far from their ideal positions. nMSD complements Recall@ 𝑘 by remaining sensitive to ranking errors that fall just outside the top-𝑘 window. 
+
+## C.2 Thumbnail Generation Metrics 
+
+A personalized thumbnail must satisfy three orthogonal criteria: it should be visually appealing, faithful to the source video, and distinct across users. Optimizing any single axis is insufficient. A thumbnail can be aesthetic but generic, or personalized but halluci-nated, so we report all three. 
+
+Thumbnail Quality. NIMA (↑) [ 33 ] predicts mean opinion scores from a CNN trained on the AVA aesthetics dataset, capturing low-level perceptual appeal. CLIP-IQA (↑) [ 36 ] complements NIMA by scoring semantic-level quality through contrastive prompts, which is sensitive to compositional coherence rather than only sharpness or exposure. Both metrics are computed on text-stripped thumbnails to prevent caption overlays from dominating the score. 
+
+Content Fidelity. For each (user, video) pair, we compute the metric between the method’s selected key or base frame and each ground-truth highlight frame annotated for that user, then average. This protocol rewards methods whose output remains close to any of the user’s highlighted moments, not only a single anchor. LPIPS (↓) [ 44 ]measures perceptual distance via deep feature differences, while 
+
+DINO-Sim (↑) computes cosine similarity over DINOv2 [ 24 ] embed-dings, which capture object-level structure that LPIPS’s low-level features miss. The two are reported jointly because perceptual closeness and structural correspondence can diverge under heavy editing. 
+
+Style Personalization. Existing metrics measure absolute quality but cannot detect whether different users actually receive different thumbnails. We therefore propose IUD (Inter-User Dissimilarity, Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. 
+
+↑): for a video 𝑣 viewed by user set 𝑈 𝑣 with |𝑈 𝑣 | ≥ 2,IUD (𝑣 ) = 2
+
+|𝑈 𝑣 |(| 𝑈 𝑣 | − 1)∑︁ 𝑖 <𝑗 
+
+ 1 − cos (𝑧 𝑖 , 𝑧 𝑗 ), (8) where 𝑧 𝑖 is the CLIP ViT-L/14 embedding of user 𝑢 𝑖 ’s generated thumbnail ˆ𝑇 (𝑢 𝑖 , 𝑣 ). We average IUD over all qualifying videos. CLIP embeddings are used because they jointly encode semantic and stylistic variation, whereas pixel-level distances would conflate genuine personalization with sampling noise. 
+
+## D IMPLEMENTATION DETAILS FOR PERSONALIZED THUMBNAIL GENERATION 
+
+Stage 2 takes the top-𝐾 frames retrieved by Stage 1, the video meta-data 𝑚 , and the user click history H𝑇 𝑢 , and produces a personalized thumbnail ˆ𝑇 (𝑢, 𝑣 ). Algorithm 1 summarizes the full procedure, and the three core components are detailed in Sections D.1–D.3: struc-tured visual cue extraction (§D.1), editing intensity prediction (§D.2), and the verify-and-retry loop (§D.3). Three design choices are worth noting. First, frame cleaning pre-cedes all downstream steps because residual text and watermarks would otherwise be inherited by both the cue extractor as spurious content and the diffusion editor as visual artifacts. Second, “what to edit” and “how much to edit” are decoupled into two indepen-dent modules: cue extraction derives content-level edits from the retrieved frames and video metadata, while intensity prediction derives style-level edits from the user’s click history. This separa-tion allows the same extracted plan to serve users with different stylistic preferences by simply switching the intensity filter. Third, the verify-retry loop resamples only the diffusion noise across at-tempts while holding the base frame, supporting frames, and filtered plan 𝜋 𝑢 fixed, which isolates stochastic generation failures from plan-level errors. Runtime is dominated by the VLM and diffusion calls: Qwen cue extraction takes roughly 60 seconds, each diffusion editing attempt takes around 30 seconds, and each judge call takes about 60 seconds, consistent with the ∼210 second per-video aggregate reported in Section 4.1.4. 
+
+## D.1 Structured Visual Cue Extraction 
+
+Inputs. Following Algorithm 1, the cue extractor receives the cleaned top-3 key frames retrieved by Stage 1 together with the video’s topic tag. 
+
+Prompt design. We prompt Qwen3.5-27B [ 27 ] with a task fram-ing that treats the top-1 frame as the primary semantic anchor and the remaining frames as optional supporting references. The prompt instructs the model to make an explicit fusion decision: if supporting frames carry complementary topic-relevant cues, the model specifies selective fusion; otherwise, it must strengthen topic-level visual communication through generated elements rather than defaulting to surface beautification. The prompt also defines the four-level intensity hierarchy (low, medium, high, extra-high) as a strict cumulative superset, so that the downstream intensity pre-dictor in Section D.2 can select among pre-compiled plans without re-querying the VLM. The full prompt template is released with our code. 
+
+Algorithm 1 Stage 2: Personalized Thumbnail Generation Pipeline 
+
+Input: User 𝑢 , video 𝑣 , top-𝐾 retrieved frames {𝑠 1, . . . , 𝑠 𝐾 } from Stage 1, video metadata 𝑚 , user click history H𝑇 𝑢 
+
+Output: Personalized thumbnail ˆ𝑇 (𝑢, 𝑣 )
+
+// Frame Preprocessing  
+
+> 1:
+
+for 𝑘 = 1 to 𝐾 do  
+
+> 2:
+
+𝑠 ′ 
+
+> 𝑘
+
+← DiffClean (𝑠 𝑘 ) ⊲ remove overlaid text/watermarks  
+
+> 3:
+
+˜𝑠 𝑘 ← VLM-Select (𝑠 ′ 
+
+> 𝑘
+
+) ⊲ select cleanest variant (§B.3)  
+
+> 4:
+
+end for 
+
+// Structured Visual Cue Extraction (§B.1)  
+
+> 5:
+
+P ← ExtractCues ( ˜𝑠 1, . . . , ˜𝑠 𝐾 , 𝑚 ) ⊲ content summary, fusion decision, operations  
+
+> 6:
+
+𝑓 base ← P .base ; Ssupport ← P .support 
+
+// Editing Intensity Prediction (§B.2)  
+
+> 7:
+
+q(𝑢 ) ← StyleProfile (H 𝑇 𝑢 ) ⊲ 4-D CLIP style vector  
+
+> 8:
+
+𝜆 𝑢 ← arg min 𝑙 ∈ L ∥q(𝑢 ) − p(𝑙 ) ∥2 ⊲ nearest intensity prototype  
+
+> 9:
+
+𝜋 𝑢 ← FilterOps (P .ops , 𝜆 𝑢 ) ⊲ retain permitted operations 
+
+// Controllable Diffusion Editing with Verify-Retry (§B.3)  
+
+> 10:
+
+ˆ𝐶 ← ∅; 𝜎 ★ ← −∞  
+
+> 11:
+
+for 𝑟 = 1 to 𝑁 do  
+
+> 12:
+
+ˆ𝑇 𝑟 ← DiffEdit (𝑓 base , Ssupport , 𝜋 𝑢 ) ⊲ resampled noise per attempt  
+
+> 13:
+
+𝜎 𝑟 ← VLM-Judge ( ˆ𝑇 𝑟 , 𝜋 𝑢 ) 
+
+> 14:
+
+if 𝜎 𝑟 > 𝜎 ★ then  
+
+> 15:
+
+ˆ𝐶 ← ˆ𝑇 𝑟 ; 𝜎 ★ ← 𝜎 𝑟  
+
+> 16:
+
+end if  
+
+> 17:
+
+if 𝜎 𝑟 ≥ 𝜏 then  
+
+> 18:
+
+break  
+
+> 19:
+
+end if  
+
+> 20:
+
+end for 
+
+// Text Overlay  
+
+> 21:
+
+ˆ𝑇 ′ ← DiffText ( ˆ𝐶, P.caption ) 
+
+> 22:
+
+ˆ𝑇 ← VLM-Select ( ˆ𝑇 ′) 
+
+> 23:
+
+return ˆ𝑇 
+
+Output schema. The structured editing plan is organized into four functional blocks; the full schema is documented in the code release. Semantic analysis (anchor_summary ,
+
+semantic_similarity_assessment , top1_topic_coverage )captures the VLM’s understanding of the top-1 frame as the primary anchor and assesses whether supporting frames carry complementary cues. Frame routing (fusion_decision ,
+
+editor_input_plan ) determines which frame becomes the base and which supporting frames contribute visual cues. Edit operations are decomposed into five categories: topic visualiza-tion, composition, subject emphasis, background control, and a dedicated supporting_fusion_edits field for cross-frame fusion. Finally, execution prompts (stage1_execution_prompts )compile these operations into four ready-to-use instructions at increasing intensities, which form the candidate set selected from in Section D.2. 
+
+Worked example. Figure 8 shows a representative output for a horoscope vlog whose top-3 frames are visually similar shots of a presenter waving at the camera. The model judges semantic similarity as high and top-1 topic coverage as weak, so it What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+routes to fusion_decision.mode = none and instead populates 
+
+topic_visualization_edits with imagined elements (zodiac constellation icons, starry background texture, mystical glow) that ground the generation in the video’s topic rather than its raw frames. The four execution prompts then layer these edits cumulatively: low adds only subject emphasis and background blur; medium introduces composition shifts; high injects the imagined topic elements; extra-high additionally transforms the background atmosphere. This example illustrates how the cue extractor produces semantically meaningful edits even when no supporting frame fusion is possible, grounding the downstream diffusion edits in user-preferred content rather than arbitrary design choices.                                                                                                                                                          
+
+> " fusion_decision ": {" mode ": " none ", " reason ": " The three frames are semantically identical in subject and setting . No additional cues from top2 or top3 are needed ; new thematic elements must be generated to address the 'horoscope 'topic ." , " expected_benefit ": " Maintaining the single strongest frame ensures the subject remains the focal point , allowing generated thematic overlays without clutter ." }, " topic_visualization_edits ": [{" rank ": 1, " element ": " Floating zodiac constellation icons ", " placement ": " upper area and right side ", " source ": " imagined "} , {" rank ": 2, " element ": " Subtle starry galaxy background texture ", " placement ": " overlaid on background ", " source ": " imagined "} , {" rank ": 3, " element ": " Soft glowing mystical aura ", " placement ": " around subject head and shoulders ", " source ": " imagined "} ], " stage1_execution_prompts ": {" low ": " Apply asubtle soft white glow around the subject . Sharpen the face . Blur the background moderately ." , " medium ": "... +Enlarge the subject to dominate the center . Shift the subject slightly left to open space on the right side ." , " high ": "... +Add floating zodiac constellation icons in the upper area and right side . Tint the background with adeep blue hue ." , " extra_high ": "... +Overlay astarry galaxy texture . Tint background deep purple . Add amystical glowing aura around the subject 'shead ." }
+
+Figure 8: Worked example of a structured editing plan for a horoscope vlog. The fusion decision rejects supporting frames in favor of imagined topic elements, which are then layered cumulatively across the four execution prompts. El-lipses ( ... ) indicate inheritance from the previous intensity level. 
+
+## D.2 Editing Intensity Prediction 
+
+This section provides implementation details that complement Sec-tion 3.4.2, covering the offline calibration phase that builds a proto-type for each intensity level. The three paragraphs below describe the contrastive prompt design, the reference thumbnail curation procedure, and the prototype design rationale. 
+
+Style axis prompts. Each of the four style axes is described by a contrastive low/high prompt pair, listed in Table 7. We chose these 
+
+Table 7: Contrastive low/high prompt pairs for the four style axes used in CLIP-based scoring. 
+
+Axis Low prompt High prompt 
+
+Subject pop-out a casual frame with no strong focal point a cover image with a single clear focal point and strong subject emphasis Subject domi-nance a thumbnail showing the subject from far away in a wider shot a thumbnail showing the subject in a tight crop or close-up that fills much of the frame Semantic cue density a very sparse cover with al-most no supporting items a layered cover with sev-eral supporting items that explain the topic Scene styliza-tion a thumbnail with ordinary lighting and a realistic background a thumbnail with strong mood lighting, vivid color contrast, and a visually de-signed background 
+
+four axes specifically because they cover the orthogonal dimensions that distinguish realistic from artistic thumbnails: focal salience (pop-out), framing tightness (dominance), informational layering (cue density), and atmospheric treatment (stylization). We encode all prompts and thumbnails with a frozen CLIP ViT-L/14, and compute each axis score as the difference between cosine similarities to the high and low prompts. 
+
+Reference thumbnail curation. For each intensity level 𝑙 ∈ L ,we generate 50 reference thumbnails by running our own editing pipeline at the corresponding intensity, with source frames ran-domly sampled from the EEGSVRec [ 45 ] and PHD 2 [ 12 ] training sets. Generating references with the same editor that the predictor will later select intensities for ensures that the reference distri-bution matches the deployment distribution, avoiding calibration drift between offline prototypes and online generations. We found 
+
+𝐾 = 50 empirically sufficient for stable centroids. 
+
+Prototype design. Unlike a single-axis intensity scale, our four intensity levels are not scaled versions of one another. As defined in Section 3.4.2, each level targets a distinct editing signature: low op-erates only on surface treatments, medium adds layout adjustments, high additionally injects cross-frame fusion cues, and extra-high further introduces scene transformation. Because each level ac-tivates a different combination of edit types, its prototype vector occupies a distinct region of the 4D style space rather than sitting at a higher position along a single axis. This is why nearest-neighbor matching is the right inference rule: a user’s style profile is matched to the signature pattern it most resembles, not to a position on a one-dimensional intensity scale. 
+
+## D.3 Verify-and-Retry Loop 
+
+The verify-and-retry loop guards against stochastic diffusion fail-ures, such as hallucinated objects or partial execution of the struc-tured editing plan, by re-invoking the editor with a fresh noise sample when a fidelity check fails. 
+
+Judge prompt design. The VLM judge (Qwen3.5-27B [ 27 ]) takes the source frame, the edited thumbnail, and the intensity-filtered Conference’17, July 2017, Washington, DC, USA Zhiyu He, et al. 
+
+editing plan 𝜋 𝑢 as input. It is instructed by its prompt to first iden-tify 1–4 atomic edit requirements from 𝜋 𝑢 and then evaluate each independently, plus two global checks for visual coherence and subject preservation. Anti-hallucination instructions in the prompt template require all judgments to be grounded in evidence visible in the edited image, preventing the judge from accepting generations based on assumed rather than observed content. 
+
+Scoring schema. For each generated thumbnail, the judge outputs a single discrete rating drawn from {Poor, Fair, Good, Very Good, Perfect}, which we map to integers {0, 1, 2, 3, 4} to obtain the fi-delity score 𝜎 . If 𝜎 exceeds the acceptance threshold, the thumbnail is accepted; otherwise, the loop retries with a new noise sample. Subject preservation is the only hard-fail check, applied solely at the image-editing stage: if the judge marks subject preservation as failed, the overall rating is capped at Fair regardless of other checks, preventing the loop from accepting generations that lose the user’s anchor content. 
+
+Acceptance rule. We set the acceptance threshold to 𝜏 = 3 (Very Good), chosen empirically as the best balance between fidelity and accept rate. If the first attempt already satisfies 𝜎 ≥ 𝜏 , the loop terminates immediately without retrying. Otherwise, the diffusion editor is re-invoked with a new random noise sample while the base frame, supporting frames, and filtered plan 𝜋 𝑢 are held fixed. The retry budget 𝑁 = 1 is chosen as the best trade-off between ef-fectiveness and efficiency, since each retry adds roughly 90 seconds (60s judge + 30s diffusion). If no attempt reaches 𝜏 within 𝑁 retries, the candidate with the highest 𝜎 is returned. 
+
+## E USER STUDY PLATFORM WORKFLOW 
+
+The user study was conducted via a web-based platform comprising two modules. Participants were first assigned to either Module A (preference collection) or Module B (thumbnail evaluation), deter-mined by pre-assigned credentials. w mbna G d            
+
+> eCo ect on
+> Wh he V deo
+> e e 1 5 L kert)
+> wmCand dates
+> mbna Se ect on
+> Appea ng V sua s
+> WV d o
+> Repeat
+> mCon ent Match
+> Repeat
+> (a) (c)
+> (b) (d)
+
+Figure 9: User study platform interface. Module A: (a) grid view and (b) video player with a Likert scale; Module B: (c) thumbnail selection grid and (d) video player with a matching question. 
+
+## Module A: Video Preference Collection 
+
+(1) Login. Participants log in with a pre-assigned user ID and password. (2) Language selection. Participants select their primary language (Chinese or English). English speakers are additionally asked whether they can understand Chinese-language videos. (3) Instructions. A task-instruction page is displayed for at least 10 seconds before the participant may proceed. (4) Video rating. A grid of videos is presented, as shown in Fig-ure 9-(a). Participants click on any video to open the player. Seeking/scrubbing is disabled to encourage genuine viewing. After watching, participants rate the video on a 5-point Likert scale: 
+
+• 1 – Not interested at all 
+
+• 2 – Somewhat uninterested 
+
+• 3 – Neutral 
+
+• 4 – Somewhat interested 
+
+• 5 – Very interested Figure 9-(b) is the interface of this process. The rating is saved and the participant returns to the grid to select the next video. The required minimum is 10 vertical-format and 10 horizontal-format videos for Chinese-proficient participants, or 20 horizontal-format videos for English-only participants. 
+
+## Module B: Thumbnail Evaluation 
+
+(1) Login & instructions. Same login flow; a separate instruction page describes the thumbnail-selection task. (2) Task list. Each participant is pre-assigned 20 video cases. The task list shows completion status for each case. (3) Thumbnail selection. For each case, approximately 11 candi-date thumbnails (generated by different methods) are presented in shuffled order. Figure 9-(c) is an example of the interface. The participant selects their top-3 preferred thumbnails in ranked order (1st, 2nd, 3rd choice) based solely on visual appeal, design quality, and layout—irrespective of language. (4) Video viewing & match question. After confirming the se-lection, the participant watches the corresponding video and answers one question, as shown in Figure 9-(d): 
+
+• Q (single choice): “How well does the video content match your expectations based on the cover you chose?” (A. Highly consis-tent / B. Somewhat consistent / C. Different from expected / D. Completely different) (5) Repeat. Steps 3–4 are repeated for all 20 assigned cases, after which the participant submits all responses.
