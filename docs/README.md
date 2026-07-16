@@ -6,31 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-15
-- 运行时间：2026-07-15 21:32:56 UTC
+- 最新运行日期：2026-07-16
+- 运行时间：2026-07-16 21:13:12 UTC
 - 运行状态：成功
-- 本次总论文数：3
-- 精读区：2
-- 速读区：1
+- 本次总论文数：6
+- 精读区：1
+- 速读区：5
 
 ### 今日简报（AI）
-今日聚焦3篇推荐系统论文，精读了两篇高分工作：个性化视频缩略图生成（9.0分）与轻量级智能模型（8.0分），另速读一篇零权重新闻推荐（6.0分）。  
-最值得深挖的是《What Would You Click?》通过偏好感知高亮检索实现用户专属缩略图，以及《SlimPer》在保持效果的同时大幅精简推荐模型。  
-建议优先尝试SlimPer的瘦身策略以降低线上资源消耗，同时可结合视频缩略图方法提升点击率，但需关注其计算开销。
-- 详情：[/202607/15/README](/202607/15/README)
+今日聚焦1篇精读与5篇速读论文，重点推荐《Memory-Conditioned Tool Calling for Camera-First Visual Agents》，该文提出记忆条件工具调用方法用于相机优先视觉智能体，评分8.0。后续可关注视觉智能体与工具调用的整合潜力。
+- 详情：[/202607/16/README](/202607/16/README)
 
 ### 精读区论文标签
-1. [What Would You Click? Personalized Video Thumbnail Generation with Preference-aware Highlight Retrieval](/202607/15/2607.12882v1-what-would-you-click-personalized-video-thumbnail-generation-with-preference-aware-highlight-retrieval)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：个性化视频缩略图生成，通过偏好感知亮点检索
-2. [SlimPer: Make Personalization Model Slim and Smart](/202607/15/2607.12281v1-slimper-make-personalization-model-slim-and-smart)  
+1. [Memory-Conditioned Tool Calling for Camera-First Visual Agents](/202607/16/2607.09822v1-memory-conditioned-tool-calling-for-camera-first-visual-agents)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：推荐中的个性化排序模型
+   evidence：个人视觉记忆用于LLM代理中用户对齐的工具调用
 
 ### 速读区论文标签
-1. [ZoRRO: A Zero-Weight Personalized Recommender System for Scalable News Recommendation](/202607/15/2607.10910v1-zorro-a-zero-weight-personalized-recommender-system-for-scalable-news-recommendation)  
+1. [Contrastive-Augmented Flow Matching for Style-Content Disentanglement](/202607/16/2607.12404v1-contrastive-augmented-flow-matching-for-style-content-disentanglement)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：风格内容解耦用于可控生成
+2. [Configurable AI Coding Assistants: Designing For Developers Who Like to Be in Control](/202607/16/2607.09215v1-configurable-ai-coding-assistants-designing-for-developers-who-like-to-be-in-control)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：零权重个性化推荐系统
+   evidence：AI编程助手的个性化配置研究
+3. [SlimPer: Make Personalization Model Slim and Smart](/202607/16/2607.12281v1-slimper-make-personalization-model-slim-and-smart)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：个性化排序模型适应
+4. [Where Reasoning Matters: Rethinking Latent Reasoning in Semantic ID-based Generative Recommendation](/202607/16/2607.12425v1-where-reasoning-matters-rethinking-latent-reasoning-in-semantic-id-based-generative-recommendation)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：基于语义ID的生成式推荐实现个性化物品预测
+5. [Personalizing Incremental Video Search with Hybrid Text and ID Embeddings](/202607/16/2607.13493v1-personalizing-incremental-video-search-with-hybrid-text-and-id-embeddings)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：利用用户历史实现视频搜索个性化
 
 
 <div class="dpr-home-promo-card">
