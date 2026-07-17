@@ -6,38 +6,31 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-16
-- 运行时间：2026-07-16 21:13:12 UTC
+- 最新运行日期：2026-07-17
+- 运行时间：2026-07-17 21:24:28 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：1
-- 速读区：5
+- 本次总论文数：3
+- 精读区：2
+- 速读区：1
 
 ### 今日简报（AI）
-今日聚焦1篇精读与5篇速读论文，重点推荐《Memory-Conditioned Tool Calling for Camera-First Visual Agents》，该文提出记忆条件工具调用方法用于相机优先视觉智能体，评分8.0。后续可关注视觉智能体与工具调用的整合潜力。
-- 详情：[/202607/16/README](/202607/16/README)
+今日精读两篇9分重磅论文，聚焦提示生成与LLM个性化均衡分析。  
+提示生成技术报告与SFT vs ICL的均衡分析，分别揭示高效提示设计及微调与上下文学习的关键权衡。  
+建议优先精读前两篇，再速读移动端图RAG以拓展应用视野。
+- 详情：[/202607/17/README](/202607/17/README)
 
 ### 精读区论文标签
-1. [Memory-Conditioned Tool Calling for Camera-First Visual Agents](/202607/16/2607.09822v1-memory-conditioned-tool-calling-for-camera-first-visual-agents)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：个人视觉记忆用于LLM代理中用户对齐的工具调用
+1. [Prompt Generation Technical Report](/202607/17/2607.11326v1-prompt-generation-technical-report)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：使用用户行为序列与LLM进行个性化生成
+2. [Supervised Fine-Tuning vs. In-Context Learning: An Equilibrium Analysis of LLM Personalization under Congestion](/202607/17/2607.14371v1-supervised-fine-tuning-vs-in-context-learning-an-equilibrium-analysis-of-llm-personalization-under-congestion)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：大模型个性化与拥塞分析
 
 ### 速读区论文标签
-1. [Contrastive-Augmented Flow Matching for Style-Content Disentanglement](/202607/16/2607.12404v1-contrastive-augmented-flow-matching-for-style-content-disentanglement)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：风格内容解耦用于可控生成
-2. [Configurable AI Coding Assistants: Designing For Developers Who Like to Be in Control](/202607/16/2607.09215v1-configurable-ai-coding-assistants-designing-for-developers-who-like-to-be-in-control)  
+1. [SmartRAG: Native Graph-Based RAG for Mobile Device](/202607/17/2607.14661v1-smartrag-native-graph-based-rag-for-mobile-device)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：AI编程助手的个性化配置研究
-3. [SlimPer: Make Personalization Model Slim and Smart](/202607/16/2607.12281v1-slimper-make-personalization-model-slim-and-smart)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：个性化排序模型适应
-4. [Where Reasoning Matters: Rethinking Latent Reasoning in Semantic ID-based Generative Recommendation](/202607/16/2607.12425v1-where-reasoning-matters-rethinking-latent-reasoning-in-semantic-id-based-generative-recommendation)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：基于语义ID的生成式推荐实现个性化物品预测
-5. [Personalizing Incremental Video Search with Hybrid Text and ID Embeddings](/202607/16/2607.13493v1-personalizing-incremental-video-search-with-hybrid-text-and-id-embeddings)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：利用用户历史实现视频搜索个性化
+   evidence：设备端个人助手持续适应实现个性化
 
 
 <div class="dpr-home-promo-card">

@@ -1,0 +1,7007 @@
+Title: Supervised Fine-Tuning vs. In-Context Learning: An Equilibrium Analysis of LLM Personalization under Congestion
+
+URL Source: https://arxiv.org/pdf/2607.14371v1
+
+Published Time: Fri, 17 Jul 2026 00:37:36 GMT
+
+Number of Pages: 89
+
+Markdown Content:
+# Supervised Fine-Tuning vs. In-Context Learning: An Equilibrium Analysis of LLM Personalization under Congestion 
+
+## Fengzhuo Zhang ‗ Zhuoran Yang † Dirk Bergemann ‡
+
+## Feb 6, 2026 
+
+Abstract 
+
+Large Language Models (LLMs) have revolutionized AI services, but a critical tension emerges: while personalization improves model performance, it consumes scarce computational resources that users must share. When should a user invest in expensive Supervised Fine-Tuning (SFT) versus lightweight In-Context Learning (ICL)? How does congestion from other users’ personalization choices reshape these incentives? And what strategies should platforms adopt when offering multiple personalization algorithms? We develop a tractable framework for LLM serving that captures the statistical-economic trade-offs users face. Our analysis yields several surprising insights. First, we show that ICL and SFT dominate in different regimes, determined by an interplay between pretraining coverage and data signal-to-noise ratios—but congestion can flip these rankings. Second, equilibrium resource consumption exhibits pronounced non-monotonicity: improving pretraining precision reduces the congestion, while broader pretraining coverage and harder tasks sometimes increase it. Third, we prove that offering both personalization methods never hurts the platform’s maximal profits, despite potentially increasing computational load. Experiments with GPT-2 on linear regression tasks validate our theoretical pre-dictions about algorithm performance. Complementing these results, our review of documentation from 21 major AI platforms shows that the share offering both SFT and ICL increased from 9.5% in 2021 to 71 .4% in 2025, consistent with our platform-design implications. 
+
+> ‗
+
+Yale University, 30 Hillhouse Ave., New Haven, CT 06520, USA, fengzhuo.zhang@yale.edu 
+
+> †
+
+Yale University, 30 Hillhouse Ave., New Haven, CT 06520, USA, zhuoran.yang@yale.edu 
+
+> ‡
+
+Yale University, 30 Hillhouse Ave., New Haven, CT 06520, USA, dirk.bergemann@yale.edu .The authors acknowledge financial support from the UK AI Security Institute. Dirk Bergemann acknowledges financial support from NSF SES 2519400 and ONR MURI N00014-24-1-2742. Zhuoran Yang acknowledges financial support from NSF DMS 2413243. 
+
+1arXiv:2607.14371v1 [cs.LG] 15 Jul 2026 Keywords: LLM Personalization, Congestion Games, Algorithm Choice, Pricing. 
+
+JEL Codes: D47, D82, D83. 
+
+# 1 Introduction 
+
+Every day, millions of users customize Large Language Models ( LLM s) for specialized tasks—financial analysis, clinical decision support, and legal research (Chatterji et al., 2025). Such personalization is essential because a pretrained model can underperform on domain-specific tasks. However, personalization also creates a fundamental economic tension. Supervised Fine-Tuning ( SFT ) on private data can yield superior performance but requires intensive GPU computation, while In-Context Learning ( ICL ) offers a lightweight alternative—providing examples in the prompt—at the cost of limited adaptability. When thousands of users simultaneously personalize models on shared infrastructure, congestion emerges: each user’s choice of method affects not only their own costs but also others’ waiting times. This paper asks the following questions: Q1. In the absence of congestion (i.e., with unconstrained compute), how should users choose between SFT and ICL? Q2. With shared, constrained resources, how do users trade off personalization quality against congestion costs in equilibrium? Q3. When computational resources are scarce, how should platforms design their service menu and pricing? Answering these questions faces three obstacles. First, existing economics work on LLMs relies on scaling laws or stylized behavioral assumptions, missing the crucial differences between personalization algorithms (Agarwal et al., 2025; Bergemann et al., 2025b). Second, LLM platforms serve millions of users; modeling strategic interactions at this scale requires moving beyond finite-player games. Third, personalization quality depends on statistical primitives—pretraining coverage, task difficulty, and data signal-to-noise ratios—that must be integrated with economic incentives. In this paper, we develop a continuum-user model of LLM serving built on linear approximations of personalization algorithms (Section 2). This framework lets us (i) derive precise error formulas for ICL and SFT , (ii) aggregate individual behavior into tractable equilibrium conditions, and (iii) study how platform pricing and algorithm offerings shape system-level outcomes. The linear approximation is not merely convenient: recent empirical work suggests that LLM behavior on linear tasks is broadly representative, and we validate our theoretical predictions experimentally using GPT-2 (Akyürek et al., 2023; Garg et al., 2022). 
+
+Main Results. First, we analyze linear models of personalization (Section 3). We derive error decomposition results showing that ICL can only reduce error within the subspace 2covered by pretraining, while SFT updates the entire parameter space (Theorem 3.3). This yields a precise threshold: SFT dominates when the pretraining coverage exceeds a critical ratio that depends on the Signal-to-Noise Ratio ( SNR ) of the personalization data. Below this threshold, ICL ’s conservatism in uncovered directions actually helps (Proposition 3.6). This answers Q1. Second, we characterize users’ equilibrium given the platform’s strategy (Section 4). We prove existence and uniqueness of the congestion level via a monotonicity argument analogous to classical mean-field monotonicity conditions (Lasry and Lions, 2007; Graber and Mészáros, 2023) (Theorem 4.1). Comparative statics are often non-monotone: higher prior precision always reduces congestion, but expanding pretraining coverage can increase congestion when coverage is intermediate and compute is cheap; harder tasks can reduce congestion when noise is high enough to deter personalization; and making SFT more expensive can initially increase congestion before shifting users to lighter alternatives (Propositions 4.4–4.6). These patterns arise from the interaction between the extensive margin (algorithm choice) and the intensive margin (sample intensity), governed by the coverage– SNR mechanism in Proposition 3.6. We also identify when equilibrium congestion is pinned by a single user type (Proposition 4.8). This answers Q2. Third, we study the platform’s Stackelberg strategy and algorithm menu (Section 5). We show that equilibrium congestion (aggregate resource demand) decreases in the unit resource price (Theorem 5.2), and that the profit-maximizing price is finite under regularity conditions (Proposition 5.3). We also prove that offering both SFT and ICL —rather than only ICL —never reduces the platform’s maximal profit (Theorem 5.5), formalizing why platforms increasingly provide multiple personalization options despite added complexity. This answers Q3. Finally, we connect the model to practice (Section 6). Training GPT-2 on linear regression tasks—a representative testbed for LLM s behavior (Garg et al., 2022; Von Oswald et al., 2023)—validates our theory: ICL error plateaus at a bias driven by uncovered dimensions (with linear growth in that subspace), and the SFT /ICL ranking flips with sample size as predicted by our threshold. We also summarize the serving strategies of 21 major AI platforms, documenting rapid adoption of SFT APIs, consistent with our prediction that offering both SFT and ICL does not reduce platform profit. This work contributes to the emerging AI-economics literature by developing a behav-iorally grounded model of personalization that goes beyond per-token pricing to capture how algorithm characteristics shape strategic interaction. Our congestion framework connects to classic work on peak-load pricing and infrastructure management (Small et al., 2024; Redding and Turner, 2015), where network topology, capacity constraints, and pricing jointly determine congestion outcomes. In contrast, our setting highlights a new source of congestion: effective capacity is shaped not only by fixed physical constraints, but also by the algorithmic properties of personalization methods. 
+
+Related Literature. Our work contributes to the rapidly growing literature on the economics of LLM s. Prior work studies LLM s from diverse perspectives, including auction and mechanism design for LLM -generated content (Duetting et al., 2024; Soumalias et al., 32024; Dubey et al., 2024; Hajiaghayi et al., 2024; Bergemann et al., 2025a), as well as market competition and token pricing (Fish and Gonczarowski, 2024; Bergemann et al., 2025b). While we also study the market for LLM s, our focus differs in emphasizing how intrinsic LLM characteristics, captured through a representative behavioral model, shape market outcomes, a dimension largely absent from the existing literature. For a broader survey of the economics of AI, see (Hadfield and Koh, 2025). Our analysis of resource congestion also relates to the literature on congestion and pricing of congestible infrastructure. A large body of work studies the interaction between peak-load demand, pricing, and service quality in transportation systems (Henderson, 1974; Kreindler, 2024; Patriksson, 2015; Duranton and Turner, 2011), where network topology, capacity constraints, spatiotemporal demand patterns, and pricing jointly determine congestion outcomes (Small et al., 2024; Redding and Turner, 2015). In contrast, our paper studies congestion in LLM serving, where congestion is driven not by physical network constraints but by the characteristics of the pretrained LLM and the personalization mechanisms applied to it. Our continuum user model is closely related to the broad literature on Mean-Field Games ( MFG s) and their applications (Carmona and Delarue, 2013; Carmona et al., 2018). Work on MFG s has extensively studied the existence and uniqueness of equilibrium solutions (Lasry and Lions, 2007; Carmona et al., 2016; Lacker, 2017). In particular, Guo et al. (2019) and Lasry and Lions (2007) establish equilibrium uniqueness under contraction and monotonicity conditions, respectively. Our contribution is conceptually related but distinct: we develop an analogue of the monotonicity condition for the congestion mapping, which ensures the uniqueness of the equilibrium congestion level rather than the full equilibrium strategy profile. A complementary line of work studies learning dynamics and algorithmic convergence to equilibria in MFG s (Perrin et al., 2020; Yardim et al., 2023; Anahtarci et al., 2023; Zhang et al., 2023a, 2024); see Carmona et al. (2018); Laurière et al. (2022) for a comprehensive survey. 
+
+Roadmap. Section 2 introduces the statistical models of personalization methods and formulates users’ personalization choices as a congestion game. Section 3 derives statis-tical error bounds for the personalization methods and compares them across different pretraining regimes, characterizing users’ choices in the absence of congestion. Section 4 studies the equilibrium behavior induced by resource congestion, establishing equilibrium existence and the uniqueness of the equilibrium congestion level. It further shows that this congestion level can vary non-monotonically with pretraining properties, highlighting the interaction between statistical accuracy and serving congestion. Section 5 analyzes the platform’s Stackelberg strategy and algorithm menu in LLM serving, showing that offering both SFT and ICL , rather than only ICL , never reduces maximal profit. Finally, Section 6 empirically validates the relevance of the statistical model in Sections 2 and 3, as well as the platform-strategy conclusions in Section 5. 42 Models of LLMs Serving with Personalization 
+
+We model personalized LLM services from two complementary perspectives. Statistically, we introduce a stylized linear models of LLM personalization that capture the core performance–resource trade-offs of various methods of personalization. From a game-theoretic perspective, we develop a continuum user framework that captures strategic interactions between a large user population and the platform under congestion and pricing, linking algorithmic personalization choices to system-level equilibrium outcomes. 
+
+## 2.1 Statistical Models of LLMs Personalization 
+
+Before presenting the formal models, we briefly review pretraining, the basis of person-alization, and two personalization algorithms: SFT and ICL . Pretraining equips an LLM with broad general knowledge but limited domain specialization. ICL adapts the model at inference time via prompt-based demonstrations without updating parameters, while SFT tunes model parameters on domain-specific data, incurring higher computational cost but yielding more persistent personalization. 
+
+Pretraining. During pretraining, LLM s are trained to predict the next token given a prefix over a large corpus (Brown et al., 2020; Touvron et al., 2023), thereby acquiring broad knowledge and high-dimensional language representations (Wang et al., 2025; Meng et al., 2022). From a modeling perspective, pretraining can be interpreted as learning a prior distribution over linguistic patterns and world knowledge. For example, given the prefix “The migratory salmon in the Pacific Ocean is”, the likely continuation depends on the latent task of the current context. If the task is taxonomy, the model may assign high probability to continuations such as “a member of the family Salmonidae”; if the task is ecological outlook, the likely continuation may instead describe population trends, climate risks, or conservation status. Thus, by learning next-token distributions conditional on prefixes, the pretrained LLM implicitly captures the uncertainty and diversity of tasks in the pretraining corpus. After pretraining, the LLM generates the next token according to this learned conditional distribution, so different sampled continuations may reflect different latent tasks. For statistical analysis, we abstract pretraining as a linear regression problem. For each training sample, we represent the prefix by a covariate vector xi ∈ Rd, the next-token response by a scalar yi ∈ R, and the implicit task parameter by θi ∈ Rd. The pretraining dataset of size N is generated as follows. First, the task parameters θi are drawn independently from the task prior N (μθ, Σθ), where μθ ∈ Rd and Σθ ∈ Rd×d. Second, the covariate vectors xi may be either fixed or randomly sampled from an underlying Gaussian distribution. For clarity of exposition, we focus on the fixed-design setting, in which the covariates are treated as deterministic, for example by being selected in a round-robin manner from an orthonormal basis. When the covariates are sampled i.i.d. from a Gaussian distribution, all results hold with high probability; see Appendix B.1. Finally, the response 5yi, e.g., a scalar representation of “Salmonidae”, is generated according to 
+
+yi = x⊤ 
+
+> i
+
+θi + ϵi, and ϵi ∼ N (0 , σ 2), for i ∈ [N ], (2.1) where the noise terms ϵi are i.i.d. Gaussian and [N ] = 1 , . . . , N . The resulting pretraining dataset is {(xi, y i)}Ni=1 , with X = [ x1, . . . , x N ]⊤ ∈ RN ×d and Y = [ y1, . . . , y N ]⊤ ∈ RN .We emphasize that different data points (xi, y i) may correspond to different latent task parameters θi, allowing the LLM to learn shared structure across a distribution of tasks. LLM s are pretrained to learn the next-token distribution conditioned on the prefix, thereby implicitly acquiring task-relevant knowledge. Specifically, given a prefix x ∈ Rd,we model the scalar next-token distribution as a Gaussian distribution N (x⊤θpre , ∥x∥2Σpre ),where θpre ∈ Rd represents the learned prior mean induced by pretraining, Σpre ∈ Rd×d
+
+reflects the uncertainty of this learned prior, and ∥x∥Σ = √x⊤Σx denotes the Σ-norm induced by any positive semidefinite matrix Σ. Equivalently, this Gaussian prediction can be interpreted as follows: the LLM first samples a task-parameter estimate ˆθpre ∼ N (θpre , Σpre )
+
+from the learned task prior and then generates the scalar response ˆθ⊤
+
+> pre
+
+x. The parameter 
+
+θpre is estimated from the pretraining dataset {(xi, y i)}Ni=1 by minimizing the prediction error: 
+
+θpre = arg min 
+
+> θ∈Rd
+
+∥Y − Xθ ∥2 = ( X⊤X)†X⊤Y, 
+
+where (·)† denotes the Moore–Penrose pseudoinverse. Since Σpre captures the estimation uncertainty of the learned prior, it is given by the covariance of the estimator θpre :
+
+Σpre = ( X⊤X)†X⊤ΩX(X⊤X)†, Ω = σ2IN + diag  ∥x1∥2Σθ , . . . , ∥xN ∥2Σθ
+
+, (2.2) where IN ∈ RN ×N denotes the identity matrix. The derivation of (2.2) is provided in Appendix B.2. We next introduce personalization methods that adapt the learned distribution N (θpre , Σpre ) using personalization data. 
+
+In-Context Learning. ICL is a mechanism for personalizing the behavior of LLM s without modifying their parameters (Zhang et al., 2023b; Xie et al., 2021). It personalizes model predictions by conditioning the learned prior on task demonstrations provided in the prompt. For example, to instruct the model to return the taxonomic family of an animal, one may supply the sequence 
+
+[( “salmon” , “salmonidae” ), (“otter” , “mustelidae” ), (“panda” , ?)] .
+
+The first three covariate–response pairs constitute the context that specifies the target task, while the final input “panda” serves as the query. Through these demonstrations, the LLM infers the underlying task—here, mapping animals to their taxonomic families—and generates a response accordingly. Prior work shows that ICL can be interpreted as approximate Bayesian inference under the learned prior: the model updates its belief about 6the task given the context and then predicts based on the resulting posterior (Zhang et al., 2023b; Xie et al., 2021; Hu et al., 2024). To formalize the Bayesian inference underlying personalization, we first specify the data model for personalization data. We model the target task θ∗ ∈ Rd as a random variable drawn from N (0 , Σ∗). Personalization data consist of covariate–response pairs generated by this fixed task, 
+
+˜yi = ˜ x⊤ 
+
+> i
+
+θ∗ + ˜ ϵi, and ˜ϵi ∼ N (0 , ˜σ2), for i ∈ [ ˜N ], (2.3) where ˜ϵi is i.i.d. Gaussian noise in the personalization data. As in the pretraining model, we assume that the covariates ˜xi are fixed. The key difference from the pretraining data is that all personalization samples share the same task parameter θ∗, whereas in pretraining each sample is associated with its own latent task parameter θi. For independently generated samples {(˜ xi, ˜yi)} ˜Ni=1 , we collect ˜X = [˜ x1, . . . , ˜x ˜N ]⊤ ∈ R ˜N ×d and ˜Y = [˜ y1, . . . , ˜y ˜N ]⊤ ∈ R ˜N .According to Xie et al. (2021); Zhang et al. (2023b), when prompted with personaliza-tion data {(˜ xi, ˜yi)} ˜Ni=1 , an LLM performs inference under the learned prior N (θpre , Σpre ),assuming the data are generated by a latent task θ ∼ N (θpre , Σpre ). That is, the personalized distribution induced by ICL , N (θICL , ΣICL ) (with the dependence on ˜N suppressed for notational simplicity), is the posterior of the learned prior conditioned on the observed personalization data. Under the Gaussian linear model (2.1) and (2.3) , this posterior is given by 
+
+θICL = θpre + Σ pre ˜X⊤( ˜XΣpre ˜X⊤ + ˜ σ2I ˜N )−1( ˜Y − ˜Xθ pre ),
+
+ΣICL = Σ pre − Σpre ˜X⊤( ˜XΣpre ˜X⊤ + ˜ σ2I ˜N )−1 ˜XΣpre .
+
+The derivation follows from standard Bayesian updating (Appendix B.3). Geometrically, ICL updates only directions supported by the learned prior. If θ∗ − θpre ∈ col (Σ pre ), the target task is fully represented; otherwise, ICL effectively projects θ∗ onto θpre + col (Σ pre ),updating beliefs within this subspace based on observed data. We quantify this effect in Section 3. As in pretraining, ICL estimate ˆθICL ∼ N (θICL , ΣICL ) induces predictions for a new query x distributed as N (θ⊤
+
+> ICL
+
+x, ∥x∥2ΣICL ).
+
+Supervised Fine-Tuning. SFT adapts a pretrained LLM to a specific target task by updating model parameters using task-specific data. For example, a model’s performance on animal taxonomy can be improved by fine-tuning it on biological data. Formally, SFT is implemented by optimizing a task-level loss starting from the pretrained model as the initialization. Compared with ICL , this parameter optimization process makes SFT consume significantly more GPU resources, since parameter updates require additional FLOPs and memory storage. To model this process, given personalization data {(˜ xi, ˜yi)} ˜Ni=1 of the target task θ∗ ∼N (0 , Σ∗) generated according to (2.3) , SFT updates the task estimation via a regularized estimator centered at the pretrained LLM as 
+
+θSFT = arg min 
+
+> θ∈Rd
+
+1˜σ2 ∥ ˜Y − ˜Xθ ∥2 +λ∥θ−θpre ∥2Σ†
+
+> pre
+
+=
+
+ 1˜σ2 ˜X⊤ ˜X +λΣ†
+
+> pre
+
+† 1˜σ2 ˜X⊤ ˜Y +λΣ†
+
+> pre
+
+θpre 
+
+
+
+. (2.4) 7The regularization term encourages the fine-tuned parameters to remain close to the pretrained model, and λ ≥ 0 controls the strength of this anchoring. The regularization term acts as a Lagrangian penalty that softly constrains θSFT to remain close to the pretrained parameter θpre , thereby limiting how far SFT can adapt the model away from the pretrained solution. Since ΣSFT captures the uncertainty in θSFT , it is given by the covariance of θSFT as 
+
+ΣSFT =
+
+ 1˜σ2 ˜X⊤ ˜X + λΣ†
+
+> pre
+
+†
+
+λ2Σ† 
+
+> pre
+
++ 1˜σ2 ˜X⊤ ˜X
+
+ 1˜σ2 ˜X⊤ ˜X + λΣ†
+
+> pre
+
+†
+
+,
+
+with the derivation provided in Appendix B.4. Analogous to pretraining and ICL , SFT model ˆθSFT ∼ N (θSFT , ΣSFT ) induces the predictive distribution N (θ⊤
+
+> SFT
+
+x, ∥x∥2ΣSFT ) for a new query x.The parameter λ governs the trade-off between task-specific data and the pretrained model. When λ = 0 , the estimator reduces to least squares based solely on the personaliza-tion data. As λ goes to infinity, the estimator ignores the task data and collapses to the pretrained parameters θpre .
+
+## 2.2 A Continuum User Model for LLM Serving 
+
+Each user on the platform chooses a personalization algorithm— ICL or SFT —and the number of personalization samples ˜N to use. User experience, modeled as user cost, consists of two components: the quality of the LLM ’s response and the monetary and time costs incurred to obtain it. The first component of user cost depends on the pretrained model, the target task, the personalization algorithm, and the number of personalization samples. We capture this dependence via a user type t ∈ T , which summarizes properties of the pretrained model (μθ, Σθ, σ, X ) and the target task (Σ ∗, ˜σ, ˜X). The type space T is compact with Borel 
+
+σ-algebra T , and user types are distributed according to a probability measure T . Each user chooses an action ¯a = ( a, ˜N ) ∈ ¯A = A × [0 , ∞), where A = ICL , SFT and ˜N denotes the number of personalization samples. For a user of type t taking action (a, ˜N ), we define the learning error of the LLM as 
+
+Ea(t, ˜N ) = Eθ∗, ˆθa( ˜N )
+
+∥θ∗ − ˆθa( ˜N )∥2, (2.5) where ˆθa( ˜N ) ∼ N (θa( ˜N ), Σa( ˜N )) is the estimate produced by algorithm a using ˜N samples, and the expectation is taken over both the target task θ∗ ∼ N (0 , Σ∗) and the estimator. Although ˆθa( ˜N ) is not directly observable for LLM s, this error can be interpreted as the average prediction error obtained by querying the LLM along an orthonormal basis {ei}di=1 ,i.e., the average error of e⊤ 
+
+> i
+
+ˆθa( ˜N ). When a user of type t adopts a policy πt ∈ ∆( ¯A),where ∆( ·) denotes the set of all distributions over a set, the resulting response quality is 
+
+E(a, ˜N )∼πt [Ea(t, ˜N )] .The second component of user cost depends on the chosen personalization algorithm and aggregate user behavior. A user taking action ¯a = ( a, ˜N ) requests ˜N samples using 8algorithm a, which requires Ra units of resource per sample. As discussed in Section 2.1, SFT is more resource-intensive than ICL , i.e., RSFT > R ICL . The platform charges p > 0 per unit of resource, yielding a monetary cost of Ra ˜N p . Users also incur a congestion-induced time cost: letting R denote total resource demand, a congestion function h : R≥0 → [0 , ∞) maps 
+
+R to waiting time, yielding a cost Ra ˜N h (R). We impose following regularity conditions on 
+
+h: it is non-negative, strictly increasing, and unbounded ( lim x→∞ h(x) = ∞). These ensure that congestion raises compute costs and that extreme demand becomes prohibitively expensive, consistent with observed service outages (OpenAI, 2025). Accordingly, a user of type t taking action ¯a at congestion level R incurs a total cost as 
+
+C(t, ¯a, R ) = Ea(t, ˜N ) + Ra ˜N  p + h(R). (2.6) For convenience, define ¯h(R, p ) = p + h(R). When a type-t user adopts a policy πt over 
+
+¯A = A × R+, her expected cost is 
+
+C(t, π t, R ) = X
+
+> a∈A
+
+Z ∞
+
+> 0
+
+C t, (a, ˜N ), R  πt(a, d ˜N ).
+
+To evaluate aggregate resource demand, the population is modeled as a continuum of users, where type-t ∈ T users have mass T (d t). A policy profile is a measurable mapping 
+
+π : T → ∆( ¯A), assigning each type t a distribution πt over actions. Given a policy profile π,the congestion level, i.e., aggregate resource demand, is the population-average requested resources: 
+
+R(π) = X
+
+> a∈A
+
+Ra
+
+Z ∞
+
+> 0
+
+˜N
+
+Z
+
+> T
+
+πt(a, d ˜N ) T (d t) = X
+
+> a∈A
+
+Ra
+
+Z ∞
+
+> 0
+
+˜N ¯π(a, d ˜N ), (2.7) where ¯π = R 
+
+> T
+
+πtT (d t) is the induced “mean” policy. Each user therefore interacts with the population only through ¯π. We refer to this interaction as a LLM-Serving Congestion Game ( LSCG ). This model belongs to the class of mean-field games (Lasry and Lions, 2007; Carmona et al., 2016). Within LSCG , users choose policies to trade off statistical error Ea(t, ˜N ) against con-gestion costs: more resource-intensive algorithms or larger ˜N reduce error but increase aggregate congestion R(π) and the associated cost h(R). These trade-offs lead to a equilibrium concept. 
+
+Definition 2.1 (Equilibrium) . A pair of a policy and a congestion level (π∗, R ∗), where π∗ : T → 
+
+∆( ¯A) and R∗ ∈ R, is the equilibrium if 
+
+• (Optimality) The policy π∗ is optimal given the congestion level R∗ for almost every user, i.e., for T -a.e. t, we have π∗ 
+
+> t
+
+(BR( t, R ∗)) = 1 , where the best response operator is 
+
+BR( t, R ) = arg min    
+
+> (a, ˜N)∈¯A
+
+C t, (a, ˜N ), R .
+
+• (Consistency) The congestion level R∗ is induced by the policy π∗, i.e., R∗ = R(π∗).
+
+9This definition formalizes a Nash fixed point in a continuum setting. Optimality requires that, given congestion level R∗, almost every user type minimizes total cost C(t, (a, ˜N ), R ∗),while consistency requires that R∗ equals the congestion level induced by the population policy π∗. Equivalently, an equilibrium satisfies supp( π∗ 
+
+> t
+
+) ⊆ BR( t, R (π∗)) for T -a.e. t.
+
+# 3 Statistical Analysis of Personalization Algorithms 
+
+Which personalization method minimizes cost when users care only about answer qual-ity? This section provides a sharp answer: the comparison depends on two primi-tives—pretraining coverage of the task space and the signal-to-noise ratio of the user’s data. We will first derive closed-form error expressions Ea(t, ˜N ) for each method in (2.5) (Section 3.1), and then establish a precise comparison between SFT and ICL (Section 3.2). Throughout this section, we fix the user type t and the sample size ˜N , and suppress this dependence in the notation. 
+
+## 3.1 Error Characterizations of ICL and SFT 
+
+To isolate key differences between SFT and ICL , we first introduce several simplifying assumptions. 
+
+Assumption 3.1 (Spectral alignment) . We assume that the pretraining Gram matrix X⊤X, the SFT Gram matrix ˜X⊤ ˜X, and the prior covariance matrix Σ∗ of θ∗ are spectrally aligned: there exists an orthonormal matrix V = [ v1, · · · , v d] ∈ Rd×d such that all three matrices are diagonal in it, i.e., 
+
+X⊤X = V diag( π1, · · · , π r, 0, · · · , 0) V ⊤, ˜X⊤ ˜X = V diag( s1, . . ., s d)V ⊤, Σ∗ = V diag( τ1, . . ., τ d)V ⊤.
+
+The parameter r ≤ d specifies the rank of pretraining input X. For i ∈ [r], πi > 0 are the eigenvalues of X⊤X; for i ∈ [d], si ≥ 0 and τi ≥ 0 are the eigenvalues of ˜X⊤ ˜X and Σ∗, respectively. 
+
+Assumption 3.1 posits that the pretraining Gram matrix X⊤X, the SFT Gram matrix 
+
+˜X⊤ ˜X, and the task prior covariance Σ∗ share a common orthonormal eigenbasis V .This spectral alignment allows all three matrices to be diagonalized simultaneously, decomposing the errors of pretraining, SFT , and ICL into d independent one-dimensional problems with parameters (πi, s i, τ i). It essentially requires that the pretrained and SFT models share the same feature subspace in their hidden representations. Practically, this means that when the pretrained model is prompted with a question from the SFT data, even if it cannot answer the question correctly, it may still encode the semantic structure of the question through aligned feature directions. This is plausible for modern LLMs, whose pretrained representations often capture rich semantic information. Such alignment is standard in the literature, including the case V = Id (Mallinar et al., 2024; Li et al., 2023). Rank deficiency of the pretraining design, rank (X) = r < d , implies that pretraining observes only an r-dimensional subspace of Rd. Directions orthogonal to col (X) are weakly identified, so pretrained representations may fail to cover directions emphasized by the 10 downstream design ˜X or task prior Σ∗. For instance, an LLM pretrained with limited cybersecurity content may underperform on cybersecurity tasks (Weerawardhena et al., 2025). From a personalization perspective, d is the intrinsic task dimension, while r is the effective dimension covered by pretraining; directions outside col ( ˜X) and col (Σ ∗) are irrelevant for the task and cannot be exploited without personalization. 
+
+Assumption 3.2 (Pretraining inputs normalization) . The pretraining covariates are normalized to have a constant Σθ-norm, in the sense that ∥xi∥2Σθ = x⊤ 
+
+> i
+
+Σθxi = c2 for all samples i ∈ [N ].
+
+The constant-Σθ-norm assumption can be enforced by normalizing pretraining inputs, e.g., via length control or feature rescaling, and affects only the scalar factor ¯σ2 = σ2 + c2
+
+in the pretraining covariance (2.2) . In practice, this assumption means that different topics are equally represented in the pretraining data. With heterogeneous norms, the formulas would replace ¯σ2 by an appropriate average of ∥xi∥2Σθ without altering qualitative comparisons among SFT , and ICL . We impose this assumption to keep error expressions interpretable and to emphasize the role of the spectral quantities (πi, s i, τ i). Existing work imposes similar assumptions, e.g., xi are i.i.d. samples (Lu et al., 2025; Li et al., 2023). 
+
+Theorem 3.3 (Error Analyses of ICL and SFT ). Under Assumptions 3.1 and 3.2, when SFT and ICL use data ( ˜X, ˜Y ) generated according to (2.3) , the mean-squared errors of SFT , and ICL in 
+
+(2.5) are given as 
+
+EICL =
+
+> r
+
+X
+
+> i=1
+
+
+
+α2 
+
+> i
+
+· (Epre ,i − ¯σ2π−1 
+
+> i
+
+)
+
+| {z }
+
+> pretraining err. w/o uncertainty
+
++ ˜σ2 ¯σ4si
+
+(¯ σ2si + ˜ σ2πi)2
+
+| {z }
+
+> data noise
+
++ ˜σ2 ¯σ2
+
+¯σ2si + ˜ σ2πi
+
+| {z }
+
+> ICL uncertainty
+
+
+
++
+
+> d
+
+X
+
+> i=r+1
+
+τi
+
+| {z } 
+
+> task var.
+
+Eλ 
+
+> SFT
+
+=
+
+> r
+
+X
+
+> i=1
+
+
+
+(1 − β2 
+
+> i
+
+) Epre ,i 
+
+| {z } 
+
+> pretraining err.
+
++β2
+
+> i
+
+  ˜σ2s−1
+
+> i
+
+| {z } 
+
+> LS var.
+
++ ˜ σ2s−1
+
+> i
+
+| {z } 
+
+> SFT uncertainty
+
+
+
++
+
+> d
+
+X
+
+> i=r+1
+
+  ˜σ2s−1
+
+> i
+
+| {z } 
+
+> LS var.
+
++ ˜σ2s−1
+
+> i
+
+| {z } 
+
+> SFT uncertainty
+
+,
+
+where Epre ,i denotes the error of the pretrained LLM along the i-th dimension, detailed in Appendix C.1. Here ¯σ2 = σ2 +c2 denotes the effective noise in pretraining, combining the observation noise variance 
+
+σ2 and the input power c2. The coefficients {αi}ri=1 for ICL and {βi}ri=1 for SFT are given by 
+
+αi = ˜σ2πi
+
+¯σ2si + ˜ σ2πi
+
+, βi = ¯σ2si
+
+¯σ2si + λ˜σ2πi
+
+, i ∈ [r].
+
+A formal statement is provided in Appendix C.1. For each algorithm a ∈ { ICL , SFT },the estimator admits the decomposition ˆθa = θa + ωa, where ωa ∼ N (0 , Σa) captures intrinsic model uncertainty. The mean-squared error then decomposes as 
+
+E∥ˆθa − θ∗∥2 = E∥θa − θ∗∥2 + tr(Σ a) = algo. mean est. err. + uncertainty ,
+
+separating the algorithm’s mean estimation error from its uncertainty. Different algorithms yield different expressions for these two components. 11 To build intuition for the SFT and ICL error terms, suppose ˜X consists of ˜N/d repetitions of an orthonormal basis of Rd, so that si = ˜N/d = Θ( ˜N ). As shown in Section 2.1, ICL performs a Bayesian update under the pretrained prior and therefore inherits the information encoded in that prior. Importantly, the uncertainty of the pretrained model is not part of this prior, since it arises from our probabilistic modeling of the pretrained model itself. Thus, the ICL error inherits the pretraining error excluding uncertainty, i.e., 
+
+Epre ,i − ¯σ2π−1 
+
+> i
+
+, which is weighted by α2 
+
+> i
+
+for i ≤ r. The coefficients {αi}ri=1 depend on the pretraining precision πi, the effective pretraining noise ¯σ2, the personalization data strength 
+
+si, and the personalization data noise ˜σ2. As the personalization data strength increases, with si = Θ( ˜N ), we have αi = O( ˜N −1) and hence α2 
+
+> i
+
+= O( ˜N −2). Thus, the contribution of the inherited pretraining error decays as more in-context data become available. However, the residual task variation Pdi=r+1 τi in the remaining d − r dimensions cannot be reduced by additional in-context samples, because the pretrained prior does not support these directions. Beyond the inherited pretraining terms, ICL also incurs a data-noise term and an ICL -specific uncertainty term. The data-noise term captures the effect of noise in the personalization data during the Bayesian update, while the ICL -specific uncertainty term captures the posterior uncertainty after conditioning on the personalization data. Both terms depend on the personalization data strength si and the noise level ˜σ2, and both vanish as si → ∞ or ˜σ2 → 0.Under (2.4) , SFT outputs a direction-wise weighted combination of the pretrained prior and the Least Squares ( LS ) estimator. Accordingly, the SFT error Eλ 
+
+> SFT
+
+in Theorem 3.3 combines inherited pretraining error terms and personalization data-driven error terms, with the trade-off controlled by the coefficients {βi}ri=1 . The LS error consists of two parts: the variance of the LS estimator and the SFT uncertainty induced by fine-tuning on the personalization data. Both terms decrease with the personalization data strength si. The coefficients {βi}ri=1 determine how much weight is placed on the data-driven estimator relative to the pretrained prior, and they increase with si. When si = Θ( ˜N ) and the personalization sample size ˜N grows, we have βi → 1, so the inherited pretraining error vanishes, and the total error is dominated by the data-driven terms: the LS variance and the SFT uncertainty. The weighting by βi applies only to the r pretrained directions, since the pretrained model only covers these subspaces. In the remaining d − r coordinates, the error consists solely of personalization data-driven terms. Overall, Eλ 
+
+> SFT
+
+decays at rate 
+
+Θ( ˜N −1) when si = Θ( ˜N ).Overall, the errors of ICL and SFT both contain a component inherited from the pretrained model and a component induced by the personalization data. The key difference lies in how the two methods weight the pretrained information and how personalization data reduces the resulting error. In particular, ICL can only reduce error within the subspace covered by the pretrained prior, because it updates the model through Bayesian conditioning under that prior. By contrast, SFT can reduce error beyond the pretrained subspace, provided that the personalization data contain sufficient signal in those directions. 12 3.2 Comparisons of Personalization Algorithms 
+
+Before comparing personalization methods, we first explain why personalization algorithms are preferable to directly using pretrained models. To this end, we compare ICL with the pretrained LLM s. Since ICL updates the pretrained prior using personalization data, pre-training corresponds to the zero-sample case of ICL , implying Epre = EICL when si = 0 for all i ∈ [r]. With additional samples, ICL weakly dominates pretraining in estimation error. 
+
+Corollary 3.4 ( ICL Weakly Dominates Pretraining) . If Assumptions 3.1 and 3.2 hold, then 
+
+EICL ≤ Epre . Moreover, this inequality is strict in the non-degenerate case, i.e., when σ + c > 0 and there exists i ∈ [r] such that si > 0.
+
+Intuitively, the degenerate case arises when the pretrained LLM s either provides no useful information or already fully determines the task, both of which are unlikely in practice. Consequently, this result rationalizes the use of personalization algorithms. We next compare the errors of SFT and ICL . To capture the main intuition and simplify the analysis, we impose the following isotropicity assumption. 
+
+Assumption 3.5 (Isotropicity) . Across all covered directions, the energies of the pretraining samples and the samples of the desired task are isotropic: there exist scalars τ, s, m > 0 such that 
+
+τi = τ , si = s, and |v⊤ 
+
+> i
+
+μθ| = m for every i ∈ [d], and there exists a scalar π > 0 such that πi = π
+
+for every i ∈ [r].
+
+The isotropicity assumption is a structural simplification, not a claim of truly isotropic pretrained features. Although τi, si, |v⊤ 
+
+> i
+
+μθ|, and πi are generally heterogeneous, our analysis focuses on the relative performance of SFT and ICL . The key qualitative re-sults—comparative error performance, optimal SFT regularization, and signal propagation within the covered subspace—depend on aggregate signal-to-noise properties rather than fine-grained anisotropy. This assumption is standard in analyses of LLMs (Lu et al., 2025; Su, 2025). 
+
+Proposition 3.6 (Comparison between ICL and SFT ). Under Assumptions 3.1, 3.2, and 3.5, we define the coverage coefficient as R = r/ (d − r), and the signal-to-noise ratio in the subspace not covered by the pretrained model as κ = sτ / (2˜ σ2). Then, SFT with the optimal regularization parameter λ∗ achieves weakly lower error than ICL , i.e., Eλ∗ 
+
+> SFT
+
+≤ EICL , if and only if the following condition holds. 
+
+R ≥ (1 − κ) 2¯ σ2κ + πτ 2 2¯ σ2κ + πκ (τ + m2) + πτ 
+
+π3 κ2 τ (τ + m2)2 . (3.1) 
+
+We define the right-hand side of (3.1) as Rcrit .
+
+The proposition characterizes when SFT or ICL attains lower error, governed by two quantities: pretrained coverage R = r/ (d − r) and the “null-space” SNR κ = sτ / (2˜ σ2).Within the pretraining-covered subspace, SFT always dominates ICL , since its tunable shrinkage can match or improve upon ICL ’s Bayesian update (shown in our proof). Thus, 13 Realistic LLM Linear approximation of LLM Pretraining Pretraining data cover diverse top-ics, allowing the model to learn a broad prior over them. Data diversity: (2.1) ; A broad prior: (2.2). ICL ICL often outperforms pretraining alone, but it is difficult for ICL to exploit knowledge that is absent from pretraining. Improved performance: Corol-lary 3.4; Constrained improve-ment: τi of EICL in Theorem 3.3. SFT SFT may suffer from catastrophic forgetting, but it can also in-ject new knowledge into the pre-trained model. Catastrophic forgetting: when si
+
+is small, Eλ 
+
+> SFT
+
+in Theorem 3.3 is large; Knowledge injection: when 
+
+si is large, Eλ 
+
+> SFT
+
+tends to 0.Table 1: Comparison between realistic LLM s and their linear approximation under pretraining, ICL, and SFT. ICL can outperform SFT only through its conservatism in the null space: ICL ignores uncovered directions and incurs a fixed cost τ , whereas SFT attempts to learn there and pays 2˜ σ2/s , which is detrimental when κ < 1. The threshold Rcrit in (3.1) quantifies the coverage required for SFT ′s row-space advantage to offset this penalty: if κ ≥ 1, SFT strictly dominates for any R > 0; if 0 < κ < 1, SFT is optimal iff R ≥ Rcrit .
+
+Finding 1: When the personalization task is poorly covered by the pretrained prior and the personalization data are noisy or limited, ICL can achieve lower error than SFT under the linear model. In this regime, ICL is safer because it updates only within the subspace supported by the pretrained prior, while SFT may incur large variance when learning poorly supported directions. Conversely, when the personalization data are sufficiently informative, SFT can achieve lower error by learning beyond the pretrained subspace. 
+
+## 3.3 Comparison between Realistic and Linearly Approximated LLMs 
+
+In the following, we explain how our linear approximation captures the behavior of realistic LLM s in personalization tasks. Consider a user who wants to adapt a pretrained LLM to a target task using personalization data. Whether ICL or SFT is more effective depends on two factors: how well the target task is already covered by the pretrained model, and how informative the personalization data are. Table 1 compares this behavior in realistic LLM s and in our linear approximation. During pretraining, realistic LLM s learn from diverse corpora and acquire a broad prior over tasks (Touvron et al., 2023; Grattafiori et al., 2024). In the linear model, this is captured by the heterogeneous task parameters in the pretraining data distribution (2.1) and by the learned prior covariance in (2.2) . Given a personalization task, ICL uses demonstrations to identify and exploit the task-relevant knowledge already present in this prior, without changing the model parameters. This 14 explains why ICL often improves over pretraining alone, as formalized by Corollary 3.4. However, because ICL updates only within the subspace supported by the pretrained prior, its improvement is limited when the target task requires knowledge poorly covered by pretraining; this limitation appears in Theorem 3.3 through the residual task-variation terms in EICL . In contrast, SFT updates the model parameters using personalization data and can therefore learn beyond the pretrained subspace. This makes SFT more powerful when the personalization data are sufficiently informative. At the same time, when the personalization data are noisy or limited, SFT may fit poorly supported directions and incur large estimation error, reflecting the practical trade-off between retaining pretrained knowledge and injecting new task-specific knowledge (Luo et al., 2025). Theorem 3.3 captures this trade-off through Eλ
+
+> SFT
+
+: small personalization data strength leads to large data-driven error, whereas sufficiently large personalization data strength allows the SFT error to decrease and eventually learn the target task effectively. 
+
+# 4 LLM-Serving Congestion Game of Users 
+
+Section 3 characterizes which personalization method is statistically optimal. However, users do not choose in isolation; they share a platform with limited computational resources. When many users personalize simultaneously, congestion arises, leading to higher latency as aggregate demand increases. This section asks: what equilibrium emerges when users strategically choose personalization methods and sample sizes while facing congestion? We establish three main results. First, an equilibrium exists and the equilibrium congestion level is unique (Section 4.1). Second, the pretrained LLM s and target tasks exert nuanced, non-monotone effects on equilibrium congestion (Section 4.2). Finally, the pretrained LLM s can cause the equilibrium to anchor on a particular user type (Section 4.3). 
+
+## 4.1 Existence and Congestion-Level Uniqueness of Equilibrium 
+
+We first characterize user types and derive the corresponding expressions for Ea(t, ˜N )
+
+in (2.5) . Under Assumptions 3.1, 3.2, and 3.5, the effective eigenvalue s of ˜X⊤ ˜X scales with the number of personalization samples ˜N . We model this as s = ˜N α for some 
+
+0 < α ≤ 1, capturing potentially sublinear information growth due to data redundancy. When the rows of ˜X are i.i.d. standard Gaussian, s = ˜N holds with high probability (see Appendix B.1). All remaining parameters in Assumptions 3.1, 3.2, and 3.5— d, r, ¯σ, ˜σ, m, π, and τ —are intrinsic to the personalization problem. We therefore define the user type as t =(d, r, ¯σ, ˜σ, m, π, τ ), with dependence on the sample size captured by s = ˜N α. The type space T is any compact, feasible subset of these parameters, e.g., (d, r ) ∈ { (x, y ) | 500 ≤
+
+x ≤ 1000 , ; 500 ≤ y ≤ x}. Under these assumptions, Theorem 3.3 and Proposition 3.6 15 characterize the ICL and optimal SFT errors as 
+
+EICL (t, ˜N ) = r˜σ2 2¯ σ4 ˜N α + ˜ σ2π2ζ
+
+(¯ σ2 ˜N α + ˜ σ2π)2 + ( d − r)τ, E SFT (t, ˜N ) = 2r˜σ2ζ
+
+˜N αζ + 2˜ σ2 + 2( d − r) ˜σ2
+
+˜N α , (4.1) where ζ = τ + 2¯ σ2π−1 + m2. Here we set the SFT regularization parameter to its optimal value λ∗, and omit the superscript λ∗ for notational simplicity. With these specifications, the cost function in (2.6) admits explicit expressions. We then analyze the resulting equilibrium properties. 
+
+Theorem 4.1 (Existence and Congestion-Level Uniqueness of Equilibrium) . Under regularity conditions of h, an equilibrium (π∗, R ∗) exists. Moreover, the equilibrium congestion level R∗ is unique. In other words: if (π∗ 
+
+> 1
+
+, R ∗
+
+> 1
+
+) and (π∗ 
+
+> 2
+
+, R ∗
+
+> 2
+
+) are two equilibria, then R∗ 
+
+> 1
+
+= R∗
+
+> 2
+
+.
+
+Economically, the existence result rules out pathological cases in which demand fails to clear or conjectured congestion levels cannot be supported by any population behavior. The proof also yields an explicit upper bound on equilibrium congestion R∗, ensuring that congestion remains finite and that the system never requires unbounded computational resources, consistent with real-world LLM service constraints. Unlike much of the mean-field game literature (Lasry and Lions, 2007; Guo et al., 2019; Zhang et al., 2023a), which focuses on uniqueness of the equilibrium policy π∗, Theorem 4.1 establishes uniqueness of the induced congestion level R∗. Thus, even when multiple equilibrium policies exist, the model delivers a unique prediction for congestion. This is crucial because R∗ determines latencies and effective per-unit compute costs p + h(R) and is the key state variable for platform demand and revenue forecasting (Section 5). The uniqueness proof relies on a no-crossing property (Lemma D.2): higher congestion raises the per-unit cost p + h(R) and shifts best-response resource demands downward. As a result, aggregate demand is decreasing in conjectured congestion, yielding a unique fixed point for R∗ (Theorem 4.1). This mirrors the classical monotonicity condition in mean-field games (Lasry and Lions, 2007; Graber and Mészáros, 2023), but at the congestion level: monotonicity of best responses in congestion ensures uniqueness of the equilibrium congestion. Having established existence and uniqueness of the equilibrium congestion level, we next study two special cases—homogeneous users and two user types—to examine how LLM characteristics and user heterogeneity shape equilibrium outcomes. 
+
+## 4.2 Analysis of LSCG with Homogeneous Users 
+
+Characterization of the Equilibrium. To build intuitions, we first study the LSCG with homogeneous users, where all users share the same type and the type index t is omitted from the notation. To highlight the core insights, we simplify the ICL and SFT error expressions in (4.1) while preserving their asymptotic behavior as ˜N → 0 and ˜N → ∞ .When ˜N is large, as is typical in practice, we have 
+
+EICL ( ˜N ) = ( d − r)τ + Θ(˜ σ2r ˜N −α), ESFT ( ˜N ) = Θ(˜ σ2d ˜N −α).
+
+16 In contrast, as ˜N ↓ 0, we have that EICL (0) = ( d − r)τ + rζ , and lim ˜N ↓0 ESFT ( ˜N ) = + ∞. To simplify expressions while preserving these asymptotic behaviors, we approximate error functions (4.1) by 
+
+EICL ( ˜N ) = 2˜ σ2r
+
+˜N α + 2˜ σ2ζ−1 + ( d − r)τ, ESFT ( ˜N ) = 2˜ σ2d
+
+˜N α . (4.2) We emphasize that this simplification preserves the main insights underlying the compar-ison between ICL and SFT in Proposition 3.6. In particular, when the signal-to-noise ratio of the personalization data is large, i.e., κ = τ ˜N α/(2˜ σ2) > d/ (d − r), SFT achieves a lower error than ICL. In the remainder of this section, we set α = 1 , corresponding to the case of i.i.d. Gaussian covariates, as discussed in Appendix B.1. For analytical convenience, we further adopt the quadratic congestion function h(R) = R2, so that ¯h(R, p ) = p + R2. This quadratic form is adopted for the ease of calculation. However, our results in this section hold for a wide range of convex and non-negative congestion functions h. We empirically verify that all our results hold for h(x) = exp( x) and h(x) = max {0, x } in Appendix I. The following assumption is imposed to reflect the relative computational requirements of SFT and ICL .
+
+Assumption 4.2 (Relative Resource Consumption of SFT and ICL ). The consumed resource of SFT per sample is larger than that of ICL, i.e., RSFT > R ICL .
+
+Discussed in Section 2, SFT updates the LLM ’s parameters using personalization data, requiring data prefill, gradient backpropagation, and updates to both parameters and optimizer states. In contrast, ICL involves only data prefill. Thus, SFT is more computationally demanding than ICL. We analyze equilibrium behavior under homogeneous users by first characterizing outcomes when users are restricted to a single algorithm, and then comparing SFT and ICL to study algorithm switching and derive the full equilibrium. We begin by characterizing user behavior under a fixed algorithm. For any a ∈ A = {SFT , ICL } and per-unit resource cost H, which aggregates monetary and time costs, we define the minimal cost and corresponding optimal sample size as 
+
+Φa(H) = min  
+
+> N≥0
+
+Ea(N ) + RaN H , Na(H) = argmin  
+
+> N≥0
+
+Ea(N ) + RaN H .
+
+For both algorithms a ∈ { ICL , SFT }, the statistical error Ea(N ) in (4.2) is strictly convex in N , while the resource cost RaN H is linear in N for fixed H; hence the optimal sample size Na(H) is uniquely defined. If users are restricted to a single algorithm a ∈ A , they optimally choose Na(H) at congestion level R = √H − p. We characterize behavior under this restriction by the within-algorithm fixed point: 
+
+H∗ 
+
+> a
+
+= ¯h(RaNa(H∗ 
+
+> a
+
+), p ) = ( RaNa(H∗ 
+
+> a
+
+)) 2 + p, 
+
+where R∗ 
+
+> a
+
+= pH∗ 
+
+> a
+
+− p is the induced equilibrium congestion. Existence and uniqueness of 
+
+H∗ 
+
+> a
+
+are established later. To connect these within-algorithm equilibria to the full game, we compare minimal costs across algorithms. Let ψ(H) = Φ SFT (H) − ΦICL (H), and define H∗
+
+> sep
+
+as the solution to ψ(H) = 0 , which separates regions where users prefer SFT or ICL. 17 Theorem 4.3 (Equilibrium with Homogeneous Users) . The game specified by (4.2) , α = 1 ,
+
+h(x) = x2, and RSFT > R ICL has the following properties. 1. The optimal SFT sample size requires more resources than ICL :RSFT NSFT (H)> R ICL NICL (H),∀H≥ 0.2. The fixed points H∗ 
+
+> SFT
+
+and H∗ 
+
+> ICL
+
+exists and are unique. In addition, H∗ 
+
+> SFT
+
+> H ∗ 
+
+> ICL
+
+≥ p.3. The function ψ(H) is strictly increasing in H, and has unique root H∗ 
+
+> sep
+
+> 0.4. The equilibrium (π∗, R ∗) is specified for the unique user type with T (t) = 1 as follows. 
+
+H∗ = max H∗
+
+> ICL
+
+, min {H∗
+
+> sep
+
+, H ∗
+
+> SFT
+
+} , R∗ = pH∗ − p, π∗
+
+> t
+
+ SFT , N SFT (H∗)
+
+=
+
+√H∗ − p − RICL NICL (H∗)
+
+RSFT NSFT (H∗) − RICL NICL (H∗),π∗
+
+> t
+
+ ICL , N ICL (H∗)
+
+= 1 − π∗
+
+ SFT , N SFT (H∗)
+
+.
+
+Figure 1: This figure illustrates the structure of the equilibrium with homogeneous users. The intersection point of the line y = H and the blue dotted curve corresponds to the equilibrium of the game. Theorem 4.3 characterizes the equilib-rium with homogeneous users by reduc-ing the equilibrium problem to a one-dimensional fixed point in the effective per-unit compute cost H = p + h(R), illustrated in Figure 1. Parts (1)–(3) establish the structure un-derlying equilibrium selection. First, SFT in-duces strictly higher resource demand than ICL at any given H, as implied by Assump-tion 4.2 and illustrated in Figure 1, where 
+
+h(RSFT NSFT (H)) > h (RICL NICL (H)) for all H.Second, for each algorithm a ∈ SFT , ICL , the within-algorithm fixed point H∗ 
+
+> a
+
+exists and is unique. As a consequence of part (1), we have H∗ 
+
+> SFT
+
+> H ∗
+
+> ICL
+
+. Third, a unique threshold 
+
+H∗ 
+
+> sep
+
+governs algorithm choice: users pre-fer SFT when H < H ∗ 
+
+> sep
+
+and ICL otherwise, echoing Proposition 3.6. When H is small, Lemma D.2 implies higher optimal data us-age, raising the signal-to-noise ratio κ and eventually favoring SFT over ICL. Part (4) shows that the equilibrium H∗ is obtained by clipping H∗ 
+
+> sep
+
+between the two within-algorithm fixed points, yielding a closed-form characterization of R∗ = √H∗ − p
+
+and the induced mixing between SFT and ICL . Illustrated in Figure 1, the equilibrium corresponds to the intersection of y = H with the induced curve p+h(R). Economically, the result highlights how congestion endogenously disciplines high-compute personalization: 18 0 5 10 15 20             
+
+> π
+> 2
+> 3
+> 4
+> 5
+> 6
+> R∗
+> p=0
+> p=7
+> p=14
+> p=21
+> p=28
+> p=35
+> p=42
+> p=49 (a) The values of R∗with various π.020 40 60 80 100
+> r
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> R∗
+> p=0
+> p=2
+> p=4
+> p=6
+> p=8
+> p=10
+> p=12
+> p=14 (b) The values of R∗with various r.
+
+Figure 2: The figures show how the equilibrium congestion level R∗ varies with the prior precision π and the pretraining coverage r of the pretrained LLM s. Higher prior precision monotonically reduces congestion, whereas broader pretraining coverage can have a non-monotone effect on R∗.when congestion is low (small H), users tilt toward SFT ; when congestion is high (large H), users tilt toward ICL ; and in the intermediate regime, the equilibrium features a mixture that exactly clears the congestion externality. 
+
+Comparative Statics of Equilibrium Congestion Level. In what follows, we study how the equilibrium varies with problem parameters. To illustrate our results, we run simulations for the LSCG defined in (4.2) with congestion function h(R) = R2 under various parameter configurations. Details of the experimental setup are provided in Appendix H. Throughout, a function f (x) is said to be increasing in x if f (x2) ≥ f (x1) for all x2 > x 1. We first focus on parameters related to the pretrained model, namely π and r.
+
+Proposition 4.4 (Influence of Pretrained LLM s on Equilibrium) . Under models (4.2) with 
+
+α = 1 , ¯h(R, p ) = p + R2, and RSFT > R ICL , the following holds. 1. The congestion-level R∗ decreasing in π.2. Assume that 2τ > ζ . If p and RICL are sufficiently small, then there exist thresholds 
+
+r∗ < r ∗∗ < d such that the equilibrium congestion R∗ is increasing in r on [0 , r ∗] ∪ [r∗∗ , d ] and decreasing in r on [r∗, r ∗∗ ] as r ranges from 0 to d. Otherwise, R∗ is increasing in r ∈ [0 , d ].
+
+A full statement is in Appendix F.3. These results characterize how improvements in pretraining affect the equilibrium congestion level R∗ in Figure 2, i.e., the resources amount used at the equilibrium. The comparative statics operate via two channels: prior precision 
+
+π and coverage r.19 First, increasing π unambiguously reduces the equilibrium congestion level R∗. Since π
+
+measures the precision of the pretrained prior, a higher π lowers the marginal value of additional personalization samples, reducing users’ best-response resource demands and shifting the congestion fixed point downward. Economically, this reflects a substitution from online serving compute toward offline pretraining: improving pretrained model quality alleviates congestion at inference time. The effect of expanding coverage r is more nuanced, as it affects both the scope and effectiveness of personalization. When p and RICL are sufficiently small, users’ personalization choices are highly elastic and the equilibrium responds on both an intensive margin (optimal personalization intensity conditional on the method) and an extensive margin (switching between ICL and SFT ). For small r, expanding r also enlarges the biased portion of the covered representation—features learned in pretraining but misaligned with the target task—so the gains from correcting these biases via SFT rise; ICL remains at a corner with zero optimal samples, and aggregate compute demand (hence R∗) increases. Over an intermediate range [r∗, r ∗∗ ], improved coverage reshuffles relative returns across methods so that substitution on the extensive margin dominates, reducing total resource demand and lowering congestion. For large r, the intensive margin reasserts itself: additional coverage makes marginal ICL samples highly productive on a broad covered subspace, users scale up sample sizes, and R∗ rises again, yielding the non-monotone “increase–decrease–increase” relationship. In contrast, when p or RICL is large enough, higher effective costs compress optimal sample intensities. The equilibrium is then governed primarily by the intensive-margin adjustments within SFT and ICL , and expanding coverage raises the marginal returns to personalization on covered dimensions without generating sizable compositional shifts across methods. As a result, under 2τ > ζ , equilibrium congestion R∗ is increasing in r
+
+over [0 , d ]: broader coverage translates into higher aggregate compute demand rather than being offset by substitution effects. Then we analyze the task-related parameter ˜σ.
+
+Proposition 4.5 (Influence of Target Tasks on Equilibrium) . There exist two numbers ˜σ1 ≤ ˜σ2,depending on all the other parameters, i.e., RSFT , R ICL , d, r, ¯σ, m, π, τ, s , such that the following holds. 1. When ˜σ ∈ [0 , ˜σ1], R∗ is increasing in ˜σ.2. When ˜σ ∈ [˜ σ2, ∞), R∗ is decreasing in ˜σ.
+
+The proposition shows that the equilibrium congestion R∗ can be non-monotone in task noise ˜σ (Figure 3(a)). Since ˜σ governs the productivity of personalization, the result identifies two thresholds ˜σ1 ≤ ˜σ2 at which the direction of the congestion response reverses. When ˜σ is small, personalization remains effective: increasing noise raises baseline error without significantly reducing sample informativeness, inducing users to increase personalization intensity and raising equilibrium congestion. Thus, R∗ increases with ˜σ
+
+on [0 , ˜σ1]. When ˜σ is large, noise sharply reduces the marginal returns to personalization, leading users to scale back compute usage and lowering aggregate demand; accordingly, 
+
+R∗ decreases with ˜σ on [˜ σ2, ∞).20 0 3 6 9 12 ˜σ
+
+0
+
+1
+
+3
+
+5
+
+7
+
+9   
+
+> R∗
+> π=0.1
+> π=0.3
+> π=0.5
+> π=0.7
+> π=0.9
+> π=1.1
+> π=1.3
+> π=1.5 (a) The values of R∗with various ˜σ.
+
+0 4 8 12 16 20 
+
+RSFT − RICL 
+
+2
+
+4
+
+6
+
+8    
+
+> R∗
+> RICL =1.0
+> RICL =2.0
+> RICL =3.0
+> RICL =4.0
+> RICL =5.0
+> RICL =6.0
+> RICL =7.0
+> RICL =8.0 (b) The values of R∗with various RSFT .
+
+Figure 3: The figures show how the equilibrium congestion level R∗ varies with the personalization data noise ˜σ and the per-sample resource requirements of SFT and ICL ,
+
+RSFT and RICL . The equilibrium congestion level R∗ is non-monotone in the data noise ˜σ
+
+and can also be non-monotone in the SFT resource requirement RSFT .We then analyze how RSFT and RICL affect the equilibrium. 
+
+Proposition 4.6 (Influence of Resource Consumption on Equilibrium) . There exists a threshold 
+
+R∗
+
+> ICL
+
+, depending onmodel parameters ˜σ, d, r, ¯σ, m, π, τ, and s, such that the following holds. 1. If RICL < R ∗
+
+> ICL
+
+, then as RSFT increases from RICL to ∞, the equilibrium congestion level R∗ in the equilibrium first increases and then decreases. 2. If RICL ≥ R∗
+
+> ICL
+
+, then as RSFT increases from RICL to ∞, the equilibrium congestion level R∗ in the equilibrium decreases monotonically. 
+
+This proposition characterizes how equilibrium congestion responds to the per-sample resource intensity RSFT , shown in Figure 3(b). An increase in RSFT raises the marginal cost of SFT , affecting both users’ algorithm choice and optimal sample sizes, with the resulting effect on R∗ depending on the relative compute efficiency of ICL, as captured by RICL .If RICL < R ∗
+
+> ICL
+
+, then ICL is sufficiently compute-efficient that the equilibrium features an economically meaningful substitution margin. As RSFT rises from RICL , equilibrium congestion can initially increase because users’ best responses adjust along the intensity margin while SFT remains competitive for a subset of users; aggregate demand rises at the fixed point. When RSFT becomes large, SFT is priced out and users substitute toward ICL , reducing aggregate resource usage and driving R∗ down. If RICL ≥ R∗
+
+> ICL
+
+, since RSFT 
+
+increases from RICL , its initial value is high enough . Raising RSFT mainly deters SFT without inducing compensating increases in equilibrium personalization intensity, so aggregate demand shifts downward and R∗ decreases monotonically with RSFT .21 Finding 2: The equilibrium congestion level R∗ responds non-monotonically to changes in pretraining coverage, task difficulty, and the relative cost of SFT , because users adjust both the personalization method they choose (extensive margin) and the amount of personalization data they use (intensive margin). For example, when personalization data become more valuable, users may use fewer samples to achieve the same error level, or they may switch to SFT and use more samples to further reduce error. Which force dominates depends on the regime determined by the pretrained model’s coverage and the quality of the personalization data. 
+
+## 4.3 Analysis of LSCG with Heterogeneous Users 
+
+In this section, we study an LSCG with two types of users, t ∈ { t1, t 2}, with population shares T (t1) = q, and T (t2) = 1 − q. To distinguish parameters across types, we use the subscript i to index user types. For example, ˜σ1 and ˜σ2 denote the noise amplitudes of type 1 and type 2 users, respectively. As in Section 4.2, we adopt the simplification for ICL and SFT errors given in (4.2). 
+
+Characterization of the Equilibrium. Analogous to the homogeneous case, for each user type t and algorithm a ∈ A we define the minimal cost and the corresponding optimal number of samples as 
+
+Φa(t, H ) = min  
+
+> N≥0
+
+Ea(t, N ) + RaN H , Na(t, H ) = argmin  
+
+> N≥0
+
+Ea(t, N ) + RaN H .
+
+If all users are of type t and are restricted to a single algorithm a, the resulting equilibrium is characterized by the unique solution H∗ 
+
+> a
+
+(t) to the fix-point equation 
+
+H = ¯h(Ra · Na(t, H ), p ) = ( Ra · Na(t, H )) 2 + p. 
+
+In addition, to compare algorithms for type-t users, we define the difference of SFT and ICL in minimal costs as ψ(t, H ) = Φ SFT (t, H ) − ΦICL (t, H ). By the homogeneous analysis in Section 4.2, the equation ψ(t, H ) = 0 admits a unique solution for each type t. We denote this threshold by H∗
+
+> sep
+
+(t) and, without loss of generality, assume H∗
+
+> sep
+
+(t2) ≤ H∗
+
+> sep
+
+(t1). Before stating our main result, define 
+
+e(H) = qR SFT NSFT (t1, H ) + (1 − q)RSFT NSFT (t2, H ),f (H) = qR SFT NSFT (t1, H ) + (1 − q)RICL NICL (t2, H ),g(H) = qR ICL NICL (t1, H ) + (1 − q)RICL NICL (t2, H ).
+
+Here, NSFT (t, H ) and NICL (t, H ) denote the optimal numbers of personalization samples chosen by a type-t user under SFT and ICL , respectively, at unit resource cost H. Accordingly, 
+
+e(H) represents aggregate resource demand when all users adopt SFT ; f (H) represents aggregate resource demand when type-t1 users adopt SFT and type-t2 users adopt ICL ;22 and g(H) represents aggregate resource demand when all users adopt ICL . In each case, users choose their sample sizes optimally given H. We next characterize the equilibrium of (4.2) under α = 1 , T (t1) = q, T (t2) = 1 − q, h(x) = x2, and RSFT > R ICL .
+
+Theorem 4.7 (Equilibrium with Two-type Users) . When H∗
+
+> sep
+
+(t2) < H ∗
+
+> sep
+
+(t1), the equilibrium has a threshold structure: at low congestion all users choose SFT , at high congestion all users choose ICL , and at intermediate congestion type-t1 users choose SFT while type-t2 users choose ICL , with possible mixing only at the two indifference thresholds. Within each regime, H∗ is characterized by the fixed point H = Φ( H)2 + p for some function Φ ∈ { e, f, g }, and R∗ = √H∗ − p.
+
+The full characterization, including the case H∗
+
+> sep
+
+(t2) = H∗
+
+> sep
+
+(t1), is provided in Ap-pendix D.3. The key insight is that heterogeneity makes equilibrium congestion a regime-switching outcome governed by a small number of type-specific thresholds, illustrated in Figure 4. The separator H∗
+
+> sep
+
+(t) summarizes a type’s willingness to pay in resource costs to use the more resource-intensive method. The ordering H∗
+
+> sep
+
+(t2) < H ∗
+
+> sep
+
+(t1) implies that 
+
+Figure 4: This figure illustrates the equi-librium with two user types. For i ∈{1, 2} and a ∈ A, we define ¯ha,i (H) =
+
+p + h(RaNa(ti, H )) . The intersection of the line y = H with the blue dotted curve corre-sponds to the equilibrium. type t2 switches first as congestion prices change. The aggregate resource usage is determined either in interior regimes with strict method choices or in boundary regimes where the marginal type mixes and absorbs parameter changes through its mixing proba-bility. Consequently, comparative statics can be locally muted in mixing regimes, where 
+
+H∗ is pinned at a separator, but shift sharply when the economy crosses a threshold, as small parameter changes induce discrete shifts in method adoption. The extension to 
+
+K user types is direct. 
+
+Comparative Statics of Equilibrium Con-gestion Level. To study user interactions in the LSCG , we restrict heterogeneity to the noise parameter ˜σ, holding all other parame-ters fixed. The equilibrium congestion level can then be written as R∗ = R∗(˜ σ1, ˜σ2, q ). We say that equilibrium congestion is anchored by type ˜σ2 if, holding ˜σ2 fixed, small changes in ˜σ1 or the population share q leave R∗ un-changed, i.e., ∂˜σ1 R∗ = ∂qR∗ = 0 . The following proposition characterizes when anchoring obtains for fixed ˜σ2 > 0 with q ∈ (0 , 1) and ˜σ1 < ˜σ2.
+
+Proposition 4.8 (Necessary and sufficient conditions for ∂˜σ1 R∗ = ∂qR∗ = 0 ). The equilibrium congestion level is anchored by type ˜σ2, i.e., ∂˜σ1 R∗ = ∂qR∗ = 0 if and only if the equilibrium lies in 
+
+23 a locally “flat” regime: either (i) the fixed point is pinned at the type-2 separator, H∗ = H∗
+
+> sep
+
+(˜ σ2) (ii) the equilibrium is the corner R∗ = 0 .The following sufficient conditions ensure the pinning regime in (i): 
+
+• The data noise level ˜σ2 lies in an intermediate band, so the type-2 separator falls in the interior mixing region rather than near the zero-congestion corner or an extreme-congestion regime. 
+
+• The pretraining precision proxy π/ζ and the residual scale (d − r)τ are large, so the relevant demand mappings are well separated. 
+
+• The type-1 population share q is small, so type 1 does not shift the fixed point away from the type-2 separator. 
+
+A formal statement is in Appendix F.6. Proposition 4.8 shows that the stationarity condition ∂˜σ1 R∗ = ∂qR∗ = 0 arises only when equilibrium congestion is pinned, rather than determined by smooth interior adjustments. In the first regime, H∗ = h(R∗) + p is pinned at the type-2 separator: type-2 users are indifferent between SFT and ICL , and small changes in (˜ σ1, q ) can be absorbed through their mixing behavior. In the second 0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+|∂qR∗| + |∂˜σ1R∗|
+
+> 10 −11
+> 10 −8
+> 10 −5
+> 10 −2
+> 10 1
+
+Figure 5: The figure reports |∂qR∗| + |∂˜σ1 R∗|
+
+across different values of the type-1 task noise ˜σ1 and population share q. In the dark-blue region, the near-zero sensitivity indicates that the equilibrium congestion level is pinned by the type-2 separator and is locally insensitive to changes in ˜σ1 and q.regime, R∗ = 0 is a stable zero-congestion corner: both types strictly prefer ICL and choose ˜NICL = 0 .The sufficient conditions place the game in a robust type-2-pinned mixing regime. The bounds on ˜σ2 position H∗
+
+> sep
+
+(˜ σ2) away from both the zero-congestion corner and the extreme-congestion regime, ensuring an interior mixing wedge. A small pretraining-error index ζ makes ICL effective, lowering marginal ICL demand and widening the resource gap between the type-2 ICL and SFT choices at the separator. A large uncovered-error floor (d − r)τ further ensures strict inequalities, so the separator is a genuine switching locus rather than a knife-edge. Finally, the upper bound on q keeps the type-1 population sufficiently small, and hence leaves enough type-2 mass for type-2 mixing behavior to pin aggregate congestion; the admissible type-1 share decreases with ˜σ1.This setting is illustrated in Figure 5. 
+
+Finding 3: The equilibrium becomes anchored in two cases: either one type of users is exactly indifferent between ICL and SFT , or users choose not to use any personalization data because computation is too costly. In these cases, small parameter changes are 24 absorbed by adjustments in mixing behavior or by continued inactivity, so aggregate compute demand remains locally unchanged. 
+
+# 5 Stackelberg LLM-Serving Congestion Game Between a Platform and Users 
+
+Equilibrium Definition. Section 4 characterizes equilibrium properties under a fixed platform serving strategy, such as a fixed price p. In practice, however, the platform seeks to maximize its profit by optimizing the serving strategy. This section asks: which strategies maximize the platform’s profit at the induced user equilibrium? The interaction between the platform and users proceeds as follows. 1. The platform sets the unit resource price p.2. Given p, users reach the equilibrium (π∗(p), R ∗(p)) of the induced game via (2.6) and (4.1); we explicitly indicate the dependence on p.3. The platform collects profit I(p) = ( p − 1) · R∗(p).In the platform’s profit, the constant 1 represents the normalized cost of one unit of computational resource. We highlight that the profit I(p) is well-defined: by Theorem 4.1, for each price p the followers’ game admits an equilibrium with a unique congestion level, so the induced aggregate consumption R∗(p) and the resulting profit I(p) are single-valued. This interaction can be formulated as a Stackelberg LLM-Serving Congestion Game ( SLSCG ), with the platform acting as the leader that sets the price and users as followers. The equilibrium concept is defined as follows. 
+
+Definition 5.1. The triplet (p∗, π ∗, R ∗) is the Stackelberg equilibrium if 
+
+• (Follower equilibrium) The pair (π∗, R ∗) is the equilibrium of the LSCG induced by price p∗.
+
+• (Leader optimality) The price p∗ maximizes profit I(p) = ( p − 1) R∗(p) over p > 0.
+
+Intuitively, the platform moves first and anticipates how users will respond to its price. For any price p, users choose their personalization policies and reach an equilibrium resource demand R∗(p). The platform then selects the price that maximizes its profit, given by the per-unit margin p − 1 multiplied by equilibrium resource consumption. Thus, the Stackelberg equilibrium combines users’ optimal responses with the platform’s optimal pricing decision. 25 Price Effects on Equilibrium and Profit. We then analyze how the price p affects the equilibrium congestion level R∗(p) and profit I(p).
+
+Theorem 5.2 (Monotonicity of equilibrium congestion in price) . Under regularity conditions of h, the unique equilibrium congestion level R∗(p) is decreasing in the unit resource price p. That is, for any p1 < p 2, we have that R∗(p2) ≤ R∗(p1).
+
+This theorem formalizes congestion pricing: a higher unit resource price p raises users’ marginal cost, shifting best responses toward less resource-intensive behavior. As a result, users demand fewer personalization samples and substitute away from compute-heavy algorithms, reducing aggregate demand at every conjectured congestion level and implying that the unique equilibrium congestion R∗(p) is decreasing in p.Although R∗(p) decreases in p, a natural question is whether the profit-maximizing price p∗ is finite. For analytical tractability, we focus on the case α = 1 for (4.1). 
+
+Proposition 5.3 (Boundedness of Platform Profit) . When regularity conditions of h holds, 
+
+α = 1 , and the following holds 
+
+sup 
+
+> t∈T
+
+(( d − r)τ + rζ )2(d − r)−1 ˜σ−2 + ¯ σ2r(πζ − ¯σ2)π−2 ˜σ−2 < ∞,
+
+the Stackelberg equilibrium (p∗, π ∗, R ∗) exists with p∗ < ∞ and I(p∗) < ∞.
+
+This proposition establishes conditions under which the platform’s Stackelberg problem is well posed and admits a finite optimal price p∗ < ∞. The key requirement is to rule out p → ∞ as an optimal strategy by showing that, for sufficiently large p, equilibrium congestion R∗(p) decays fast enough that the revenue term (p−1) R∗(p) eventually decreases. Intuitively, high prices dominate users’ incentives, leading them to reduce personalization sample sizes and substitute toward compute-light methods ( ICL ); beyond a threshold, even ICL is not worth sampling, so users optimally choose ˜NICL = 0 and R∗(p) → 0.The boundedness condition ensures this demand collapse occurs uniformly across types, implying that the objective cannot be maximized at p = ∞ and hence that a finite optimal 
+
+p∗ exists. 
+
+Menu Effects on Equilibrium and Profit. Beyond pricing, platforms can also choose which personalization algorithms to offer. Early LLM services provided only ICL (OpenAI, 2021). We therefore study whether offering both SFT and ICL yields higher platform profit than offering ICL alone. 
+
+Assumption 5.4 (Relative Resource Consumption of SFT and ICL ). The resource consumed of SFT per sample is larger than that of ICL with a multiplier: RSFT ≥ RICL · sup t∈T (rβ (t)/(d − r)) 1/α ,where β(t) = 1 + π(τ + m2)/¯σ2.
+
+This assumption requires that SFT and ICL differ substantially in per-sample resource consumption. It imposes a uniform compute gap between RSFT and RICL so that, in 26 equilibrium and for all user types, SFT is the genuinely compute-heavy personalization method. We refer to a game as the full game when the platform offers both SFT and ICL , and as the ICL game when only ICL is available. Given price p, the corresponding equilibrium congestion levels are denoted by R∗(p) and R∗
+
+> ICL
+
+(p), respectively. 
+
+Theorem 5.5 (Choice Diversity Does Not Harm Profit) . We denote the congestion levels at the equilibrium of the full game and the ICL game by R∗(p) and R∗
+
+> ICL
+
+(p), respectively. Under regularity conditions of h and Assumption 5.4, it holds that R∗(p) ≥ R∗
+
+> ICL
+
+(p) for any p > 0.Therefore, adding SFT to the platform’s personalization menu cannot reduce optimal profit, i.e., 
+
+sup p> 0(p − 1) R∗(p) ≥ sup p> 0(p − 1) R∗
+
+> ICL
+
+(p).
+
+The key insight is that adding SFT as an available personalization option cannot reduce equilibrium congestion. Economically, SFT is the high-resource method, so whenever some users find SFT privately cost-effective, they switch into a more compute-intensive mode of personalization, raising aggregate demand and thus the congestion fixed point. In short, expanding the menu of personalization methods can increase platform load even though it gives users more flexibility, because the new option is compute-heavy. 
+
+Finding 4: Adding SFT cannot lower the equilibrium congestion level because it expands users’ options with a compute-heavy personalization method, so any adoption raises aggregate resource demand and platform load. 
+
+# 6 Mapping the Model to Practice 
+
+In this section, we connect our theoretical analysis to practical LLM serving by validating the model in Section 2 and testing our theoretical predictions. 
+
+Experimental Setting. We train a 22 M-parameter GPT-2 model (Radford et al., 2019) and evaluate it on in-context linear regression, a standard benchmark for LLM s behavior (Garg et al., 2022; Von Oswald et al., 2023). The model is prompted with ˜N i.i.d. samples 
+
+{(˜ xi, ˜yi)} ˜Ni=1 generated by (2.3) and a query ˜xq, and outputs a prediction ˆy of ˜x⊤ 
+
+> q
+
+θ∗, evaluated by squared error. To isolate the differences between SFT and ICL predicted by Theorem 3.3 and Proposition 3.6, we pretrain the model from scratch under a rank-deficient design with r < d , where only the first r coordinates of xi ∈ Rd are nonzero, and set r = 15 . After pretraining, personalization is performed either via ICL , by prompting with {(˜ xi, ˜yi)} ˜Ni=1 ,or via SFT , by fine-tuning on the same data for at least 100 steps, as fewer steps produce negligible deviation from the pretrained model. Additional details are provided in Appendix H. For ICL , Theorem 3.3 yields two implications. First, even as the number of personal-ization samples diverges, the error does not vanish but converges to an irreducible bias induced by directions not covered in pretraining. Second, under the isotropic setting (Assumption 3.5), this bias equals (d − r)τ and is linear in the uncovered dimension. 27 0 100 200 300 400 500 Number of Samples                     
+
+> 0
+> 10
+> 20
+> 30
+> 40 MSE of ICL
+> d=15, r= 15
+> d=17, r= 15
+> d=19, r= 15
+> d=21, r= 15 (a) Estimation erros of ICL with different ˜N.02468
+> d−r
+> 0
+> 10
+> 20
+> 30 MSE of ICL w. 500 Samples  Linear Regression with R2=0.96 Err of ICL (b) ICL errors with 500 samples and coverage r= 15 .
+
+Figure 6: The figures show the estimation error of ICL across different numbers of in-context samples ˜N and ambient dimensions d. The results confirm that ICL cannot eliminate the error in the subspace uncovered by pretraining, even with infinitely many samples. This irreducible error scales linearly with the number of uncovered dimensions, d − r.Figure 6(a) confirms the first result, showing that error decreases with sample size before plateauing, while Figure 6(b) confirms the second, with the limiting bias regressed on 
+
+(d − r) yielding the coefficient of determination as R2 = 0 .96 .Proposition 3.6 identifies two regimes comparing ICL and SFT . When the effective signal-to-noise ratio is high ( κ > 1), corresponding to many personalization samples, SFT attains lower error than ICL ; when samples are scarce ( κ → 0), SFT incurs higher error. Figures 6(a) and 7(a) confirm these predictions: SFT outperforms ICL at large sample sizes (e.g., 500 ), but performs worse at very small sample sizes (e.g., near 1). Beyond LLM behavior, we study platforms’ serving strategies—specifically, whether they offer only ICL or both SFT and ICL . We summarize the offerings of 21 companies releasing major foundation models listed in the Artificial Intelligence Index Reports 2024 and 2025 (Maslej et al., 2024, 2025), with details in Appendix I. Figure 7(b) shows a clear upward trend in the fraction of platforms offering both methods, consistent with Theorem 5.5, which predicts that adding the SFT option does not reduce platform profit. 
+
+# 7 Discussion and Conclusion 
+
+The personalization of LLM s is not just a technical challenge—it is an economic one. As billions of users customize AI systems for specialized tasks on shared computational infrastructure, their choices create a complex web of strategic interactions. When should a user invest in expensive SFT versus lightweight ICL ? How does congestion from others’ personalization decisions reshape these incentives? And what strategies should platforms 28 0 100 200 300 400 500 Number of Samples              
+
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50 MSE of SFT
+> d=15, r= 15
+> d=17, r= 15
+> d=19, r= 15
+> d=21, r= 15 (a) Estimation erros of SFT with different ˜N.2021 2022 2023 2024 2025 Years
+> 0
+> 20
+> 40
+> 60
+> 80 Platforms Offering SFT (%) 9.5 14.3 42.9 66.7 71.4 (b) Percentage of platforms supporting SFT.
+
+Figure 7: Panel (a) shows the estimation error of SFT across different numbers of personal-ization samples ˜N , illustrating that SFT can asymptotically drive the estimation error to zero as the sample size increases. Panel (b) reports the fraction of platforms that offer SFT in addition to ICL , showing that support for SFT -based personalization has increased in recent years. pursue when computational resources are scarce and valuable? This paper developed the first theoretical framework that jointly addresses these questions. By building linear statistical models of personalization algorithms and embed-ding them in a continuum game with congestion, we obtained sharp predictions about user behavior and platform strategy. Three core insights emerge. First, the compari-son between SFT and ICL hinges on a precise interplay between pretraining coverage and data quality—not simply which method is "better." Second, equilibrium congestion responds to system parameters in surprisingly non-monotone ways: better pretraining can increase peak loads, harder tasks can reduce demand, and higher SFT costs can ini-tially amplify congestion before alleviating it. Third, offering algorithmic diversity—both SFT and ICL —never hurts platform profits, rationalizing the rapid adoption of multiple personalization methods we observe in practice. Our model admits several natural extensions. First, we assume a single platform serving all users, whereas in practice, multiple platforms compete. This can be incorporated by allowing users to choose among platforms, with congestion defined at the platform level. Second, beyond personalization algorithms, platforms increasingly offer reasoning models that deliver higher-quality responses at the cost of greater latency (e.g., GPT-o1). Modeling such choices requires expanding the set of algorithms available in our framework. 29 References 
+
+Agarwal, N. , Moehring, A. and Wolitzky, A. (2025). Designing human-ai collaboration: A sufficient-statistic approach. Tech. rep., National Bureau of Economic Research. 2 Akyürek, E. , Schuurmans, D. , Andreas, J. , Ma, T. and Zhou, D. (2023). What learning algorithm is in-context learning? investigations with linear models. The Eleventh International Conference on Learning Representations . 2 Anahtarci, B. , Kariksiz, C. D. and Saldi, N. (2023). Q-learning in regularized mean-field games. Dynamic Games and Applications , 13 89–117. 4 Bergemann, D. , Bojko, M. , Duetting, P. , Paes Leme, R. , Xu, H. and Zuo, S. (2025a). Data-driven mechanism design: Jointly eliciting preferences and information. In Proceedings of the 26th ACM Conference on Economics and Computation . 4 Bergemann, D. , Bonatti, A. and Smolin, A. (2025b). The economics of large language models: Token allocation, fine-tuning, and optimal pricing. In Proceedings of the 26th ACM Conference on Economics and Computation . 2, 4 Brown, T. , Mann, B. , Ryder, N. , Subbiah, M. , Kaplan, J. D. , Dhariwal, P. , Neelakantan, A. ,Shyam, P. , Sastry, G. , Askell, A. et al. (2020). Language models are few-shot learners. 
+
+Advances in neural information processing systems , 33 1877–1901. 5 Carmona, R. and Delarue, F. (2013). Probabilistic analysis of mean-field games. SIAM Journal on Control and Optimization , 51 2705–2734. 4 Carmona, R. , Delarue, F. and Lacker, D. (2016). Mean field games with common noise. 4, 9 Carmona, R. , Delarue, F. et al. (2018). Probabilistic theory of mean field games with applications I-II , vol. 3. Springer. 4 Chatterji, A. , Cunningham, T. , Deming, D. J. , Hitzig, Z. , Ong, C. , Shan, C. Y. and Wadman, K. (2025). How people use chatgpt. Tech. rep., National Bureau of Eco-nomic Research. 2 Dubey, A. , Feng, Z. , Kidambi, R. , Mehta, A. and Wang, D. (2024). Auctions with llm summaries. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 4 Duetting, P. , Mirrokni, V. , Paes Leme, R. , Xu, H. and Zuo, S. (2024). Mechanism design for large language models. In Proceedings of the ACM Web Conference 2024 . 3 Duranton, G. and Turner, M. A. (2011). The fundamental law of road congestion: Evidence from us cities. American Economic Review , 101 2616–2652. 4 30 Fish, S. and Gonczarowski, Y. A. (2024). Algorithmic collusion by large language models. 4Garg, S. , Tsipras, D. , Liang, P. S. and Valiant, G. (2022). What can transformers learn in-context? a case study of simple function classes. Advances in neural information processing systems , 35 30583–30598. 2, 3, 27 Graber, P. J. and Mészáros, A. R. (2023). On monotonicity conditions for mean field games. 
+
+Journal of Functional Analysis , 285 110095. 3, 16 Grattafiori, A. , Dubey, A. , Jauhri, A. , Pandey, A. , Kadian, A. , Al-Dahle, A. , Letman, A. ,Mathur, A. , Schelten, A. , Vaughan, A. et al. (2024). The llama 3 herd of models. arXiv preprint arXiv:2407.21783 . 14 Guo, X. , Hu, A. , Xu, R. and Zhang, J. (2019). Learning mean-field games. Advances in neural information processing systems , 32 . 4, 16 Hadfield, G. K. and Koh, A. (2025). An economy of ai agents. arXiv preprint arXiv:2509.01063 .4Hajiaghayi, M. , Lahaie, S. , Rezaei, K. and Shin, S. (2024). Ad auctions for llms via retrieval augmented generation. Advances in Neural Information Processing Systems , 37 18445–18480. 4Henderson, J. V. (1974). Road congestion: a reconsideration of pricing theory. Journal of Urban Economics , 1 346–365. 4 Hu, X. , Zhang, F. , Chen, S. and Yang, Z. (2024). Unveiling the statistical foundations of chain-of-thought prompting methods. arXiv preprint arXiv:2408.14511 . 7 Kreindler, G. (2024). Peak-hour road congestion pricing: Experimental evidence and equilibrium implications. Econometrica , 92 1233–1268. 4 Lacker, D. (2017). Limit theory for controlled mckean–vlasov dynamics. SIAM Journal on Control and Optimization , 55 1641–1672. 4 Lasry, J. and Lions, P. (2007). Mean field games. Japanese journal of mathematics , 2 229–260. 3, 4, 9, 16 Laurière, M. , Perrin, S. , Pérolat, J. , Girgin, S. , Muller, P. , Élie, R. , Geist, M. and Pietquin, O. (2022). Learning in mean field games: A survey. arXiv preprint arXiv:2205.12944 . 4 Li, Y. , Ildiz, M. E. , Papailiopoulos, D. and Oymak, S. (2023). Transformers as algorithms: Generalization and stability in in-context learning. In International conference on machine learning . PMLR. 10, 11 31 Lu, Y. M. , Letey, M. , Zavatone-Veth, J. A. , Maiti, A. and Pehlevan, C. (2025). Asymptotic theory of in-context learning by linear attention. Proceedings of the National Academy of Sciences , 122 e2502599122. 11, 13 Luo, Y. , Yang, Z. , Meng, F. , Li, Y. , Zhou, J. and Zhang, Y. (2025). An empirical study of catastrophic forgetting in large language models during continual fine-tuning. IEEE Transactions on Audio, Speech and Language Processing . 15 Mallinar, N. , Zane, A. , Frei, S. and Yu, B. (2024). Minimum-norm interpolation under covariate shift. arXiv preprint arXiv:2404.00522 . 10 Maslej, N. , Fattorini, L. , Perrault, R. , Gil, Y. , Parli, V. , Kariuki, N. , Capstick, E. , Reuel, A. ,Brynjolfsson, E. , Etchemendy, J. et al. (2025). Artificial intelligence index report 2025. 
+
+arXiv preprint arXiv:2504.07139 . 28, 87 Maslej, N. , Fattorini, L. , Perrault, R. , Parli, V. , Reuel, A. , Brynjolfsson, E. , Etchemendy, J. ,Ligett, K. , Lyons, T. , Manyika, J. et al. (2024). Artificial intelligence index report 2024. 
+
+arXiv preprint arXiv:2405.19522 . 28, 87 Meng, K. , Bau, D. , Andonian, A. and Belinkov, Y. (2022). Locating and editing factual associations in gpt. Advances in neural information processing systems , 35 17359–17372. 5 OpenAI (2021). Gpt-3 powers the next generation of apps. OpenAI Status . Incident report. 
+
+https://openai.com/index/gpt-3-apps 26 OpenAI (2025). Openai service incident: Major outage across chatgpt and api. OpenAI Status . Incident report. 
+
+https://status.openai.com/incidents/01JMYB63BJ47J3SXV6KSCT4D2A 9Patriksson, M. (2015). The traffic assignment problem: models and methods . Courier Dover Publications. 4 Perrin, S. , Pérolat, J. , Laurière, M. , Geist, M. , Elie, R. and Pietquin, O. (2020). Fictitious play for mean field games: Continuous time analysis and applications. Advances in Neural Information Processing Systems , 33 13199–13213. 4 Radford, A. , Wu, J. , Child, R. , Luan, D. , Amodei, D. , Sutskever, I. et al. (2019). Language models are unsupervised multitask learners. OpenAI blog , 1 9. 27, 83 Redding, S. J. and Turner, M. A. (2015). Transportation costs and the spatial organization of economic activity. Handbook of regional and urban economics , 5 1339–1398. 3, 4 Small, K. A. , Verhoef, E. T. and Lindsey, R. (2024). The economics of urban transportation .Routledge. 3, 4 Soumalias, E. , Curry, M. and Seuken, S. (2024). Truthful aggregation of llms \\ with an application to online advertising. In Agentic Markets Workshop at ICML 2024 . 3 32 Su, W. (2025). Isotropic curvature model for understanding deep learning optimization: Is gradient orthogonalization optimal? arXiv preprint arXiv:2511.00674 . 13 Touvron, H. , Martin, L. , Stone, K. , Albert, P. , Almahairi, A. , Babaei, Y. , Bashlykov, N. ,Batra, S. , Bhargava, P. , Bhosale, S. et al. (2023). Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 . 5, 14 Von Oswald, J. , Niklasson, E. , Randazzo, E. , Sacramento, J. , Mordvintsev, A. ,Zhmoginov, A. and Vladymyrov, M. (2023). Transformers learn in-context by gradient descent. In International Conference on Machine Learning . PMLR. 3, 27 Wang, S. , Zhang, F. , Li, J. , Du, C. , Du, C. , Pang, T. , Yang, Z. , Hong, M. and Tan, V. Y. (2025). Muon outperforms adam in tail-end associative memory learning. arXiv preprint arXiv:2509.26030 . 5 Weerawardhena, S. , Kassianik, P. , Nelson, B. , Saglam, B. , Vellore, A. , Priyanshu, A. ,Vĳay, S. , Aufiero, M. , Goldblatt, A. , Burch, F. et al. (2025). Llama-3.1-foundationai-securityllm-8b-instruct technical report. arXiv preprint arXiv:2508.01059 . 11 Wolf, T. , Debut, L. , Sanh, V. , Chaumond, J. , Delangue, C. , Moi, A. , Cistac, P. , Rault, T. ,Louf, R. , Funtowicz, M. et al. (2020). Transformers: State-of-the-art natural language processing. In Proceedings of the 2020 conference on empirical methods in natural language processing: system demonstrations . 83 Xie, S. M. , Raghunathan, A. , Liang, P. and Ma, T. (2021). An explanation of in-context learning as implicit bayesian inference. arXiv preprint arXiv:2111.02080 . 6, 7 Yardim, B. , Cayci, S. , Geist, M. and He, N. (2023). Policy mirror ascent for efficient and independent learning in mean field games. In International Conference on Machine Learning .PMLR. 4 Zhang, F. , Tan, V. , Wang, Z. and Yang, Z. (2023a). Learning regularized monotone graphon mean-field games. Advances in Neural Information Processing Systems , 36 67297–67308. 4, 16 Zhang, F. , Tan, V. Y. , Wang, Z. and Yang, Z. (2024). Learning regularized graphon mean-field games with unknown graphons. Journal of Machine Learning Research , 25 1–95. 4Zhang, Y. , Zhang, F. , Yang, Z. and Wang, Z. (2023b). What and how does in-context learning learn? bayesian model averaging, parameterization, and generalization. arXiv preprint arXiv:2305.19420 . 6, 7 33 A Summary of Notations 
+
+We summarize the notation used throughout the paper in Table 2. The notations are organized into three groups: general model setup, SFT and ICL analysis, and the game-theoretic framework. Table 2: Summary of notation organized by topic. 
+
+Symbol Description General 
+
+[N ] The set {1, 2, . . . , N }
+
+X† Moore–Penrose pseudoinverse of matrix X
+
+tr( X) Trace of matrix X
+
+col (X) Column space of matrix XIN Identity matrix of size N × N
+
+N (μ, Σ) Gaussian distribution with mean μ and covariance 
+
+Σ
+
+∥x∥Σ Σ-norm: √x⊤Σx for positive semidefinite Σ∆( ·) Set of all probability distributions over a given set 
+
+SFT and ICL 
+
+d Dimension of the feature/parameter space 
+
+N Number of pretraining samples 
+
+xi ∈ Rd Pretraining feature vector (prefix representation) 
+
+yi Pretraining response 
+
+X ∈ RN ×d Pretraining design matrix: X = [ x1, . . . , x N ]⊤
+
+Y ∈ RN Pretraining response vector: Y = [ y1, . . . , y N ]⊤
+
+θi ∈ Rd Latent task parameter for the i-th pretraining sample 
+
+μθ, Σθ Mean and covariance of the task prior N (μθ, Σθ)
+
+σ2 Observation noise variance in pretraining 
+
+c2 Input power: ∥xi∥2Σθ = c2 (Assumption 3.2) 
+
+¯σ2 Effective pretraining variance: ¯σ2 = σ2 + c2
+
+θ∗ ∈ Rd Target task parameter, drawn from N (0 , Σ∗)Σ∗ Prior covariance of the target task θ∗
+
+˜N Number of personalization samples 
+
+˜xi ∈ Rd Personalization feature vector 
+
+˜yi Personalization response 
+
+˜X ∈ R ˜N ×d Personalization design matrix: ˜X = [˜ x1, . . . , ˜x ˜N ]⊤
+
+˜Y ∈ R ˜N Personalization response vector: ˜Y = [˜ y1, . . . , ˜y ˜N ]⊤
+
+˜σ2 Observation noise variance in personalization data 
+
+θpre Pretrained estimator mean (least-squares estimate of μθ)34 Symbol Description 
+
+Σpre Covariance of the pretrained estimator 
+
+ˆθpre Pretrained model estimator: ˆθpre ∼ N (θpre , Σpre )
+
+θICL ICL posterior mean 
+
+ΣICL ICL posterior covariance 
+
+ˆθICL ICL estimator: ˆθICL ∼ N (θICL , ΣICL )
+
+θSFT SFT estimator mean 
+
+ΣSFT SFT estimator covariance 
+
+ˆθSFT SFT estimator: ˆθSFT ∼ N (θSFT , ΣSFT )
+
+λ SFT regularization parameter 
+
+λ∗ Optimal SFT regularization 
+
+V = [ v1, . . . , v d] Shared orthonormal eigenbasis of X⊤X, ˜X⊤ ˜X, and 
+
+Σ∗
+
+r Rank of the pretraining design X (pretraining cover-age) 
+
+πi i-th eigenvalue of X⊤X for i ∈ [r]
+
+si i-th eigenvalue of ˜X⊤ ˜X for i ∈ [d]
+
+τi i-th eigenvalue of Σ∗ for i ∈ [d]
+
+Epre Mean-squared error of the pretrained model 
+
+EICL Mean-squared error of ICL 
+
+Eλ 
+
+> SFT
+
+Mean-squared error of SFT with regularization λαi ICL shrinkage coefficient: ˜σ2πi/(¯ σ2si + ˜ σ2πi)
+
+βi SFT shrinkage coefficient: ¯σ2si/(¯ σ2si + λ˜σ2πi)
+
+π, s, τ, m Common values of πi, si, τi, and |v⊤ 
+
+> i
+
+μθ|
+
+ζ Aggregate parameter: ζ = τ + 2¯ σ2/π + m2
+
+κ Signal-to-noise ratio in uncovered subspace: 
+
+sτ / (2˜ σ2)
+
+Rcrit Critical coverage ratio for SFT to dominate ICL 
+
+LLM-Serving Congestion Game 
+
+t ∈ T User type, summarizing model and task parameters 
+
+T Probability measure over the type space TA = {ICL , SFT } Set of personalization algorithms 
+
+¯A = A × [0 , ∞) Action set: algorithm and sample size pairs 
+
+¯a = ( a, ˜N ) User action: algorithm a with ˜N samples 
+
+Ra Resource consumption per sample for algorithm aRSFT , R ICL Per-sample resource cost of SFT and ICL 
+
+Ea(t, ˜N ) Learning error of algorithm a for type t with ˜N
+
+samples 
+
+C(t, ¯a, R ) Total cost: Ea(t, ˜N ) + Ra ˜N (p + h(R)) 
+
+α Information growth exponent: s = ˜N α
+
+35 Symbol Description 
+
+p Unit resource price set by the platform 
+
+h(·) Congestion function: maps aggregate demand to waiting cost 
+
+¯h(R, p ) Total per-unit cost: p + h(R)
+
+R(π) Congestion level (aggregate resource demand) under policy ππt Policy (mixed action) of type-t user 
+
+BR( t, R ) Best response operator for type t at congestion R
+
+(π∗, R ∗) Equilibrium: optimal policy and congestion level 
+
+H Effective per-unit compute cost: H = p + h(R)Φa(H) Minimal cost for algorithm a at per-unit cost HNa(H) Optimal sample size for algorithm a at per-unit cost 
+
+HH∗ 
+
+> a
+
+Within-algorithm equilibrium fixed point for algo-rithm aψ(H) Cost difference: ΦSFT (H) − ΦICL (H)
+
+H∗ 
+
+> sep
+
+Algorithm separation threshold: root of ψ(H) = 0 
+
+t1, t 2 Two user types 
+
+q Population share of type t1: T (t1) = qH∗
+
+> sep
+
+(t) Type-specific algorithm separation threshold 
+
+e(H), f (H), g (H) Aggregate demand functions for different algorithm regimes 
+
+I(p) Platform profit: (p − 1) · R∗(p)
+
+p∗ Profit-maximizing price 
+
+(p∗, π ∗, R ∗) Stackelberg equilibrium 
+
+R∗
+
+> ICL
+
+(p) Equilibrium congestion in the ICL -only game at price 
+
+p
+
+# B Discussions and Derivations of Statistical Personalization Models in Section 2 
+
+## B.1 High Probability Analysis of Covariates 
+
+Throughout the paper, we assume that the covariates X and ˜X are deterministic. In this section, we show that our assumptions hold with high probability if rows of X and ˜X are i.i.d. Gaussian vectors. 
+
+Proposition B.1. Let V ∈ Rd×d be orthogonal. Fix integers N, ˜N ≥ 1 and nonnegative scalars 
+
+π1 ≥ π2 ≥ · · · ≥ πr > 0, and s1, . . . , s d ≥ 0.
+
+36 Define the target Gram matrices as 
+
+GX = V diag( π1, . . . , π r, 0, . . . , 0) V ⊤, and G ˜X = V diag( s1, . . . , s d)V ⊤.
+
+Set the corresponding population covariances as 
+
+ΣX = 1
+
+N GX , Σ ˜X = 1˜N G ˜X .
+
+Let X ∈ RN ×d have i.i.d. rows xi ∼ N (0 , ΣX ) and let ˜X ∈ R ˜N ×d have i.i.d. rows ˜xi ∼ N (0 , Σ ˜X ),independent of X. Then we have the following results. 
+
+• (Unbiasedness) E[X⊤X] = GX and E[ ˜X⊤ ˜X] = G ˜X .
+
+• (High-probability operator-norm control) There exist universal constants c, C > 0 such that for every t ≥ 0,
+
+P
+
+
+
+X⊤X − GX 2 ≤ C∥GX ∥2
+
+r d + tN + d + tN
+
+ 
+
+≥ 1 − 2e−ct ,P
+
+
+
+˜X⊤ ˜X − G ˜X 2 ≤ C∥G ˜X ∥2
+
+r d + t
+
+˜N + d + t
+
+˜N
+
+ 
+
+≥ 1 − 2e−ct .
+
+The norm ∥ · ∥ 2 denotes the operator norm of matrices. In particular, for fixed d and 
+
+t = Θ(log(1 /δ )) , both deviations are O ∥G∥2
+
+pd/N  with probability at least 1 − δ.
+
+• (Rank-deficient target) If r < d , then ΣX has rank r, and the rows of X lie almost surely in the r-dimensional subspace range( Vr) spanned by the first r columns Vr of V .
+
+Thus, if the Gram matrices ΣX and Σ ˜X satisfy Assumptions 3.1 and 3.5, then the corre-sponding sample Gram matrices constructed from X and ˜X satisfy the same assumptions with high probability. Specifically, when Σ ˜X = Id, we have that si = ˜N for i ∈ [d]. We prove this proposition below. 
+
+Proof. We prove the three results separately. For the first result, we let DX = diag( π1, . . . , π r, 0, . . . , 0) and D ˜X = diag( s1, . . . , s d) so that GX = V D X V ⊤ and G ˜X = V D ˜X V ⊤. Define the square-roots 
+
+D1/2 
+
+> X
+
+= diag( √π1, . . . , √πr, 0, . . . , 0) , D1/2˜X = diag( √s1, . . . , √sd).
+
+Let Z ∈ RN ×d have i.i.d. N (0 , 1) entries. Then the distributional definition xi ∼ N (0 , ΣX )
+
+is equivalent to the row-wise representation 
+
+X = 1
+
+√N ZD 1/2 
+
+> X
+
+V ⊤.
+
+37 Similarly, with ˜Z ∈ R ˜N ×d i.i.d. standard normal, 
+
+˜X = 1
+
+p ˜N
+
+˜ZD 1/2˜X V ⊤.
+
+Note that X⊤X = PNi=1 xix⊤ 
+
+> i
+
+. Since the xi are i.i.d. with E[xix⊤ 
+
+> i
+
+] = Σ X ,
+
+E[X⊤X] = 
+
+> N
+
+X
+
+> i=1
+
+E[xix⊤ 
+
+> i
+
+] = N ΣX = GX .
+
+The same argument gives E[ ˜X⊤ ˜X] = ˜N Σ ˜X = G ˜X .For the second result, we have that 
+
+X⊤X − GX = V D 1/2
+
+> X
+
+ 1
+
+N Z⊤Z − Id
+
+
+
+D1/2 
+
+> X
+
+V ⊤.
+
+Taking operator norms and using ∥V AV ⊤∥2 = ∥A∥2 for orthogonal V ,
+
+∥X⊤X − GX ∥2 = D1/2
+
+> X
+
+ 1
+
+N Z⊤Z − Id
+
+
+
+D1/2
+
+> X
+> 2
+
+≤ ∥ D1/2 
+
+> X
+
+∥22
+
+1
+
+N Z⊤Z − Id
+
+> 2
+
+= ∥GX ∥2
+
+1
+
+N Z⊤Z − Id
+
+> 2
+
+.
+
+The Bernstein inequality for Gaussian random matrices states that there exist universal constants c, C > 0 such that for all t ≥ 0,
+
+P
+
+ 1
+
+N Z⊤Z − Id
+
+> 2
+
+≤ C
+
+r d + tN + d + tN
+
+ 
+
+≥ 1 − 2e−ct .
+
+Combining this with the inequality of ∥X⊤X − GX ∥2 yields 
+
+P ∥X⊤X − GX ∥2 ≤ C∥GX ∥2
+
+rd + tN + d + tN
+
+!! 
+
+≥ 1 − 2e−ct .
+
+The same argument gives the bound for ˜X.For the third result, if r < d , then DX has exactly r positive diagonal entries, hence 
+
+rank( DX ) = r and rank(Σ X ) = rank( GX ) = r. Moreover, from the explicit representation 
+
+xi = 1√N V D 1/2 
+
+> X
+
+zi, we have D1/2 
+
+> X
+
+zi ∈ Rd supported on the first r coordinates, so xi ∈ range( Vr)
+
+almost surely, where Vr consists of the first r columns of V . This proves the last claim. 
+
+## B.2 Covariance Calculation of Pretraining 
+
+We first calculate the covariance of Y . In fact, we have that 
+
+Var( yi) = Var( x⊤ 
+
+> i
+
+θi + ϵi) = Var( x⊤ 
+
+> i
+
+θi) + Var( ϵi) = ∥xi∥2Σθ + σ2 
+
+> ϵ
+
+, and Cov( yi, y j ) = 0 for i̸ = j. 
+
+Thus, we have that 
+
+Cov( Y ) = Ω = σ2 
+
+> ϵ
+
+IN + diag  ∥x1∥2Σθ , . . . , ∥xN ∥2Σθ
+
+.
+
+Now the covariance of θpre is 
+
+Cov( θpre ) = Cov  (X⊤X)†X⊤Y  = ( X⊤X)†X⊤ Cov( Y )X (X⊤X)†X⊤⊤ = Σ pre .
+
+38 B.3 ICL as a Bayesian Update of the Prior 
+
+Proposition B.2. Given the prior θ ∼ N (μ, Σ) and the data ( ˜Y, ˜X) generated θ∗ from N (μ, Σ) 
+
+according to (2.3) , the posterior of θ is N (θICL , ΣICL ), which is defined as 
+
+θICL = μ + Σ ˜X⊤( ˜XΣ ˜X⊤ + ˜ σ2I ˜N )−1( ˜Y − ˜Xμ ),
+
+ΣICL = Σ − Σ ˜X⊤( ˜XΣ ˜X⊤ + ˜ σ2I ˜N )−1 ˜XΣ.
+
+Proof. We prove this via direct calculations. Define u = θ − μ and v = ˜Y − ˜Xμ . The projection matrix of col (Σ) is Π = ΣΣ †. Then we have that 
+
+p(u) ∝ exp 
+
+
+
+− 12u⊤Σ†u
+
+
+
+for u ∈ col (Σ) , p(v | u) ∝ exp 
+
+
+
+− 12˜ σ2 ∥v − ˜Xu ∥2
+
+
+
+.
+
+Thus, we have that 
+
+p(u | ˜X, ˜Y ) ∝ exp 
+
+
+
+− 12
+
+u⊤(Σ † + ˜ σ−2 ˜X⊤ ˜X)u − 2˜ σ−2v⊤ ˜Xu 
+
+· I{u ∈ col (Σ) }
+
+= exp 
+
+
+
+− 12
+
+u⊤(Σ † + ˜ σ−2Π ˜X⊤ ˜XΠ) u − 2˜ σ−2v⊤ ˜XΠu
+
+· I{u ∈ col (Σ) },
+
+where we use the property that Πu = u for u ∈ col (Σ) . For the vector u / ∈ col (Σ) , we define that 
+
+p(u | ˜X, ˜Y ) = p(Π u | ˜X, ˜Y ).
+
+Then we have that 
+
+ΣICL = (Σ † + ˜ σ−2Π ˜X⊤ ˜XΠ) †
+
+θICL = μ + ˜ σ−2ΣICL Π ˜X⊤( ˜Y − ˜Xμ ).
+
+In the following, we just show that these two results are equal to the results in Proposition B.2. For θICL , we only need to show that 
+
+Σ†
+
+> ICL
+
+Σ ˜X⊤( ˜XΣ ˜X⊤ + ˜ σ2I ˜N )−1( ˜Y − ˜Xμ ) = ˜ σ−2Π ˜X⊤( ˜Y − ˜Xμ ).
+
+Define A = ˜XΣ ˜X⊤ + ˜ σ2I ˜N . Then we have that 
+
+Σ†
+
+> ICL
+
+Σ ˜X⊤( ˜XΣ ˜X⊤ + ˜ σ2I ˜N )−1( ˜Y − ˜Xμ )= (Σ † + ˜ σ−2Π ˜X⊤ ˜XΠ)Σ ˜X⊤A−1v
+
+= Π ˜X⊤(A−1 + ˜ σ−2 ˜XΣ ˜X⊤A−1)v
+
+= ˜ σ−2Π ˜X⊤( ˜Y − ˜Xμ ),
+
+39 where the second equality uses the facts that Π = ΣΣ † and ΠΣ = Σ . To prove the results of 
+
+ΣICL , we define that 
+
+S = Σ − Σ ˜X⊤A−1 ˜XΣ, A = ˜XΣ ˜X⊤ + ˜ σ2I ˜N .
+
+Then we only need to prove that 
+
+(Σ † + ˜ σ−2Π ˜X⊤ ˜XΠ) S = Π .
+
+In fact, we have that 
+
+(Σ † + ˜ σ−2Π ˜X⊤ ˜XΠ) S = Π + Π ˜X⊤˜σ−2I ˜N − A−1 − ˜σ−2 ˜XΣ ˜X⊤A−1 ˜XΣ,
+
+where we use the facts that Π = ΣΣ † and ΠΣ = Σ . It is easy to see that 
+
+˜σ−2I ˜N − A−1 − ˜σ−2 ˜XΣ ˜X⊤A−1 = 0 .
+
+Thus, we conclude the proof of Proposition B.2. 
+
+## B.4 Covariance Calculation of SFT 
+
+We first derive the closed form for the SFT estimator. The loss is 
+
+J(θ) = 1˜σ2 ∥ ˜Y − ˜Xθ ∥22 + λ∥θ − θpre ∥2Σ†
+
+> pre
+
+= 1˜σ2 ∥ ˜Y − ˜Xθ ∥22 + λ(θ − θpre )⊤Σ†
+
+> pre
+
+(θ − θpre ).
+
+Setting ∇θJ(θ) = 0 gives the normal equations 
+
+− 2˜σ2 ˜X⊤( ˜Y − ˜Xθ ) + 2 λΣ†
+
+> pre
+
+(θ − θpre ) = 0 .
+
+Define 
+
+A = 1˜σ2 ˜X⊤ ˜X + λΣ†
+
+> pre
+
+, b = 1˜σ2 ˜X⊤ ˜Y + λΣ†
+
+> pre
+
+θpre .
+
+Using the Moore–Penrose pseudoinverse, the SFT solution is θSFT = A†b. Then we calculate the covariance of it as 
+
+Cov( θSFT ) = A† Cov 
+
+
+
+λΣ†
+
+> pre
+
+θpre + 1˜σ2 ˜X⊤˜ϵ
+
+
+
+A† = A†
+
+
+
+λ2Σ† 
+
+> pre
+
++ 1˜σ2 ˜X⊤ ˜X
+
+
+
+A†.
+
+# C Proof of Theorems in Section 3 
+
+## C.1 Proof of Theorem 3.3 
+
+We first state the full version of Theorem 3.3. 40 Theorem C.1 (Error Analyses of pretraining, ICL and SFT ). Under Assumptions 3.1 and 3.2, when SFT and ICL use data ( ˜X, ˜Y ) generated according to (2.3) , the mean-squared errors of pretraining, SFT, and ICL are given as follows. 
+
+Epre =
+
+> d
+
+X
+
+> i=1
+
+τi
+
+| {z } 
+
+> task var.
+
++
+
+> r
+
+X
+
+> i=1
+
+(v⊤ 
+
+> i
+
+μθ)2
+
+| {z }
+
+> task mismatch
+
++
+
+> r
+
+X
+
+> i=1
+
+¯σ2π−1
+
+> i
+
+| {z }
+
+> algo. var.
+
++
+
+> r
+
+X
+
+> i=1
+
+¯σ2π−1
+
+> i
+
+| {z }
+
+> uncertainty
+
+=
+
+> d
+
+X
+
+> i=1
+
+Epre ,i 
+
+EICL =
+
+> r
+
+X
+
+> i=1
+
+
+
+α2 
+
+> i
+
+·  τi + ( v⊤ 
+
+> i
+
+μθ)2 + ¯ σ2π−1
+
+> i
+
+| {z }
+
+> pretraining err. w/o uncertainty
+
++ ˜σ2 ¯σ4si
+
+(¯ σ2si + ˜ σ2πi)2
+
+| {z }
+
+> data noise
+
++ ˜σ2 ¯σ2
+
+¯σ2si + ˜ σ2πi
+
+| {z }
+
+> ICL uncertainty
+
+
+
++
+
+> d
+
+X
+
+> i=r+1
+
+τi
+
+| {z } 
+
+> task var.
+
+Eλ 
+
+> SFT
+
+=
+
+> r
+
+X
+
+> i=1
+
+
+
+(1 − β2 
+
+> i
+
+)  τi + ( v⊤ 
+
+> i
+
+μθ)2 + 2¯ σ2π−1
+
+> i
+
+| {z }
+
+> pretraining err.
+
++β2
+
+> i
+
+  ˜σ2s−1
+
+> i
+
+| {z } 
+
+> LS var.
+
++ ˜ σ2s−1
+
+> i
+
+| {z } 
+
+> SFT uncertainty
+
+
+
++
+
+> d
+
+X
+
+> i=r+1
+
+  ˜σ2s−1
+
+> i
+
+| {z } 
+
+> LS var.
+
++ ˜σ2s−1
+
+> i
+
+| {z } 
+
+> SFT uncertainty
+
+,
+
+Here ¯σ2 = σ2 + c2 denotes the effective variance in pretraining, combining the observation noise variance σ2 and the input power c2. The coefficients {αi}ri=1 for ICL and {βi}ri=1 for SFT are given by 
+
+αi = ˜σ2πi
+
+¯σ2si + ˜ σ2πi
+
+, βi = ¯σ2si
+
+¯σ2si + λ˜σ2πi
+
+, i ∈ [r].
+
+In this section, we present the proof of this full version of Theorem 3.3, i.e., the error analysis of pretraining, SFT , and ICL . We denote the Singular Value Decomposition ( SVD )of ˜X is ˜X = U Σ ˜X V ⊤. The singular values Σ ˜X satisfy that Σ⊤ 
+
+> ˜X
+
+Σ ˜X = S.
+
+Error Analysis of Pretraining. For pretraining, we have that ˆθpre = θpre + ωpre , where 
+
+ωpre ∼ N (0 , Σpre ). The covariance Σpre is calculated as 
+
+Σpre = ( σ2 + c2)( X⊤X)†X⊤X(X⊤X)† = ( σ2 + c2)( X⊤X)†. (C.1) In the following, we define ¯σ2 = σ2 + c2. Thus, we have that 
+
+E∥ˆθpre − θ∗∥2 = E∥θpre − θ∗∥2 + tr(Σ pre ) = E∥θpre − θ∗∥2 + ¯ σ2
+
+> r
+
+X
+
+> i=1
+
+π−1 
+
+> i
+
+. (C.2) For the first term in the right-hand side of (C.2) , we adopt Proposition G.1 with mpre = θpre 
+
+and Kpre = 0 to derive 
+
+E∥θpre − θ∗∥2 = tr 
+
+
+
+Σ∗ + Σ pre + μmμ⊤
+
+> m
+
+
+
+,
+
+where we utilize the fact that Σm = Cov( θpre ) = Σ pre proved in Appendix B.2, and the expectation of the pretraining model μm = E[θpre ] is 
+
+E(X⊤X)†X⊤Y  = E(X⊤X)†
+
+> N
+
+X
+
+> i=1
+
+xi(x⊤ 
+
+> i
+
+θi + ϵi) = ( X⊤X)†X⊤Xμ θ. (C.3) 41 Thus, we have that 
+
+E∥ˆθpre − θ∗∥2 =
+
+> d
+
+X
+
+> i=1
+
+τi + 2¯ σ2
+
+> r
+
+X
+
+> i=1
+
+π−1 
+
+> i
+
++
+
+> r
+
+X
+
+> i=1
+
+(v⊤ 
+
+> i
+
+μθ)2
+
+Error Analysis of SFT . For SFT , we have that ˆθSFT = θSFT + ωSFT , where ωSFT ∼N (0 , ΣSFT ). Define Π = diag( π1, · · · , π r, 0, · · · , 0) , S = diag( s1, · · · , s d). The covariance ΣSFT 
+
+is calculated as 
+
+ 1˜σ2 ˜X⊤ ˜X + λΣ†
+
+> pre
+
+†
+
+·
+
+
+
+λ2Σ† 
+
+> pre
+
++ 1˜σ2 ˜X⊤ ˜X
+
+
+
+·
+
+ 1˜σ2 ˜X⊤ ˜X + λΣ†
+
+> pre
+
+†
+
+=  ˜σ−2V SV ⊤ + λ¯σ−2V ΠV ⊤† ·  ˜σ−2V SV ⊤ + λ2 ¯σ−2V ΠV ⊤ ·  ˜σ−2V SV ⊤ + λ¯σ−2V ΠV ⊤†
+
+= V  ˜σ−2S + λ¯σ−2Π† ·  ˜σ−2S + λ2 ¯σ−2Π ·  ˜σ−2S + λ¯σ−2Π†V ⊤,
+
+where the first equality results from Assumption 3.1 and (C.1). Thus, we have that 
+
+tr(Σ SFT ) = 
+
+> r
+
+X
+
+> i=1
+
+˜σ−2si + λ2 ¯σ−2πi
+
+(˜ σ−2si + λ¯σ−2πi)2 +
+
+> d
+
+X
+
+> i=r+1
+
+˜σ2s−1 
+
+> i
+
+. (C.4) Thus, we have that 
+
+E∥ˆθSFT − θ∗∥2 = E∥θSFT − θ∗∥2 +
+
+> r
+
+X
+
+> i=1
+
+˜σ−2si + λ2 ¯σ−2πi
+
+(˜ σ−2si + λ¯σ−2πi)2 +
+
+> d
+
+X
+
+> i=r+1
+
+˜σ2s−1 
+
+> i
+
+. (C.5) For the first term of the right-hand side of (C.5) , we adopt Proposition G.1 with mSFT = θpre 
+
+and KSFT = ˜ σ−2(˜ σ−2 ˜X⊤ ˜X + λΣ†
+
+> pre
+
+)† ˜X⊤. Then we have that 
+
+E∥θSFT − θ∗∥2 = tr 
+
+
+
+(I − KSFT ˜X) Σ∗ + Σ m + μmμ⊤
+
+> m
+
+(I − KSFT ˜X)⊤
+
+
+
++ ˜ σ2 tr( K⊤
+
+> SFT
+
+KSFT ).
+
+In the following, we calculate the value of each term. For the last term, we have that 
+
+tr( K⊤
+
+> SFT
+
+KSFT ) = ˜ σ−4 tr  (˜ σ−2S + λ¯σ−2Π) −2S =
+
+> r
+
+X
+
+> i=1
+
+˜σ−4si
+
+(˜ σ−2si + λ¯σ−2πi)2 +
+
+> d
+
+X
+
+> i=r+1
+
+s−1 
+
+> i
+
+.
+
+For the first three terms, we have that 
+
+KSFT ˜X = ˜ σ−2V (˜ σ−2S + λ¯σ−2Π) −1SV ⊤.
+
+Thus, we have that 
+
+tr  (I − KSFT X)Σ ∗(I − KSFT X) =
+
+> r
+
+X
+
+> i=1
+
+ λ¯σ−2πi
+
+˜σ−2si + λ¯σ−2πi
+
+2
+
+τi
+
+42 tr  (I − KSFT X)Σ m(I − KSFT X) =
+
+> r
+
+X
+
+> i=1
+
+ λ¯σ−2πi
+
+˜σ−2si + λ¯σ−2πi
+
+2
+
+¯σ2π−1
+
+> i
+
+tr  (I − KSFT X)μmμ⊤
+
+> m
+
+(I − KSFT X) =
+
+> r
+
+X
+
+> i=1
+
+ λ¯σ−2πi
+
+˜σ−2si + λ¯σ−2πi
+
+2
+
+(viμθ)2.
+
+Thus, we have that 
+
+E∥ˆθSFT − θ∗∥2 =
+
+> r
+
+X
+
+> i=1
+
+2˜ σ2 ¯σ4si + λ2 ˜σ4π2
+
+> i
+
+ τi + 2¯ σ2π−1 
+
+> i
+
++ ( viμθ)2
+
+(¯ σ2si + λ˜σ2πi)2 + 2 
+
+> d
+
+X
+
+> i=r+1
+
+˜σ2s−1
+
+> i
+
+Substituting the coefficients {βi}ri=1 from Theorem 3.3 into the expression for Eλ 
+
+> SFT
+
+yields the same expression as above. 
+
+Error Analysis of ICL . For ICL , we have that ˆθICL = θICL + ωICL , where ωICL ∼ N (0 , ΣICL ).The covariance ΣICL is calculated as 
+
+Σpre − Σpre ˜X⊤( ˜XΣpre ˜X⊤ + ˜ σ2I ˜N )−1 ˜XΣpre 
+
+= ¯ σ2V Π†V ⊤ − ¯σ2V Π†V ⊤V Σ⊤ 
+
+> ˜X
+
+U ⊤
+
+
+
+¯σ2U Σ ˜X V ⊤V Π†V ⊤V Σ⊤ 
+
+> ˜X
+
+U ⊤ + ˜ σ2I ˜N
+
+−1
+
+U Σ ˜X V ⊤ ¯σ2V Π†V ⊤
+
+= ¯ σ2V Π†V ⊤ − ¯σ4V Π†Σ⊤
+
+> ˜X
+
+
+
+¯σ2Σ ˜X Π†Σ⊤ 
+
+> ˜X
+
++ ˜ σ2I ˜N
+
+−1
+
+Σ ˜X Π†V ⊤, (C.6) where the first equality results from Assumption 3.1. Thus, we have that 
+
+tr(Σ ICL ) = 
+
+> r
+
+X
+
+> i=1
+
+˜σ2 ¯σ2
+
+¯σ2si + ˜ σ2πi
+
+.
+
+Thus, we have that 
+
+E∥ˆθICL − θ∗∥2 = E∥θICL − θ∗∥2 + tr(Σ ICL ) = E∥θICL − θ∗∥2 +
+
+> r
+
+X
+
+> i=1
+
+˜σ2 ¯σ2
+
+¯σ2si + ˜ σ2πi
+
+. (C.7) For the first term of the right-hand side of (C.7) , we adopt Proposition G.1 with mICL = θpre 
+
+and KICL = Σ pre ˜X⊤( ˜XΣpre ˜X⊤ + ˜ σ2I ˜N )−1 and have that 
+
+E∥θICL − θ∗∥2 = tr 
+
+
+
+(I − KICL ˜X) Σ∗ + Σ m + μmμ⊤
+
+> m
+
+(I − KICL ˜X)⊤
+
+
+
++ ˜ σ2 tr( K⊤
+
+> ICL
+
+KICL )
+
+(C.8) According to (C.3) and Appendix B.2, we have that 
+
+μm = E[θpre ] = ( X⊤X)†X⊤Xμ θ, Σm = Cov( θpre ) = Σ pre .
+
+To calculate the value of the four terms in the right-hand side of (C.8) , we first simplify the 
+
+KICL as 
+
+KICL = ¯ σ2V Π†V ⊤V Σ⊤ 
+
+> ˜X
+
+U ⊤
+
+
+
+¯σ2U Σ ˜X V ⊤V Π†V ⊤V Σ⊤ 
+
+> ˜X
+
+U ⊤ + ˜ σ2I ˜N
+
+−1
+
+43 = ¯ σ2V Π†Σ⊤
+
+> ˜X
+
+
+
+¯σ2Σ ˜X Π†Σ⊤ 
+
+> ˜X
+
++ ˜ σ2I ˜N
+
+−1
+
+U ⊤
+
+Then we have that 
+
+tr( K⊤
+
+> ICL
+
+KICL ) = 
+
+> r
+
+X
+
+> i=1
+
+¯σ4siπ−2
+
+> i
+
+(˜ σ2 + ¯ σ2siπ−1 
+
+> i
+
+)2 =
+
+> r
+
+X
+
+> i=1
+
+¯σ4si
+
+(˜ σ2πi + ¯ σ2si)2 . (C.9) The value KICL ˜X can be simplified as 
+
+KICL ˜X = ¯ σ2V Π†Σ⊤
+
+> ˜X
+
+
+
+¯σ2Σ ˜X Π†Σ⊤ 
+
+> ˜X
+
++ ˜ σ2I ˜N
+
+−1
+
+U ⊤U Σ ˜X V ⊤
+
+= ¯ σ2V Π†Σ⊤
+
+> ˜X
+
+
+
+¯σ2Σ ˜X Π†Σ⊤ 
+
+> ˜X
+
++ ˜ σ2I ˜N
+
+−1
+
+Σ ˜X V ⊤.
+
+Then we have that 
+
+tr 
+
+
+
+(I − KICL ˜X)Σ ∗(I − KICL ˜X)⊤
+
+
+
+=
+
+> r
+
+X
+
+> i=1
+
+
+
+1 − ¯σ2π−1 
+
+> i
+
+si
+
+¯σ2π−1 
+
+> i
+
+si + ˜ σ2
+
+2
+
+τi +
+
+> d
+
+X
+
+> i=r+1
+
+τi
+
+=
+
+> r
+
+X
+
+> i=1
+
+ ˜σ2πi
+
+¯σ2si + ˜ σ2πi
+
+2
+
+τi +
+
+> d
+
+X
+
+> i=r+1
+
+τi, (C.10) 
+
+tr 
+
+
+
+(I − KICL ˜X)Σ m(I − KICL ˜X)⊤
+
+
+
+=
+
+> r
+
+X
+
+> i=1
+
+
+
+1 − ¯σ2π−1 
+
+> i
+
+si
+
+¯σ2π−1 
+
+> i
+
+si + ˜ σ2
+
+2
+
+¯σ2π−1
+
+> i
+
+=
+
+> r
+
+X
+
+> i=1
+
+ ˜σ2πi
+
+¯σ2si + ˜ σ2πi
+
+2
+
+¯σ2π−1 
+
+> i
+
+(C.11) 
+
+tr 
+
+
+
+(I − KICL ˜X)μmμ⊤
+
+> m
+
+(I − KICL ˜X)⊤
+
+
+
+=
+
+> r
+
+X
+
+> i=1
+
+ ˜σ2πi
+
+¯σ2si + ˜ σ2πi
+
+2
+
+(v⊤ 
+
+> i
+
+μθ)2. (C.12) Combining (C.8), (C.9), (C.10), (C.11), (C.12), we have that 
+
+E∥θICL − θ∗∥2 =
+
+> r
+
+X
+
+> i=1
+
+˜σ4π2
+
+> i
+
+ τi + ¯ σ2π−1 
+
+> i
+
++ ( v⊤ 
+
+> i
+
+μθ)2 + ˜ σ2 ¯σ4si
+
+(¯ σ2si + ˜ σ2πi)2 +
+
+> d
+
+X
+
+> i=r+1
+
+τi.
+
+Thus, we have that 
+
+E∥ˆθICL − θ∗∥2 =
+
+> r
+
+X
+
+> i=1
+
+˜σ4π2
+
+> i
+
+ τi + ¯ σ2π−1 
+
+> i
+
++ ( v⊤ 
+
+> i
+
+μθ)2 + ˜ σ2 ¯σ4si + ˜ σ2 ¯σ2(¯ σ2si + ˜ σ2πi)(¯ σ2si + ˜ σ2πi)2 +
+
+> d
+
+X
+
+> i=r+1
+
+τi.
+
+Substituting the coefficients {αi}ri=1 from Theorem 3.3 into the expression for EICL yields the same expression as above. 44 D Proof of Theorems in Section 4 
+
+## D.1 Proof of Theorem 4.1 
+
+we first prove the existence of the equilibrium and then prove the uniqueness of the congestion level at equilibirum. 
+
+Proof of the Existence of Equilibrium 
+
+To prove the existence of equilibrium, we first show that there exists R∗ satisfying some fixed-point equation. Then we show that a equilibrium can be constructed from R∗. We define the fixed-point equation of R∗ as follows. For a given type t and congestion level R,we first define the congestion level of the optimal actions and the corresponding convex hull as 
+
+D(t, R ) = Ra ˜N | (a, ˜N ) ∈ BR( t, R ) , and ˆD(t, R ) = co D(t, R ), respectively. We call ˆD(t, R ) the attainable demand for type t at the congestion level R. Then the aggregate attainable demand correspondence is the Aumann integral 
+
+¯D(R) = 
+
+Z
+
+> T
+
+ˆD(t, R ) T (d t) = 
+
+ Z 
+
+> T
+
+d(t) T (d t) d(t) measurable and d(t) ∈ ˆD(t, R ) for a.e. t
+
+
+
+.
+
+(D.1) Our proofs proceed in five steps. 
+
+• Checking the plausibility of ¯D(R) definition. 
+
+• Restricting the domain of the fixed-point of ¯D(R).
+
+• Building the properties of ¯D(R).
+
+• Applying the fixed-point theorem to ¯D(R).
+
+• Constructing equilibrium from the fixed point of ¯D(R).
+
+Step 1: Checking the plausibility of ¯D(R) definition. 
+
+We will first show that ¯D(R) is well-defined, i.e., ¯D(R) is not an empty set. We achieve this by proving that 
+
+• The set ˆD(t, R ) is non-empty for any t and R.
+
+• We can find a measurable selection d(t) ∈ ˆD(t, R ), i.e., ¯D(R) is non-empty. For the non-emptiness of ˆD(t, R ), we will show that BR( t, R ) is non-empty and compact. Fix t ∈ T , R ∈ [0 , ¯R], and any ˜N0 > 0. For each a ∈ A there exists Ka(t, R ) > 0 such that 
+
+Ea(t, ˜N ) + Ra ˜N ¯h(R, p ) ≥ Ea(t, ˜N0) + Ra ˜N0¯h(R, p ) + 1 for all ˜N ≥ Ka(t, R ).
+
+45 Here Ka(t, R ) can be explicitly constructed as 
+
+Ka(t, R ) = Ea(t, ˜N0) + 1 
+
+Ra ·  h(0) + p + ˜N0.
+
+For a = SFT, there also exists ε(t, R ) > 0 such that 
+
+ESFT (t, ˜N ) + RSFT ˜N ¯h(R, p ) ≥ ESFT (t, ˜N0) + RSFT ˜N0¯h(R, p ) + 1 for all ˜N ∈ (0 , ε (t, R )] .
+
+Here ε(t, R ) can be explicitly constructed as 
+
+ε(t, R ) = 
+
+ 2( d − r)˜ σ2
+
+ESFT (t, ˜N0) + RSFT ˜N0¯h(R, p ) + 1 
+
+1/α 
+
+.
+
+Therefore, minimizing over ¯A is equivalent to minimizing over the compact set 
+
+¯A(t, R ) = 
+
+n
+
+(SFT , ˜N ) | ˜N ∈ ε(t, R ), K SFT (t, R )o
+
+∪
+
+n
+
+(ICL , ˜N ) | ˜N ∈ 0, K ICL (t, R )o
+
+.
+
+Note that the map (a, ˜N ) 7 → C(t, (a, ˜N ), R ) is continuous on ¯A(t, R ) (it is continuous in 
+
+˜N on each branch a, and a ranges over a finite set), and that a continuous function on a compact set attains its minimum. Thus, BR( t, R ) is nonempty. Moreover, since BR( t, R ) is the set of minimizers of a continuous function over a compact set, it is compact. Then we show that we can find a measurable selection d(t) ∈ ˆD(t, R ). We will prove that the maps t 7 → inf ˆD(t, R ), and t 7 → sup ˆD(t, R ) are measurable for each fixed R. Since 
+
+ˆD(t, R ) = co D(t, R ) and that 
+
+inf(co D(t, R )) = inf D(t, R ), sup(co D(t, R )) = sup D(t, R ),
+
+it suffices to show t 7 → inf D(t, R ) is measurable. Since the map (t, ˜N ) 7 → Ea(t, ˜N ) is jointly measurable for each a, (t, a, ˜N ) 7 → C(t, (a, ˜N ), R ) is jointly measurable for any R. Define the minimum value 
+
+m(t, R ) = inf   
+
+> (a, ˜N)∈A
+
+C(t, (a, ˜N ), R ).
+
+Because C is jointly measurable and ¯A is a Borel set, the map t 7 → m(t, R ) is measurable for any R. Thus, the graph Gr( R) = {(t, a, ˜N ) : C(t, (a, ˜N ), R ) = m(t, R )} for any R. This results in the measurability of inf D(t, R ) by noting that 
+
+inf D(t, R ) = inf {Ra ˜N | (t, a, ˜N ) ∈ Gr( R)}.
+
+The proof for t 7 → sup D(t, R ) is identical. Therefore, the extremal selections t 7 → inf ˆD(t, R )
+
+and t 7 → sup ˆD(t, R ) are measurable. Thus, ¯D(R) is non-empty. 
+
+Step 2: Restricting the domain of the fixed-point of ¯D(R).
+
+We first prove the following lemma. 46 Lemma D.1 (Uniform bound on best-response demand) . There exists a number ¯R < ∞ such that for all t ∈ T , all R ∈ [0 , ∞), and all (a, ˜N ) ∈ BR( t, R ),
+
+Ra ˜N ≤ ¯R. 
+
+Proof. We define 
+
+M (t) = sup 
+
+> R∈[0 ,∞)
+
+S(t, R ), where S(t, R ) = sup   
+
+> (a, ˜N)∈BR( t,R )
+
+Ra ˜N. 
+
+According to Proposition G.2, it is easy to verify that Ea(t, ˜N ) is strictly convex and decreasing in ˜N for any a ∈ A and t ∈ T . Thus, for any a ∈ A and t ∈ T , the minimizer 
+
+˜N ∗(a, t ) of C(t, (a, ˜N ), R ) is unique and decreasing with increasing R. Thus, we have that 
+
+M (t) = sup 
+
+> R∈[0 ,∞)
+
+S(t, R ) ≤ S(t, 0) .
+
+Since the minimizers are unique, and C(t, (a, ˜N ), R ) are continuous in t, S(t, 0) has its finite maximal value ¯R on T , due to the compactness of T . Thus, M (t) ≤ ¯R.Lemma D.1 implies that for any R ∈ [0 , ∞) and any measurable selection d(t) ∈ ˆD(t, R ),we have 0 ≤ d(t) ≤ ¯R a.e., hence 
+
+0 ≤
+
+Z
+
+> T
+
+d(t) T (d t) ≤ ¯R < ∞.
+
+Then for all R ∈ [0 , ∞), ¯D(R) ⊆ [0 , ¯R]. (D.2) Thus, it suffices to find a fixed point in the compact convex set K = [0 , ¯R].
+
+Step 3: Building the properties of ¯D(R).
+
+In this step, we will build three properties of ¯D(R): convexity, compactness, and upper hemicontinuity. We start with convexity. Convexity of ¯D(R) follows directly: if xi = R di(t) T (d t) ∈ ¯D(R)
+
+for i = 1 , 2, and λ ∈ [0 , 1] , then λd 1(t) + (1 − λ)d2(t) ∈ ˆD(t, R ) because ˆD(t, R ) is convex for each t. Hence 
+
+λx 1 + (1 − λ)x2 =
+
+Z  λd 1(t) + (1 − λ)d2(t) T (d t) ∈ ¯D(R).
+
+For compactness, we show that ¯D(R) is closed and bounded in R. Boundedness follows from (D.2) . For closedness, let {xn} ⊆ ¯D(R) with xn → x. For each n pick a measurable selection dn(t) ∈ ˆD(t, R ) such that xn = R 
+
+> T
+
+dn(t) T (d t). By Lemma D.1, 0 ≤ dn(t) ≤ ¯R a.e. for all n, so {dn} is uniformly integrable in L1(T ). By the Komlos’ theorem, there exists a subsequence (not relabeled) and a function d ∈ L1(T ) such that ¯dN = 1
+
+> N
+
+PNn=1 dn converges a.e. to d and in L1. Because each ˆD(t, R ) is convex and closed, ¯dN (t) ∈ ˆD(t, R ) for each 47 N and a.e. t, and taking limits preserves membership: d(t) ∈ ˆD(t, R ) a.e. Then by L1
+
+convergence, 
+
+Z
+
+> T
+
+d(t) T (d t) = lim  
+
+> N→∞
+
+Z
+
+> T
+
+¯dN (t) T (d t) = lim  
+
+> N→∞
+
+1
+
+N
+
+> N
+
+X
+
+> n=1
+
+xn = x. 
+
+Hence x ∈ ¯D(R), proving closedness. For the upper hemicontinuity, it suffices (in R) to show that the graph of R 7 → ¯D(R)
+
+is closed: if Rn → R and xn ∈ ¯D(Rn) with xn → x, then x ∈ ¯D(R). Fix such sequences. For each n, choose a measurable dn(t) ∈ ˆD(t, R n) such that xn = R 
+
+> T
+
+dn(t) T (d t). Again 
+
+0 ≤ dn ≤ M a.e., so by the same Komlos argument, there exists a subsequence and a limit 
+
+d ∈ L1(T ) such that ¯dN converges a.e. and in L1 to d. In the following, we only need to show that d(t) ∈ ˆD(t, R ) a.e. and R 
+
+> T
+
+d(t) T (d t) = x.To prove this claim, note that ˆD(t, R ) is the convex hull of demands induced by minimizers of C(t, ·, R ). Because C(t, ·, R ) is continuous in R, the objective C(t, (a, ˜N ); Rn)
+
+converges pointwise to C(t, (a, ˜N ), R ). By standard maximum theorem arguments on each compactified feasible set, the set of minimizers varies upper hemicontinuously, implying that any limit point of minimizer-induced demands at Rn belongs to the minimizer-induced demand set at R. Convexification and closedness of ˆD(t, R ) then imply that any limit point of convex combinations belongs to ˆD(t, R ). Since ¯dN (t) is a convex combination of elements in ˆD(t, R n) with varying n, and ˆD(t, R ) is upper hemicontinuous in R, the a.e. limit d(t)
+
+lies in ˆD(t, R ). Finally, L1 convergence yields 
+
+Z
+
+> T
+
+d(t) T (d t) = lim  
+
+> N→∞
+
+Z
+
+> T
+
+¯dN (t) T (d t) = lim  
+
+> N→∞
+
+1
+
+N
+
+> N
+
+X
+
+> n=1
+
+xn = x. 
+
+so x ∈ ¯D(R), proving closedness of the graph and hence upper hemicontinuity. 
+
+Step 4: Applying the fixed-point theorem to ¯D(R).
+
+We have shown: 
+
+• K = [0 , ¯R] is nonempty, compact, convex; 
+
+• for each R ∈ K, ¯D(R) is nonempty, compact, convex (Steps 1,3); 
+
+• ¯D(R) ⊆ K (Step 2); 
+
+• ¯D(·) is upper hemicontinuous (Step 3). Therefore, by Kakutani’s fixed point theorem, there exists R∗ ∈ K such that 
+
+R∗ ∈ ¯D(R∗).
+
+By definition of the Aumann integral (D.1) , there exists a measurable selection d∗(t) ∈
+
+ˆD(t, R ∗) for a.e. t such that 
+
+R∗ =
+
+Z
+
+> T
+
+d∗(t) T (d t).
+
+48 Step 5: Constructing equilibrium from the fixed point of ¯D(R)
+
+Fix t. Since d∗(t) ∈ ˆD(t, R ∗) = co D(t, R ∗), there exist (best-response) actions (a, ˜Na) ∈
+
+BR( t, R ∗) and weights λa ≥ 0 with P 
+
+> a∈A
+
+λa = 1 such that 
+
+d∗(t) = X
+
+> a∈A
+
+λaRa ˜Na.
+
+Define π∗ 
+
+> t
+
+as the probability distribution assigning mass λa to action (a, ˜Na). Then π∗ 
+
+> t
+
+is supported on BR( t, R ∗). By construction, the expected demand of type t under π∗ 
+
+> t
+
+equals 
+
+d∗(t), hence 
+
+R(π∗) = 
+
+Z
+
+> T
+
+ X
+
+> a∈A
+
+Z ∞
+
+> 0
+
+Ra ˜N π ∗ 
+
+> t
+
+(a, d ˜N )) 
+
+
+
+T (d t) = 
+
+Z
+
+> T
+
+d∗(t) T (d t) = R∗.
+
+Thus (π∗, R ∗) satisfies optimality and consistency, proving existence. Thus, we conclude the proof of this theorem. 
+
+Proof of the Congestion-Level Uniqueness of Equilibrium 
+
+We first prove the following lemma. 
+
+Lemma D.2 (Monotonicity of best-response demand) . For each t ∈ T and any 0 ≤ R1 < R 2,if we define D(t, R ) = {Ra ˜N | (a, ˜N ) ∈ BR( t, R )}, then sup D(t, R 2) ≤ inf D(t, R 1).
+
+Proof. Fix a type t. Define the resource demand variable r = Ra ˜N. For each r ≥ 0, we define the minimal statistical error with resource r as 
+
+gt(r) = min  
+
+> a∈{ sft ,icl }
+
+Ea
+
+
+
+t, rRa
+
+
+
+.
+
+Then the type-t optimization problem is equivalent to 
+
+min    
+
+> (a, ˜N)∈¯A
+
+Ea(t, ˜N ) + Ra ˜N ¯h(R, p ) = min 
+
+> r≥0
+
+gt(r) + ¯h(R, p ) r .
+
+Hence, we have that 
+
+D(t, R ) = arg min 
+
+> r≥0
+
+gt(r) + ¯h(R, p )r .
+
+Let R1 < R 2. Since h is increasing, we have ¯h(R1, p ) < ¯h(R2, p ). Pick arbitrary 
+
+r1 ∈ D(t, R 1), r2 ∈ D(t, R 2).
+
+Optimality of r1 and r2 implies 
+
+gt(r1) + ¯h(R1, p )r1 ≤ gt(r2) + ¯h(R1, p )r2, (D.3) 
+
+gt(r2) + ¯h(R2, p )r2 ≤ gt(r1) + ¯h(R2, p )r1. (D.4) 49 Adding (D.3) and (D.4) and canceling terms yields 
+
+ ¯h(R2, p ) − ¯h(R1, p ) (r2 − r1) ≤ 0.
+
+Since ¯h(R2, p ) > ¯h(R1, p ), it follows that r2 ≤ r1.
+
+Because the choice of r1 ∈ D(t, R 1) and r2 ∈ D(t, R 2) was arbitrary, we have sup D(t, R 2) ≤
+
+inf D(t, R 1). Thus, we conclude the proof of this lemma. Then we prove the uniqueness as follows. Assume for contradiction that there exist two equilibrium congestion levels R1 < R 2. By the definition of equilibrium with mixed policies, we must have 
+
+Ri ∈ ¯D(Ri) = 
+
+Z
+
+> T
+
+ˆD(t, R i) T (d t) for i = 1 , 2,
+
+where ˆD(t, R ) = co D(t, R ), and the integral is the Aumann integral. The existence proof has proved that ¯D(·) is well-defined. According to the definition of the Aumann integral, there exist measurable selections di(t) ∈ ˆD(t, R i) such that 
+
+Ri =
+
+Z
+
+> T
+
+di(t) T (d t) for i = 1 , 2.
+
+Fix t. Because d1(t) ∈ ˆD(t, R 1) and d2(t) ∈ ˆD(t, R 2), we have 
+
+d1(t) ≥ inf ˆD(t, R 1), d2(t) ≤ sup ˆD(t, R 2).
+
+In addition, note that inf ˆD(t, R 1) = inf D(t, R 1), and sup ˆD(t, R 2) = sup D(t, R 2). Therefore, 
+
+d2(t) ≤ sup D(t, R 2) ≤ inf D(t, R 1) ≤ d1(t), where the middle inequality uses Lemma D.2. Thus d2(t) ≤ d1(t) for T -a.e. t. Integrating yields 
+
+R2 =
+
+Z
+
+d2(t) T (d t) ≤
+
+Z
+
+d1(t) T (d t) = R1,
+
+contradicting R1 < R 2. Hence, there cannot exist two distinct equilibrium congestion levels. We conclude the proof of Theorem 4.1. 
+
+## D.2 Proof of Theorem 4.3 
+
+We will prove our claims one by one. For the first result, we calculate the closed-form expression of Φa and Na in the following proposition. 
+
+Proposition D.3. For ICL and SFT with errors in (4.2) , we have that 
+
+NSFT (H) = 
+
+s
+
+2˜ σ2dRSFT H , and NICL (H) = max 
+
+
+
+0,
+
+s
+
+2˜ σ2rRICL H − 2˜ σ2
+
+ζ
+
+
+
+.
+
+50 The corresponding minimal costs are 
+
+ΦSFT (H) = 2 p2˜ σ2dR SFT H, and 
+
+ΦICL (H) = ( d − r)τ +
+
+(
+
+rζ, if RICL H ≥ rζ 2
+
+> 2˜ σ2
+
+2√2r˜σ2RICL H − RICL · 2˜ σ2 
+
+> ζ
+
+· H, if RICL H < rζ 2 
+
+> 2˜ σ2
+
+.
+
+The proof is provided in Appendix G.2. Thus, we have that 
+
+RSFT NSFT (H) = 
+
+r2RSFT ˜σ2dH >
+
+r2RICL ˜σ2rH > max 
+
+
+
+0,
+
+r2RICL ˜σ2rH − 2˜ σ2
+
+ζ RICL 
+
+
+
+= RICL NICL (H),
+
+where the first inequality results from Assumption 4.2 and that d ≥ r.For the second result, we define the function 
+
+fa(H) = ¯h RaNa(H), p  − H = p + ( RaNa(H)) 2 − H. 
+
+We note that fa(H) are strictly decrcreasing in H and lim H→∞ fa(H) = −∞ for any a ∈ A .Since lim H↓0 fa(H) = ∞ for any a ∈ A , both H∗ 
+
+> ICL
+
+and H∗ 
+
+> SFT
+
+exist and are unique. Since 
+
+fa(p) ≥ 0 for all a, H∗ 
+
+> a
+
+≥ p. The relationship H∗ 
+
+> SFT
+
+> H ∗ 
+
+> ICL
+
+directly follows from our first claim RSFT NSFT (H) > R ICL NICL (H) for any H ≥ 0, since they are the solutions of 
+
+H∗ 
+
+> a
+
+= ( Ra · Na(H∗ 
+
+> a
+
+)) 2 + p.For the third claim, Proposition D.3 shows that 
+
+ψ(H) = 2 p2˜ σ2dR SFT H − 2p2r˜σ2RICL H + RICL · 2˜ σ2
+
+ζ · H − (d − r)τ if H < rζ 2
+
+2RICL ˜σ2 .
+
+We have that 
+
+ψ′(H) = 
+
+√2˜ σ2dR SFT − √2r˜σ2RICL 
+
+√H + RICL · 2˜ σ2
+
+ζ > 0.
+
+With the similar procedure, we can show ψ(H) is also strictly increasing when RICL H ≥
+
+rζ 2/(2˜ σ2). To show that the root of ψ(H) exists, we note that 
+
+ψ(0) < 0, and lim  
+
+> H→∞
+
+ψ(H) = ∞.
+
+Thus, H∗ 
+
+> sep
+
+> 0 exists. The uniqueness results from the strict monotonicity of ψ.In the following, we prove the last result. For the equilibrium (π∗, R ∗), we note that π∗
+
+is a distribution on ∆( ¯A), since there is only one user type. We adopt H∗ to denote the corresponding cost per unit computational resource, i.e., H∗ = ¯h(R∗, p ). We consider three cases as follows. 
+
+• If H∗ < H ∗
+
+> sep
+
+, then ψ(H∗) < 0. Thus, all the users will adopt SFT . In other words, H∗
+
+must be H∗
+
+> SFT
+
+, since H∗ 
+
+> SFT
+
+is the fixed point of H∗ 
+
+> a
+
+= ¯h Ra · Na(H∗ 
+
+> a
+
+), p . Then π∗ adopts 
+
+(SFT , N SFT (H∗)) with probability 1.51 • If H∗ > H ∗
+
+> sep
+
+, the arguments are similar to the previous ones. We have that H∗ = H∗
+
+> ICL
+
+and that π∗ adopts (ICL , N ICL (H∗)) with probability 1.
+
+• If H∗ = H∗
+
+> sep
+
+, then the users can adopt either (SFT , N SFT (H∗)) and (ICL , N ICL (H∗)) .Assume that we adopt SFT with probability λ. Then we must have 
+
+pH∗ − p = λR SFT NSFT (H∗) + (1 − λ)RICL NICL (H∗).
+
+Thus, we have that 
+
+λ =
+
+√H∗ − p − RICL NICL (H∗)
+
+RSFT NSFT (H∗) − RICL NICL (H∗).
+
+Thus, we conclude the proof of Theorem 4.3. 
+
+## D.3 Full Statement and Proof of Theorem 4.7 
+
+Theorem D.4. Consider the game (4.2) with α = 1 , T (t1) = q, T (t2) = 1 − q, h(x) = x2, and 
+
+RSFT > R ICL . When H∗
+
+> sep
+
+(t2) < H ∗
+
+> sep
+
+(t1), the equilibrium has a threshold structure: 1. If H∗
+
+> sep
+
+(t2) > e (H∗
+
+> sep
+
+(t2)) 2 + p, then H∗ at equilibrium is the root of H = e(H)2 + p.2. If f (H∗
+
+> sep
+
+(t2)) 2 + p ≤ H∗
+
+> sep
+
+(t2) ≤ e(H∗
+
+> sep
+
+(t2)) 2 + p, H∗ = H∗
+
+> sep
+
+(t2).3. If H∗
+
+> sep
+
+(t2) < f (H∗
+
+> sep
+
+(t2)) 2 + p and f (H∗
+
+> sep
+
+(t1)) 2 + p < H ∗
+
+> sep
+
+(t1), then H∗ at equilibrium is the root of H = f (H)2 + p.4. If g(H∗
+
+> sep
+
+(t1)) 2 + p ≤ H∗
+
+> sep
+
+(t1) ≤ f (H∗
+
+> sep
+
+(t1)) 2 + p, H∗ = H∗
+
+> sep
+
+(t1).5. If H∗
+
+> sep
+
+(t1) < g (H∗
+
+> sep
+
+(t1)) 2 + p, then H∗ at equilibrium is the root of H = g(H)2 + p.The equilibrium congestion level is R∗ = √H∗ − p, where H∗ is determined by cases (1)–(5). When H∗
+
+> sep
+
+(t2) = H∗
+
+> sep
+
+(t1), the following holds. 1. If H∗
+
+> sep
+
+(t2) > e (H∗
+
+> sep
+
+(t2)) 2 + p, then H∗ at equilibrium is the root of H = e(H)2 + p.2. If g(H∗
+
+> sep
+
+(t2)) 2 + p ≤ H∗
+
+> sep
+
+(t2) ≤ e(H∗
+
+> sep
+
+(t2)) 2 + p, H∗ = H∗
+
+> sep
+
+(t2).3. If H∗
+
+> sep
+
+(t2) < g (H∗
+
+> sep
+
+(t2)) 2 + p, then H∗ at equilibrium is the root of H = g(H)2 + p.The equilibrium congestion level is R∗ = √H∗ − p, where H∗ is determined by cases (1)–(3). 
+
+The explicit expressions of e, f, g are 
+
+e(H) = q
+
+r2˜ σ21 d1RSFT 
+
+H + (1 − q)
+
+r2˜ σ22 d2RSFT 
+
+H ,f (H) = q
+
+r2˜ σ21 d1RSFT 
+
+H + (1 − q) max 
+
+
+
+0,
+
+r2˜ σ22 r2RICL 
+
+H − 2˜ σ22 RICL 
+
+ζ2
+
+
+
+,
+
+52 g(H) = q max 
+
+
+
+0,
+
+r2˜ σ21 r1RICL 
+
+H − 2˜ σ21 RICL 
+
+ζ1
+
+
+
++ (1 − q) max 
+
+
+
+0,
+
+r2˜ σ22 r2RICL 
+
+H − 2˜ σ22 RICL 
+
+ζ2
+
+
+
+.
+
+Before the proof, we first define several quantities. 
+
+J(t, H ) = Ra ˜Na(t, H ) | Φa(t, H ) ≤ Φa′ (t, H ) for all a′ ∈ A ,
+
+ˆJ(t, H ) = co J(t, H ),
+
+¯J(H) = q · R1 + (1 − q) · R2 | Ri ∈ ˆJ(ti, H ) for i = 1 , 2 .
+
+Intuitively, the set J(t, H ) includes all the possible amount of consumed resource of the pure actions given H for type-t users, ˆJ(t, H ) is the convex hull of J(t, H ), reflecting the randomized policy, and ¯J(H) includes all the possible amount of consumed resource for all the users. Thus, H∗ = h(R∗) + p at equilibrium is the root of the following equation. 
+
+h−1(H∗ − p) ∈ ¯J(H∗), (D.5) where h−1 is the inverse function of h. In the following, we explicitly calculate ¯J(H). First, we assume that H∗
+
+> sep
+
+(t2) < H ∗
+
+> sep
+
+(t1). Then we consider 5 cases. 
+
+Case 1: H < H ∗
+
+> sep
+
+(t2).
+
+Since H∗
+
+> sep
+
+(t2) < H ∗
+
+> sep
+
+(t1), we have that ψ(t1, H ) < 0 and ψ(t2, H ) < 0. Thus, all users choose SFT. Define the function 
+
+e(H) = q
+
+r2˜ σ21 d1RSFT 
+
+H + (1 − q)
+
+r2˜ σ22 d2RSFT 
+
+H .
+
+Under this case, we have that ¯J(H) = e(H). Obviously, e(H) is strictly decreasing in H. If q
+
+H∗
+
+> sep
+
+(t2) − p > e (H∗
+
+> sep
+
+(t2)) , then the root H∗ of (D.5) is not larger than H∗
+
+> sep
+
+(t2), which is the unique root of 
+
+pH − p = e(H).
+
+Case 2: H = H∗
+
+> sep
+
+(t2).
+
+Since H∗
+
+> sep
+
+(t2) < H ∗
+
+> sep
+
+(t1), we have that ψ(t1, H ) < 0 and ψ(t2, H ) = 0 . The users of type t1 will choose SFT , and the users of type t2 can choose both SFT and ICL . Due to Assumption 4.2, we have that 
+
+RSFT NSFT (t, H ) ≥ RICL NICL (t, H ).
+
+To specify ¯J(H), we define the following function 
+
+f (H) = q
+
+r2˜ σ21 d1RSFT 
+
+H + (1 − q) max 
+
+
+
+0,
+
+r2˜ σ22 r2RICL 
+
+H − 2˜ σ22 RICL 
+
+ζ2
+
+
+
+.
+
+Under this case, we have that ¯J(H) = [ f (H), e (H)] . If f (H∗
+
+> sep
+
+(t2)) ≤
+
+q
+
+H∗
+
+> sep
+
+(t2) − p ≤
+
+e(H∗
+
+> sep
+
+(t2)) , then we have that the root H∗ of (D.5) is H∗
+
+> sep
+
+(t2).53 Case 3: H∗
+
+> sep
+
+(t2) < H < H ∗
+
+> sep
+
+(t1).
+
+Under this setting, the users of type t2 will choose ICL , while the users of type t1 will choose SFT . Thus, we have that ¯J(H) = f (H). We note that f (H) is strictly decreasing in H. If 
+
+q
+
+H∗
+
+> sep
+
+(t2) − p < f (H∗
+
+> sep
+
+(t2)) and 
+
+q
+
+H∗
+
+> sep
+
+(t1) − p > f (H∗
+
+> sep
+
+(t1)) , then the root H∗ of (D.5) is the root of the following equation 
+
+pH − p = f (H).
+
+Case 4: H = H∗
+
+> sep
+
+(t1).
+
+Under this case, the users of type t2 will choose ICL , and the users of type t1 can choose both SFT and ICL. Thus, we define the following function 
+
+g(H) = q max 
+
+
+
+0,
+
+r2˜ σ21 r1RICL 
+
+H − 2˜ σ21 RICL 
+
+ζ1
+
+
+
++ (1 − q) max 
+
+
+
+0,
+
+r2˜ σ22 r2RICL 
+
+H − 2˜ σ22 RICL 
+
+ζ2
+
+
+
+.
+
+We have that ¯J(H) = [ g(H), f (H)] . Thus, if g(H∗
+
+> sep
+
+(t1)) ≤
+
+q
+
+H∗
+
+> sep
+
+(t1) − p ≤ f (H∗
+
+> sep
+
+(t1)) , then the root H∗ of (D.5) is equal to H∗
+
+> sep
+
+(t1).
+
+Case 5: H > H ∗
+
+> sep
+
+(t1).
+
+Under this case, all the users adopt ICL . Thus, we have that ¯J(H) = g(H). The function 
+
+g(H) is decreasing in H. If 
+
+q
+
+H∗
+
+> sep
+
+(t1) − p < g (H∗
+
+> sep
+
+(t1)) , the root H∗ of (D.5) is the root of the following equation 
+
+pH − p = g(H).
+
+Then, we handle the case H∗
+
+> sep
+
+(t2) = H∗
+
+> sep
+
+(t1).
+
+Case 1: H < H ∗
+
+> sep
+
+(t2) = H∗
+
+> sep
+
+(t1).
+
+All the users will choose SFT in this case. Thus, we have that ¯J(H) = e(H). If q
+
+H∗
+
+> sep
+
+(t2) − p > e (H∗
+
+> sep
+
+(t2)) , then the root H∗ of (D.5) is not larger than H∗
+
+> sep
+
+(t2), which is the unique root of √H − p = e(H).
+
+Case 2: H = H∗
+
+> sep
+
+(t2) = H∗
+
+> sep
+
+(t1).
+
+In this case, all the users can choose both SFT and ICL . Thus, we have that ¯J(H) = [g(H), e (H)] . If g(H∗
+
+> sep
+
+(t2)) ≤
+
+q
+
+H∗
+
+> sep
+
+(t2) − p ≤ e(H∗
+
+> sep
+
+(t2)) , then H∗ = H∗
+
+> sep
+
+(t2).
+
+Case 3: H > H ∗
+
+> sep
+
+(t2) = H∗
+
+> sep
+
+(t1).
+
+All the users will choose ICL in this case. Thus, we have that ¯J(H) = g(H). If q
+
+H∗
+
+> sep
+
+(t2) − p < g (H∗
+
+> sep
+
+(t2)) , the root H∗ of (D.5) is the root of the following equation 
+
+√H − p = g(H).
+
+# E Proof of Theorems in Section 5 
+
+## E.1 Proof of Theorem 5.2 
+
+The proof proceeds in three steps. 54 Step 1: Individual demand is decreasing in p.
+
+Fix a type t ∈ T and a congestion level R ≥ 0. Recall that the user cost is 
+
+C t, (a, N ), R, p  = Ea(t, N ) + RaN  p + h(R),
+
+where we explicitly write out p as a variable of C. Define the total resource consumption 
+
+r = RaN and the induced statistical error function 
+
+gt(r) = min  
+
+> a∈{ SFT ,ICL }
+
+Ea
+
+
+
+t, rRa
+
+
+
+.
+
+Then the type-t optimization problem is equivalent to 
+
+min 
+
+> r≥0
+
+gt(r) + ¯h(R, p ) r , where ¯h(R, p ) = p + h(R).
+
+Let D(t, R, p ) denote the set of minimizers. Take any p1 < p 2, and let r1 ∈ D(t, R, p 1),
+
+r2 ∈ D(t, R, p 2). Optimality implies 
+
+gt(r1) + ¯h(R, p 1)r1 ≤ gt(r2) + ¯h(R, p 1)r2,gt(r2) + ¯h(R, p 2)r2 ≤ gt(r1) + ¯h(R, p 2)r1.
+
+Adding the two inequalities and cancelling gt(·) yields 
+
+ ¯h(R, p 2) − ¯h(R, p 1)(r2 − r1) ≤ 0.
+
+Since ¯h(R, p 2) > ¯h(R, p 1), it follows that r2 ≤ r1. Because the choice of r1, r 2 was arbitrary, 
+
+sup D(t, R, p 2) ≤ inf D(t, R, p 1). (A.1) 
+
+Step 2: Aggregate best response is decreasing in p.
+
+Let ˆD(t, R, p ) = co D(t, R, p ) be the convexified demand correspondence, and define the aggregate demand correspondence via the Aumann integral 
+
+¯D(R, p ) = 
+
+Z
+
+> T
+
+ˆD(t, R, p ) T (dt ).
+
+Convexification preserves the ordering of extrema, and (A.1) implies 
+
+sup ¯D(R, p 2) ≤ inf ¯D(R, p 1) ∀R ≥ 0. (A.2) 
+
+Step 3: Comparison of fixed points. 
+
+By the equilibrium definition, we have that 
+
+R∗(p) ∈ ¯D(R∗(p), p ).
+
+Assume for contradiction that p1 < p 2 but R∗(p2) > R ∗(p1). Using the monotonicity of 
+
+¯D(·, p 2) in R (Lemma D.2) and (A.2), we obtain 
+
+R∗(p2) ≤ sup ¯D(R∗(p2), p 2) ≤ inf ¯D(R∗(p1), p 2) ≤ inf ¯D(R∗(p1), p 1) ≤ R∗(p1),
+
+which contradicts R∗(p2) > R ∗(p1). Therefore, 
+
+R∗(p2) ≤ R∗(p1).
+
+We conclude the proof of Theorem 5.2. 55 E.2 Proof of Theorem 5.5 
+
+We first define several quantities. For H > 0, define the optimal number of sample for each algorithm as 
+
+Na(t, H ) = argmin  
+
+> N≥0
+
+Ea(t, N ) + RaHN .
+
+For each (t, R ) define the minimal best-response demand 
+
+dfull (t, R ) = inf {Ra ˜N | (a, ˜N ) ∈ BR (t, R )}.
+
+Lemma D.2 shows that the map R 7 → dfull (t, R ) is decreasing for each t. We also define the analogy for ICL as 
+
+dICL (t, R ) = RICL · NICL 
+
+ t, p + h(R).
+
+In the following, since we fix the value p through the whole proof, we will omit the dependency on p in the notations. 
+
+Step 1: Comparison of dfull and dICL .
+
+To compare dfull and dICL , we present the following proposition. 
+
+Proposition E.1. Under Assumption 5.4, for any t ∈ T , H > 0, we have that RSFT NSFT (t, H ) >RICL NICL (t, H ).
+
+The proof is in Appendix G.3. Thus, we have that 
+
+dfull (t, R ) = inf   
+
+> (a, ˜N)∈BR (t,R )
+
+Ra ˜N ≥ RICL NICL (t, p + h(R)) = dICL (t, R ) for all t ∈ T , R ≥ 0.
+
+Step 2: Aggregate maps and their monotonicity. 
+
+Define the aggregate minimal-demand map in the full game and the aggregate ICL-demand map: 
+
+Ffull (R) := 
+
+Z
+
+> T
+
+dfull (t, R ) T (d t), FICL (R) := 
+
+Z
+
+> T
+
+dicl (t, R ) T (d t).
+
+These integrals are well-defined by measurability and nonnegativity. Since dfull (t, R ) ≥
+
+dICL (t, R ) pointwisely, we have that 
+
+Ffull (R) ≥ FICL (R), ∀R ≥ 0. (E.1) 
+
+Step 3: Equilibria Comparison. 
+
+By definition of R∗ 
+
+> icl
+
+as the equilibrium congestion level in the ICL-only game, it is the fixed point of the following equation 
+
+R∗ 
+
+> icl
+
+= FICL (R∗
+
+> icl
+
+). (E.2) 56 The existence of such equilibrium can be similarly proved as Theorem 4.1. For conciseness, we omit it here. Combining (E.1) and (E.2) yields 
+
+Ffull (R∗
+
+> icl
+
+) ≥ R∗
+
+> icl
+
+. (E.3) Let (π∗, R ∗) be an equilibrium in the full game. For T -a.e. t, π∗ 
+
+> t
+
+is supported on BR (t, R ∗).Therefore, for T -a.e. t,
+
+E(a, ˜N )∼π∗ 
+
+> t
+
+[Ra ˜N ] ≥ inf   
+
+> (a, ˜N)∈BR (t,R ∗)
+
+Ra ˜N = dfull (t, R ∗).
+
+Integrating over t and using consistency ( R∗ equals aggregate expected demand) gives 
+
+R∗ =
+
+Z
+
+> T
+
+Eπ∗ 
+
+> t
+
+[Ra ˜N ] T (d t) ≥
+
+Z
+
+> T
+
+dfull (t, R ∗) T (d t) = Ffull (R∗). (E.4) Suppose for contradiction that R∗ < R ∗
+
+> icl
+
+. Since Ffull is decreasing, 
+
+Ffull (R∗) ≥ Ffull (R∗
+
+> icl
+
+) ≥ R∗ 
+
+> icl
+
+> R ∗,
+
+where the second inequality is (E.3) . This contradicts (E.4) , which states R∗ ≥ Ffull (R∗).Hence R∗ ≥ R∗
+
+> icl
+
+. Thus, we conclude the proof of Theorem 5.5. 
+
+# F Proofs of Propositions and Corollaries 
+
+## F.1 Proof of Corollary 3.4 
+
+Define ¯σ2 = σ2 + c2. We directly calculate the difference between the errors of pretrained models and ICL as follows. 
+
+Epre − EICL 
+
+=
+
+> r
+
+X
+
+> i=1
+
+(¯ σ2si + ˜ σ2πi)−2
+
+nτi + 2¯ σ2π−1 
+
+> i
+
++ ( v⊤ 
+
+> i
+
+μθ)2 · (¯ σ2si + ˜ σ2πi)2
+
+− ˜σ4π2 
+
+> i
+
+τi − 2˜ σ4 ¯σ2πi − ˜σ4π2 
+
+> i
+
+(v⊤ 
+
+> i
+
+μθ)2 − 2˜ σ2 ¯σ4si
+
+o
+
+=
+
+> r
+
+X
+
+> i=1
+
+(¯ σ2si + ˜ σ2πi)−2
+
+nτi + ( v⊤ 
+
+> i
+
+μθ)2 · (¯ σ4s2 
+
+> i
+
++ 2¯ σ2 ˜σ2siπi) + 2¯ σ6s2 
+
+> i
+
+π−1 
+
+> i
+
++ 2˜ σ2 ¯σ4si
+
+o
+
+.
+
+The right-hand side of this equality is non-negative. Thus, we have that Epre ≥ EICL . In the non-degenerate case, the right-hand side of this equality is positive. 57 F.2 Proof of Proposition 3.6 
+
+We first calculate the optimal value λ∗ for SFT and the corresponding error Eλ∗
+
+> SFT
+
+. With Assumption 3.5, Theorem 3.3 shows that the SFT error with a fixed regularization λ > 0 is 
+
+Eλ 
+
+> SFT
+
+= r · 2 ˜ σ2 ¯σ4 s + λ2 ˜σ4 π2 τ + 2¯ σ2/π + m2 ¯σ2s + λ ˜σ2π2 + 2( d − r) · ˜σ2
+
+s . (F.1) To calculate the minimal value of Eλ
+
+> SFT
+
+, we define following quantities. 
+
+A = 2 r ˜σ2 ¯σ4 s, B = ˜ σ4 π2 r τ + 2¯ σ2/π + m2, C = ¯ σ2s, D = ˜ σ2π. 
+
+Then the first term of the error in (F.1) equals 
+
+F (λ) = A + Bλ 2
+
+(C + Dλ )2 . (F.2) Thus, we have that 
+
+Eλ 
+
+> SFT
+
+= F (λ) + 2( d − r) ˜σ2
+
+s .
+
+Differentiating (F.2), we get 
+
+F ′(λ) = (2 Bλ )( C + Dλ )2 − (A + Bλ 2) · 2D(C + Dλ )(C + Dλ )4
+
+= 2( C + Dλ )Bλ (C + Dλ ) − D(A + Bλ 2)
+
+(C + Dλ )4 .
+
+Since C + Dλ > 0, critical points satisfy 
+
+Bλ (C + Dλ ) − D(A + Bλ 2) = BCλ − DA = 0 ,
+
+hence the unique minimizer on (0 , ∞) is 
+
+λ∗ = A · DB · C = ˜σ2π · 2r ˜σ2 ¯σ4s
+
+˜σ4π2r τ + 2¯ σ2/π + m2 · ¯σ2s = 2 ¯ σ2
+
+π τ + m2 + 2 ¯ σ2 .
+
+Minimal row-space value. For F (λ) = ( A + Bλ 2)/(C + Dλ )2 with A, B, C, D > 0, the minimal value at λ∗ is 
+
+F (λ∗) = A B AD 2 + BC 2 . (F.3) Substituting A, B, C, D and simplifying, we have that 
+
+F (λ∗) = 2r ˜σ2
+
+
+
+τ + 2¯ σ2π−1 + m2
+
+
+
+s
+
+
+
+τ + 2¯ σ2π−1 + m2
+
+
+
++ 2 ˜ σ2
+
+.
+
+58 Thus, the optimal SFT error is 
+
+Eλ∗ 
+
+> sft
+
+= F (λ∗) + 2( d − r) ˜σ2
+
+s =2r ˜σ2
+
+
+
+τ + 2¯ σ2π−1 + m2
+
+
+
+s
+
+
+
+τ + 2¯ σ2π−1 + m2
+
+
+
++ 2 ˜ σ2
+
++ 2( d − r) ˜σ2
+
+s . (F.4) We first derive the error of ICL under Assumption 3.5. According to Theorem 3.3, ICL ’s row-space per-direction error in the first r subspaces simplifies to 
+
+˜σ4π2
+
+> i
+
+ τi + ¯ σ2π−1 
+
+> i
+
++ ( v⊤ 
+
+> i
+
+μθ)2 + ˜ σ2 ¯σ4si + ˜ σ2 ¯σ2(¯ σ2si + ˜ σ2πi)(¯ σ2si + ˜ σ2πi)2 = ˜σ4π2 τ + ¯ σ2/π + m2 + 2˜ σ2 ¯σ4s + ¯ σ2 ˜σ4π
+
+(¯ σ2s + ˜ σ2π)2 .
+
+To further simplify the expression, we define 
+
+ζ = τ + 2¯ σ2
+
+π + m2.
+
+Observe that ˜σ4π2(τ + ¯ σ2/π + m2) = ˜ σ2 ˜σ2π2ζ − ¯σ2 ˜σ2π, so the ICL error becomes 
+
+EICL = r · ˜σ2 2¯ σ4s + ˜ σ2π2ζ
+
+(¯ σ2s + ˜ σ2π)2 + ( d − r)τ. 
+
+According to (F.4), the SFT error can be simplified as 
+
+E∗ 
+
+> SFT
+
+= r · 2˜ σ2ζsζ + 2˜ σ2 + ( d − r)2˜ σ2
+
+s .
+
+The difference between the SFT and ICL errors is 
+
+∆ = Eλ∗ 
+
+> sft
+
+− Eicl = r
+
+ 2˜ σ2ζsζ + 2˜ σ2 − ˜σ2 2¯ σ4s + ˜ σ2π2ζ
+
+(¯ σ2s + ˜ σ2π)2
+
+
+
++ ( d − r)
+
+2˜ σ2
+
+s − τ
+
+
+
+= r · δ + ( d − r)
+
+2˜ σ2
+
+s − τ
+
+
+
+.
+
+The term δ can be simplified as 
+
+δ = 2˜ σ2ζ (¯ σ2s + ˜ σ2π)2 − (sζ + 2˜ σ2)˜ σ2(2¯ σ4s + ˜ σ2π2ζ)(sζ + 2˜ σ2) (¯ σ2s + ˜ σ2π)2
+
+= − π3 ˜σ4 (τ + m2)2 s
+
+ ¯σ2s + π˜σ22  2¯ σ2s + πs (τ + m2) + 2 π˜σ2.
+
+The fact that δ < 0 establishes that SFT is strictly better than ICL within the pretraining subspace. To further study the comparison between SFT and ICL, we define 
+
+κ = sτ 
+
+2˜ σ2 , and R = rd − r
+
+Then the error difference is expressed as 
+
+∆ = ( d − r)
+
+
+
+R · δ + 2˜ σ2
+
+s − τ
+
+
+
+.
+
+59 Hence ∆ ⪋ 0 if and only if 
+
+R ⪌ τ − 2˜ σ2s−1
+
+δ = −τ − 2˜ σ2s−1
+
+|δ| .
+
+Substitute s = 2˜ σ2τ −1κ into δ and simplify to obtain 
+
+Rcrit = (1 − κ) 2¯ σ2κ + πτ 2 2¯ σ2κ + πκ (τ + m2) + πτ 
+
+π3 κ2 τ (τ + m2)2 .
+
+Thus, we reach the following conclusions 
+
+• If κ ≥ 1 then SFT has less error than ICL. 
+
+• If 0 < κ < 1, then the sign of ∆ is decided by R relative to Rcrit .We conclude the proof of Proposition 3.6. 
+
+## F.3 Proof of Proposition 4.4 
+
+Proposition F.1. Under models (4.2) with α = 1 , ¯h(R, p ) = p + R2, and RSFT > R ICL , the following holds. 1. The congestion-level R∗ decreasing in π.2. Assume that 2τ > ζ . If the following condition holds 
+
+p < r∗ζ2
+
+2RICL ˜σ2 , and r∗ > 2˜ σ2RICL τ −4ζ−24˜ σ4R2
+
+> ICL
+
+(ζ − τ )2 + τ 2W 2p,
+
+where 
+
+r∗ =
+
+√D − pD − (1 − E)F
+
+1 − E
+
+2
+
+for D = RSFT d/R ICL , E = τ /ζ, and F = d, 
+
+then R∗ is increasing in r. Otherwise, there exist thresholds 0 < r ∗ < r ∗∗ < d (with r∗ as defined above) such that the equilibrium congestion R∗(r) is increasing in r on [0 , r ∗] ∪ [r∗∗ , d ]
+
+and decreasing in r on [r∗, r ∗∗ ].
+
+Note that the congestion level at the equilibrium is R∗ = √H∗ − p. We only need to prove the monotonicity of H∗, which is a threholded version of H∗ 
+
+> sep
+
+as 
+
+H∗ = max H∗
+
+> ICL
+
+, min {H∗
+
+> sep
+
+, H ∗
+
+> SFT
+
+} .
+
+In the following, we will prove the monotonicity of H∗
+
+> ICL
+
+, H∗
+
+> SFT
+
+, and H∗ 
+
+> sep
+
+in r and π.We first derive the definitions or expressions of them in the following proposition. 60 Proposition F.2. Under models (4.2) with α = 1 and ¯h(R, p ) = p + R2, we have the following results. 
+
+• For SFT, the root H∗ 
+
+> SFT
+
+is 
+
+H∗ 
+
+> SFT
+
+= p + pp2 + 8˜ σ2d R SFT 
+
+2 .
+
+• For ICL, H∗ 
+
+> ICL
+
+is the root of the following equation 
+
+max 
+
+(
+
+0,
+
+r2˜ σ2rR ICL 
+
+H − 2˜ σ2RICL 
+
+ζ
+
+)
+
+= pH − p. (F.5) 
+
+Specifically, when 
+
+p ≥ ¯H = rζ 2
+
+2RICL ˜σ2 ,
+
+the root is H∗ 
+
+> ICL
+
+= p.
+
+• For H∗
+
+> sep
+
+, we have that 
+
+H∗ 
+
+> sep
+
+=
+
+
+
+(( d − r)τ + rζ )2
+
+8˜ σ2d R SFT 
+
+, if RSFT  
+
+> RICL
+
+≤
+
+ (d−r)τ +rζ 
+
+2 
+
+> 4drζ 2
+
+,
+
+−B + pB2 + 4 C(d − r)τ
+
+2C
+
+!2
+
+, otherwise ,
+
+(F.6) 
+
+where 
+
+B = 2 √2˜ σ
+
+p dR SFT − prR ICL 
+
+
+
+, C = 2˜ σ2RICL 
+
+ζ .
+
+The proof is in Appendix G.4. Then we prove the monotonicity of them. We start from the parameter π. Since H∗ 
+
+> SFT
+
+is not influenced by π, which is a trivially monotonic function of π. For H∗
+
+> ICL
+
+, we first note that the parameter ζ depends on π as ζ = τ + 2¯ σ2π−1 + m2. Thus, ζ−1 is an increasing function in π. Proposition F.2 shows that H∗ 
+
+> ICL
+
+is the root of (F.5) , whose left-hand side is decreasing in π. In addition, the left-hand side of it is decreasing in H, while the right-hand side is increasing in H. Thus, when π increases, the root H∗ 
+
+> ICL
+
+accordingly decreases to balance both sides. For H∗
+
+> sep
+
+, we note that when RSFT /R ICL ≤  (d − r)τ + rζ 2/(4 drζ 2), H∗
+
+> sep
+
+is decreasing in π. When this condition does not hold, Proposition G.3 in Appendix G.7 shows that the function 
+
+f (x) = 
+
+√A + x − √Ax
+
+61 is decreasing in x when A > 0 and x > 0. Thus, H∗ 
+
+> sep
+
+is also decreasing in π. In summary, all of H∗
+
+> ICL
+
+, H∗
+
+> SFT
+
+, and H∗ 
+
+> sep
+
+is decreasing in π. We then analyze the parameter r. We first note that the value of H∗ 
+
+> SFT
+
+is independent of r. For H∗
+
+> ICL
+
+, since the left-hand side of (F.5) is increasing in r. Thus, H∗ 
+
+> ICL
+
+increases with increasing r. For H∗
+
+> sep
+
+, we first analyze when the following relationship is satisfied 
+
+RSFT 
+
+RICL 
+
+≤
+
+ (d − r)τ + rζ 2
+
+4drζ 2 . (F.7) Proposition G.4 in Appendix G.7 shows that the function 
+
+f (x) = (A − x + Bx )2
+
+AB 2x , 0 < x < A, A > 0, B > 0.
+
+is strictly decreasing if 0 < B < 2. In addition, it achieves its minimal value f (A) = 1 at 
+
+x = A. Set A = d and B = ζ/τ . Since ζ ≤ 2τ , the right-hand side of (F.7) is decreasing and achieves its minimal value 1/4 when d = r. Since RSFT > R ICL , the expression of 
+
+H∗ 
+
+> sep
+
+has one shift from the first expression in (F.6) to the second one. When (F.7) holds, 
+
+H∗ 
+
+> sep
+
+is a increasing function of r due to ζ > τ . When (F.7) does not hold, we note that Proposition G.5 shows that the function 
+
+g(r) = 
+
+q √D − √r2 + E(F − r) −  √D − √r
+
+is strictly increasing on (0 , r ∗) and strictly decreasing on (r∗, F ) when D > F > 0, E < 1,and 0 < x < F . The value of r∗ is given by 
+
+t∗ =
+
+√D − pD − (1 − E)F
+
+1 − E , and r∗ = ( t∗)2.
+
+We set D = RSFT d/R ICL , E = τ /ζ , and F = d. To study the relationship between r∗ and the phase shift in (F.7), it is easy to directly verify that 
+
+RSFT 
+
+RICL 
+
+>
+
+ (d − r∗)τ + r∗ζ2
+
+4dr ∗ζ2 .
+
+Thus, H∗ 
+
+> sep
+
+is increasing in r for r ∈ [0 , r ∗] and is decreasing in r for r ∈ [r∗, d ]. When r = d,
+
+H∗ 
+
+> sep
+
+= 0 . Thus, at the point r∗, if H∗ 
+
+> ICL
+
+≥ H∗
+
+> sep
+
+, then H∗ is increasing in r. If H∗ 
+
+> ICL
+
+< H ∗
+
+> sep
+
+,then H∗ is increasing in r for r ∈ [0 , r ∗] and [r∗∗ , d ] and deacreasing in r for [r∗, r ∗∗ ]. In the following, we only need to compare H∗ 
+
+> ICL
+
+and H∗ 
+
+> sep
+
+at r∗. It is easy to verify that H∗ 
+
+> sep
+
+> H ∗
+
+> ICL
+
+if and only if 
+
+p < r∗ζ2
+
+2RICL ˜σ2 , and 
+
+s
+
+2˜ σ2rR ICL 
+
+H∗
+
+> sep
+
+− 2˜ σ2RICL 
+
+ζ <
+
+q
+
+H∗ 
+
+> sep
+
+− p. (F.8) We note that the latter inequality in (F.8) can be achieved if and only if 
+
+r∗ > 2˜ σ2RICL τ −4ζ−24˜ σ4R2
+
+> ICL
+
+(ζ − τ )2 + τ 2W 2p.
+
+Thus, we conclude the proof of Proposition 4.4. 62 F.4 Proof of Proposition 4.5 
+
+Proposition F.2 in the proof of Proposition 4.4 shows that H∗ 
+
+> SFT
+
+is increasing in ˜σ, H∗ 
+
+> SFT
+
+= p
+
+if ˜σ = 0 , and H∗ 
+
+> SFT
+
+→ ∞ as ˜σ → ∞ . In addition, we have that H∗ 
+
+> sep
+
+is decreasing in ˜σ,
+
+H∗ 
+
+> sep
+
+→ ∞ as ˜σ ↓ 0, and H∗ 
+
+> sep
+
+→ 0 as ˜σ → ∞ . Thus, we can take ˜σ1 as their intersection. When ˜σ ∈ [0 , ˜σ1], H∗ = H∗ 
+
+> SFT
+
+is increasing in ˜σ. Thus, we prove the first claim. For the second claim, we note that when ˜σ ∈ [˜ σ1, ∞), H∗ = max {H∗
+
+> ICL
+
+, H ∗
+
+> sep
+
+}. Thus, we only need to prove that H∗ 
+
+> ICL
+
+is decreasing in ˜σ when ˜σ ∈ [˜ σ2, ∞).Proposition G.6 in Appendix G.7 analyzes the root of 
+
+ex 
+
+√H − f x 2 − pH − g = 0 
+
+for e, f, g > 0. Denote the unique root H∗(x) as a function of x, it shows that when 
+
+0 < x ≤ xmax = e/ (f √g), there exists x∗ < x max such that H∗(x) is increasing on (0 , x ∗]
+
+and decreasing on (x∗, x max ]. In our setting, x = ˜ σ, e = √2rR ICL , f = 2 RICL /ζ , g = p. If 
+
+e/ (f √g) > ˜σ1, then we can set ˜σ2 = x∗ in Proposition G.6. If e/ (f √g) < ˜σ1, we can set 
+
+˜σ2 = ˜ σ1. Thus, we conclude the proof of Proposition 4.5. 
+
+## F.5 Proof of Proposition 4.6 
+
+Proposition F.2 in the proof of Proposition 4.4 shows that once RICL is fixed, the value of 
+
+H∗ 
+
+> ICL
+
+is fixed. Thus, we only need to analyze H∗ 
+
+> SFT
+
+and H∗
+
+> sep
+
+. Obviously, H∗ 
+
+> SFT
+
+is increasing in RSFT , and its minimal value is 
+
+p + pp2 + 8˜ σ2d R ICL 
+
+2 .
+
+For H∗
+
+> sep
+
+, if 
+
+RSFT 
+
+RICL 
+
+≤
+
+ (d − r)τ + rζ 2
+
+4drζ 2 , (F.9) then Proposition F.2 shows that it is a decreasing function of RSFT . If (F.9) does not hold, then Proposition G.7 in Appendix G.7 establishes the same monotonicity result. Thus, H∗
+
+> sep
+
+is a decreasing function of RSFT . Under both cases, H∗ 
+
+> sep
+
+decreases to 0 as RSFT → ∞ .In the following, we will compare the value of H∗ 
+
+> sep
+
+and H∗ 
+
+> SFT
+
+when RSFT = RICL . If 
+
+H∗ 
+
+> sep
+
+> H ∗
+
+> SFT
+
+, H∗ first increases and then decreases with increasing RSFT . If H∗ 
+
+> sep
+
+≤ H∗
+
+> SFT
+
+, H∗
+
+decreases with increasing RSFT . To compare their values when RSFT = RICL , we need to study whether (F.9) holds if RSFT = RICL .If ( (d − r)τ + rζ 2)/(4 drζ 2) ≥ 1, then (F.9) holds when RSFT = RICL . Thus, H∗ 
+
+> sep
+
+≤ H∗
+
+> SFT
+
+is equivalent to 
+
+(( d − r)τ + rζ )2
+
+8˜ σ2d R ICL 
+
+≤ p + pp2 + 8˜ σ2d R ICL 
+
+2 .
+
+63 The left-hand side of this inequality is decreasing in RICL , while the right-hand side is increasing in RICL . Thus, there exists R∗ 
+
+> ICL
+
+such that this inequality holds if and only if 
+
+RICL ≥ R∗
+
+> ICL
+
+.If ( (d − r)τ + rζ 2)/(4 drζ 2) < 1, then (F.9) does not hold when RSFT = RICL . Thus, 
+
+H∗ 
+
+> sep
+
+≤ H∗ 
+
+> SFT
+
+is equivalent to 
+
+
+
+−√2
+
+√d − √r
+
+
+
++
+
+r
+
+2
+
+√d − √r
+
+2
+
++ 2 ζ−1(d − r)τ
+
+2˜ σ√RICL ζ−1
+
+
+
+> 2
+
+≤ p + pp2 + 8˜ σ2d R ICL 
+
+2 .
+
+The left-hand side of this inequality is decreasing in RICL , while the right-hand side is increasing in RICL . Thus, there exists R∗ 
+
+> ICL
+
+such that this inequality holds if and only if 
+
+RICL ≥ R∗
+
+> ICL
+
+. Thus, we conclude the proof of Proposition 4.6. 
+
+## F.6 Proof of Proposition 4.8 
+
+We first state the precise statement of this proposition. 
+
+Proposition F.3. Fix ˜σ2 > 0 and assume q ∈ (0 , 1) , ˜σ1 < ˜σ2. Then ∂˜σ1 R∗(˜ σ1, ˜σ2, q ) = 
+
+∂qR∗(˜ σ1, ˜σ2, q ) = 0 holds if and only if one of the following two regimes holds: 
+
+• The equilibrium is pinned at the separator of type 2, i.e., the following interval condition holds 
+
+f (H∗
+
+> sep
+
+(˜ σ2)) <
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p < e (H∗
+
+> sep
+
+(˜ σ2)) . (F.10) 
+
+• The congestion level is zero R∗ = 0 , i.e., the following condition holds 
+
+p > max {H∗
+
+> sep
+
+(˜ σ1), ¯H(˜ σ1)}, ¯H(˜ σ) = rζ 2(2 RICL ˜σ2)−1. (F.11) 
+
+Sufficient conditions for (F.10) are 
+
+ (d − r)τ + rζ 2(24 dR SFT p)−1 ≤ ˜σ22 ≤  (d − r)τ + rζ 2(12 dR SFT p)−1, ˜σ1 ≤ ˜σ2/2,
+
+1
+
+ζ ≥ 1(d − r)τ
+
+s
+
+4drR SFT 
+
+RICL 
+
+, (d − r)τ ≥ max 84 R3/2
+
+> SFT
+
+p3/2, 9p3/2 , and q ≤ min 
+
+12, p
+
+2˜ σ1
+
+√RSFT d
+
+
+
+.
+
+Before the formal proof, we note that Proposition F.2 in the proof of Proposition 4.4 derives the closed-form expression of H∗
+
+> sep
+
+, which is decreasing in ˜σ. Thus, we have that 
+
+H∗
+
+> sep
+
+(˜ σ2) < H ∗
+
+> sep
+
+(˜ σ1). In the following, we prove the sufficiency and the necessity separately. Since H∗ = h(R∗) + p, this proposition focuses on the case where 
+
+∂˜σ1 H∗(˜ σ1, ˜σ2, q ) = 0 and ∂qH∗(˜ σ1, ˜σ2, q ) = 0 (F.12) We start with the sufficiency of the condition. 64 • If f (H∗
+
+> sep
+
+(˜ σ2)) <
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p < e (H∗
+
+> sep
+
+(˜ σ2)) holds, then Theorem 4.7 shows that 
+
+H∗ = H∗
+
+> sep
+
+(˜ σ2), which does not depend on ˜σ1 nor q. Hence, both partial derivatives in (F.12) are zero. 
+
+• If (F.11) holds, then for each type ˜σ ∈ { ˜σ1, ˜σ2}: (i) p > H ∗
+
+> sep
+
+(˜ σ) implies ψ(˜ σ, p ) > 0,so ICL is the unique best-response algorithm; (ii) p > ¯H(˜ σ) implies ˜NICL (˜ σ, p ) = 0 
+
+and hence DICL (˜ σ, p ) = 0 . Therefore, the congestion level is 0, i.e., R∗ = √p − p = 0 .Moreover, strictness implies local stability of this selection, H∗ is locally constant, and both partial derivatives are zero. Then we prove the necessity. Assume (F.12) holds at a point where H∗ is differentiable in (˜ σ1, q ). By Theorem 4.7, the equilibrium must lie in one of the five cases. We will rule out all cases except the second and the last ones. 
+
+Case 1: H∗ is a root of √H − p = e(H). According to the definition, we have that 
+
+q
+
+r2˜ σ21 dR SFT 
+
+H∗ + (1 − q)
+
+r2˜ σ22 dR SFT 
+
+H∗ = pH∗ − p. 
+
+Since both terms on the left-hand side of this equation are positive, changing the value of either ˜σ1 or q will shift the value of H∗. Specifically, 
+
+∂˜σ1 H∗(˜ σ1, ˜σ2, q ) > 0 and ∂qH∗(˜ σ1, ˜σ2, q ) < 0.
+
+Case 2: H∗ = H∗
+
+> sep
+
+(˜ σ2). This is exactly the “separator pinned at type 2” regime. Differentiability and the equalities (F.12) requires that we are not on the boundary where the equilibrium switches to a neighboring case, which is precisely the strict interval condition (F.10). 
+
+Case 3: H∗ is a root of √H − p = f (H). According to the definition, we have that 
+
+q
+
+r2˜ σ21 dR SFT 
+
+H∗ + (1 − q) max 
+
+
+
+0,
+
+r2˜ σ22 rR ICL 
+
+H∗ − 2˜ σ22 RICL 
+
+ζ
+
+
+
+= pH∗ − p
+
+Since the first term in the left-hand side of this equation is positive and is increasing in ˜σ1,thus 
+
+∂˜σ1 H∗(˜ σ1, ˜σ2, q ) > 0.
+
+Case 4: H∗ = H∗
+
+> sep
+
+(˜ σ1). Proposition F.2 shows that that H∗
+
+> sep
+
+(˜ σ) is a decreasing function of ˜σ. Thus, we have that 
+
+∂˜σ1 H∗(˜ σ1, ˜σ2, q ) < 0.
+
+Case 5: H∗ is a root of √H − p = g(H).
+
+According to the definition, we have that 
+
+pH∗ − p = q max 
+
+
+
+0,
+
+r2˜ σ21 rR ICL 
+
+H∗ − 2˜ σ21 RICL 
+
+ζ
+
+
+
++ (1 − q) max 
+
+
+
+0,
+
+r2˜ σ22 rR ICL 
+
+H∗ − 2˜ σ22 RICL 
+
+ζ
+
+
+
+65 Write xi(H) = RICL NICL (˜ σi, H ) so that g(H) = qx 1(H) + (1 − q)x2(H).If x1(H∗) = 0 and x2(H∗) > 0. Then g(H∗) = (1 − q)x2(H∗) and ∂qg(H∗) = x1(H∗) −
+
+x2(H∗) = −x2(H∗) < 0, contradicting (F.12). If x2(H∗) = 0 and x1(H∗) > 0. Then g(H∗) = qx 1(H∗) and ∂qg(H∗) = x1(H∗)̸ = 0 , again a contradiction. If x1(H∗) > 0 and x2(H∗) > 0. In this interior region, the truncation is inactive and 
+
+xi(H) = AICL ˜σi
+
+√H − B ˜σ2 
+
+> i
+
+,
+
+where AICL = √2rR ICL , and B = 2 RICL /ζ . Then ∂qg(H) = x1(H) − x2(H), so ∂qg(H∗) = 0 
+
+implies x1(H∗) = x2(H∗), i.e. 
+
+AICL 
+
+√H∗ = B(˜ σ1 + ˜ σ2). (F.13) Also, ∂˜σ1 g(H) = q ∂ ˜σ1 x1(H), and 
+
+∂˜σ1 x1(H) = AICL 
+
+√H − 2B ˜σ1.
+
+Thus ∂˜σ1 g(H∗) = 0 implies 
+
+AICL 
+
+√H∗ = 2 B ˜σ1. (F.14) Combining (F.13) and (F.14) yields 2˜ σ1 = ˜ σ1 + ˜ σ2, i.e. ˜σ1 = ˜ σ2, contradicting ˜σ1 < ˜σ2. Hence, (F.12) is impossible. If x1(H∗) = 0 and x2(H∗) = 0 . Then the fixed-point equation √H∗ − p = g(H∗)
+
+forces √H∗ − p = 0 , so H∗ = p. Therefore, in this case, (F.12) implies H∗ = p, i.e., the zero-congestion corner. In the following, we prove the sufficient condition for (F.10) . According to the definition, it is equivalent to 
+
+q
+
+s
+
+2˜ σ21 dR SFT 
+
+H∗
+
+> sep
+
+(˜ σ2) + (1 − q) max 
+
+
+
+0,
+
+s
+
+2˜ σ22 rR ICL 
+
+H∗
+
+> sep
+
+(˜ σ2) − 2˜ σ22 RICL 
+
+ζ
+
+
+
+<
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p (F.15) 
+
+q
+
+s
+
+2˜ σ21 dR SFT 
+
+H∗
+
+> sep
+
+(˜ σ2) + (1 − q)
+
+s
+
+2˜ σ22 dR SFT 
+
+H∗
+
+> sep
+
+(˜ σ2) >
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p. (F.16) Since the sufficient conditions guarantee that 
+
+τζ ≥ 1(d − r)
+
+s
+
+4drR SFT 
+
+RICL 
+
+, (F.17) and Proposition F.2 shows that 
+
+H∗
+
+> sep
+
+(˜ σ2) = 
+
+ (d − r)τ + rζ 2
+
+8dR SFT ˜σ22
+
+., (F.18) 66 for the second term in the left-hand side of both (F.15), we have that 
+
+s
+
+2˜ σ22 rR ICL 
+
+H∗
+
+> sep
+
+(˜ σ2) − 2˜ σ22 RICL 
+
+ζ =
+
+s 16 drR SFT 
+
+ (d − r)τ + rζ 2 − 2√RICL 
+
+ζ
+
+pRICL ˜σ22 ≤ 0,
+
+where the inequality results from (F.17). Since we require that 
+
+ (d − r)τ + rζ 2
+
+24 dR SFT p ≤ ˜σ22 ≤
+
+ (d − r)τ + rζ 2
+
+12 dR SFT p , (F.19) we have that 
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p/ 
+
+s
+
+2˜ σ21 dR SFT 
+
+H∗
+
+> sep
+
+(˜ σ2) > p
+
+2˜ σ1
+
+√RSFT d ≥ q. 
+
+Thus, (F.15) is satisfied by our sufficient conditions. For (F.16) , by utilizing (F.18) , we first note that s
+
+2˜ σ22 dR SFT 
+
+H∗
+
+> sep
+
+(˜ σ2) >
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p
+
+is equivalent to 
+
+ (d − r)τ + rζ 2
+
+8dR SFT ˜σ22
+
+− p < 16 d2R2 
+
+> SFT
+
+˜σ42
+
+ (d − r)τ + rζ 2 .
+
+When (( d − r)τ )2 > 72 p3, with (F.19) , the direct calculations can prove this inequality. Thus, to guarantee (F.16), we only require that 
+
+q ≤
+
+q2˜ σ22 dR SFT  
+
+> H∗
+> sep (˜ σ2)
+
+−
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p
+
+q2˜ σ22 dR SFT  
+
+> H∗
+> sep (˜ σ2)
+
+−
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+= 1 −
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p −
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+q2˜ σ22 dR SFT  
+
+> H∗
+> sep (˜ σ2)
+
+−
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+.
+
+We only need to prove that 
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p −
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+q2˜ σ22 dR SFT  
+
+> H∗
+> sep (˜ σ2)
+
+−
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+≤ 12.
+
+In fact, we have that 
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p −
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+q2˜ σ22 dR SFT  
+
+> H∗
+> sep (˜ σ2)
+
+−
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+≤
+
+2
+
+q
+
+H∗
+
+> sep
+
+(˜ σ2) − p − 2
+
+q2˜ σ21 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+q2˜ σ22 dR SFT 
+
+> H∗
+> sep (˜ σ2)
+
+≤ 12 √2R3/2
+
+> SFT
+
+p3/2
+
+(d − r)τ + rζ ≤ 12
+
+where the first inequality results from ˜σ1 ≤ ˜σ2/2, the second inequality results from (F.19) ,and the last inequality results from that (d − r)τ ≥ 84 R3/2
+
+> SFT
+
+p3/2. Thus, we conclude the proof of Proposition 4.8. 67 F.7 Proof of Proposition 5.3 
+
+Given a price p, the existence of equilibrium (π∗, R ∗) is already proved in Theorem 4.1. Thus, in the following, we only need to show that the maximizer of I(p) is finite. We achieve this in three steps. 
+
+Step 1: Build the continuity of I(p) on [0 , ∞).
+
+To build the continuity of I(p) on [0 , ∞), we need to: 1. prove the continuity of R∗ on 
+
+(0 , ∞); 2. extend the domain of I(p) to [0 , ∞) by I(0) = lim p↓0 I(p). For both results, we first prove that R∗(p) is bounded for any p ≥ 0.
+
+Proposition F.4. Under regularity conditions of h, there exists a constant ¯R that only depends on 
+
+T and function h such that for R∗ induced by any p ≥ 0, we have that R∗ ≤ ¯R.
+
+The proof is in Appendix G.5. This proposition helps us to retrict the range of R∗ and will serve as a basis to restrict the domain of R. Then we prove the contiuity of R∗ in the following proposition. 
+
+Proposition F.5. Under regularity conditions of h, R∗(p) is continuous in p.
+
+The proof is in Appendix G.6. Thus, the function I(p) is continuous in p. In addition, since R∗(p) ≤ ¯R, we have that lim p↓0 pR ∗(p) = 0 . As a result, the limit I(0) = lim p↓0 I(p) is well-defined. With this extension, I(p) is continuous in p for p ∈ [0 , ∞).
+
+Step 2: Restrict the domain of p.
+
+To prove that the maximizer of I(p) is not ∞, we need to prove that the over-large p will lead to small value of I(p). We prove this in two steps: 1. there exists p1 < ∞ such that for any p ∈ [p1, ∞), the type-t user will choose ICL instead of SFT at equilibrium for T -a.e.; 2. there exists p2 < ∞ such that for any p ∈ [p2, ∞), the optimal ICL sample number is 0 for type-t users T -a.e. We start with the first claim. Define 
+
+Φa(t, H ) = inf  
+
+> N≥0
+
+Ea(t, N ) + RaHN , and Na(t, H ) = argmin  
+
+> N≥0
+
+Ea(t, N ) + RaHN .
+
+Then we have that 
+
+ΦICL (t, H ) ≤ EICL (t, 0) = ( d − r)τ + rζ, 
+
+ΦSFT (t, H ) ≥ inf  
+
+> N≥0
+
+2( d − r)˜ σ2
+
+N + RSFT HN 
+
+
+
+= 2 p2( d − r)˜ σ2RSFT H. 
+
+Thus, when H > ¯H, ΦSFT (t, H ) > ΦICL (t, H ) for all t, where 
+
+¯H = sup 
+
+> t∈T
+
+(( d − r)τ + rζ )2
+
+8( d − r)˜ σ2RSFT 
+
+.
+
+Since the congestion level R∗ at equilibrium is non-negative, we can set p1 = ¯H. Thus, we prove the first claim. 68 For the second claim, we note that EICL is convex in ˜N . Thus, when RICL H is larger than the partial derivative of EICL with respect to ˜N at ˜N = 0 , NICL (t, H ) = 0 . The direct calculation shows that this is equivalent to 
+
+H ≥ sup 
+
+> t∈T
+
+2¯ σ2r(πζ − ¯σ2)
+
+π2 ˜σ2RICL 
+
+.
+
+Thus, we can set p2 as the right-hand side of this equation. Summarizing these two claims, once p > max {p1, p 2}, the R∗ at equilibrium is equal to 
+
+0, and leads to 0 profit. 
+
+Step 3: Prove the finitness of p∗.
+
+According to Steps 1 and 2, the optimization of p is search the maximial value of a continuous function I(p) on a compact set [0 , max {p1, p 2}], which has the finite maximizer and profit. Thus, we conclude the proof of Proposition 5.3. 
+
+# G Supporting Propositions 
+
+## G.1 Error Analysis of Affine Estimators 
+
+Proposition G.1. Let θ∗ ∈ Rd be the parameter sampled from N (0 , Σ∗), m ∈ Rd a reference mean, which is a random vector with expectation μm and covariance Σm, X ∈ Rn×d a fixed design matrix, and Y ∈ Rn obey the linear model 
+
+Y = Xθ ∗ + ε, ε ∼ N (0 , σ 2In),
+
+where ε, θ∗ and m are independent. Consider the affine estimator ˆθ = m + K(Y − Xm ), K ∈
+
+Rd×n, where K depends on X and is a fixed matrix. The error of it is 
+
+E∥ˆθ − θ∗∥2 = tr 
+
+
+
+(I − KX ) Σ∗ + Σ m + μmμ⊤
+
+> m
+
+(I − KX )⊤
+
+
+
++ σ2 tr( K⊤K).
+
+Proof of Proposition G.1. Let A = Id − KX and ∆ = m − θ∗. Then we have that 
+
+E∥ˆθ − θ∗∥2 = E∥A∆ + Kε ∥2 = E∆⊤A⊤A∆ + Eε⊤K⊤Kε  + E2∆ ⊤A⊤Kε .
+
+It is easy to see the last term is 0, since ε is zero-mean. Write S = E[∆∆ ⊤], then we have that 
+
+E ∆⊤A⊤A∆ = tr  A⊤AE[∆∆ ⊤] = tr( ASA ⊤), and E ε⊤K⊤Kε  = tr  K⊤KE[εε ⊤] = σ2 tr( K⊤K),
+
+where S = E[( m − θ∗)( m − θ∗)⊤]. In fact, we have that 
+
+S = E[mm ⊤] − E[mθ ∗⊤ ] − E[θ∗m⊤] + E[θ∗θ∗⊤ ] = Σ m + μmμ⊤ 
+
+> m
+
++ Σ ∗.
+
+Thus, we have that 
+
+E
+
+h
+
+∥ˆθ − θ∗∥2
+
+i
+
+= tr 
+
+
+
+A Σ∗ + Σ m + μmμ⊤
+
+> m
+
+A⊤
+
+
+
++ σ2 tr( K⊤K).
+
+We conclude the proof of Proposition G.1. 69 G.2 Proof of Proposition D.3 
+
+For SFT , since the error ESFT is strictly convex and lim N ↓0 ESFT (N ) = ∞. Thus, the minimizer of the cost can be found by the first-order condition. By direct calculations, we have 
+
+NSFT (H) = 
+
+s
+
+2˜ σ2dRSFT H , and ΦSFT (H) = 2 p2˜ σ2dR SFT H. 
+
+For ICL , the error EICL is strictly convex. Thus, the minimizer is achieved at the point satisfying the first-order condition or the boundary point. By the direct calculation, we have that 
+
+NICL (H) = max 
+
+
+
+0,
+
+s
+
+2˜ σ2rRICL H − 2˜ σ2
+
+ζ
+
+
+
+.
+
+When RICL H ≥ rζ 2/(2˜ σ2), the value of ΦICL (H) is 
+
+ΦICL (H) = ( d − r)τ + rζ. 
+
+When RICL H < rζ 2/(2˜ σ2), the value of ΦICL (R) is 
+
+ΦICL (H) = ( d − r)τ + 2 p2r˜σ2RICL H − RICL · 2˜ σ2
+
+ζ · H. 
+
+Thus, we conclude the proof of Proposition D.3. 
+
+## G.3 Proof of Proposition E.1 
+
+We prove this by deriving and comparing the bounds of NICL and NSFT . To derive the bounds, we note that for all a ∈ { ICL , SFT }, the following holds. 
+
+− ∂∂N Ea(t, N ) = αN α−1Ja(t, N α),
+
+where 
+
+JSFT (t, x ) = 2r˜σ2ζ2
+
+(ζx + 2˜ σ2)2 + 2( d − r)˜ σ2
+
+x2 , JICL (t, x ) = 2r ¯σ2 ˜σ2 ¯σ4x + ˜ σ2π(πζ − ¯σ2)
+
+(˜ σ2π + ¯ σ2x)3 .
+
+To derive the bounds of NSFT and NICL , we lower and upper bound JSFT and JICL . For SFT ,we have that 
+
+JSFT (t, x ) > K L
+
+> SFT
+
+(t)/x 2, where KL
+
+> SFT
+
+(t) = 2( d − r)˜ σ2.
+
+Since any interior optimizer Na(t, H ) satisfies the first-order condition 
+
+RaH = αN a(t, H )α−1Ja
+
+ t, N a(t, H )α,
+
+70 NSFT (t, H ) can be lower bounded as 
+
+NSFT (t, H ) >
+
+αK L
+
+> SFT
+
+(t)
+
+RSFT H
+
+ 1
+
+> α+1
+
+.
+
+For ICL, we have that 
+
+JICL (x) ≤ KU
+
+> ICL
+
+(t)/x 2, where KU
+
+> ICL
+
+(t) = sup 
+
+> x≥0
+
+x2JICL (t, x ).
+
+Thus, we can upper bound NICL (t, H ) as 
+
+NICL (t, H ) ≤
+
+αK U
+
+> ICL
+
+(t)
+
+RICL H
+
+ 1
+
+> α+1
+
+. (G.1) To ensure that RSFT NSFT (H) > R ICL NICL (H) for all H > 0, we only need 
+
+Rα
+
+> SFT
+
+KL
+
+> SFT
+
+(t) > R α
+
+> ICL
+
+KU
+
+> ICL
+
+(t).
+
+In the following, we will upper bound KU
+
+> ICL
+
+(t). Let β(t) = ( πζ − ¯σ2)/¯σ2 = 1 + π(τ + m2)/¯σ2.Then a change of variables shows 
+
+KU 
+
+> ICL
+
+= 2 r˜σ2 sup 
+
+> x≥0
+
+x2(x + β(t)) (1 + x)3 .
+
+For the last term on the right-hand side of this equality, we have 
+
+sup 
+
+> x≥0
+
+x2(x + β(t)) (1 + x)3 < sup 
+
+> x≥0
+
+x + β(t)
+
+x + 1 = β(t).
+
+Thus, we only need the following condition for (G.1), which is exactly Assumption 5.4. 
+
+RSFT 
+
+RICL 
+
+α
+
+≥ rd − r β(t).
+
+Thus, we conclude the proof of Proposition E.1. 
+
+## G.4 Proof of Proposition F.2 
+
+We start with SFT. We note that within-algorithm equilibrium is defined via 
+
+H∗ 
+
+> a
+
+= ¯h Ra · Na(H∗ 
+
+> a
+
+), p  =  Ra · Na(H∗ 
+
+> a
+
+)2 + p. (G.2) Pluging NSFT (H) in Proposition D.3 into the fixed point equation (G.2) derives that 
+
+H = p +
+
+r2˜ σ2d R SFT 
+
+H
+
+!2
+
+= p + 2˜ σ2d R SFT 
+
+H .
+
+71 Solving this equation gives us the result that 
+
+H∗
+
+> SFT
+
+(p) = p + pp2 + 8˜ σ2d R SFT 
+
+2 .
+
+For ICL, Proposition D.3 shows that 
+
+NICL (H) = max 
+
+(
+
+0,
+
+s
+
+2˜ σ2rRICL H − 2˜ σ2
+
+ζ
+
+)
+
+.
+
+Thus, the fixed point equation (G.2) becomes 
+
+max 
+
+(
+
+0,
+
+r2˜ σ2rR ICL 
+
+H − 2˜ σ2RICL 
+
+ζ
+
+)
+
+= pH − p. 
+
+Since the left-hand side of this equation is monotonically decreasing in H, while the right-hand side is increasing in H, the equation admits at most one root. When p ≥ ¯H,
+
+H = p makes both sides as zero. Thus, the root under this setting is p.For H∗
+
+> sep
+
+, we consider two cases: H ≥ ¯H, and H < ¯H, where ¯H = rζ 2/(2 RICL ˜σ2). When 
+
+H ≥ ¯H, Proposition D.3 shows that 
+
+ΦICL (H) = ( d − r)τ + rζ, ΦSFT (H) = 2 p2˜ σ2dR SFT H. 
+
+Thus ψ(H) = 0 becomes 
+
+8˜ σ2dR SFT H = (( d − r)τ + rζ )2 ,
+
+which is the desired result. The condition H ≥ ¯H requires that 
+
+RSFT 
+
+RICL 
+
+≤
+
+ (d − r)τ + rζ 2
+
+4drζ 2 .
+
+When H < ¯H, Proposition D.3 shows that 
+
+ΦICL (H) = ( d − r)τ + 2 p2r˜σ2RICL H − 2˜ σ2RICL 
+
+ζ H. 
+
+Therefore ψ(H) = 0 is equivalent to 
+
+2p2˜ σ2dR SFT H − 2p2r˜σ2RICL H + 2˜ σ2RICL 
+
+ζ H − (d − r)τ = 0 . (G.3) Let u = √H > 0. Then √H = u and H = u2, and ψ(H) = 0 becomes 
+
+2√2˜ σ(pdR SFT − prR ICL )
+
+!
+
+u + 2˜ σ2RICL 
+
+ζ
+
+!
+
+u2 − (d − r)τ = 0 .
+
+72 That is, 
+
+Cu 2 + Bu − (d − r)τ = 0 ,
+
+with B, C as 
+
+B = 2 √2˜ σ
+
+p dR SFT − prR ICL 
+
+
+
+, C = 2˜ σ2RICL 
+
+ζ .
+
+Solving for the positive root gives 
+
+u = −B + pB2 + 4 C(d − r)τ
+
+2C ,
+
+and hence H∗ 
+
+> sep
+
+= u2, which is exactly the results. Thus, we conclude the proof of Proposition F.2. 
+
+## G.5 Proof of Proposition F.4 
+
+Before the formal proof, we first define several quantities. For each type t, we define the resource-normalized error envelope 
+
+gt(r) = min  
+
+> a∈{ SFT ,ICL }
+
+Ea
+
+
+
+t, rRa
+
+
+
+, r ≥ 0.
+
+Then we have that 
+
+gt(0) = ( d − r)τ + rζ, 
+
+which is a continuous function of the type t. Since T is compact, we define the maximal value of gt(0) as 
+
+B = sup 
+
+> t∈T
+
+(d − r)τ + rζ. 
+
+For each congestion level R ≥ 0, we define the (type-t) optimal resource demand corre-spondence 
+
+D(t, R ) = arg min 
+
+> r≥0
+
+n
+
+gt(r) + ¯h(R, p ) r
+
+o
+
+. (G.4) Let the aggregate best-response correspondence be 
+
+¯D(R) = 
+
+Z 
+
+> T
+
+d(t) T (dt ) : d(·) measurable and d(t) ∈ D(t, R ) ∀t
+
+
+
+. (G.5) An equilibrium congestion level is a fixed point R∗ ∈ ¯D(R∗). In the following, we show that R∗ is bounded.. 73 First, we derive a pointwise upper bound of ¯D(R). Fix any R > 0 and any t ∈ T . Let 
+
+rt ∈ D(t, R ) be an optimizer of (G.4) . Comparing the optimal value at rt with the feasible point r = 0 yields 
+
+gt(rt) + h(R) rt ≤ gt(rt) + ¯h(R, p ) rt ≤ gt(0) .
+
+Since gt(r) ≥ 0, we obtain 
+
+h(R) rt ≤ B. 
+
+Because h(R) > 0 for R > 0 (strictly increasing with h(0) ≥ 0), it follows that every optimizer satisfies 
+
+0 ≤ rt ≤ Bh(R).
+
+Consequently, we have that 
+
+¯D(R) ⊆
+
+h
+
+0, Bh(R)
+
+i
+
+, ∀R > 0. (G.6) Then we show that the fixed point R∗ is bounded. Define the threshold 
+
+¯R = inf 
+
+n
+
+R > 0 : R h (R) ≥ B
+
+o
+
+. (G.7) Because h is strictly increasing and h(R) → ∞ as R → ∞ , we have R h (R) → ∞ as R → ∞ 
+
+and therefore the set in (G.7) is nonempty; hence ¯R < ∞. In fact, no fixed point can lie above ¯R: if R∗ ∈ ¯D(R∗) and R∗ > ¯R, then (G.6) implies 
+
+R∗ ≤ Bh(R∗),
+
+which rearranges to R∗ h(R∗) ≤ B, contradicting R∗ > ¯R and the definition (G.7) . Thus, we conclude the proof of this proposition. 
+
+## G.6 Proof of Proposition F.5 
+
+The main idea of the proof is similar to Step 3 in the proof of Theorem 4.1. Here, we first extend the notations there to include the influence of p. For each (R, p ) and type t, define the (resource) best-response correspondence 
+
+D(t, R, p ) = arg min 
+
+> r≥0
+
+gt(r) + ¯h(R, p ) r , where gt(r) = min  
+
+> a∈{ SFT ,ICL }
+
+Ea
+
+
+
+t, rRa
+
+
+
+.
+
+Let the aggregate best-response correspondence be the Aumann integral 
+
+¯D(R, p ) = 
+
+Z
+
+> T
+
+ˆD(t, R, p ) T (dt ) ⊂ R+, where ˆD(t, R, p ) = co D(t, R, p ).
+
+74 Proposition F.4 shows that we can restrict the range of R to [0 , ¯R]. The equilibrium congestion level R∗(p) is fixed point 
+
+R∗(p) ∈ ¯D(R∗(p), p ).
+
+In the Step 3 of Theorem 4.1 proof, we show that ¯D(R) there is upper hemicontinuious. Following the exact procedures, we can also prove that ¯D(R, p ) is upper hemicontinuous in (R, p ). Define the fixed-point correspondence 
+
+Γ( p) = {R ∈ [0 , ¯R] | R ∈ ¯D(R, p )},
+
+where B is the bound of ¯D(R, p ). Then the upper hemicontinuity of ¯D(R, p ) implies that 
+
+Gr(Γ) = {(p, R ) | p ≥ 0, R ∈ [0 , B ], R ∈ ¯D(R, p )}
+
+is closed in R+ × [0 , B ]. In addition, Theorem 4.1 shows that 
+
+Gr(Γ) = {(p, R ∗(p)) | p ≥ 0}.
+
+Thus, R∗(p) is continuous in p. We conclude the proof of Proposition F.5. 
+
+## G.7 Monotonicity and Convexity of Several Functions 
+
+Proposition G.2. Fix a, b, c, d > 0 and 0 < α ≤ 1. Define 
+
+f (x) = ax α + b
+
+ cx α + d2 , x ≥ 0,
+
+and write t = xα ∈ [0 , ∞). Then, for every x > 0,
+
+f ′′ (x) = α x α−2
+
+ ct + d4 Q(t), (G.8) 
+
+where Q is the quadratic polynomial 
+
+Q(t) = ac 2(α + 1) t2 + 2 c
+
+
+
+(2 α + 1) bc − 2aαd 
+
+
+
+t + ( α − 1) d(ad − 2bc ). (G.9) 
+
+A sufficient condition for the strict convexity of f is 
+
+ad bc ≤ min 
+
+
+
+2, 2α + 1 2α
+
+
+
+.
+
+Proof. Let t = xα. Define g(t) = ( at + b)/(ct + d)2 so that f (x) = g(t). We first compute g′(t)
+
+and g′′ (t) as follows. 
+
+g′(t) = ad − ac t − 2bc 
+
+(ct + d)3 , and g′′ (t) = 2ac 2t + 2 c(3 bc − 2ad )(ct + d)4 .
+
+75 Now use the chain rule for f (x) = g(t) with t = xα to derive 
+
+f ′′ (x) = g′′ (t) ( t′)2 + g′(t) t′′ , (G.10) where t′ = αx α−1, and t′′ = α(α − 1) xα−2. Plugging the expressions for g′(t), g ′′ (t), t ′, t ′′ into (G.10), we get 
+
+f ′′ (x) = αx α−2
+
+(ct + d)4
+
+
+
+2αx α ac 2t + c(3 bc − 2ad ) + ( α − 1)( ad − ac t − 2bc )( ct + d)
+
+
+
+.
+
+Since xα = t, expand the bracket: 
+
+2αt  ac 2t + c(3 bc − 2ad ) + ( α − 1)( ad − ac t − 2bc )( ct + d)= ac 2(α + 1) t2 + 2 c (2 α + 1) bc − 2aαd t + ( α − 1) d(ad − 2bc ).
+
+This yields (G.8) –(G.9) . For the convexity of the function, we only need to study the sign of 
+
+Q(t). Write 
+
+Q(t) = At 2 + Bt + C, A = ac 2(α + 1) > 0, B = 2 c (2 α + 1) bc − 2aαd , C = ( α − 1) d(ad − 2bc ).
+
+Since A > 0, Q is convex in t and attains its minimum over [0 , ∞) either at 
+
+t∗ = − B
+
+2A if t∗ ≥ 0, or at t = 0 if t∗ < 0.
+
+Introduce the ratio u = ad/bc . Substituting ad = u bc into (A, B, C ) gives 
+
+A = bc 3
+
+d u(α + 1) , B = 2 bc 2 (2 α + 1) − 2αu , C = bcd (α − 1)( u − 2) .
+
+Hence, we have that 
+
+t∗ = − B
+
+2A = d (2 αu − 2α − 1) 
+
+c u (α + 1) .
+
+Therefore, t∗ ≤ 0 is equivalent to 
+
+u ≤ 2α + 1 2α .
+
+Thus, a sufficient condition for the strict convexity is that u ≤ (2 α + 1) /(2 α) and Q(0) ≥ 0,i.e., 
+
+ad bc ≤ 2α + 1 2α , and ad − 2bc ≤ 0.
+
+Thus, we conclude the proof of this proposition. 76 Proposition G.3. For A > 0 and x > 0, the function 
+
+f (x) = 
+
+√A + x − √Ax
+
+is strictly decreasing on (0 , ∞). Moreover, 
+
+lim  
+
+> x↓0
+
+f (x) = 12√A, lim  
+
+> x→∞
+
+f (x) = 0 ,
+
+so f maps (0 , ∞) onto  0, 12√A
+
+.Proof. We first prove the first result. Rewrite f by rationalizing: 
+
+f (x) = 
+
+√A + x − √Ax ·√A + x + √A
+
+√A + x + √A = 1
+
+√A + x + √A.
+
+Differentiate for x > 0:
+
+f ′(x) = − 1
+
+√A + x + √A
+
+2 · 12√A + x = − 12√A + x
+
+√A + x + √A
+
+2 .
+
+Since the denominator is positive for all x > 0, we have f ′(x) < 0 for all x > 0. Hence f is strictly decreasing on (0 , ∞). Using the simplified form f (x) = 1 /(√A + x + √A),
+
+lim  
+
+> x↓0
+
+f (x) = 1
+
+√A + √A = 12√A, lim  
+
+> x→∞
+
+f (x) = lim 
+
+> x→∞
+
+1
+
+√A + x + √A = 0 .
+
+Proposition G.4. Consider the function 
+
+f (x) = (A − x + Bx )2
+
+AB 2x , 0 < x < A, A > 0, B > 0.
+
+If 0 < B < 2, then f is strictly decreasing and achieves its minimal value f (A) = 1 at x = A.Proof. Rewrite 
+
+A − x + Bx = A + ( B − 1) x, 
+
+so 
+
+f (x) = (A + ( B − 1) x)2
+
+AB 2x = 1
+
+AB 2 g(x), g(x) = (A + cx )2
+
+x , c = B − 1.
+
+Differentiating it, we get: 
+
+g′(x) = 2c(A + cx ) x − (A + cx )2
+
+x2 = (A + cx ) 2cx − (A + cx )
+
+x2 = (A + cx )( cx − A)
+
+x2 .
+
+77 Since x2 > 0 on (0 , A ), the sign of g′(x) (and hence f ′(x)) is the sign of (A + cx )( cx − A).If 0 < B ≤ 2 (i.e., −1 < c ≤ 1), we have cx − A < 0 on (0 , A ) (because cx ≤ cA ≤ A), and also 
+
+A + cx ≥ A + cA = A(1 + c) = AB > 0.
+
+Therefore g′(x) < 0 and f ′(x) < 0 on (0 , A ):f is strictly decreasing on (0 , A ).Since, f is strictly decreasing on (0 , A ), so the infimum is attained at the right endpoint: 
+
+inf  
+
+> 0≤x≤A
+
+f (x) = f (A) = (A + ( B − 1) A)2
+
+AB 2A = 1 .
+
+Proposition G.5 (Unimodality and monotonicity of g). Fix parameters A, C > 0, 0 < B < 1,and assume A > C . Define, for x ∈ (0 , C ),
+
+g(x) = 
+
+q √A − √x2 + B(C − x) −  √A − √x.
+
+Then g is strictly increasing on (0 , x ∗) and strictly decreasing on (x∗, C ), where the unique critical point 
+
+x∗ =
+
+√A − pA − (1 − B)C
+
+1 − B
+
+!2
+
+∈ (0 , C )
+
+is the unique maximizer of g on (0 , C ). Moreover, 
+
+g′(x) > 0 for x ∈ (0 , x ∗), g′(x∗) = 0 , g′(x) < 0 for x ∈ (x∗, C ),
+
+and the maximal value satisfies 
+
+g(x∗) = B√x∗ = B √A − pA − (1 − B)C
+
+1 − B .
+
+Proof. Throughout, fix A > C > 0 and 0 < B < 1. For x ∈ (0 , C ) define 
+
+u(x) = √A − √x, s(x) = pu(x)2 + B(C − x).
+
+Since x ∈ (0 , C ) and A > C , we have √x < √C < √A, hence u(x) > 0. Note that 
+
+g(x) = s(x) − u(x).
+
+We first calculate the derivative with respect to x. Note that u′(x) = − 12√x . Next, we have that 
+
+s′(x) = 12s(x)
+
+ddx 
+
+ u(x)2 + B(C − x) = 12s(x)
+
+ 2u(x)u′(x) − B.
+
+78 Therefore 
+
+g′(x) = s′(x) − u′(x) = 2uu ′ − B
+
+2s − u′
+
+= 12s
+
+ 2uu ′ − B − 2su ′.
+
+Substituting u′ = − 12√x yields 
+
+g′(x) = 12s(x)
+
+s(x) − u(x)
+
+√x − B
+
+
+
+= 12s(x)
+
+g(x)
+
+√x − B
+
+
+
+. (G.11) Since s(x) > 0 for all x ∈ (0 , C ), the sign of g′(x) is exactly the sign of 
+
+g(x)
+
+√x − B, i.e., sign( g′(x)) = sign  g(x) − B√x.
+
+In particular, critical points satisfy 
+
+g(x) = B√x. (G.12) To find the critial point, we note that (G.12) is equivalent to 
+
+s(x) = u(x) + B√x. 
+
+Both sides are nonnegative, so we may square: 
+
+u(x)2 + B(C − x) = ( u(x) + B√x)2 = u(x)2 + 2 u(x)B√x + B2x. 
+
+Cancel u(x)2 and divide by B > 0 to obtain 
+
+C − x = 2 u(x)√x + Bx. 
+
+Using u(x) = √A − √x gives 
+
+C − x = 2( √A − √x)√x + Bx = 2 √A √x − 2x + Bx, 
+
+hence 
+
+C + (1 − B)x = 2 √A √x. (G.13) Let y = √x ∈ (0 , √C), so that x = y2. Then (G.13) becomes 
+
+q(y) = (1 − B)y2 − 2√A y + C = 0 . (G.14) The discriminant is 
+
+∆ = 4  A − (1 − B)C > 0,
+
+79 because (1 − B)C < C < A . Thus (G.14) has two real roots 
+
+√A ± pA − (1 − B)C
+
+1 − B .
+
+Both are positive, but the larger one is not in the interval [0 , √C] due to A > C and 
+
+0 < B < 1. Thus, we define 
+
+y∗ =
+
+√A − pA − (1 − B)C
+
+1 − B , x∗ = y2 
+
+> ∗
+
+.
+
+In the following, we show that q(y) has exactly one zero in (0 , √C), hence (G.12) has exactly one solution x∗ ∈ (0 , C ). First, q(0) = C > 0. Next, 
+
+q′(y) = 2(1 − B)y − 2√A. 
+
+For y ∈ (0 , √C),
+
+q′(y) ≤ 2(1 − B)√C − 2√A < 0,
+
+since (1 − B)√C < √C < √A (because A > C ). Hence q is strictly decreasing on (0 , √C).Moreover, 
+
+q(√C) = (1 − B)C − 2√A √C + C = C(2 − B) − 2√A √C < 2C − 2C = 0 ,
+
+where the strict inequality uses √A √C > A . By continuity and strict monotonicity of q on 
+
+(0 , √C), there exists a unique y∗ ∈ (0 , √C) with q(y∗) = 0 . Therefore x∗ = y2 
+
+> ∗
+
+∈ (0 , C ) is the unique solution of (G.12), i.e., the unique critical point of g on (0 , C ).Then we build the monotonicity analysis of g. From (G.11), we have that 
+
+sign( g′(x)) = sign  g(x) − B√x.
+
+Define F (x) = g(x) − B√x. The argument above shows F has a unique zero at x∗. To determine the sign change, note that F (0) = g(0) > 0. Hence F is strictly positive to the left of x∗ and strictly negative to the right. Consequently, 
+
+g′(x) > 0 for x ∈ (0 , x ∗), g′(x∗) = 0 , g′(x) < 0 for x ∈ (x∗, C ).
+
+Thus g is strictly increasing on (0 , x ∗) and strictly decreasing on (x∗, C ), so x∗ is the unique maximizer of g on (0 , C ).Finally, plugging the critical-point condition g(x∗) = B√x∗ and the explicit expression for √x∗ = y∗ yields 
+
+g(x∗) = By ∗ = B √A − pA − (1 − B)C
+
+1 − B ,
+
+as claimed. Thus, we conclude the proof of Proposition G.5. 80 Proposition G.6. Let e, f, g > 0 be fixed constants. Consider the equation 
+
+ex 
+
+√H − f x 2 = pH − g, (G.15) 
+
+where H ≥ g. To ensure feasibility, we restrict x to satisfy 0 < x ≤ xmax = e/ (f √g). For each such x, the solution H∗(x) of (G.15) exists and is unique. Moreover, there exists x∗ < x max such that H∗(x) is increasing on (0 , x ∗] and decreasing on (x∗, x max ].Proof. We first prove the existence and uniqueness of the root of (G.15). Define 
+
+F (H, x ) = ex 
+
+√H − f x 2 − pH − g. 
+
+For fixed x > 0, F (·, x ) is strictly decreasing on [g, ∞), with 
+
+F (g, x ) = ex 
+
+√g − f x 2 ≥ 0, lim  
+
+> H→∞
+
+F (H, x ) = −∞ .
+
+Hence, for each x ∈ (0 , x max ], there exists a unique solution 
+
+H∗(x) ≥ g. 
+
+Then we analyze the derivative of H∗ with respect to x. Since FH (H∗(x), x ) < 0, the implicit function theorem yields 
+
+H′∗(x) = −∂F ∂x / ∂F ∂H .
+
+A direct calculation shows that 
+
+H′∗(x) = 
+
+> e
+
+√H∗(x) − 2f x  
+
+> ex
+> 2H∗(x)3/2
+
++ 12√H∗(x)−g
+
+. (G.16) Since the denominator in (G.16) is strictly positive, the sign of H′∗(x) is determined by the numerator. Substituting (G.15) into the numerator of (G.16) yields 
+
+e
+
+pH∗(x) − 2f x = 1
+
+x
+
+pH∗(x) − g − f x. 
+
+Hence, the sign of H′∗ is 
+
+sign H′∗(x) = sign  p H∗(x) − g − f x 2. (G.17) As x ↓ 0, (G.15) reduces to √H − g = 0 , so 
+
+lim  
+
+> x↓0
+
+H∗(x) = g. 
+
+81 At the upper boundary x = xmax = e/ (f √g),
+
+ex 
+
+√g − f x 2 = 0 ,
+
+so H∗(xmax ) = g by uniqueness. Thus, if there is only one stationary point of H∗, then H∗
+
+first increases and then decreases, which proves our claim. In the following, we will show that H∗ has a unique stationary point. A stationary point H′∗(x∗) = 0 occurs if and only if 
+
+pH∗(x∗) − g = f x 2
+
+> ∗
+
+. (G.18) Combining (G.18) with (G.15) gives 
+
+H∗(x∗) = e2
+
+4x2
+
+> ∗
+
+f 2 ,
+
+while (G.18) also implies H∗(x∗) = g + x4
+
+> ∗
+
+f 2. Equating the two expressions yields 
+
+e2
+
+4x2
+
+> ∗
+
+f 2 = g + x4
+
+> ∗
+
+f 2.
+
+Letting z∗ = x2
+
+> ∗
+
+, this becomes the cubic 
+
+f 2z3 
+
+> ∗
+
++ gz ∗ − e2
+
+4f 2 = 0 . (G.19) Since the derivative 3f 2z2 + g > 0 for all z > 0, equation (G.19) admits a unique positive root z⋆. Thus, we conclude the proof of Proposition G.6 
+
+Proposition G.7. Let A ∈ R and B > 0. Define 
+
+f (x) = p(x − A)2 + B − (x − A), x > A. 
+
+Then f is strictly decreasing on (A, ∞).Proof. Set y = x − A, so that y > 0 and 
+
+f (x) = g(y) = py2 + B − y. 
+
+We compute the derivative of g:
+
+g′(y) = ddy 
+
+ p y2 + B − y = y
+
+py2 + B − 1 = y − py2 + B
+
+py2 + B < 0.
+
+Therefore, f is strictly decreasing on (A, ∞).82 H Experimental Details 
+
+In this section, we provide the experimental details of our work. 
+
+## H.1 Experiments in Sections 4.2 and 4.3 
+
+For the experiments in Section 4.2 (Figures 2–3), we compute the ICL and SFT errors using (4.2) and set the congestion function to h(R) = R2. Unless otherwise noted, the parameters are 
+
+d = 300 , r = 100 , τ = 3 , ˜σ = 1 , π = 1 , ζ = 8 , ¯σ = 1 , R SFT = 27 , R ICL = 4 .5,p = 10 , m = pζ − τ − 2¯ σ2/π. 
+
+We then sweep the following parameters to produce Figures 2–3: 
+
+• Figure 2(a): π ∈ [0 , 20] , p ∈ [0 , 35] .
+
+• Figure 2(b): r ∈ [0 , 100] , p ∈ [0 , 14] .
+
+• Figure 3(a): ˜σ ∈ [0 , 12] , π ∈ [0 .1, 1.5] .
+
+• Figure 3(b): RICL ∈ [1 , 8] , RSFT ∈ [RICL , R ICL + 20] for each RICL .For the experiments in Section 4.3, i.e., Figure 4, the ICL and SFT errors are computed according to (4.2). The hyperparameters are set as follows. 
+
+d = 300 , r = 100 , τ = 3 , ˜σ1 = 0 .5, ˜σ2 = 0 .6, π = 1 , m = 1 .73 , ¯σ = 1 , R SFT = 27 , R ICL = 4 .5,p = 10 , ζ = τ + 2¯ σ2/π + m2.
+
+When deriving Figure 5, we sweep ˜σ1 ∈ [0 .15 , 0.6] and q ∈ [0 , 1] .
+
+## H.2 Experiments in Section 6 
+
+Model Architecture. In our experiments, we employ decoder-only Transformer mod-els from the GPT-2 family (Radford et al., 2019), as implemented in the HuggingFace library (Wolf et al., 2020). Specifically, we experiment with embedding dimension 256 , 12 
+
+layers, 8 attention heads, covariate dimension 30 , and maximal length 2048 (about 22 Mparameters). 
+
+Prompt and Data Representation. Tasks are cast as sequence prediction: each prompt contains k in-context input–output pairs and a query. Specifically, for inputs xi ∈ Rd and outputs f (xi) = x⊤ 
+
+> i
+
+θ∗ + εi, the prompt is 
+
+(x1, f (x1), x 2, f (x2), . . . , x k, f (xk), x q),
+
+83 where xi and xq are sampled i.i.d. from the input distribution and εi
+
+> i.i.d.
+
+∼ N (0 , 0.5) . Scalar inputs and outputs are embedded by zero-padding to the covariate dimension and applying a learned linear projection; a linear head maps predicted embeddings back to scalars for evaluation. We train a decoder-only Transformer to autoregressively predict each f (xi)
+
+from preceding tokens and finally predict f (xq).
+
+Training Objective and Optimization. Pretraining starts from scratch with squared error loss. At each step, we sample a batch of random prompts where each xi is r-sparse (| supp (xi)| = r < d ), and update the parameters to minimize the expected squared prediction error over all prefix positions. We set dropout to 0 (inputs are always fresh and we observe no overfitting), use batch size 480 , and train for 100 k steps with Adam at learning rate 10 −4. For some tasks, we use a curriculum that gradually increases the effective input dimensionality early in training, which substantially accelerates convergence—especially at larger d, where training without curriculum can exhibit a long initial plateau. SFT initializes from the pretrained parameters and fine-tunes using full-dimensional inputs ( r = d) with no curriculum. We first generate an SFT dataset of the prescribed size, then fine-tune for 100 epochs using Adam (learning rate 10 −4, batch size 480 ). We save the end-of-epoch checkpoint and report the best-performing epoch (on the validation set), corresponding to the optimal regularization λ∗ in Proposition 3.6. Finally, we enforce a minimum of 100 gradient updates to ensure the fine-tuned model differs from the pretrained initialization. 
+
+Evaluation Settings. To evaluate the pretrained model, we prompt it with the sequence 
+
+(xi, f (xi)) for i ∈ [ ˜N ] followed by the query input xq. Note that at evaluation time, the covariates may have larger support | supp (xi)| than in pretraining. We report the squared error (x⊤ 
+
+> q
+
+θ∗ − ˆy)2, where ˆy is the model’s prediction. We evaluate the SFT model in the same manner. For a fair comparison between SFT and ICL , in Figure 7(a) we prompt the SFT model with 500 in-context examples; Figure 6(a) shows that the ICL error has essentially plateaued by 500 examples. 
+
+# I Additional Experimental Results 
+
+## I.1 More Results of Two-type LLM-serving Congestion Games 
+
+In this section, we provide more experimental results about Proposition 4.8. First, in addition to the gradient norm in Figure 5, we provide the value of R∗ and the regime that the equilibrium belongs to. 84 0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+R∗
+
+> 4.04.55.05.56.06.5
+
+(a) Congestion level R∗ with vari-ous target task noise ˜σ1 and type-1
+
+ratio q.0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+|∂qR∗| + |∂˜σ1R∗|
+
+> 10 −11
+> 10 −8
+> 10 −5
+> 10 −2
+> 10 1
+
+(b) Congestion level gradient norms with various target task noise ˜σ1 and type-1 ratio q.0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+Regime of MFE 
+
+> 0.51.52.53.54.55.5
+
+(c) Regime of the equilibrium with various target task noise ˜σ1 and type-1 ratio q.
+
+Figure 8: Figures (a)-(c) show the congestion level R∗, the gradient of R∗ (i.e., |∂qR∗|+|∂˜σ1 R∗|), and the regime of the equilibrium with various target task noise ˜σ1 and type-1 ratio q.The regime of the equilibrium is labeled according to Theorem D.4. For example, if 
+
+H∗ = H∗
+
+sep (t2), then the equilibrium belongs to regime 2. Figure 8 shows the case where the equilibrium is pinned at the separator of type 2 in Proposition 4.8. The following figures show the case where R∗ = 0 .0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+R∗
+
+> 0.00 0.01 0.02 0.03 0.04 0.05
+
+(a) Congestion level R∗ with vari-ous target task noise ˜σ1 and type-1
+
+ratio q.0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+|∂qR∗| + |∂˜σ1R∗|
+
+> 10 −11
+> 10 −9
+> 10 −7
+> 10 −5
+> 10 −3
+> 10 −1
+
+(b) Congestion level gradient norms with various target task noise ˜σ1 and type-1 ratio q.0.15 0.24 0.33 0.42 0.51 0.60 ˜σ1
+
+> 00.25 0.5 0.75 1.0
+> q
+
+Regime of MFE 
+
+> 0.51.52.53.54.55.5
+
+(c) Regime of the equilibrium with various target task noise ˜σ1 and type-1 ratio q.
+
+Figure 9: Figures (a)-(c) show the congestion level R∗, the gradient of R∗ (i.e., |∂qR∗|+|∂˜σ1 R∗|), and the regime of the equilibrium with various target task noise ˜σ1 and type-1 ratio q.Here we set p = 11 in these figures. 85 I.2 Simulation Results for h(x) = max {0, x }0 5 10 15 20 
+
+π
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+> R∗
+> p=0
+> p=5
+> p=10
+> p=15
+> p=20
+> p=25
+> p=30
+> p=35
+
+(a) The values of R∗ with various π.0 30 60 90 120 150 
+
+r
+
+0
+
+3
+
+6
+
+9
+
+12 
+
+15  
+
+> R∗
+> p=0
+> p=2
+> p=4
+> p=6
+> p=8
+> p=10
+> p=12
+> p=14
+
+(b) The values of R∗ with various r.
+
+Figure 10: These figures illustrate how the equilibrium congestion level R∗ varies with prior precision π and pretraining coverage r of the pretrained LLM under h(x) = max {0, x }.0 3 6 9 12 ˜σ
+
+0
+
+5
+
+10 
+
+15 
+
+20 
+
+25 
+
+> R∗
+> π=0
+> π=0
+> π=0
+> π=1
+> π=1
+> π=1
+> π=1
+> π=2
+
+(a) The values of R∗ with various ˜σ.0 4 8 12 16 20 
+
+RSFT − RICL 
+
+0
+
+4
+
+8
+
+12 
+
+16 
+
+20  
+
+> R∗
+> RICL =1
+> RICL =2
+> RICL =3
+> RICL =4
+> RICL =5
+> RICL =6
+> RICL =7
+> RICL =8
+
+(b) The values of R∗ with various RSFT .
+
+Figure 11: These figures illustrate how the equilibrium congestion level R∗ varies with the personalization data noise ˜σ and the per-sample resource consumption of SFT RSFT and ICL RICL under h(x) = max {0, x }.86 I.3 Simulation Results for h(x) = exp( x)0 5 10 15 20 
+
+π
+
+2.0
+
+2.5
+
+3.0
+
+3.5
+
+4.0
+
+> R∗
+> p=0
+> p=5
+> p=10
+> p=15
+> p=20
+> p=25
+> p=30
+> p=35
+
+(a) The values of R∗ with various π.0 20 40 60 80 100 
+
+r
+
+0
+
+1
+
+2
+
+3
+
+4 
+
+> R∗
+> p=0
+> p=2
+> p=4
+> p=6
+> p=8
+> p=10
+> p=12
+> p=14
+
+(b) The values of R∗ with various r.
+
+Figure 12: These figures illustrate how the equilibrium congestion level R∗ varies with prior precision π and pretraining coverage r of the pretrained LLM under h(x) = exp( x).0 3 6 9 12 ˜σ
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> R∗
+> π=0
+> π=0
+> π=0
+> π=1
+> π=1
+> π=1
+> π=1
+> π=2
+
+(a) The values of R∗ with various ˜σ.0 4 8 12 16 20 
+
+RSFT − RICL 
+
+2.5
+
+3.0
+
+3.5
+
+4.0
+
+4.5
+
+5.0 
+
+> R∗
+> RICL =1
+> RICL =2
+> RICL =3
+> RICL =4
+> RICL =5
+> RICL =6
+> RICL =7
+> RICL =8
+
+(b) The values of R∗ with various RSFT .
+
+Figure 13: These figures illustrate how the equilibrium congestion level R∗ varies with the personalization data noise ˜σ and the per-sample resource consumption of SFT RSFT and ICL RICL under h(x) = exp( x).
+
+## I.4 SFT Services of AI Companies 
+
+We document whether and when major AI companies provide SFT API services. Our analysis focuses on companies that released significant foundation models covered in the Artificial Intelligence Index Report 2024 (Maslej et al., 2024) and 2025 (Maslej et al., 2025). Specifically, the companies in our sample are: AI21 Labs, Alibaba, Amazon, Anthropic, 87 Apple, Baidu, ByteDance, Cohere, Databricks, DeepSeek, Google, Inflection AI, Meta, Midjourney, Mistral AI, Nvidia, OpenAI, Runway, Salesforce, Stability AI, and xAI. In our analysis, we define “hosting a SFT API” as offering an interface that allows users to fine-tune the model through the company’s API. We do not count releasing model weights as hosting an SFT API, because making an open-weight model available does not, by itself, constitute an API-based fine-tuning service or directly generate revenue for the provider. The results are listed in Table 3. Table 3: Category and release date of SFT API Company Offering Category Release date Website Link AI21 Labs Self-hosted Aug, 2021 https://www.ai21.com/blog/anno uncing-ai21-studio-and-jurassi c-1/ 
+
+Alibaba Self-hosted Dec, 2023 https://www.alibabacloud.com/b log/analyticdb-a-vector-datab ase-recommended-by-openai---mor e-than-just-a-vector-index_600 692 
+
+Amazon Self-hosted Nov, 2023 https://aws.amazon.com/cn/blog s/aws/customize-models-in-amazo n-bedrock-with-your-own-data-u sing-fine-tuning-and-continued -pre-training/ 
+
+Anthropic Partner-hosted Nov, 2024 https://aws.amazon.com/cn/blog s/aws/fine-tuning-for-anthropic s-claude-3-haiku-model-in-amazo n-bedrock-is-now-generally-ava ilable/ 
+
+Apple N.A. N.A. N.A. Baidu Self-hosted Sep, 2024 https://x.com/Baidu_Inc/status /1831693797459112114 
+
+ByteDance Self-hosted Sep, 2023 https://www.volcengine.com/doc s/82379/?lang=zh , https://techno de.com/2023/06/29/bytedances-v olcengine-unveils-ai-model-ser vice-platform-volcano-ark/ 
+
+Cohere Self-hosted Nov, 2023 https://cohere.com/blog/fine-t uning-suite 
+
+88 Company Offering Category Release date Website Link Databricks Self-hosted Jul, 2024 https://www.databricks.com/com pany/newsroom/press-releases/da tabricks-unveils-new-mosaic-a i-capabilities-help-customers-b uild 
+
+DeepSeek N.A. N.A. N.A. Google Partner-hosted Aug, 2023 https://docs.cloud.google.com/ vertex-ai/generative-ai/docs/m odels/gemini-use-supervised-tun ing 
+
+Inflection AI Self +Partner-hosted Oct, 2024 https://newsroom.intel.com/art ificial-intelligence/inflecti on-ai-intel-launch-enterprise-a i-system 
+
+Meta N.A. N.A. N.A. Midjourney N.A. N.A. N.A. Mistral AI Self-hosted Jun, 2024 https://mistral.ai/news/custom ization 
+
+NVIDIA Self-hosted Sep, 2022 https://nvidianews.nvidia.com/ news/nvidia-launches-large-lan guage-model-cloud-services-to-a dvance-ai-and-digital-biology 
+
+OpenAI Self-hosted Dec, 2021 https://openai.com/index/custo mizing-gpt-3 
+
+Runway Self-hosted Oct, 2025 https://runwayml.com/product/m odel-fine-tuning 
+
+Salesforce Self-hosted Sep, 2023 https://www.salesforce.com/new s/press-releases/2023/09/12/a i-einstein-news-dreamforce/ 
+
+Stability AI N.A. N.A. N.A. xAI N.A. N.A. N.A. 89
