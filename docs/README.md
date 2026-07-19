@@ -6,24 +6,24 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-18
-- 运行时间：2026-07-18 20:57:28 UTC
+- 最新运行日期：2026-07-19
+- 运行时间：2026-07-19 21:07:19 UTC
 - 运行状态：成功
 - 本次总论文数：1
-- 精读区：0
-- 速读区：1
+- 精读区：1
+- 速读区：0
 
 ### 今日简报（AI）
-今日精读1篇论文，聚焦大语言模型数据高效适配新方法。值得关注的是通过注意力头重新加权实现LLM微调数据效率提升，评分7.0/10。建议普通读者后续关注该方法在实际场景中的数据需求降低效果。
-- 详情：[/202607/18/README](/202607/18/README)
+今日精读1篇高评分论文《AutoSIFT》，聚焦可控语音生成中的风格筛选与任意风格填充技术。最值得关注的是该方法实现了对语音风格的精确控制与灵活注入，突破了传统固定风格限制。建议普通读者可参考其“风格编码+解耦”思路，尝试应用于个性化语音合成或教育工具中。
+- 详情：[/202607/19/README](/202607/19/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [AutoSIFT: Automatic Style Sifting for Controllable Speech Generation with Arbitrary Style Infilling](/202607/19/2607.12706v1-autosift-automatic-style-sifting-for-controllable-speech-generation-with-arbitrary-style-infilling)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：通过可控语音风格编辑实现个性化多模态生成
 
 ### 速读区论文标签
-1. [Data-Efficient Adaptation of LLMs via Attention Head Reweighting](/202607/18/2607.13425v1-data-efficient-adaptation-of-llms-via-attention-head-reweighting)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：通过注意力头重加权实现数据高效的LLM适应，直接可用于个性化模型适配
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
