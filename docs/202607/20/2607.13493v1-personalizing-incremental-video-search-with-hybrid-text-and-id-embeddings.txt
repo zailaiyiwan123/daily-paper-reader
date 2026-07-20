@@ -1,0 +1,441 @@
+Title: Personalizing Incremental Video Search with Hybrid Text and ID Embeddings
+
+URL Source: https://arxiv.org/pdf/2607.13493v1
+
+Published Time: Thu, 16 Jul 2026 00:37:14 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Personalizing Incremental Video Search with Hybrid Text and ID Embeddings ∗
+
+# Vivek Kanojiya 
+
+Apple Seattle, WA, USA vkanojiya@apple.com 
+
+# Vishalaksh Aggarwal 
+
+Apple Seattle, WA, USA vishalaksh@apple.com 
+
+# Daeho Baek 
+
+Apple Cupertino, CA, USA daeho@apple.com 
+
+# Lyndon Kennedy 
+
+Apple Cupertino, CA, USA lyndon_kennedy@apple.com 
+
+# Xuetao Yin 
+
+Apple Cupertino, CA, USA xuetao.yin@apple.com 
+
+## Abstract 
+
+Incremental video search requires high-quality ranking after each keystroke, where intent is often underspecified (e.g., 1–3 character prefixes). We present a personalization system for Apple TV search that combines complementary semantic and collaborative signals at ranking time. Our approach learns two item embedding spaces: (i) a text-based multilingual encoder ( TextEmb ) fine-tuned on co-engagement triplets via contrastive learning, and (ii) an ID-based collaborative embedding model ( IdEmb ) trained on interaction-derived positives. At serving time, we construct user represen-tations from recent watch history and inject text- and ID-based user–item cosine similarities into a pairwise XGBoost ranker. We evaluate the system with temporally held-out offline datasets and a three-week online controlled experiment. Offline, for sessions with user history, the personalized ranker improves NDCG@10 by 2.99% and MRR by 3.30% over the non-personalized baseline. Crucially, slice analyses show that personalization is most needed in incremental search , where intent is still forming: on ambiguous prefix queries (1–3 characters), NDCG@10 lift is +8.63%, versus only +1.46% on longer, more fully specified queries. Users with longer watch histories benefit more from personalization than newer users: NDCG lift rises from +2.13% for users with 1–5 history items to +4.37% for users with 51–100. This larger lift occurs even though baseline relevance is lower for long-history cohorts (NDCG@10 drops from 0.733 to 0.680), indicating that personalization adds the most value where default ranking underperforms. Online, treatment yields statistically significant gains of +1.14% tap-through rate and +1.23% conversion rate, with a 2.91% improvement in converted-item rank position. We further analyze coverage–precision trade-offs between semantic and collaborative embeddings through ab-lations isolating each signal, and evaluate embedding quality on a held-out corpus with LLM-judged similarity labels to reduce click/-exposure bias. 
+
+## CCS Concepts 
+
+• Information systems → Personalization ; Recommender sys-tems ; • Computing methodologies → Learning to rank .
+
+> ∗Accepted to the Industry Track of the 20th ACM Conference on Recommender Systems (RecSys 2026). This is the authors’ accepted manuscript; the final version will appear in the ACM Digital Library.
+
+## Keywords 
+
+search personalization, embedding-based retrieval, learning to rank, collaborative filtering, transformer models, XGBoost, streaming platforms, two-tower models 
+
+## 1 Introduction 
+
+Search in large-scale video catalog applications differs from clas-sical web search in a way that makes personalization especially important: ranking is incremental . The system must return useful results after every keystroke, including short prefixes where lexical evidence is weak but user intent already matters. In this regime, the first 1–3 characters create a signal vacuum : many plausible candidates share nearly indistinguishable text evidence, so non-personalized ranking tends to fall back to global popularity and broad behavioral priors rather than the current user’s taste. This short-prefix regime is the core problem addressed in this paper. Our central empirical finding is that personalization matters far more on these ambiguous incremental-search inputs than on longer, more fully specified queries: offline, the proposed person-alized ranker improves NDCG@10 by +8.63% on prefix queries of length 1–3, compared with only +1.46% on longer queries. We therefore frame the problem not simply as “building a better person-alized ranker,” but as identifying the right personalization signals for the low-lexical-information regime of incremental search. Figure 1 illustrates non-personalized incremental search behav-ior using three prefixes of increasing length from the same query (t → th → the s ). In a non-personalized search experience, users may need to type several additional characters before the intended item becomes easy to find. We compare against a non-personalized baseline ranker driven mainly by aggregated behavioral and lexical signals, so users in the same geography would see a shared default ranking for a query. While this baseline is robust for fully specified navigational queries, it underperforms precisely where incremental search is hardest: early prefixes with many plausible matches and insufficient lexical separation. Our thesis is that hybrid embeddings are the right answer for this regime . Text-based embeddings provide semantic coverage and cold-start robustness when interaction data are sparse, while ID-based embeddings contribute high-precision collaborative structure when co-engagement signals are dense. Injecting both signals into arXiv:2607.13493v1 [cs.IR] 15 Jul 2026 RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA Vivek Kanojiya, Vishalaksh Aggarwal, Daeho Baek, Lyndon Kennedy, and Xuetao Yin t
+
+> Ted Lasso The Housemaid Tehran The Last Thing He Told Me The Morning Show The Family Plan
+> The Studio
+> th
+> The Housemaid The Last Thing He Told Me
+> The Studio
+> The Morning Show The Family Plan The Family Plan 2 The Gorge
+> the s
+> The Studio
+> The Super Mario Bros... The Simpsons The Sopranos The SpongeBob Squar... The Summit The Secret Life of Pets
+
+Figure 1: UI-style illustration of non-personalized prefix-search ambiguity. For short prefixes such as t or th , many candidate titles may match, so personalization is needed to rank the intended item earlier instead of requiring users to type additional characters before it becomes easy to find. 
+
+a ranker lets the system personalize exactly where lexical matching is least informative, without sacrificing coverage or latency. We target five constraints that make this problem challenging in practice: 
+
+• Ambiguity at short prefixes. Candidate sets are large while lexical discriminative power is low. 
+
+• Broad-intent queries with many valid matches. Generic queries (e.g., “comedy”) can return a large set of plausible candidates, making personalization critical for surfacing the most relevant results for each user. 
+
+• Coverage across the catalog. Personalization should work for both popular and long-tail content. 
+
+• Cold-start resilience. Newly launched items lack interac-tion history and cannot rely on collaborative signals alone. 
+
+• Strict serving budgets. Personalization must satisfy low-latency constraints at scale. To address these constraints, we introduce a hybrid personaliza-tion stack that combines semantic and collaborative embeddings within a learning-to-rank pipeline. Our core contributions are (1) Problem framing for incremental-search personaliza-tion. We show that personalization has disproportionate value on short-prefix queries, with NDCG@10 improving by +8.63% on 1–3 character queries versus +1.46% on longer queries. (2) Hybrid embedding formulation for the short-prefix regime. We learn two complementary item spaces: a text-semantic encoder ( TextEmb ) and an ID-collaborative model (IdEmb ), and show through ablations that each contributes non-redundant ranking signal. (3) Online user representation for low-latency ranking. 
+
+We compute user embeddings from previously watched items with bounded-memory aggregation, and expose per-candidate text/ID cosine features to the ranker with minimal latency overhead. (4) Ranker integration. We inject hybrid personalization sig-nals into a pairwise XGBoost model trained on large scale user engagement dataset, preserving compatibility with an existing multi-stage retrieval and ranking stack. (5) Evaluation across offline and online regimes. We report temporal hold-out metrics (NDCG@10, MRR@10, converted-item position) and a three-week online A/B test demonstrat-ing statistically significant engagement gains. (6) Embedding-quality analysis with reduced click bias. 
+
+We construct a held-out evaluation corpus via a large lan-guage model (LLM), decoupling embedding quality assess-ment from exposure bias in session-derived data. Table 1 summarizes the headline results. The prefix-query lift is the central result: it shows that incremental search is the regime where personalization contributes the most value. Personalizing Incremental Video Search RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA 
+
+Table 1: Headline results. Prefix-query lift is the strongest evidence that personalization is most valuable in the low-lexical-information regime of incremental search. Setting Metric Lift 
+
+Offline, all sessions with his-tory NDCG@10 +2.99% Offline, prefix queries (1–3 chars) NDCG@10 +8.63% Offline, longer queries (>3 chars) NDCG@10 +1.46% Online A/B test Tap-through rate +1.14% Online A/B test Conversion rate +1.23% 
+
+## 2 Related Work 2.1 Learning to Rank 
+
+Learning-to-rank methods for search include pointwise, pairwise, and listwise formulations [ 18 ]. Pairwise approaches such as RankNet/LambdaRank remain strong practical choices in industrial systems [ 3, 4]. In high-throughput applications, tree-based models with pairwise objectives (e.g., LambdaMART, XGBoost with 
+
+rank:pairwise ) provide an effective trade-off between ranking quality, feature flexibility, and serving efficiency [ 6]. Our work builds on this line by adding hybrid embedding signals to an existing pairwise ranker. 
+
+## 2.2 Personalized Search 
+
+Personalized web search has a long history [ 8, 23 ]. Early work used long-term user interest profiles derived from query logs; later work distinguished short-term and long-term behavioral signals [ 2 ]. Re-cent industrial evidence from streaming search at Netflix further highlights the practical impact of personalization in large-scale media systems [ 20 ]. A key challenge in this line of work—also cen-tral to our setting—is balancing personalization strength against degradation for navigational queries where all users share the same intent. Our system explicitly addresses this by treating personaliza-tion signals as additive features within an existing relevance-first ranker. 
+
+## 2.3 Embedding-based Retrieval and Dense Bi-Encoders 
+
+Dual-encoder architectures such as DSSM [ 13 ] established indepen-dent query/document encoding for scalable relevance modeling. Later two-tower systems improved industrial retrieval through large-batch training and ANN serving [ 26 ]. Dense retrieval meth-ods (DPR [ 15 ] and large dual encoders [ 19 ]) demonstrated that bi-encoder models pre-trained on natural language can generalize well to new domains via contrastive fine-tuning. Sentence-BERT [ 21 ]extended this to sentence-level semantic similarity; we adapt this line of work to multilingual media metadata with a domain-specific fine-tuning objective. 
+
+## 2.4 Collaborative and Hybrid Recommendation 
+
+Collaborative methods from matrix factorization [ 16 ] to neural collaborative filtering [ 11 ] and item2vec-style representations [ 1]capture behavioral proximity effectively for head items. Hybrid recommenders combine collaborative and content-based signals to improve robustness under sparsity and cold-start [ 5]. Our approach instantiates this hybrid principle in search ranking. Contrastive self-supervised objectives have also been applied to recommen-dation [ 24 , 25 ], motivating our use of a pairwise hinge loss for embedding training. 
+
+## 2.5 Session-based and Sequential Recommendation 
+
+Session-based models [ 12 , 17 ] capture short-term intent from recent interactions without requiring long-term user profiles. Sequential models such as SASRec [ 14 ] and BERT4Rec [ 22 ] apply self-attention over the history to model temporal dynamics. Our current system uses mean pooling over watch history, an approach that has also been used in prior large-scale industrial recommendation systems to build user embeddings by averaging watch-history item embed-dings [ 7]. We identify this approach of mean pooling as a limita-tion and target for future work; however, mean pooling provides a simple, low-latency baseline that already yields substantial gains (Section 6). 
+
+## 2.6 Personalization in Large-Scale Media Systems 
+
+Large-scale industrial recommender stacks combine user history with multi-stage ranking and deep representation learning [ 7, 9, 10 ]. One especially relevant prior system [ 7] builds a user embedding by averaging item embeddings from watch history and uses it in a two-stage retrieve-then-rank pipeline. Recent industrial search work likewise demonstrates the value of personalization at scale [ 20 ]; our work differs in focusing specifically on the per-keystroke incre-mental regime, where lexical signal is weakest and personalization most needed. Our contribution further complements behavioral embeddings with text-semantic embeddings to handle cold-start and long-tail content. 
+
+## 3 System Overview 
+
+Figure 2 shows the end-to-end architecture. The system comprises three phases. 
+
+Offline Embedding Generation. Item embeddings are gener-ated offline over the full video catalog at a fixed refresh cadence using item identifiers and metadata signals. We materialize these embeddings in two serving surfaces: (i) a key–value store indexed by item ID for low-latency online lookup, and (ii) the search index document metadata so embeddings are retrieved directly during candidate recall. 
+
+User History. User watch history is maintained in a low-latency key-value store, refreshed on a regular cadence from interaction logs. Per user, we retain a bounded set of the most recent play events over a long-horizon window; episode-level interactions are mapped to the parent show, and duplicate items are deduplicated to the most recent play. RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA Vivek Kanojiya, Vishalaksh Aggarwal, Daeho Baek, Lyndon Kennedy, and Xuetao Yin Offline: Embedding Generation & Model Training          
+
+> Embedding
+> Model Item
+> Embeddings KV Store User History Training Logs
+> Ranking
+> Model
+> Online: Query-Time Personalized Ranking
+> User Query
+> Candidate
+> Retrieval
+> Feature
+> Assembler
+> Personalized
+> Ranker
+> Ranked
+> Results
+> query candidates features scores
+> item embeddings user history deploy
+> engagement logs
+
+Figure 2: High-level overview of the personalized search sys-tem. Item embeddings and the ranking model are produced offline, while query-time ranking combines retrieved can-didates with cached embeddings to produce personalized results. Online serving. At query time, the search stack retrieves user history from the key-value store and forms user representations via mean pooling over historical item embeddings. The ranker consumes both user vectors and per-candidate item embeddings (available from index metadata), and computes user–item cosine similarity features in both embedding spaces (ID-based and text-based). These personalization features are combined with lexical and behavioral signals in the final ranking model. The end-to-end personalization adds minimal latency to the non-personalized base-line. 
+
+## 4 Embedding Models 4.1 Problem Formulation 
+
+Let V denote the set of all video items (movies and TV shows), and let 𝜙 (𝑣 ) ∈ R𝑑 be the embedding of item 𝑣 ∈ V . Training instances are constructed from search-session sequences. For a current item 
+
+𝑖 𝑡 , we define a positive item 𝑖 + 
+
+> 𝑡 +1
+
+as the next watched/converted item from the same user within a specified period of time, and a negative item 𝑖 − from in-batch negative sampling. The objective is to make the positive pair more similar than the negative pair by a margin 𝑚 > 0, implemented via the pairwise hinge loss 
+
+L = max 
+
+
+
+0, 𝑚 − cos -sim  𝜙 (𝑖 𝑡 ), 𝜙 (𝑖 +
+
+> 𝑡 +1
+
+) + cos -sim (𝜙 (𝑖 𝑡 ), 𝜙 (𝑖 − )) 
+
+
+
+,
+
+(1) which serves as the canonical training objective for both embedding models. 
+
+## 4.2 Training Data Generation 
+
+Training data for both embedding models is derived from search logs ,a dataset of individual user search interactions recording queries, impressed items, clicked items, and converted (purchased/played/-subscribed) items alongside temporal metadata. 
+
+Positive pairs. A positive (anchor, positive) pair is formed when two items, 𝑣 𝑎 and 𝑣 𝑝 , appear in the same user’s search-driven en-gagement history within a specified time window. We do not use general playback-log data for this step. Although the broader play-back corpus is substantially larger, it is noisier (e.g., it includes recommendation and homepage exposures), whereas search-log-derived pairs are smaller but better aligned with the search use case. 
+
+Negative sampling. For each positive pair, negative items are sampled uniformly from the current mini-batch. 
+
+LLM-based evaluation data. Session-derived evaluation is bi-ased by the same factors that confound training: shared-account co-engagement spans divergent genres, promoted and free-tier con-tent drives co-viewing independent of similarity, and head items dominate the co-engagement graph. We construct a held-out evalu-ation corpus using a large instruction-tuned language model (LLM) to decouple embedding quality assessment from these exposure bi-ases. Anchor items are sampled uniformly across popularity deciles, and each item appears as an anchor a bounded number of times to ensure balanced representation across the catalog—a property unattainable with session-derived pairs. The LLM is prompted with a role specification, a one-shot contrastive example, and structured metadata (title, media type, genre, principal cast) for each can-didate pair, and returns a binary similarity judgment under the criterion: “two items are similar if a viewer of one is likely to enjoy the other.” Positive judgments form the positive set for triplet eval-uation; negatives form high-quality hard negatives. The corpus is used exclusively for evaluation; no LLM call is made at serving or training time. 
+
+## 4.3 Text-Based Embedding Model: TextEmb 
+
+The text-based embedding model ( TextEmb ) is a Siamese encoder trained on co-played item pairs. For each item, metadata fields are encoded with a shared text encoder and then combined through reshape/concatenation plus an MLP projection head to produce a shared embedding. Figure 3 illustrates the metadata encoding and projection pipeline used to produce the final item vector. 
+
+Title, Genre, Cast/Crew, Synopsis etc. 
+
+Field-wise tokenization (fixed length) 
+
+Shared text encoder (applied per field) 
+
+Reshape/Concatenated embeddings 
+
+𝑘 × 𝑑 enc → 𝑘 𝑑 enc 
+
+BN → Linear → ReLU 
+
+→ BN → Linear 
+
+L2-normalized item embedding 
+
+𝜙 𝑡 (𝑣 ) ∈ R𝑑 
+
+Figure 3: TextEmb text-based item embedding architecture. Item metadata fields are encoded with a shared text en-coder, transformed, passed through an MLP head, and L2-normalized for cosine scoring. Backbone. The text encoder is a multilingual transformer-based sentence encoder initialized from a strong multilingual backbone Personalizing Incremental Video Search RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA 
+
+and further adapted for semantic similarity over multilingual text pairs. Using a multilingual encoder naturally handles non-English locales without requiring separate models per language. 
+
+Item Tower. For each item, we tokenize multiple text fields (genre, title, artists, entity type) independently at fixed length. Each field is encoded by the shared multilingual transformer backbone. The resulting field embeddings are reshaped/concatenated and passed through a projection head (batch normalization, linear lay-ers, and ReLU), then L2-normalized to produce the final item vector. During fine-tuning, the encoder remains trainable so the represen-tation adapts to domain-specific semantics in media search. 
+
+Training objective. Both embedding models optimize the pair-wise hinge loss in Eq. 1. In implementation, we compute similarity with a dot product between L2-normalized item vectors; under this normalization, dot product is equivalent to cosine similarity, so Eq. 1 and the training-time implementation are identical. Here 𝑖 𝑡 
+
+denotes the anchor item, 𝑖 + 
+
+> 𝑡 +1
+
+the positive item, 𝑖 − the negative item, 𝜙 (·) the embedding function, and 𝑚 the margin selected on a validation split. 
+
+Training Setup. The model is trained for multiple epochs using multi-GPU mixed-precision training, with tuned batch size and learning-rate schedule selected on a validation split. 
+
+## 4.4 ID-Based Collaborative Embedding Model: 
+
+## IdEmb              
+
+> Item Identifier (Id)
+> ID Embedding Lookup (trainable |𝑉 | × 𝑑 high )
+> MLP: 𝑑 high →𝑑 mid →𝑑 mid →𝑑
+> ID Embedding 𝜙 𝑖𝑑 (𝑣 ) ∈ R𝑑
+
+Figure 4: IdEmb ID-based collaborative embedding architec-ture. A high-dimensional ID lookup is projected into the shared embedding space, matching TextEmb for unified co-sine scoring. 
+
+The ID-based model ( IdEmb ) is also a Siamese encoder trained on co-played item pairs, using only discrete item identifiers (no content metadata). This design captures behavioral co-play patterns that may not be reflected in textual signals e.g. two genre-distinct films that attract the same audience demographic. 
+
+Architecture. A trainable ID-embedding lookup maps each item identifier to a high-dimensional latent vector, which is then refined by a compact multilayer projection network into the shared embedding space used for scoring. This design preserves item-level behavioral diversity while producing representations compatible with downstream ranking features. 
+
+Training. The same co-played-item pair construction, Siamese training objective, and infrastructure as TextEmb are used, but the encoder tower replaces text encoding with ID embedding lookup. The model is trained for multiple passes over the data, and opti-mization settings are aligned with those used for TextEmb to enable consistent comparison. 
+
+Coverage limitation and cold-start fallback. Because the ID table is learned from historical interactions, items not observed during IdEmb training do not receive an ID embedding at all, and very low-frequency items may receive less reliable representations. For such items, the system falls back to the TextEmb text embedding features at serving time; coverage is summarized in Table 2. 
+
+Table 2: Embedding availability coverage in training data. Session coverage is the fraction of training sessions with at least one item having an available embedding; user coverage is the fraction of users with at least one such item in history. Embedding Type Session Coverage User Coverage 
+
+TextEmb 100.00% 100.00% 
+
+IdEmb 87.70% 86.65% Table 2 motivates the hybrid design: TextEmb provides full cat-alog/user coverage, while IdEmb contributes high-precision col-laborative signal for the majority of sessions and users where interaction-derived items are available. The missing 12–13% of session/user coverage for IdEmb comes primarily from items that were not seen during item-ID model training, and therefore have no learned ID vector at serving time; this is exactly the gap that 
+
+TextEmb covers. 
+
+## 4.5 Embedding Evaluation 
+
+Table 3 first reports the training and validation losses tracked during model training for both models. 
+
+Table 3: Embedding-model loss metrics. Lower loss is better. Model Train Loss Eval Loss 
+
+IdEmb 0.135 0.116 
+
+TextEmb 0.136 0.124 Table 4 summarizes triplet evaluation metrics for both models on the held-out LLM-annotated evaluation corpus. 
+
+Table 4: Embedding model evaluation on held-out LLM-annotated triplets. Margin = Avg. A-P Sim. − Avg. A-N Sim. Higher triplet accuracy and margin, lower eval loss are bet-ter. Model Triplet Acc. Avg A-P Avg A-N Margin 
+
+IdEmb 86.02% 0.5992 0.2295 0.3697 
+
+TextEmb 89.50% 0.6206 0.2082 0.4124 The results highlight complementary strengths: IdEmb has lower pairwise-loss values, while TextEmb achieves higher triplet accu-racy and a larger A-P/A-N margin on the LLM-labeled set; we defer detailed interpretation to Section 6.3. RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA Vivek Kanojiya, Vishalaksh Aggarwal, Daeho Baek, Lyndon Kennedy, and Xuetao Yin 
+
+## 5 Personalization Ranking Model 5.1 Feature Engineering 
+
+The personalized ranker extends the existing non-personalized fea-ture set with two embedding-derived affinity features. In practice, features fall into few core groups: long and short-horizon behavioral signals (e.g., click/watch tendencies), lexical text-match signals for query title/cast/genre overlap, catalog-quality signals (e.g., popular-ity and quality priors), and personalization signals. This preserves the relevance-first behavior of the ranker while adding user-specific evidence. The two added personalization features encode user–item affin-ity from collaborative and text-semantic spaces, respectively. They contribute information that is complementary to behavioral aggre-gates and lexical matching, enabling meaningful per-user reranking even when many candidates have similar global popularity or text evidence, especially for ambiguous and short-prefix queries. 
+
+## 5.2 Personalization Feature Computation 
+
+At serving time, the affinity score between a user and an item is computed as 
+
+𝑠 𝑡 (𝑢, 𝑣 ) = cos -sim   ¯𝜙 𝑡 (𝑢 ), 𝜙 𝑡 (𝑣 ) (2) 
+
+𝑠 𝑖𝑑 (𝑢, 𝑣 ) = cos -sim   ¯𝜙 𝑖𝑑 (𝑢 ), 𝜙 𝑖𝑑 (𝑣 ) , (3) where 𝜙 𝑡 and 𝜙 𝑖𝑑 are the text and ID embeddings, respectively, and 
+
+¯𝜙 (𝑢 ) = 1
+
+|H 𝑢 |∑︁ 𝑣 𝑖 ∈ H 𝑢 
+
+𝜙 (𝑣 𝑖 ), (4) is the mean-pooled user embedding over watch history H𝑢 .
+
+Aggregation strategy. Mean pooling (Eq. 4) was chosen as a de-liberate baseline because it is simple, compatible with strict serving-latency requirements, and consistent with a user-representation strategy used in prior large-scale industrial recommendation sys-tems [ 7]. These properties make mean pooling a natural starting point before introducing more complex sequential user models. 
+
+Fallback. When a user has no history or has opted out of per-sonalization, 𝑠 𝑡 and 𝑠 𝑖𝑑 are set to “missing,” effectively signaling the ranker to disregard these features while preserving model structure for all other users. 
+
+## 5.3 Ranker Architecture and Training 
+
+The ranking model is a gradient-boosted decision tree (GBDT) trained with XGBoost [6] using a pairwise ranking objective: 
+
+Obj =∑︁  
+
+> (𝑖,𝑗 ) ∈ P
+
+log 
+
+
+
+1 + 𝑒 − ( 𝑠 𝑖 −𝑠 𝑗 ) 
+
++ Ω(𝐹 ) (5) where P is the set of preference pairs derived from relevance labels, 
+
+𝑠 𝑖 is the score for item 𝑖 , and Ω(𝐹 ) is XGBoost’s regularization term (L1 + L2 on leaf weights). 
+
+Training data. The ranker is trained on a large, temporally split corpus of labeled (query , user , candidate ) examples spanning millions of interactions and a held-out validation set, which sup-ports stable generalization estimates. Labels are weighted to pri-oritize high-intent outcomes, i.e., 𝑤 conv > 𝑤 click > 𝑤 imp , aligning optimization with business impact rather than raw engagement volume. Negative examples are drawn from items in the recall set that received no engagement. The model uses a rich feature set spanning behavioral, lexical, catalog-quality, and personalization signals, including prefix-query traffic. 
+
+## 6 Offline Evaluation 6.1 Evaluation Protocol 
+
+Offline evaluation is conducted on a strictly temporally held-out test split that follows the training window, preventing label leakage. The evaluation set comprises large-scale search sessions across major device families. 
+
+Metrics. We report: 
+
+• NDCG@10 : Normalized Discounted Cumulative Gain at cut-off 10, where items are ordered by personalized score and ground truth is derived from engagement labels. 
+
+• MRR@10 : Mean Reciprocal Rank of the first converted item. 
+
+• Avg. Converted Position (ACP) : Mean rank of the con-verted item under the model’s scoring. 
+
+## 6.2 Ranker Comparison 
+
+Tables 5 and 6 present the offline evaluation comparing four condi-tions: (1) the non-personalized baseline (No P13N), (2) the proposed personalized ranker (Ours: TextEmb +IdEmb ), (3) a text-only abla-tion (ranker with TextEmb features only, IdEmb removed), and (4) an ID-only ablation (ranker with IdEmb features only, TextEmb 
+
+removed). 
+
+Table 5: Offline loss comparison across baseline and ablations (lower is better). Model Train Loss Test Loss 
+
+No P13N 0.2921 0.2920 Only Text 0.2705 0.2725 Only ID 0.2678 0.2701 
+
+Text + ID 0.2662 0.2700 Table 6: Offline ranking comparison across baseline and ab-lations. Higher is better for NDCG@10 and MRR@10; lower is better for average converted-item position. Model NDCG@10 MRR@10 Avg. Converted Position 
+
+No P13N 0.7113 0.6667 4.7306 Only Text 0.7307 0.6868 4.0464 Only ID 0.7311 0.6873 4.0587 
+
+Text + ID 0.7326 0.6887 3.9802 Key observations. 
+
+(1) Hybrid is best overall. The Text + ID model achieves the strongest results across ranking quality and converted-item position, outperforming both single-signal ablations. (2) Complementarity of text and collaborative signals. Only Text and Only ID both improve substantially over No P13N, but combining them yields the highest NDCG@10 and MRR@10, indicating complementary signal value. Personalizing Incremental Video Search RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA 
+
+(3) Better conversion placement. Average converted-item position improves from 4.7306 (No P13N) to 3.9802 (Text + ID), moving converted items meaningfully closer to the top of the ranked list. (4) Generalization quality. Train/test losses are lowest for the hybrid model, consistent with stronger ranking quality on held-out data. 
+
+Aggregate summary. Relative to No P13N, the hybrid model im-proves NDCG@10 and MRR@10 while reducing average converted-item position, with gains beyond either single-signal ablation. 
+
+## 6.3 Embedding Quality Comparison 
+
+Table 7 reports standalone retrieval quality: the average rank of the converted item when candidates are ordered by user–item cosine similarity alone, without the downstream ranker. IdEmb marginally outperforms TextEmb on session data (10.81 vs. 11.05 all-recalled; 1.89 vs. 1.91 impressed). Table 4, in contrast, shows TextEmb win-ning on LLM-judged triplet accuracy (89.50% vs. 86.02%) and A-P/A-N margin (0.4124 vs. 0.3697). This inversion is not a contradiction but the signature of two signals optimized for different notions of similarity, measured by evaluations with different biases. TextEmb ’s contrastive objective over metadata pushes it toward text-grounded semantic proxim-ity, which closely mirrors what the LLM is asked to judge—the LLM has no visibility into user behavior and evaluates pairs purely from structured metadata. IdEmb , trained only on co-engagement, encodes behavioral proximity: items that attract the same audi-ence regardless of textual overlap. Session-based retrieval naturally favors this behavioral signal because its scoring target (the next converted item) is itself behavioral. Each evaluation is biased to-ward the embedding whose training objective most closely matches its scoring criterion. Qualitatively, IdEmb excels on head and mid-tail content where co-engagement is dense (franchise loyalty, cross-genre audience affinity), while TextEmb generalizes better to long-tail and newly released items where behavioral signal is sparse. The ranker ab-lation in Table 6 confirms these are complementary rather than substitutable: Text+ID outperforms both single-signal variants on every ranker metric, with non-redundant contributions from each feature. We view the LLM corpus and session-based retrieval as two lenses on embedding quality—neither dominates—and the decision to deploy both models is ultimately justified by downstream ranker performance, not by either evaluation alone. 
+
+Table 7: Average converted-item rank when candidates are ordered by embedding cosine similarity only (lower is better). Model All Recalled Items Impressed Items Only 
+
+TextEmb (text) 11.05 1.91 
+
+IdEmb (ID) 10.81 1.89 
+
+## 6.4 History Length Sensitivity 
+
+Figure 5 shows relative improvement as a function of user history length, partitioned into buckets. The figure makes the monotonic relationship visually explicit: richer user history strengthens per-sonalization effectiveness. 1 5 6 20 21 50 51 100  
+
+> User History Length (items)
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Relative Lift (%)
+> 2.13
+> 3.33
+> 3.93
+> 4.37
+> 1.59
+> 2.45
+> 2.97 2.98
+> Personalization Lift by User History Length
+> NDCG@10 Lift
+> MRR@10 Lift
+
+Figure 5: Relative lift of the personalized ranker over the non-personalized baseline by user history length. NDCG@10 lift rises monotonically from 2.13% to 4.37%; MRR@10 lift also increases with history depth. 
+
+Gains increase with history depth. Both NDCG and MRR lifts are positive across all buckets and rise from the 1–5 cohort to the 51–100 cohort, indicating that richer watch histories enable stronger personalization while still yielding measurable improve-ments for sparse-history users. Notably, baseline relevance is lower for longest-history cohorts (NDCG@10 0.733 → 0.680), so the larger lift suggests personalization adds the most value where the default ranker underperforms. 
+
+## 6.5 Query-Length Sensitivity 
+
+Table 8 compares non-personalized and personalized ranking qual-ity on short-prefix queries (1–3 characters) versus longer queries (>3 characters). 
+
+Table 8: Offline impact of personalization by query length. Relative improvement is computed for Text+ID vs. No P13N. Model NDCG@10 MRR@10 NDCG@10 MRR@10 Prefix (1–3) Prefix (1–3) Long (>3) Long (>3)             
+
+> No P13N 0.5515 0.4856 0.7722 0.7357 Text + ID 0.5991 0.5337 0.7835 0.7477 Rel. improvement (%) 8.63 9.91 1.46 1.63
+
+The gains are larger on short-prefix queries than on longer queries, consistent with higher ambiguity in the earliest incremental-search inputs. 
+
+## 7 Online A/B Experiment 7.1 Experiment Setup 
+
+We conducted a three-week online A/B experiment, with treatment and control randomized at the user level. 
+
+Eligibility. Users are eligible for personalization if they have opted in to personalized recommendations. 
+
+Statistical testing. Randomization is performed at the user level. We report relative lift with two-sided significance testing with RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA Vivek Kanojiya, Vishalaksh Aggarwal, Daeho Baek, Lyndon Kennedy, and Xuetao Yin 
+
+Table 9: A/B experiment configuration. Parameter Value 
+
+Control Non-personalized baseline ranker (XGBoost) Treatment Personalized ranker ( IdEmb + TextEmb + XGBoost) Traffic split Equal traffic split between Control and Treatment Region Single region Platforms Major client platforms Duration Three-week experiment multiple-testing correction across the experiment’s metric suite (Section 7.2) and monitor metric stability daily to guard against transient novelty effects. 
+
+## 7.2 Results 
+
+Table 10: Online A/B experiment results with relative effects and corrected hypothesis tests. Relative lifts are reported with 95% confidence intervals where applicable. 
+
+Metric Relative Lift & 95% CI Significance 
+
+Tap-Through Rate (Pri-mary) 
+
++1.14% (↑); [ +0.95%, +1.32% ] 
+
+𝑝 < 0.001 ; 𝛼 =
+
+0.04 
+
+Conversion Rate +1.23% (↑); [ +0.97%, +1.50% ] 
+
+𝑝 < 0.001 ; 𝛼 =
+
+0.0033 
+
+Avg. Converted Position −2.91% (↓, better) Descriptive only 
+
+Note: Per-metric 𝛼 thresholds reflect multiple-testing correction across the experiment’s full guardrail and primary metric suite. 
+
+Both primary online metrics cross their corrected significance thresholds with confidence intervals entirely above zero: Tap-Through Rate improves by +1.14% and Conversion Rate by +1.23%. Average Converted Position also improves by −2.91% (lower is better), reported as a descriptive ranking-quality indicator. Because most users in both arms were eligible for personalization, these top-line lifts are averaged over the full user population and likely understate the effect for users with usable watch history. 
+
+## 8 Discussion and Limitations 
+
+Incremental search is the main personalization regime. The concentration of lift on short-prefix queries is the paper’s strongest result: Table 8 shows +8.63% NDCG@10 on 1–3 character queries versus +1.46% on longer queries, consistent with the idea that early prefixes create a low-lexical-information regime where personal-ization must supply the missing discrimination. 
+
+Hybrid embeddings are complementary. Table 6 shows that neither embedding family alone is sufficient: IdEmb is strongest where behavioral signal is dense, while TextEmb broadens catalog coverage and supports long-tail or newly launched content. The LLM-based evaluation provides a second lens on this complemen-tarity by separating semantic similarity from exposure and click bias. 
+
+Limitations. Online results are from a single regional deploy-ment; broader generalization should be validated separately. Offline evaluation remains subject to exposure bias; users with sparse his-tory benefit less than richer-history cohorts; and the current mean-pooled user representation does not model temporal dynamics or session intent. Training/serving skew and embedding freshness may further attenuate measured online gains, and this is likely the most important caveat when interpreting offline-to-online fidelity because serving-time history updates and embedding snapshots are not perfectly synchronized with the materialized offline data. 
+
+## 9 Conclusion and Future Work 
+
+We presented a personalization framework for incremental video search and argued that this setting is a distinct retrieval-and-ranking regime: at 1–3 characters, lexical evidence is too weak to separate plausible candidates, and user-specific signals become disproportionately valuable. Our results support this framing, with the largest gains occurring exactly in that short-prefix regime, and they show that the strongest solution is hybrid: text embeddings provide semantic coverage and cold-start robustness, while ID embeddings contribute high-precision behavioral affinity where interaction data are rich. Future work includes sequential and query-aware user models, multimodal item embeddings, and explicit exploration mechanisms. 
+
+## Acknowledgments 
+
+The authors thank Lauren Hauser, Fabian Jaskotka, Monil Parikh, Suraj Jain, Igor Ranitovic, Fei Yu and Zheng Yang for their contri-butions. Generative AI tools were used only for limited language polishing; all technical content, results, and final manuscript deci-sions were produced and verified by the authors. 
+
+## References                          
+
+> [1] Oren Barkan and Noam Koenigstein. 2016. Item2Vec: Neural Item Embedding for Collaborative Filtering. In 2016 IEEE 26th International Workshop on Machine Learning for Signal Processing . IEEE, Piscataway, NJ, 1–6. [2] Paul N. Bennett, Ryen W. White, Wei Chu, Susan T. Dumais, Peter Bailey, Fedor Borisyuk, and Xiaoyuan Cui. 2012. Modeling the Impact of Short- and Long-Term Behavior on Search Personalization. In Proceedings of the 35th International ACM SIGIR Conference on Research and Development in Information Retrieval . ACM, New York, NY, 185–194. [3] Christopher J. C. Burges. 2010. From RankNet to LambdaRank to LambdaMART: An Overview . Technical Report MSR-TR-2010-82. Microsoft Research, Redmond, WA. [4] Christopher J. C. Burges, Robert Ragno, and Quoc V. Le. 2006. Learning to Rank with Nonsmooth Cost Functions. In Advances in Neural Information Processing Systems . Curran Associates, Red Hook, NY, 193–200. [5] Robin Burke. 2002. Hybrid Recommender Systems: Survey and Experiments.
+> User Modeling and User-Adapted Interaction 12, 4 (2002), 331–370. [6] Tianqi Chen and Carlos Guestrin. 2016. XGBoost: A Scalable Tree Boosting System. In Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining . ACM, New York, NY, 785–794. [7] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep Neural Networks for YouTube Recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems . ACM, New York, NY, 191–198. [8] Zhicheng Dou, Ruihua Song, and Ji-Rong Wen. 2007. A Large-Scale Evalua-tion and Analysis of Personalized Search Strategies. In Proceedings of the 16th International Conference on World Wide Web . ACM, New York, NY, 581–590. [9] Ali M. Elkahky, Yang Song, and Xiaodong He. 2015. A Multi-View Deep Learning Approach for Cross Domain User Modeling in Recommendation Systems. In
+> Proceedings of the 24th International Conference on World Wide Web . International World Wide Web Conferences Steering Committee, Geneva, Switzerland, 278– 288. [10] Carlos A. Gomez-Uribe and Neil Hunt. 2015. The Netflix Recommender System: Algorithms, Business Value, and Innovation. ACM Transactions on Management Information Systems 6, 4 (2015), 13:1–13:19. [11] Xiangnan He, Lizi Liao, Hanwang Zhang, Liqiang Nie, Xia Hu, and Tat-Seng Chua. 2017. Neural Collaborative Filtering. In Proceedings of the 26th International
+
+Personalizing Incremental Video Search RecSys ’26, September 28–October 2, 2026, Minneapolis, MN, USA 
+
+Conference on World Wide Web . International World Wide Web Conferences Steering Committee, Geneva, Switzerland, 173–182. [12] Balázs Hidasi, Alexandros Karatzoglou, Linas Baltrunas, and Domonkos Tikk. 2016. Session-Based Recommendations with Recurrent Neural Networks. In 
+
+Proceedings of the 4th International Conference on Learning Representations (ICLR 2016) . OpenReview.net, San Juan, Puerto Rico, 10 pages. [13] Po-Sen Huang, Xiaodong He, Jianfeng Gao, Li Deng, Alex Acero, and Larry Heck. 2013. Learning Deep Structured Semantic Models for Web Search using Clickthrough Data. In Proceedings of the 22nd ACM International Conference on Information and Knowledge Management . ACM, New York, NY, 2333–2338. [14] Wang-Cheng Kang and Julian McAuley. 2018. Self-Attentive Sequential Recom-mendation. In 2018 IEEE International Conference on Data Mining . IEEE, Piscat-away, NJ, 197–206. [15] Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. Dense Passage Retrieval for Open-Domain Question Answering. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing . Association for Computational Linguis-tics, Stroudsburg, PA, 6769–6781. [16] Yehuda Koren, Robert Bell, and Chris Volinsky. 2009. Matrix Factorization Tech-niques for Recommender Systems. Computer 42, 8 (2009), 30–37. [17] Jing Li, Pengjie Ren, Zhumin Chen, Zhaochun Ren, Tao Lian, and Jun Ma. 2017. Neural Attentive Session-Based Recommendation. In Proceedings of the 2017 ACM on Conference on Information and Knowledge Management . ACM, New York, NY, 1419–1428. [18] Tie-Yan Liu. 2009. Learning to Rank for Information Retrieval. Foundations and Trends in Information Retrieval 3, 3 (2009), 225–331. [19] Jianmo Ni, Chen Qu, Jing Lu, Zhuyun Dai, Gustavo Hernandez Abrego, Ji Ma, Vincent Zhao, Yi Luan, Keith Hall, Ming-Wei Chang, and Yinfei Yang. 2022. Large Dual Encoders Are Generalizable Retrievers. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing . Association for Computational Linguistics, Abu Dhabi, United Arab Emirates, 9844–9855. doi:10.18653/v1/2022.emnlp-main.669 [20] Vito Ostuni, Christoph Kofler, Manjesh Nilange, Sudarshan Lamkhede, and Dan Zylberglejd. 2023. Search Personalization at Netflix. In Companion Proceedings of the ACM Web Conference 2023 . ACM, New York, NY, 496–498. doi:10.1145/ 3543873.3587675 [21] Nils Reimers and Iryna Gurevych. 2019. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP) . Association for Computational Linguistics, Stroudsburg, PA, 3982–3992. [22] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential Recommendation with Bidirectional Encoder Rep-resentations from Transformer. In Proceedings of the 28th ACM International Conference on Information and Knowledge Management . ACM, New York, NY, 1441–1450. [23] Jaime Teevan, Susan T. Dumais, and Eric Horvitz. 2005. Personalizing Search via Automated Analysis of Interests and Activities. In Proceedings of the 28th Annual International ACM SIGIR Conference on Research and Development in Information Retrieval . ACM, New York, NY, 449–456. [24] Xu Xie, Fei Sun, Zhaoyang Liu, Shiwen Wu, Jinyang Gao, Jiandong Zhang, Bolin Ding, and Bin Cui. 2022. Contrastive Learning for Sequential Recommendation. In 2022 IEEE 38th International Conference on Data Engineering . IEEE, Piscataway, NJ, 1259–1273. [25] Tiansheng Yao, Xinyang Yi, Derek Zhiyuan Cheng, Felix X. Yu, Ting Chen, Aditya Krishna Menon, Lichan Hong, Ed H. Chi, Steve Tjoa, Jieqi Kang, and Evan Ettinger. 2021. Self-supervised Learning for Large-scale Item Recommendations. In Proceedings of the 30th ACM International Conference on Information and Knowledge Management . ACM, New York, NY, 4321–4330. doi:10.1145/3459637. 3481952 [26] Xinyang Yi, Yang Ji, Lichan Hong, Derek Zhiyuan Cheng, Lukasz Heldt, Aditee Kumthekar, Zhe Zhao, Li Wei, and Ed H. Chi. 2019. Sampling-Bias-Corrected Neural Modeling for Large Corpus Item Recommendations. In Proceedings of the 13th ACM Conference on Recommender Systems . ACM, New York, NY, 269–277. doi:10.1145/3298689.3346996

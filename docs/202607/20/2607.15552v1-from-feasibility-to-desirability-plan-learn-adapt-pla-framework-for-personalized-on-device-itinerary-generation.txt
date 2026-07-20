@@ -1,0 +1,627 @@
+Title: From Feasibility to Desirability: Plan, Learn, Adapt (PLA) Framework for Personalized On-Device Itinerary Generation
+
+URL Source: https://arxiv.org/pdf/2607.15552v1
+
+Published Time: Mon, 20 Jul 2026 00:29:29 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# From Feasibility to Desirability: Plan, Learn, Adapt (PLA) Framework for Personalized On-Device Itinerary Generation 
+
+## Himel Dev 1, Tanmoy Sen 2, Madhusudan Basak 3, Bashima Islam 3
+
+1529 Tech LLC, 2University of Virginia, 3University of Massachusetts Amherst himel@529-tech.com, ts5xm@virginia.edu, mbasak@umass.edu, bashima@umass.edu USA 
+
+Abstract 
+
+Generating personalized trip itineraries is a complex planning task and involves a tension between hard combinatorial feasibility and soft latent desirability. Classical optimization enforces constraints but fails to capture subjective traveler preferences. While learning-based approaches model preferences, they cannot guarantee feasibil-ity. Mobile deployment imposes additional resource constraints on both. To address this, we propose Plan, Learn, Adapt (PLA), a three-stage framework for personalized on-device itinerary generation. The Plan stage builds a heterogeneous ensemble of lightweight plan-ners that produces structurally diverse feasible candidates. From pairwise itinerary comparisons, Learn fits a compact Bradley-Terry reward model that captures emergent schedule properties such as pacing, geographic coherence, and day balance, which per-POI sig-nals miss. Finally, Adapt applies feasibility-preserving local refine-ment within a device-aware compute budget; every intermediate state is feasible by construction. On 2,519 pairwise human compar-isons across 100+ U.S. cities, the reward-guided ensemble achieves a 67.8% win rate (+11.2 points over the best single planner) with 100% feasibility, while three frontier LLMs (GPT-5, Claude Opus 4.5, Gemini 3 Pro) achieve 0% feasibility on the same constraints. The reward model generalizes across held-out cities, with a 67.6% mean leave-one-city-out accuracy. In production deployment within Fly-EnJoy, PLA increased itinerary completion rates by 91% with 109.9 ms average on-device latency. 
+
+Keywords 
+
+Trip Planning, Preference Learning, Combinatorial Optimization, On-Device Systems 
+
+1 Introduction 
+
+Multi-day trip itinerary generation is a canonical human-aligned combinatorial planning problem. The system must select, order, and time a set of points of interest (POIs) across multiple days under hard spatio-temporal constraints (opening hours, availability windows, daily time budgets) while also satisfying soft desirability criteria such as pacing, diversity, and alignment with stated interests. This duality creates a tension between feasibility and desirability. Classical planners [ 10 , 19 ] enforce constraints reliably but rely on hand-crafted objectives that are weak proxies for human satisfac-tion. In our earlier deployment, itineraries with similar heuristic scores were often judged very differently by users, reflecting pref-erences that no single composite score captures. Learning-based approaches [ 3 , 6] capture preferences but, without explicit con-straint handling, frequently produce invalid schedules. LLM-based PLAN: Optimization 
+
+Heterogenous Planners 
+
+> Planning algorithms: Greedy, DP, Beam, A*, SA
+
+Feasible Itineraries 
+
+> Itineraries that respect all logistic constraints and hard filters
+
+INPUT 
+
+Logistic Constraints 
+
+> Visit Hour, Availability, …
+
+User Preferences 
+
+> POI Categories, Pace, …
+
+LEARN: Personalization 
+
+Reward Model 
+
+> Bradley-Terry model with monotonicity constraints
+
+Desirable Itineraries 
+
+> Itineraries predicted to achieve high user satisfaction score
+
+ADAPT: Operationalization 
+
+On-Device Refinement 
+
+> Reward guided itinerary refinement under resource budget
+
+Viable Itineraries 
+
+> Itineraries with the highest achievable scores after refinement
+
+OUTPUT 
+
+Final Itinerary 
+
+> Itinerary after applying all business and compliance logic
+
+Figure 1: Overview of the PLA framework. Plan produces a diverse set of feasible seed itineraries; Learn fits a human-aligned reward model from pairwise preferences; Adapt 
+
+then refines the selected itinerary on-device under a resource budget while preserving feasibility throughout. 
+
+approaches [ 9 , 15 ] face the same limitation. In our benchmark (Sec-tion 3.6), none of the 294 itineraries from GPT-5, Claude Opus 4.5, and Gemini 3 Pro satisfied all hard constraints simultaneously. A third requirement is viability. Solutions must be deployable at scale on end-user devices. Our product, FlyEnJoy 1, is an offline-first iOS travel app whose users often need itineraries in low or no connectivity settings (airports, in-flight, international roam-ing) with strict latency expectations. Cloud-dependent LLM and learning-based approaches are costly at scale and incompatible with offline, latency-sensitive, privacy-preserving use.  
+
+> 1https://apps.apple.com/app/6745104853 1arXiv:2607.15552v1 [cs.LG] 17 Jul 2026 ACM 2026, Feb 1, 2026, USA Himel Dev 1, Tanmoy Sen 2, Madhusudan Basak 3, Bashima Islam 3
+
+These three requirements, feasibility, desirability, and viability, are unlikely to be met by any single paradigm. We propose Plan, Learn, Adapt (PLA) , a three-stage framework for personalized on-device itinerary generation (Figure 1). In Section 2.1, the Plan stage produces structurally diverse feasible candidates through a hetero-geneous planner ensemble. Section 2.2 then describes how Learn 
+
+fits a compact reward model from pairwise itinerary comparisons. Section 2.3 introduces Adapt , which carries out reward-guided local refinement under a device-aware compute budget while pre-serving feasibility. Our main contributions are as follows. 
+
+• Heterogeneous Planner Ensemble: No single planning algo-rithm dominates across trip contexts; we establish this empirically rather than assume it. Reward-guided selection over a heteroge-neous planner ensemble yields a 67.8% win rate, +11.2 pp over the best individual planner (Section 2.1). 
+
+• Itinerary-Level Preference Modeling: Itinerary quality involves emergent properties (pacing, geographic coherence, day balance) that per-POI scores cannot capture. We collect 2,519 pairwise com-parisons of complete multi-day itineraries across 100+ U.S. cities and train a compact Bradley–Terry reward model achieving 67.6% mean leave-one-city-out accuracy (Section 2.2). 
+
+• On-Device Itinerary Refinement: Adapt improves desirability via reward-guided local edits while guaranteeing every intermedi-ate state is feasible by construction (not merely the final output). A device-aware budget keeps on-device latency to 109.9 ms on aver-age, enabling fully offline, interactive-speed execution (Section 2.3). To support reproducibility, we publicly release a Python imple-mentation of the core PLA components along with sample data. 2
+
+2 System Overview 
+
+Problem Setup. Given a trip context (including destination, du-ration, availability, budget, interests, etc.) and a set of candidate POIs (with locations, opening hours, and visit durations), the goal is to generate a multi-day itinerary that is both feasible and desir-able. Feasibility imposes opening-hour, availability, travel-time, and time-budget constraints (Section 2.1). Desirability reflects latent user satisfaction at the itinerary level and is not directly observable. We learn a compact surrogate reward from pairwise human pref-erences over complete itineraries (Section 2.2), optimized under a device-aware compute budget (Section 2.3). 
+
+2.1 PLAN: Diverse Feasible Itinerary Generation 
+
+We implement five heterogeneous planners for multi-day itinerary generation under a shared feasibility layer. Each planner outputs a feasible itinerary (an ordered, time-stamped sequence of POI visits) that respects all hard constraints and optimizes a shared composite objective. Although the objective is shared, the planners’ distinct search paradigms yield structurally diverse candidates differing in POI selection, ordering, and time allocation. The planner suite is designed to supply a diverse candidate pool for downstream selection and refinement, since identifying a single best planner across all trip contexts is not feasible. 
+
+> 2https://github.com/Official529Tech/pla-itinerary
+
+2.1.1 POI Data and User Inputs. Our system operates over city-specific POI datasets covering 100+ U.S. cities. Each POI 𝑝 has opening hours, visit duration, cost tier, location (with a precom-puted travel-time zone), categories, and a popularity score derived from user ratings. A trip context 𝑢 specifies destination, duration, categories of interest, budget tier, availability windows, and pace (Relaxed, Balanced, or Packed), which sets the daily time budget. Together, these inputs define the feasible search space while re-maining minimal enough for fast, on-device planning. 
+
+2.1.2 Feasibility Constraints. All planners enforce the following hard constraints that define a valid, executable itinerary: 
+
+• Visit Hours: Each visit must start after opening and end before closing, i.e., start (𝑝 ) ≥ open (𝑝 ) and start (𝑝 ) + dur (𝑝 ) ≤ close (𝑝 ).
+
+• Availability Windows: Every visit must lie entirely within the traveler’s available time on that day. 
+
+• Travel-Time Consistency: Sufficient time must exist between consecutive visits to travel between them. If arrival precedes open-ing, the traveler waits. 
+
+• Time Budget: Total active time (visits plus travel) on each day must not exceed the budget implied by the selected pace. 
+
+• Cost Budget: POIs with cost (𝑝 ) exceeding the user’s budget tier are excluded from consideration. 
+
+• No Repeats: Each POI is visited at most once per trip. All planners share a feasibility layer that computes earliest-feasible arrival times (with waiting when arrival precedes opening) and enforces day- and trip-level constraints uniformly, so cross-planner differences reflect search strategy rather than inconsistent constraint handling. 
+
+2.1.3 Objective Components. Beyond feasibility, planners optimize for itinerary quality using a hand-crafted, interpretable objective. We score a candidate POI 𝑝 at its earliest feasible start time 𝑡 𝑠 , given the current time cursor 𝑡 and previously scheduled POI 𝑝 ℓ :
+
+• Travel Efficiency: We penalize long travel times to encourage ge-ographically coherent itineraries: travel (𝑝 ℓ , 𝑝 ) = 𝑇 (zone (𝑝 ℓ ), zone (𝑝 )) .
+
+• Waiting Time: Arriving before a POI opens incurs idle time, which we penalize: wait (𝑝, 𝑡 ) = max {0, open (𝑝 )−( 𝑡 +travel (𝑝 ℓ , 𝑝 ))} .
+
+• Scheduling Urgency: POIs with narrow remaining windows should be prioritized to avoid missing them entirely. We define urgency based on the gap between visit end and closing time: 
+
+urgency (𝑝, 𝑡 𝑠 ) = 1       
+
+> 𝜀 +max {0,close (𝑝 ) − ( 𝑡 𝑠 +dur (𝑝 ) ) }
+
+, where 𝜀 is a small con-stant for numerical stability. POIs that would barely fit receive high urgency scores. 
+
+• Category Diversity: To avoid monotonous itineraries (e.g., five museums in a row), we reward visits that introduce under-represented categories at both day and trip levels: div (𝑝 ) = 𝜆 𝑑 
+
+Í𝑐 ∈cat (𝑝 )   
+
+> 𝛾 𝑐
+> 1+count 𝑑 (𝑐 )
+
++
+
+𝜆 𝑡 
+
+Í𝑐 ∈cat (𝑝 )   
+
+> 𝛾 𝑐
+> 1+count 𝑡 (𝑐 )
+
+, where count 𝑑 (𝑐 ) and count 𝑡 (𝑐 ) are the num-ber of visits to category 𝑐 on the current day and trip respectively, 
+
+𝛾 𝑐 is a category weight (higher for user-preferred categories), and 
+
+𝜆 𝑑 , 𝜆 𝑡 control the day vs. trip diversity trade-off. 
+
+• POI Popularity: Higher-quality POIs, as measured by pop (𝑝 ),contribute more value to the itinerary.  
+
+> 2From Feasibility to Desirability: Plan, Learn, Adapt (PLA) Framework for Personalized On-Device Itinerary Generation ACM 2026, Feb 1, 2026, USA
+
+Table 1: Comparison of planning algorithms and trade-offs. 
+
+Algorithm Paradigm Key Trade-off 
+
+Greedy Constructive Solution quality vs. speed DP Dynamic prog. Optimality vs. state space Beam Tree search Solution quality vs. search breadth A* Tree search Optimality vs. search cost SA Local search Exploration vs. convergence speed 
+
+2.1.4 Shared Composite Score. The objective components are com-bined into a weighted composite score used by constructive plan-ners (Greedy, Beam, A*) for step-level decisions: 
+
+score (𝑝, 𝑡 𝑠 ) = 𝑤 pop · pop (𝑝 ) − 𝑤 travel · travel (𝑝 ℓ , 𝑝 ) − 𝑤 wait · wait (𝑝, 𝑡 )+ 𝑤 urg · urgency (𝑝, 𝑡 𝑠 ) + 𝑤 div · div (𝑝 ).
+
+(1) All weights (𝑤 pop , 𝑤 travel , 𝑤 wait , 𝑤 urg , 𝑤 div ) are configurable hy-perparameters shared across planners for fair comparison. Global optimization planners and local search use analogous objectives adapted to their formulations. The shared objective structure en-sures that performance differences across planners stem from search strategy rather than from inconsistent quality definitions. 
+
+2.1.5 Planning Algorithms. We implement five planning algorithms across four paradigms: constructive heuristics (Greedy), dynamic programming (DP), tree search (Beam, A*), and local search (SA). Table 1 summarizes the key characteristics of each planning al-gorithm. All algorithms share the feasibility layer and composite objective (Eq. 1), differing only in search strategy. 
+
+• Greedy: Iteratively schedules the highest-scoring feasible POI at its earliest valid start time. 
+
+• Dynamic Programming (DP): Resource-bounded optimization over a time-expanded state space maximizing POI popularity and coverage. 
+
+• Beam Search: Anytime tree search over a bounded frontier of partial itineraries, pruning by composite score. 
+
+• A* Search: Best-first search with an admissible upper bound on remaining reward. 
+
+• Simulated Annealing (SA). Local search with probabilistic ac-ceptance of structural edits over a feasible seed. We also prototyped a Constraint Programming (CP-SAT) planner but excluded it from deployment because Google OR-Tools lacks a native Swift implementation. 
+
+2.2 LEARN: Human Preference Modeling 
+
+User satisfaction with an itinerary is latent and context-dependent. We therefore conduct a pairwise preference study over complete itineraries and train a compact reward model over interpretable itinerary-level features. 
+
+2.2.1 Preference Data Collection. We collect preferences via a web platform that presents side-by-side itinerary pairs from randomly chosen planners. Planner identities are hidden and left-right place-ment is randomized to prevent ordering bias. Guidelines emphasize holistic itinerary-level judgment; submissions with completion time well below median are filtered. This yields 2,519 pairwise compar-isons across 100+ U.S. cities. We use a feature-based Bradley–Terry 
+
+Table 2: Itinerary-level features for reward modeling.       
+
+> Category Feature Example
+> POI Quality Count, total/avg/min/max popularity Category Diversity Unique categories, entropy, alignment Temporal Efficiency Travel time, wait time, travel-to-activity ratio Schedule Balance Daily load, time utilization, max consecutive travel Constraint Slack Budget margin, closing-time slack
+
+formulation for data efficiency: each comparison supervises ∼20 
+
+interpretable features simultaneously (Section 2.2.2). 
+
+2.2.2 Reward Model Architecture. We learn a scoring function 𝑅 (𝑥 )
+
+that ranks itineraries by predicted human preference. 
+
+Feature Engineering. Each itinerary 𝑥 is mapped to a fixed dimen-sional feature vector 𝜙 (𝑥 ) ∈ R𝑑 , and we learn 𝑅 𝜃 (𝑥 ) = 𝑓 𝜃 (𝜙 (𝑥 )) .The feature set ( 𝑑 ≈ 20 ) captures structural, temporal, and preference-aligned properties. Table 2 summarizes the feature groups. All fea-tures are computed deterministically from POI metadata and the generated schedule (operating hours, visit durations, travel times, category counts) rather than from city-specific or cultural signals. The representation is therefore portable across destinations: the model learns that excessive travel time or imbalanced daily load reduce preference, properties that hold city to city. User-context interaction terms (e.g., is_packed_x_num_pois , is_ relaxed_x_avg_gap ) condition itinerary scores on the traveler’s stated preferences. A POI-dense schedule then ranks higher for a packed traveler than a relaxed one, providing context-conditioned personalization without per-user history. 
+
+Learning Objective. We adopt the Bradley–Terry framework [ 1 ,12 ]: the probability of preferring 𝑥 𝑎 over 𝑥 𝑏 follows a logistic model 
+
+𝑃 (𝑥 𝑎 ≻ 𝑥 𝑏 ) = 𝜎 (𝑅 𝜃 (𝑥 𝑎 ) − 𝑅 𝜃 (𝑥 𝑏 )) , where 𝜎 (·) is the sigmoid. Given a dataset D = {( 𝑥 (𝑖 ) 
+
+> 𝑎
+
+, 𝑥 (𝑖 ) 
+
+> 𝑏
+
+, 𝑦 (𝑖 ) )} 𝑁 𝑖 =1 where 𝑦 (𝑖 ) ∈ {− 1, +1}, we minimize the regularized negative log-likelihood and our loss is 
+
+L( 𝜃 ) = − 1
+
+> 𝑁
+
+Í𝑁 𝑖 =1 log 𝜎 
+
+
+
+𝑦 (𝑖 ) · ( 𝑅 𝜃 (𝑥 (𝑖 ) 
+
+> 𝑎
+
+) − 𝑅 𝜃 (𝑥 (𝑖 ) 
+
+> 𝑏
+
+)) 
+
+
+
++ 𝜆 ∥𝜃 ∥22. Here, 
+
+𝜆 controls ℓ2 regularization to prevent overfitting. 
+
+Model Implementation. We implement two parameterizations: a linear model 𝑅 𝜃 (𝑥 ) = 𝑤 ⊤𝜙 (𝑥 ) with 𝜃 = 𝑤 ∈ R𝑑 (high interpretabil-ity, < 1𝜇𝑠 inference), and a small gradient-boosted tree ensemble for nonlinear interactions. 
+
+Monotonicity Constraints. To align the reward function with domain knowledge, we enforce monotonicity constraints : negative (travel time, waiting time, and travel-to-activity ratio do not in-crease reward) and positive (POI popularity, category diversity, and preference alignment do not decrease reward). The linear model enforces these directly during optimization; tree-based models use post-hoc validation with re-weighting of non-monotonic features. 
+
+2.2.3 Reward-Guided Ensemble Selection. The reward model se-lects among planner candidates and serves as the training signal for downstream refinement. Rather than committing to a single planner, we treat the planners plus the reward model as an implicit ensemble . Concretely, given a trip context 𝑢 , the Plan stage gener-ates a set of feasible itineraries X( 𝑢 ) = {𝑥 1, . . . , 𝑥 𝐾 } using different planning algorithms. We then evaluate each candidate using the learned reward model and select the itinerary with the highest predicted user satisfaction: 𝑥 ★ = arg max 𝑥 ∈ X ( 𝑢 ) 𝑅 𝜃 (𝑥 ). 
+
+> 3ACM 2026, Feb 1, 2026, USA Himel Dev 1, Tanmoy Sen 2, Madhusudan Basak 3, Bashima Islam 3
+
+Diversity arises from algorithmic heterogeneity rather than pa-rameter perturbations, distinguishing this from standard ensembles. A common human-aligned reward score enables direct compari-son across planners with different internal objectives. Selection is lightweight, fully on-device, and adds negligible overhead to the planning stage. 
+
+2.3 ADAPT: On-Device Itinerary Refinement 
+
+Plan produces diverse feasible itineraries; Learn provides a reward model 𝑅 𝜃 (𝑥 ) over itinerary-level features. Two practical and op-erational gaps remain: (i) seed planners are not optimized for the learned reward, and (ii) mobile devices impose strict runtime and memory limits. Adapt addresses both via feasibility-preserving lo-cal edits under a resource-aware compute budget, with an anytime guarantee that returns the best feasible itinerary found so far. 
+
+2.3.1 Local Feasible Edit Operators. Adapt explores a neighbor-hood N ( 𝑥 ) of a feasible itinerary 𝑥 , defined by atomic edit operators with a validation layer that guarantees feasibility. Each edit modifies a small portion of the itinerary (typically within a day), followed by local re-timing from the first affected position; proposals that violate constraints are discarded. 
+
+Atomic Operators. Let a visit be indexed by (𝑑, 𝑖 ), denoting posi-tion 𝑖 on day 𝑑 . We define the following six local moves: 
+
+• Drop (𝑑, 𝑖 ): remove the visit at position 𝑖 on day 𝑑 .
+
+• Insert (𝑑, 𝑝, 𝑖 ): insert an unvisited POI 𝑝 at position 𝑖 on day 𝑑 .
+
+• Replace (𝑑, 𝑖, 𝑝 ): replace the visit (𝑑, 𝑖 ) with an unvisited POI 𝑝 .
+
+• SwapAdj (𝑑, 𝑖 ): swap visits at positions 𝑖 and 𝑖 +1 on day 𝑑 .
+
+• Relocate (𝑑, 𝑖, 𝑗 ): move the visit from position 𝑖 to 𝑗 on day 𝑑 .
+
+• MoveDay (𝑑, 𝑖, 𝑑 ′, 𝑗 ): move the visit (𝑑, 𝑖 ) to (𝑑 ′, 𝑗 ).These operators form a compact move set that covers common user-driven edits (“I want to add this museum”, “swap lunch and park”, “remove this stop”) while enabling local search to correct structural defects such as excessive travel chaining, poor pacing, or category imbalance. 
+
+Feasibility Layer and Incremental Re-timing. After each edit, we reconstruct the schedule for the affected suffix via a forward pass. For day visits (𝑣 1, . . . , 𝑣 𝑚 ) where 𝑣 𝑗 corresponds to POI 𝑝 𝑗 
+
+with duration 𝑑𝑢𝑟 𝑝 𝑗 and window [𝑜𝑝𝑒𝑛 𝑝 𝑗 , 𝑐𝑙𝑜𝑠𝑒 𝑝 𝑗 ]. With current cursor time 𝑡 at the end of 𝑣 𝑗 −1, we compute 𝑎𝑟𝑟 𝑗 = 𝑡 + 𝑇 (𝑝 𝑗 −1, 𝑝 𝑗 ),
+
+𝑠𝑡𝑎𝑟𝑡 𝑗 = max {𝑎𝑟𝑟 𝑗 , 𝑜𝑝𝑒𝑛 𝑝 𝑗 }, and 𝑒𝑛𝑑 𝑗 = 𝑠𝑡𝑎𝑟𝑡 𝑗 + 𝑑𝑢𝑟 𝑝 𝑗 . We accept the schedule iff (i) 𝑝 𝑗 is open at 𝑠𝑡𝑎𝑟𝑡 𝑗 , (ii) (𝑠𝑡𝑎𝑟𝑡 𝑗 , 𝑒𝑛𝑑 𝑗 ) lies within the user’s availability interval, (iii) 𝑒𝑛𝑑 𝑗 ≤ 𝑑𝑎𝑦 _𝑠𝑡𝑎𝑟𝑡 + 𝐵 schedule 
+
+(the user’s daily time budget), and (iv) 𝑒𝑛𝑑 𝑗 does not exceed the day boundary. We then set 𝑡 ← 𝑒𝑛𝑑 𝑗 and continue. This procedure strictly preserves feasibility when it succeeds, provides natural waiting-time accounting via 𝑠𝑡𝑎𝑟𝑡 𝑗 − 𝑎𝑟𝑟 𝑗 , and enables incremental 
+
+evaluation because only a local suffix must be recomputed. 
+
+2.3.2 Reward-Guided Local Search. We refine a seed itinerary 𝑥 0
+
+by iteratively applying local edits to improve 𝑅 𝜃 (𝑥 ). Feasibility is enforced by the re-timing layer, so every accepted itinerary is feasible. We use a simple hill-climbing core with stochastic neigh-borhood sampling; more complex acceptance rules (e.g., simulated annealing) are compatible but unnecessary under tight budgets. 
+
+Neighborhood Sampling. Enumerating all feasible neighbors is expensive with many unvisited POIs. Instead, we sample a bounded candidate set per iteration: (i) an operator type with fixed proba-bilities (favoring SwapAdj , Relocate , Replace ); (ii) target indices uniformly from the current schedule; (iii) for Insert /Replace , can-didate POIs from a filtered pool (budget tier, category interest, distance). Each candidate is re-timed incrementally; infeasible pro-posals are discarded. 
+
+Best-improvement under a fixed per-iteration cap. Over the sampled candidates ˜N ( 𝑥 ) we select 𝑥 ∗ = arg max 𝑦 ∈ ˜N ( 𝑥 ) 𝑅 𝜃 (𝑦 ) and accept it if 𝑅 𝜃 (𝑥 ∗) − 𝑅 𝜃 (𝑥 ) ≥ 𝛿 . The procedure is anytime: 𝑥 best is tracked globally and returned if the time budget expires. 
+
+2.3.3 Resource-Aware Budgeting. PLA must run fully offline with predictable latency. Adapt therefore uses a device-aware budget that bounds refinement runtime. At runtime we query device sig-nals: model class, core count, available memory, and low-power mode. We map these to a refinement time budget: 𝐵 ms = clip (𝐵 0 ·
+
+𝑠 cpu · 𝑠 mem · 𝑠 power , 𝐵 min , 𝐵 max ), where 𝐵 0 is a nominal budget (200–500 ms) and scaling factors come from coarse bins over the device signals. Coarse binning avoids fragile device-specific cali-bration, and the anytime search ensures graceful degradation on resource-constrained devices. 
+
+3 Evaluation 
+
+We evaluate the PLA framework along five axes: (1) [ Plan ] algorith-mic diversity, (2) [ Learn ] model accuracy, (3) [ Plan + Learn ] en-semble effectiveness, (4) [ Adapt ] refinement uplift, and (5) [ Plan +
+
+Learn + Adapt ] overall performance. 
+
+3.1 Dataset and Experimental Setup 
+
+Our evaluation uses 2,519 pairwise comparisons across 100+ U.S. cities. Each comparison shows side-by-side itineraries from two randomly chosen planners (full protocol in Section 2.2.1). Coverage spans 5 planners, 1–7 day trips, all schedule-intensity × budget-tier combinations, and varied interest profiles. We report 5-fold stratified cross-validation results with bootstrap 95% confidence intervals (1,000 resamples). 
+
+Inter-Annotator Agreement. Since each comparison is assigned to one annotator, we ran a dedicated IAA study where two annota-tors independently evaluated 50 shared itinerary pairs. The study yields 78.0% raw agreement (39/50), Cohen’s 𝜅 = 0.56 , Krippen-dorff’s 𝛼 = 0.56 , with balanced choices (27:23, 26:24). Across the full dataset we find no position bias (Plan 1 win rate 50.9%, p = 0.38) and low annotator heterogeneity (std 0.10 across 17 annotators). The moderate 𝜅 matches subjective preference tasks and motivates Bradley–Terry modeling, which treats disagreement as probabilis-tic signal. The 78.0% human-human rate bounds attainable model accuracy: the deployed 66.5% model (Section 3.3) captures 60% of the gap between random and human agreement. 
+
+3.2 [Plan ] Algorithmic Diversity 
+
+A key hypothesis of PLA is that heterogeneous planners produce structurally diverse feasible candidates. We validate this via POI overlap, head-to-head win rate, and feature diversity analyses. 
+
+POI Overlap Analysis. We measure itinerary differences via Jac-card similarity of POI sets (Figure 2). Mean Jaccard similarity is 0.697 across algorithm pairs, indicating algorithms share approximately          
+
+> 4From Feasibility to Desirability: Plan, Learn, Adapt (PLA) Framework for Personalized On-Device Itinerary Generation ACM 2026, Feb 1, 2026, USA GREEDY DP ASTAR BEAM SA
+> GREEDY DP ASTAR BEAM SA
+> 1.00
+> 0.64
+> ±0.30 1.00
+> 0.69
+> ±0.27
+> 0.60
+> ±0.30 1.00
+> 0.71
+> ±0.27
+> 0.64
+> ±0.28
+> 0.85
+> ±0.16 1.00
+> 0.81
+> ±0.24
+> 0.57
+> ±0.32
+> 0.73
+> ±0.24
+> 0.75
+> ±0.23 1.00
+> POI Overlap Between Algorithm Pairs
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> Jaccard Similarity
+
+Figure 2: POI overlap (Jaccard simi-larity) between algorithm pairs. Mean overlap is 0.697; DP–SA show the most distinct selections. GREEDY DP ASTAR BEAM SA                
+
+> Opponent Algorithm
+> GREEDY DP ASTAR BEAM SA
+> Algorithm
+> 40.1 56.7 42.7 38.1
+> 59.9 60.6 58.7 47.6
+> 43.3 39.4 47.5 41.6
+> 57.3 41.3 52.5 46.9
+> 61.9 52.4 58.4 53.1
+> Head-to-Head Win Rates (%)
+> 30
+> 35
+> 40
+> 45
+> 50
+> 55
+> 60
+> 65
+> 70
+> Win Rate (%)
+
+Figure 3: Head-to-head win rate ma-trix. No single algorithm dominates all matchups; the ten pairs exhibit comple-mentary strengths. GREEDY DP ASTAR BEAM SA                                 
+
+> Num POIs Visited ***
+> Avg Visits / Day ***
+> Total Visit Duration ***
+> Avg Gap Between Visits ***
+> Category Diversity ***
+> Efficiency Ratio ***
+> Total Travel Distance **
+> Schedule Utilization ***
+> -0.24 -1.43 0.96 0.96 -0.24
+> 0.08 -1.32 1.01 0.89 -0.66
+> 0.45 -1.79 0.45 0.45 0.45
+> -0.27 1.48 -0.94 -0.77 0.51
+> 0.45 -1.79 0.45 0.45 0.45
+> 0.59 -1.58 0.57 0.81 -0.39
+> 1.45 -0.91 -0.30 0.57 -0.81
+> 0.67 -1.01 0.84 0.67 -1.17
+> Algorithm Feature Profiles (Z-scored Medians)
+> 1.5
+> 1.0
+> 0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> Z-score (median)
+
+Figure 4: Z-scored median feature pro-files per algorithm (deviation from cross-algorithm mean). All 8 features differ significantly ( 𝑝 < 0.05 ). 
+
+70% of POIs on average for the same trip context. DP–SA pairs are most distinct (0.565) and A*–Beam pairs most similar (0.847). Even so, 10.6% of comparisons fall below 30% POI overlap, indicating genuine exploration of different solution regions. 
+
+Win Rate Analysis. Figure 3 shows the head-to-head win rate ma-trix across all 10 algorithm pairs. All pairs are complementary: both algorithms win in at least some comparisons. DP beats A* most deci-sively (60.6%–39.4%); DP–SA is the most competitive (52.4%–47.6%). Complementarity is a prerequisite for ensemble selection: if one algorithm dominated, selection would collapse to that algorithm. 
+
+Feature Diversity Analysis. Beyond POI selection, we examine structural differences. Figure 4 shows Z-scored median feature pro-files for each algorithm. A* and Beam produce the densest itineraries with the tightest visit spacing, DP the sparsest with the largest inter-visit gaps, while Greedy incurs the longest travel distances and SA the lowest schedule utilization. Kruskal-Wallis tests confirm all 8 features differ significantly across algorithms ( 𝑝 < 0.05 ), including number of POIs, visits per day, travel distance, and category diver-sity. Planners occupy different regions of feature space, producing structurally different itineraries. 
+
+3.3 [Learn ] Model Accuracy 
+
+We evaluate the reward model’s accuracy against heuristic baselines, compare architectures and input formulations, and characterize data requirements via learning curves. 
+
+Heuristic Baseline Comparison. In Table 3, learned Bradley– Terry model achieves 66.5% ± 2.3% accuracy (5-fold CV), outper-forming all single-feature heuristics. The improvement over the best heuristic, ( num_pois at 52.2%) is +14 .3% absolute. The model captures feature interactions that no single metric can express. 
+
+Model Architecture Comparison. Table 4 compares architectures under the Bradley–Terry formulation (5-fold CV). The deployed Lo-gistic Regression (ElasticNet) achieves ROC-AUC 0.730 and F1 0.687. Random Forest reaches ROC-AUC 0.755 and F1 0.707, but the ROC-AUC and F1 gaps are within bootstrap variability and less relevant for ensemble selection, which depends on within-context ranking rather than global pair discrimination (Section 2.2.3). We deploy the linear model: it offers per-feature interpretability for production diagnosis, native enforcement of the monotonicity constraints (Sec-tion 2.2.2), and an order-of-magnitude smaller on-device footprint. 
+
+Model Formulation Comparison. Figure 5 shows F1 score by input formulation. The Bradley–Terry (difference-based) formu-lation achieves the highest F1, outperforming concatenated and augmented alternatives. The difference-based representation thus captures pairwise structure more effectively than formulations treat-ing the two candidates independently. 
+
+Learning Curve Analysis. Figure 6 shows model ROC-AUC as training size grows. AUC improves from 0.628 ( 𝑛 = 100 ) to 0.719 (𝑛 = 1,209 ); doubling to 2,015 adds only +0.007 , within bootstrap CIs. The 2,519-comparison dataset is in the saturated regime; ad-ditional gains would require richer features, not more data. The feature set is deliberately constrained for three on-device require-ments: sub-millisecond inference, native monotonicity enforcement (Section 2.2.2), and per-feature interpretability. Richer representa-tions (e.g., learned POI-sequence embeddings) are natural exten-sions when these constraints can be relaxed. Leave-one-city-out (LOCO) cross-validation assesses cross-city generalization. The model achieves 67.6% mean accuracy (8.6% std) across 100+ held-out cities, with per-city accuracy ranging from 51.5% to 90.0%. The variation reflects per-city discrimination difficulty: cities with less diverse POI distributions are harder to rank than data-rich cities. 
+
+3.4 [Plan + Learn ] Ensemble Effectiveness 
+
+We evaluate whether reward-model-guided selection outperforms any single algorithm, examine the diversity of algorithm selection across contexts, and validate that predicted reward scores align with empirical human preferences. 
+
+Ensemble Model Performance. Table 5 compares the reward-model ensemble against individual algorithms via counterfactual analysis on the full 2,519 comparisons. The ensemble achieves a 
+
+67.8% win rate, versus 56.6% for the best single algorithm (DP), a gain of +11 .2% absolute. The 95% bootstrap CI [65.9%, 69.6%] does not overlap with DP’s interval [53.6%, 59.7%], confirming statistical significance (McNemar’s test 𝑝 < 0.001 ). 
+
+Ensemble Selection Diversity. Figure 7 shows which algorithm is selected by the reward model. DP is selected most often (30.1%), followed by SA (22.5%), Beam (17.5%), Greedy (15.5%), and A* (14.4%). The selection entropy is 2.265 bits out of a maximum 2.322 bits (97.6% of maximum entropy), indicating highly diverse selection with no single algorithm dominating. The chi-square test confirms 
+
+> 5
+
+ACM 2026, Feb 1, 2026, USA Himel Dev 1, Tanmoy Sen 2, Madhusudan Basak 3, Bashima Islam 3
+
+Table 3: Pairwise prediction (5-fold CV). Method Accuracy 
+
+Random 50.0% Majority Class 51.0% Heuristic: num_pois 52.2% Heuristic: avg_visits_per_day 51.6% Heuristic: total_travel_distance 46.6% 
+
+Bradley-Terry Model (deployed) 66.5% Table 4: Model comparison (5-fold CV). Model (Deployment Pref. ↓) ROC-AUC F1 
+
+LR (L2) 0.728 0.687 SVM (RBF) 0.723 0.696 Random Forest 0.755 0.707 XGBoost 0.751 0.706 Ensemble (LR+XGBoost) 0.752 0.696 Ensemble (LR+RF+SVM) 0.750 0.704 
+
+LR (ElasticNet) [deployed] 0.730 0.687 Table 5: Counterfactual analysis. Strategy Win Rate 95% CI n                           
+
+> Random Selection 50.0% ——Greedy Only 44.6% [41.5%, 47.8%] 1024 A* Only 42.9% [39.7%, 46.1%] 1005 Beam Only 49.6% [46.4%, 52.8%] 987 SA Only 56.4% [53.4%, 59.5%] 998 DP Only 56.6% [53.6%, 59.7%] 1024
+> Ensemble + 𝑅 𝜃 67.8% [65.9%, 69.6%] 2519 0.3 0.4 0.5 0.6 0.7 0.8
+> F1 Score
+> Concatenated [ (a), (b)]
+> (XGBoost)
+> Augmented [ (a), (b),diff]
+> (Logistic Regression)
+> Concatenated [ (a), (b)]
+> (Logistic Regression)
+> Augmented [ (a), (b),diff]
+> (XGBoost)
+> Bradley-Terry (diff)
+> (Logistic Regression)
+> Bradley-Terry (diff)
+> (XGBoost)
+> 0.649
+> 0.667
+> 0.671
+> 0.682
+> 0.687
+> 0.690
+> Model Formulation F1 Score (5-Fold CV)
+> (Dark = Bradley-Terry)
+> Random (50%)
+
+Figure 5: F1 score by input formula-tion. Bradley-Terry (difference-based, dark bars) outperforms concatenated and augmented alternatives. 0 250 500 750 1000 1250 1500 1750 2000 2250  
+
+> Training samples
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.70
+> 0.75
+> ROC-AUC
+> 0.726
+> 0.719
+> Learning Curve ROC-AUC
+> 95% CI
+> Mean
+> Saturation (n=1209)
+> Full data (n=2015)
+
+Figure 6: Learning curve (ROC-AUC vs. training size). Performance plateaus near 1,209 samples, indicating data suf-ficiency under the current feature set. GREEDY DP ASTAR BEAM SA  
+
+> Algorithm
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> Selection Rate (%)
+> 15.5±9.3%
+> 30.1±11.7%
+> 14.4±9.0% 17.5±8.5%
+> 22.5±8.9%
+> Reward Model Selection Distribution
+> (mean ± std across 100+ cities)
+> Uniform (20.0%)
+
+Figure 7: Algorithm selection distribu-tion across cities ( ±std). Near-maximum entropy (97.6%) indicates all algorithms contribute to the ensemble. 
+
+significant non-uniformity ( 𝑝 < 0.001 ), validating that different algorithms excel in different contexts. 
+
+Ensemble Score Improvement. Figure 8 plots each algorithm’s mean predicted reward against its empirical win rate, with 95% Wilson confidence interval error bars. The Spearman correlation between predicted score and empirical win rate is 𝜌 = 0.90 , so the reward model’s ranking aligns with annotator preferences. The ensemble (shown in red) attains both a higher predicted score and a higher win rate than any individual algorithm; maximizing the reward model therefore yields itineraries that humans prefer. 
+
+3.5 [Adapt ] Refinement Uplift 
+
+We quantify the score uplift delivered by local refinement across all seed algorithms and characterize how improvement scales with the number of accepted moves. Reward score improvement serves as a proxy for human preference improvement: Section 3.4 shows that reward model scores predict human-labeled win rates at Spear-man 𝜌 = 0.90 , indicating that score maximization reliably selects annotator-preferred itineraries. 
+
+Refinement Score Improvement. Table 6 shows reward before and after Adapt refinement. All improvements are statistically significant ( 𝑝 < 0.001 , Wilcoxon signed-rank test). Algorithms with lower initial reward scores benefit more: A* gains +11 .7% , while the ensemble seed (already the highest-scoring before refinement) improves by +3.9% . Adapt thus provides uplift regardless of seed quality, and ensemble selection followed by refinement produces the strongest final itinerary. 
+
+Refinement Iteration Improvement. Figure 9 shows ensemble improvement grouped by number of accepted moves, binned in intervals of five. Itineraries with more accepted moves show larger score gains; each accepted move generally contributes to quality im-provement. This upward trend is consistent with the hill-climbing acceptance criterion, which only incorporates score-improving pro-posals, though variance increases at higher moves. 
+
+3.6 [Plan + Learn + Adapt ] Performance 
+
+Combining all three stages, we benchmark PLA against LLM-based generators on feasibility, report on-device latency, and quantify real-world deployment impact. We do not compare against prior itinerary systems (TravelPlanner, PersonalTravelSolver) because they target a different operating point: open-ended natural-language input, single-day or unbounded-budget formulations, and cloud inference. Adapting them to our multi-day, on-device regime would measure adaptation, not the methods. The classical optimization baselines are covered by the per-planner comparisons in Section 3.4, while the LLMs are evaluated in the following comparison. 
+
+LLM Benchmark Comparison. We evaluated 294 itineraries (98 each from GPT-5, Claude Opus 4.5, Gemini 3 Pro) against our full hard-constraint set. Strict feasibility rate is 0/98 (0%) for all three models, with a Wilson 95% CI upper bound of ≈ 3.8% per model. Figure 10 shows total violation distributions: Claude Opus 4.5 has the fewest (median 1, mean 1.08), then Gemini 3 Pro (5, 4.44) and GPT-5 (9, 9.03). Table 7 shows that travel-time consistency dom-inates (an average of 1.04, 3.28, and 5.98 violations per itinerary for Claude Opus 4.5, Gemini 3 Pro, and GPT-5), with visit-duration second (0.03, 0.22, and 1.62, respectively); other categories rarely violate. The constraint regime is hard for autoregressive generation. On the other hand, PLA offers guaranteed feasibility at interactive on-device latency, versus approximate feasibility from a cloud API. 
+
+6From Feasibility to Desirability: Plan, Learn, Adapt (PLA) Framework for Personalized On-Device Itinerary Generation ACM 2026, Feb 1, 2026, USA 8.4 8.5 8.6 8.7 8.8 8.9 9.0  
+
+> Predicted Reward Score (mean)
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.70
+> Actual Win Rate (Wilson 95% CI)
+> ASTAR
+> BEAM
+> DP
+> GREEDY
+> SA
+> ENSEMBLE
+> Reward Model Prediction vs User Preference
+> Trend (r=0.76, =0.90)
+> Random (50%)
+
+Figure 8: Predicted reward score vs. em-pirical win rate for algorithms. Correla-tion ( 𝜌 = 0.90 ) between predicted score and win rate shows that score maxi-mization tracks human preference. 0 1 5 6 10 11 15 16 21  
+
+> Accepted Moves
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Mean Improvement
+> Ensemble: Improvement by Accepted Moves
+> (circle size 95% CI width)
+
+Figure 9: Ensemble improvement by number of accepted moves (binned). Each additional accepted move typi-cally contributes to score gain, with higher variance at higher move counts. GPT-5 Claude Opus 4.5 Gemini 3 Pro   
+
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> Total Violations per Itinerary
+> median: 9 median: 1 median: 5
+> Distribution of Constraint Violations
+
+Figure 10: Distribution of constraint vi-olations per itinerary for three frontier LLMs. All models achieve 0% strict fea-sibility; whereas PLA maintains 100% feasibility by construction. Table 6: Adapt refinement by seed. All score improvements are statistically sig-nificant ( 𝑝 < 0.001 ). Seed Before After Uplift 95% CI                         
+
+> Greedy 6.835 7.524 +10.1% [0.563, 0.825] DP 6.955 7.268 +4.5% [0.213, 0.431] A* 6.623 7.399 +11.7% [0.671, 0.883] Beam 6.805 7.390 +8.6% [0.501, 0.676] SA 6.983 7.491 +7.2% [0.425, 0.597]
+> Ensemble 7.184 7.463 +3.9% [0.191, 0.392]
+
+Table 7: Mean constraint violations per itinerary by type (mean ± std) for GPT-5, Claude Opus 4.5, Gemini 3 Pro. Violation GPT-5 Opus 4.5 Gemini 3                                                       
+
+> Travel Time 5.98 ±1.51 1.04 ±0.32 3.28 ±1.85
+> Visit Hours 1.36 ±0.84 0.01 ±0.10 0.79 ±0.83
+> Duration 1.62 ±1.84 0.03 ±0.17 0.22 ±0.49
+> Time Budget 0.00 ±0.00 0.00 ±0.00 0.13 ±0.40
+> No Repeats 0.05 ±0.22 0.00 ±0.00 0.00 ±0.00
+> Total 9.03 ±3.36 1.08 ±0.37 4.44 ±2.91
+
+Table 8: Post-deployment engagement changes in FlyEnJoy relative to the single-heuristic baseline.                
+
+> Metric Type Change
+> Itinerary Initiations Usage +83%
+> Completion Rate Usage +91%
+> Feature DAU Engagement +22%
+> DAU/WAU Ratio Engagement +20 pp Time per Session Efficiency −8%
+> Time per User Efficiency −38%
+
+On-Device Latency Analysis. To empirically validate viability, we measured end-to-end latency on 1,728 runs: 6 cities × 4 trip configu-rations × 24 algorithm configurations (Greedy/Beam Search, paral-lel/sequential fetching, Basic/Advanced/ML filtering, with/without optimizations) × 3 repetitions. Latency averages 109.9 ms (std: 69.5, p5 35.1, p95 253.1 ms). Both the mean and the p95 tail fall below the 300 ms interactive-response threshold. The device-aware budget bounds worst-case latency across heterogeneous devices. 
+
+Post-Deployment Quantification. We deployed PLA in FlyEn-Joy , a production iOS travel app. We evaluated real-world impact via anonymized logs in a pre-post observational analysis against the prior single-heuristic baseline; confounders (e.g., organic growth) cannot be fully excluded. Due to business sensitivity, we report only relative changes (Table 8). Itinerary initiations rose 83 .33% ,and completion rate 90 .91% . Engagement also improved: itinerary-feature DAU rose +22% and DAU/WAU +20 pp (more repeat usage). Time per session ( −8% ) and per user ( −38% ) fell, reflecting fewer interactions per completed itinerary. Consistent gains across initia-tion, completion, repeat usage, and session efficiency suggest PLA reduces friction in addition to improving feasibility and preference alignment. 
+
+4 Related Work 
+
+Itinerary Planning via Optimization and Learning. Classical itinerary planning uses combinatorial optimization to balance POI utility under time-budget constraints [ 4, 10 ]. Extensions add real-world constraints [ 19 ] or learned preference models [ 16 ]. Reinforcement-learning approaches treat itinerary generation as sequential decision-making [ 3, 5, 6 ]. Optimization ensures feasibility, learning captures preferences; neither alone balances both. We separate feasibility-preserving planning from itinerary-level preference learning. 
+
+Graph-Based, Multimodal, and LLM-Based Recommenda-tion. Graph and sequence models address next-POI recommenda-tion [ 11 , 13 , 17 , 18 ], with multimodal extensions using geo-tagged images [ 8]. LLM-based generators [ 9, 15 ] use step-wise prediction or unconstrained generation and rarely guarantee global feasibility under temporal and resource constraints. Our work targets multi-day generation with feasibility guarantees and on-device execution. 
+
+Hybrid Preference Learning and Constraint-Aware Planning. 
+
+Hybrid approaches combine preference learning with constraint reasoning. Constraint-based recommenders enforce hard require-ments with manually specified preferences [ 7], while preference models often assume unconstrained candidates [ 2 ]. Recent hybrid itinerary systems integrate preferences into optimization [ 14 ]. We differ by learning preferences at the itinerary level from pairwise judgments and optimizing them via feasibility-preserving refine-ment under a device-aware budget. 
+
+5 Conclusion 
+
+We presented PLA, a three-stage framework for personalized on-device itinerary generation. PLA composes complementary stages to address feasibility, desirability, and viability jointly. Across more than one hundred trip contexts, the planner ensemble reaches 97.6% normalized selection entropy, meaning every algorithm contributes and none dominates. Itinerary-level quality such as pacing, day balance, and geographic coherence emerges from the learned re-ward model rather than from any per-POI score, and feasibility-preserving refinement removes the need for the post-hoc repair 
+
+7ACM 2026, Feb 1, 2026, USA Himel Dev 1, Tanmoy Sen 2, Madhusudan Basak 3, Bashima Islam 3
+
+stage typical of LLM pipelines. In production deployment within 
+
+FlyEnJoy , PLA increased itinerary completion rates by 91%, provid-ing a blueprint for human-aligned planning under real deployment constraints. 
+
+GenAI Usage Disclosure 
+
+During the preparation of this work, the authors used LLM-based tools to assist with condensing and improving the clarity of the author-written text within selected sections. No new content, re-sults, analyses or claims were created by AI tools. All AI-assisted edits were reviewed, verified and approved by the authors. The authors take full responsibility for the accuracy and integrity of all content in this paper. 
+
+References 
+
+[1] Ralph Allan Bradley and Milton E Terry. 1952. Rank analysis of incomplete block designs: I. The method of paired comparisons. Biometrika 39, 3/4 (1952), 324–345. [2] Robin Burke. 2002. Hybrid Recommender Systems: Survey and Experiments. In 
+
+The Adaptive Web . 377–408. [3] Bo-Hao Chen, Jin Han, Shengxin Chen, Jia-Li Yin, and Zhaojiong Chen. 2022. Automatic itinerary planning using triple-agent deep reinforcement learning. 
+
+IEEE Transactions on Intelligent Transportation Systems 23, 10 (2022), 18864–18875. [4] Gang Chen, Sai Wu, Jingbo Zhou, and Anthony KH Tung. 2013. Automatic itinerary planning for traveling services. IEEE transactions on knowledge and data engineering 26, 3 (2013), 514–527. [5] Lei Chen, Jie Cao, Haicheng Tao, and Jia Wu. 2023. Trip reinforcement rec-ommendation with graph-based representation learning. ACM Transactions on Knowledge Discovery from Data 17, 4 (2023), 1–20. [6] Shengxin Chen, Bo-Hao Chen, Zhaojiong Chen, and YunBing Wu. 2020. Itinerary planning via deep reinforcement learning. In Proceedings of the 2020 international conference on multimedia retrieval . 286–290. [7] Alexander Felfernig, Gerhard Friedrich, Dietmar Jannach, and Markus Zanker. 2015. Constraint-based recommender systems. In Recommender systems handbook .Springer, 161–190. [8] Zhe Juan, Jing Zhang, and Ming Gao. 2024. A Multimodal Travel Route Recom-mendation System Leveraging Visual Transformers and Self-Attention Mech-anisms. Frontiers in Neurorobotics 18 (2024), 1439195. doi:10.3389/fnbot.2024. 1439195 [9] Peibo Li, Maarten de Rijke, Hao Xue, Shuang Ao, Yang Song, and Flora D Salim. 2024. Large language models for next point-of-interest recommendation. In 
+
+Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1463–1472. [10] Kwan Hui Lim, Jeffrey Chan, Christopher Leckie, and Shanika Karunasekera. 2015. Personalized tour recommendation based on user interests and points of interest visit durations. In Proceedings of the 24th International Joint Conference on Artificial Intelligence . 1778–1784. [11] Yifang Qin, Yifan Wang, Fang Sun, Wei Ju, Xuyang Hou, Zhe Wang, Jia Cheng, Jun Lei, and Ming Zhang. 2023. DisenPOI: Disentangling sequential and geographical influence for point-of-interest recommendation. In Proceedings of the sixteenth ACM international conference on web search and data mining . 508–516. [12] Hao Sun, Yunyi Shen, and Jean-Francois Ton. 2024. Rethinking bradley-terry mod-els in preference-based reward modeling: Foundations, theory, and alternatives. 
+
+arXiv preprint arXiv:2411.04991 (2024). [13] Ke Sun, Tieyun Qian, Tong Chen, Yile Liang, Quoc Viet Hung Nguyen, and Hongzhi Yin. 2020. Where to go next: Modeling long-and short-term user prefer-ences for point-of-interest recommendation. In Proceedings of the AAAI conference on artificial intelligence , Vol. 34. 214–221. [14] Chieh-Yuan Tsai and Jing-Hao Wang. 2025. A Personalized Itinerary Recom-mender System: Considering Sequential Pattern Mining. Electronics 14, 10 (2025), 2077. [15] Katerina Volchek and Stanislav Ivanov. 2024. ChatGPT as a travel itinerary planner. In ENTER e-Tourism Conference . Springer, 365–370. [16] Jingyuan Wang, Ning Wu, Wayne Xin Zhao, Fanzhang Peng, and Xin Lin. 2019. Empowering A* search algorithms with neural networks for personalized route recommendation. In Proceedings of the 25th ACM SIGKDD international conference on knowledge discovery & data mining . 539–547. [17] Xiaodong Yan, Tengwei Song, Yifeng Jiao, Jianshan He, Jiaotuan Wang, Ruopeng Li, and Wei Chu. 2023. Spatio-temporal hypergraph learning for next POI rec-ommendation. In Proceedings of the 46th international ACM SIGIR conference on research and development in information retrieval . 403–412. [18] Song Yang, Jiamou Liu, and Kaiqi Zhao. 2022. GETNext: Trajectory flow map enhanced transformer for next POI recommendation. In Proceedings of the 45th International ACM SIGIR Conference on research and development in information retrieval . 1144–1153. [19] Chenyi Zhang, Hongwei Liang, and Ke Wang. 2016. Trip recommendation meets real-world constraints: POI availability, diversity, and traveling time uncertainty. 
+
+ACM Transactions on Information Systems (TOIS) 35, 1 (2016), 1–28. 8

@@ -1,0 +1,679 @@
+Title: Hard Rules, Soft Preferences: Bridging Reasoning, Learning, and Optimization for Personalized Packing Checklist Generation
+
+URL Source: https://arxiv.org/pdf/2607.15562v1
+
+Published Time: Mon, 20 Jul 2026 00:30:15 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Hard Rules, Soft Preferences: Bridging Reasoning, Learning, and Optimization for Personalized Packing Checklist Generation 
+
+## Himel Dev 1, Madhusudan Basak 2, Tanmoy Sen 3, Paromita Shome 2, Bashima Islam 2
+
+1529 Tech LLC, 2University of Massachusetts Amherst, 3University of Virginia himel@529-tech.com, mbasak@umass.edu, ts5xm@virginia.edu, pshome@umass.edu, bashima@umass.edu USA 
+
+Abstract 
+
+Packing for air travel is recurring and error-prone: the checklist must be personal and context-aware, yet feasible under safety rules, item dependencies, and luggage limits. Existing packing assistants are template-driven (generic) or recommendation-driven but uncon-strained, leaving users to manually patch regulatory and capacity violations. We propose a reasoning-guided learning framework with three stages: (1) a symbolic engine that generates a regulation-aware seed checklist with explicit dependency structure, (2) a two-stage preference learner that estimates inclusion and priority utilities from user add and remove actions, mitigating survivorship bias, and (3) a CP-SAT optimizer that selects a compact, compliant subset. The architecture instantiates a general pattern for constrained person-alization, applicable wherever hard feasibility coexists with sparse preference signals. On 604 labeled trip scenarios (29K inclusion labels, 343K pairwise comparisons), the symbolic engine attains 99.7% recall and 0.96 rubric validity versus 0.78 to 0.81 for frontier LLMs; gradient boosted trees and LambdaMART reach AUC-ROC 0.943 and NDCG@5 0.923; and CP-SAT attains 100% constraint satisfaction versus 28% for greedy and 10% for random. Deploy-ment in FlyEnJoy, a production iOS travel app, doubled checklist completions and reduced editing and completion time. To support reproducibility, we publicly release a Python implementation of the checklist system along with sample data. 1
+
+Keywords 
+
+personalization, constraint optimization, hybrid AI 
+
+1 Introduction 
+
+Packing for air travel is a recurring, error-prone task with non-negotiable regulatory [ 21 ], safety [ 20 ], capacity, and dependency constraints. For each trip, travelers must adapt to the travel context (destination, duration, activities, special needs) while respecting these constraints alongside personal preferences. Missing essen-tials, overpacking, or carry-on violations are common and lead to inconvenience, added cost, and compliance or safety risks. A 2024 survey of 2,000 U.S. adults found that nine in ten respon-dents realized en route that they had forgotten something essential, most often phone chargers, toiletries, sunscreen, or medication [ 18 ]. Forty-two percent reported that these omissions negatively im-pacted their travel experience, underscoring the need for decision support beyond memory or static lists. Carry-on liquid limits and battery-related restrictions [ 5, 21 ] further raise the bar: a useful system must guarantee feasibility, not merely suggest items. 
+
+> 1
+
+https://github.com/Official529Tech/rlo-checklist Symbolic Reasoning 
+
+> Symbolic Inference Engine
+> Applies symbolic rules to item inventory via forward chaining
+> Recall Focused Checklist
+> High recall packing checklist that is regulation compliant
+> INPUT
+> Trip Context
+> Destination, duration, luggage, activities, special needs, …
+> Preference Learning
+> Inclusion + Ranking Models
+> Determines which items are relevant for trip and ranks them
+> Precision Focused Checklist
+> High precision packing checklist covering most relevant items
+> Constrained Optimization
+> CP-SAT Solver
+> Optimizes utility satisfying item-bag & item-item constraints
+> Optimized Checklist
+> Feasible packing checklist satisfying all critical constraints
+> OUTPUT
+> Final Checklist
+> Checklist after applying all business and compliance logic
+
+Figure 1: System architecture. Stage 1 generates a high-recall, regulation-compliant seed checklist via symbolic rules. Stage 2 learns relevance, priority, and context-aware utilities from user edits. Stage 3 selects and assigns items under hard con-straints via constrained optimization. 
+
+For travelers with special needs, compliance failures happen at the security checkpoint, not merely at the destination. A parent traveling with an infant can carry breast milk and formula above standard carry-on liquid limits, but only if they declare them for separate TSA screening. An insulin traveler must keep accompany-ing ice packs frozen solid at the checkpoint, or they fall under the 3-1-1 rule. A pregnant traveler with liquid medication must invoke the TSA medical exemption and declaration procedure. These are not preferences but regulatory requirements that vary by traveler profile and cannot be captured by one-size-fits-all templates. Despite this need, existing packing assistants [ 10 , 12 –14 ] largely fail to model feasibility and offer only limited personalization. Template-based checklists [ 3 , 17 ] are easy to deploy but ignore context (e.g., thermal wear for cold climates), personal preferences, and inter-item dependencies (e.g., a camera implying chargers and memory cards). Learning-based recommenders can personalize but 
+
+1arXiv:2607.15562v1 [cs.LG] 17 Jul 2026 ACM 2026, Feb 1, 2026, USA Himel Dev 1, Madhusudan Basak 2, Tanmoy Sen 3, Paromita Shome 2, Bashima Islam 2
+
+are hampered by sparse per-user histories, wide trip variability, and largely implicit feedback. Critically, unconstrained recommenders cannot guarantee feasibility under the hard constraints introduced above, and naive post-filtering breaks coverage or dependencies when constraints interact. State-of-the-art large language models (LLMs) fare no better. In our evaluation (Section 4), frontier LLMs achieve only 78 to 81 percent validity on a rubric covering TSA com-pliance, weather appropriateness, activity needs, and completeness, compared to 96 percent for our symbolic engine. To address this, we propose a reasoning-guided learning frame-work that generates personalized packing checklists while guar-anteeing feasibility under hard constraints. The system (Figure 1) decomposes the task into three stages, each addressing a distinct concern that template-only and unconstrained recommendation approaches handle poorly: (1) Symbolic Reasoning — a symbolic engine encoding 226 domain rules over 378 items to produce a high-coverage seed checklist consistent with safety and regulatory requirements and robust under cold-start; (2) Preference Learning 
+
+— a two-stage model that learns trip-specific utility from user-edit logs, separating inclusion from priority ordering to mitigate sur-vivorship bias; and (3) Constrained Optimization — a CP-SAT optimizer that selects and packs items to maximize learned utility subject to capacity, safety, regulatory, environmental, and depen-dency constraints. We deploy and evaluate the system within FlyEnJoy, 2 a produc-tion iOS travel app that runs entirely on-device to support travel-ers with limited connectivity. The on-device constraint rules out frontier LLM serving and motivates the lightweight, interpretable models used in Stage 2. FlyEnJoy provides itinerary generation, packing checklists, and document management; the packing mod-ule instantiates the framework described in this paper. We make the following contributions: 
+
+• Constraint-Aware Candidate Generation. A symbolic reason-ing engine that achieves 99.7% candidate recall and outperforms frontier LLMs on rubric-based validity (0.96 vs. 0.78 to 0.81), with rule provenance enabling cold-start generalization to rare items. 
+
+• Survivorship-Bias-Aware Preference Learning. A two-stage formulation that separates item inclusion from priority ranking to mitigate survivorship bias in implicit checklist feedback, achieving AUC-ROC 0.943 for inclusion and NDCG@5 0.923 for ranking. 
+
+• By-Construction Feasibility via Constrained Optimization. 
+
+A CP-SAT formulation for constrained checklist selection and bag assignment that guarantees 100% feasibility under interacting com-pliance, capacity, and dependency constraints, compared to 28% for greedy and 10% for random baselines. Deployment in FlyEnJoy doubled checklist completions and re-duced editing and completion time, confirming real-world utility. While our instantiation addresses air travel packing, the three-stage architecture is a general design pattern for constrained personaliza-tion, applicable wherever hard feasibility requirements coexist with sparse preference signals. Other instances include clinical discharge planning and immigration documentation. 
+
+> 2https://apps.apple.com/app/6745104853
+
+2 Problem Formulation 
+
+We formulate personalized packing checklist generation as a con-strained subset-selection problem under contextual, preference, and feasibility considerations. 
+
+Inputs. Each trip instance is characterized by (i) trip context 𝑐 
+
+(origin, destination, travel dates, purpose, accommodation, luggage, activities, and special needs), and (ii) a set of hard constraints R
+
+capturing item eligibility (regulatory and safety rules), physical luggage capacity, and inter-item dependencies. 
+
+Output. The system outputs a checklist 𝑆 ⊆ I over a universe of items I, optionally with a bag assignment 𝑏 : 𝑆 → B . The triple 
+
+(𝑐, R, 𝑆 ) instantiates personalized constrained subset-selection task. 
+
+Objective. The goal is to generate a checklist that maximizes pre-dicted traveler utility, max 𝑆 𝑈 (𝑆 | 𝑐 ) s.t. 𝑆 is feasible under R.Here, 𝑈 (𝑆 | 𝑐 ) aggregates item-level utilities learned in Section 3.2. 
+
+Desiderata. A practical packing system must satisfy: 
+
+• Compliance: All regulatory (e.g., TSA) and safety (e.g., medical) requirements must be met without exception. 
+
+• Recall: Essential items (e.g., phone charger) must be included even when user information is sparse. 
+
+• Personalization: Recommendations should adapt to trip-specific factors such as destination, weather, and activities. 
+
+• Precision: The checklist should avoid unnecessary or redundant items (e.g., a heavy coat for a tropical destination). 
+
+• Feasibility: Physical capacity, bag eligibility, and inter-item de-pendency constraints must be respected. 
+
+• Utility: Packing decisions should balance expected retained utility against risk of bag loss. 
+
+3 System Overview 
+
+The system consists of three stages, each addressing a distinct concern and feeding the next. 
+
+Stage 1: Symbolic Reasoning (Compliance and Recall). Given a trip context, a symbolic inference engine applies a prioritized set of declarative rules that encode regulatory requirements, safety constraints, contextual triggers, and item dependencies. The out-put is a high-recall, regulation-aware seed checklist that remains comprehensive even under cold-start. 
+
+Stage 2: Preference Learning (Personalization and Precision). 
+
+Given the seed checklist, a two-stage learning pipeline estimates (i) per-item inclusion probabilities and (ii) relative priority among retained items, separating the two signals to mitigate survivorship bias. Features combine trip context with symbolic provenance (i.e., the rules and triggers that proposed each item), enabling robust preference learning under sparse interaction data. 
+
+Stage 3: Constrained Optimization (Feasibility and Utility). 
+
+The final stage formulates item selection and bag assignment as a constrained optimization problem. A CP-SAT solver selects a utility-maximizing subset of items and assigns them to bags subject to regulatory, capacity, and dependency constraints, with risk of bag loss reflected in the objective. 
+
+3.1 Symbolic Reasoning 
+
+The first stage employs a symbolic reasoning engine to generate a high-recall, regulation-compliant seed checklist. We prioritize compliance, recall, and explainability over personalization at this  
+
+> 2Hard Rules, Soft Preferences: Bridging Reasoning, Learning, and Optimization for Personalized Packing Checklist Generation ACM 2026, Feb 1, 2026, USA
+
+Table 1: Structure and priority distribution of symbolic rules. Higher-priority rules enforce regulatory and safety con-straints before contextual and traveler-specific reasoning.                                     
+
+> Rule Category # Rules Priority Primary Triggers Examples
+> Regulatory 52 High Destination, Luggage TSA/FAA regulations Wellbeing 38 High Special needs Medical needs Essential 24 Medium Trip duration Basic items Contextual 39 Medium Destination, Lodging Weather adaptation Activities 31 Medium Activities Attending events Dependencies 7Medium Item-derived facts Complementary items Traveler 35 Low Age, Gender Gender-specific needs
+> Total 226 –––
+
+stage because purely data-driven recommendations are unreliable under cold-start, where infrequent travel and limited user history yield sparse, biased signals. The engine encodes 226 declarative rules spanning regulatory, safety, contextual, and traveler-specific knowledge, operating over catalogs of 378 atomic items and 103 pre-trip tasks. Regulatory rules are sourced from authoritative TSA and FAA guidance [5, 21]. 
+
+Knowledge Representation. Domain knowledge is encoded as a collection of declarative, human-readable rules authored by in-ternal specialists. Each rule specifies a when clause over enriched trip context and inferred facts, and a then clause that emits recom-mended items, pre-trip tasks, or additional facts. Rules are orga-nized into seven categories covering regulatory concerns, wellbeing, essentials, contextual triggers, activities, traveler-specific factors, and inter-item dependencies (Table 1). Each rule carries a prior-ity reflecting its criticality: regulatory and safety rules (e.g., travel documents, liquids, batteries) are evaluated before contextual and comfort-oriented rules. This priority structure makes inference de-terministic and auditable: safety- and legality-critical inferences form the factual foundation on which later rules depend. 
+
+Context Enrichment. Raw user inputs (e.g., origin, destination, start date, duration, purpose) are normalized and enriched into a structured context. The system automatically derives higher-level attributes such as travel type (domestic vs. international) from the origin-destination pair and temperature category from weather data specific to destination and date. Multi-select inputs such as activities and special needs are converted into atomic facts (e.g., special_need(Infant) , has_activity(Hiking) ), en-abling simultaneous activation of multiple rule categories. Dur-ing inference, rules may also emit new facts (e.g., has_liquids ,
+
+requires_adapter ), enabling cascading inferences in which ear-lier rule outputs establish preconditions for subsequent regulatory or dependency rules. 
+
+Forward-Chaining Inference. Inference uses priority-based for-ward chaining: starting from facts derived from the enriched con-text, rules fire when their conditions are satisfied, emitting addi-tional facts, item candidates, and pre-trip tasks until a fixpoint is reached. In practice, convergence occurs within a small number of iterations bounded by the rule dependency graph. The procedure supports cascading inferences (e.g., toiletries → liquids → TSA quart-size bag) and is deterministic: identical inputs yield identical outputs. Multiple rules may recommend the same item under differ-ent justifications or criticality levels. We merge such duplicates into a single candidate by conservative criticality escalation (mandatory 
+
+> recommended > optional), least-restrictive feasible placement, and union of triggering reasons. The resulting provenance record (rules fired, priorities, triggering conditions) provides structured attribution signals used as features in Stage 2. 
+
+3.2 Preference Learning 
+
+The second stage learns soft personalization signals over the rule-generated seed checklist. While the symbolic stage deliberately over-generates a high-recall, regulation-compliant seed, practical packing demands parsimony : the second stage selects relevant items and prioritizes them in trip context, producing item-level utilities for downstream optimization. We model preferences as two coupled subproblems: (i) inclusion – whether a suggested item should be packed at all – and (ii) ranking – relative priority among included items. Decomposing into inclusion and ranking is essential to avoid 
+
+survivorship bias : ranking labels are observed only for items the la-beler retained, so a single ranker would systematically overestimate the utility of items frequently removed by other labelers. 
+
+Data Collection. We collected preference annotations with our web-based packing evaluation platform that mirrors the interface and interaction flow of our production application, enabling con-trolled, repeatable annotation of naturalistic packing decisions. 
+
+Annotation Procedure. For each annotation task 𝑡 , a labeler is pre-sented with a trip context 𝑐 𝑡 (the inputs defined in Section 2). The symbolic engine generates a high-recall seed checklist 𝑆 𝑡 ⊂ I . La-belers then remove irrelevant items, add missing ones, and rank the remainder by perceived importance, producing an edited checklist 
+
+𝐹 𝑡 ⊂ I with associated total order 𝜋 𝑡 .
+
+Derived Signals. From each annotated trip, we derive three disjoint item sets: (i) kept items, 𝐾 𝑡 = 𝑆 𝑡 ∩𝐹 𝑡 , (ii) removed items, 𝐷 𝑡 = 𝑆 𝑡 \𝐹 𝑡 ,(iii) added items, 𝐴 𝑡 = 𝐹 𝑡 \ 𝑆 𝑡 . Across annotated trip scenarios, this process yields implicit preference supervision conditioned on trip context, without requiring explicit ratings or repeated labeling of the same scenario. 
+
+Two-Stage Modeling. Labeler edits provide two complementary but distinct preference signals that must be modeled separately to avoid survivorship bias: 
+
+Signal 1: Binary Inclusion Decisions. For each item 𝑖 ∈ 𝑆 𝑡 , the la-beler’s decision to keep or remove the item reveals whether it is contextually relevant and aligned with their packing style. This provides binary supervision: 𝑦 include  
+
+> 𝑡,𝑖
+
+= ⊮[𝑖 ∈ 𝐹 𝑡 ].
+
+Signal 2: Relative Ranking among Kept Items. Among items retained in 𝐹 𝑡 , the complete ranking 𝜋 𝑡 provides fine-grained priorities. For any ordered pair (𝑖, 𝑗 ) where 𝑖 is ranked above 𝑗 in 𝜋 𝑡 , we record relative importance 𝑖 ≻𝑡 𝑗 .
+
+Why Separation Matters: Survivorship Bias. Ranking labels are only observed for items that the labeler retained. If we trained a ranker alone, items frequently removed by many labelers would be ab-sent from pairwise comparisons, inflating their apparent utility when they do appear. For example, a travel pillow may rank mid-to-high among retained items for comprehensive packers, yet be removed entirely by minimalists; modeling only rankings would overestimate its unconditional utility. Decomposing personalization into inclusion (“pack or not”) and conditional ranking (“priority if packed”) prevents this survivorship bias and yields utilities that are meaningful for downstream selection under capacity constraints.  
+
+> 3ACM 2026, Feb 1, 2026, USA Himel Dev 1, Madhusudan Basak 2, Tanmoy Sen 3, Paromita Shome 2, Bashima Islam 2
+
+Inclusion Model (Precision Layer). The inclusion model predicts the probability that a rule-suggested item is retained after labeler editing, conditioned on trip context and symbolic provenance. 
+
+Model Architecture. For each item 𝑖 ∈ 𝑆 𝑡 , we model: 
+
+𝑝 include (𝑖 | 𝑐 𝑡 , 𝜙 𝑡,𝑖 ) = 𝜎 
+
+
+
+𝐹 𝑀 
+
+
+
+𝜓 inc (𝑖, 𝑐 𝑡 , 𝜙 𝑡,𝑖 )
+
+ 
+
+, (1) where 𝜎 is the sigmoid function and 𝐹 𝑀 is an additive ensemble of 
+
+𝑀 regression trees. We use gradient boosted trees (GBM), which capture non-linear feature interactions and provide interpretability through feature importance analysis. 
+
+Feature Representation. We represent each candidate by (i) symbolic provenance features (e.g., rule family, max rule priority, criticality, and safety/regulatory flags), (ii) trip context features (e.g., duration bin, destination/temperature type, activities, luggage type), and (iii) item-context interaction features. 
+
+Training Objective. Given trip data D = {( 𝑆 𝑡 , 𝐹 𝑡 , 𝑐 𝑡 )} 𝑁 𝑡 =1, we mini-mize binary cross-entropy (BCE) via gradient boosting: 
+
+Linclude =
+
+> 𝑁
+
+∑︁ 
+
+> 𝑡 =1
+
+∑︁ 𝑖 ∈𝑆 𝑡 
+
+BCE 
+
+
+
+𝑦 include  
+
+> 𝑡,𝑖
+
+, 𝑝 include (𝑖 | 𝑐 𝑡 , 𝜙 𝑡,𝑖 )
+
+
+
+, (2) regularized through tree depth ( depth = 5) and shrinkage (learning rate 𝜂 = 0.1). Rule-family indicators in 𝜙 𝑡,𝑖 allow the inclusion model to learn shared acceptance patterns across items contributed by the same rule family, improving robustness for rare items. 
+
+Ranking Model (Priority Layer). Among items predicted to be kept, the ranking model learns their relative importance and priority ordering. 
+
+Model Architecture. We employ a learning-to-rank approach using LambdaMART [ 2 ], implemented via LightGBM’s ranking objective. For any pair of items (𝑖, 𝑗 ) both appearing in final list 𝐹 𝑡 , we model: 
+
+𝑝 rank  
+
+> 𝜂
+
+(𝑖 ≻𝑡 𝑗 | 𝑐 𝑡 , 𝜙 𝑡,𝑖 , 𝜙 𝑡,𝑗 ) = 𝜎  𝑠 𝜂 (𝑖, 𝑐 𝑡 , 𝜙 𝑡,𝑖 ) − 𝑠 𝜂 ( 𝑗, 𝑐 𝑡 , 𝜙 𝑡,𝑗 ) , (3) where 𝑠 𝜂 (𝑖, 𝑐 𝑡 , 𝜙 𝑡,𝑖 ) is a gradient-boosted scoring function that as-signs a real-valued relevance score to item 𝑖 in context 𝑐 𝑡 .
+
+Pairwise Feature Representation. For each ordered pair (𝑖, 𝑗 ) with 
+
+𝑖 ≻𝑡 𝑗 , we compile pairwise difference features (e.g., priority and criticality deltas), categorical comparison features, and absolute provenance and contextual features. The ranker learns to combine these signals to predict relative preferences. Difference features capture symmetric comparisons, while absolute features allow position-dependent effects (e.g., manda-tory items tend to rank high regardless of the comparison). 
+
+Training Objective. Let P𝑡 = {( 𝑖, 𝑗 ) : 𝑖, 𝑗 ∈ 𝐹 𝑡 , 𝑖 ≻𝑡 𝑗 } denote the set of pairwise preferences from trip/task 𝑡 . We minimize LambdaRank loss [2]: 
+
+Lrank (𝜂 ) =
+
+> 𝑁
+
+∑︁ 
+
+> 𝑡 =1
+
+∑︁ (𝑖,𝑗 ) ∈ P 𝑡 
+
+log  1 + exp  −( 𝑠 𝜂 (𝑖, 𝑐 𝑡 , 𝜙 𝑡,𝑖 ) − 𝑠 𝜂 ( 𝑗, 𝑐 𝑡 , 𝜙 𝑡,𝑗 ))  ,
+
+(4) weighted by the change in Normalized Discounted Cumulative Gain (NDCG) induced by swapping 𝑖 and 𝑗 in the ranking. This loss prioritizes correcting mistakes at the top of the ranking, where user attention is concentrated. We use gradient boosting with shallow trees (max depth = 4) and L2 leaf regularization to prevent overfitting. 
+
+Combined Utility for Optimization. The learned inclusion prob-abilities and ranking scores are combined into a unified utility function for downstream constraint-aware optimization. 
+
+Multiplicative Composition. For each item 𝑖 in seed checklist 𝑆 𝑡 , we define: 
+
+𝑢 𝑖 (𝑐 𝑡 ) = 𝑝 include  
+
+> 𝜃
+
+(𝑖 | 𝑐 𝑡 , 𝜙 𝑡,𝑖 ) · 𝑠 𝜂 (𝑖, 𝑐 𝑡 , 𝜙 𝑡,𝑖 ) · 𝑢 sym  
+
+> 𝑖
+
+(𝑐 𝑡 ), (5) where 𝑝 include  
+
+> 𝜃
+
+captures the probability that the item is contextually relevant, 𝑠 𝜂 captures its relative priority among relevant items, and 𝑢 sym  
+
+> 𝑖
+
+(𝑐 𝑡 ) is a symbolic prior enforcing safety and regulatory requirements. 
+
+Symbolic Prior. The symbolic utility 𝑢 sym  
+
+> 𝑖
+
+(𝑐 𝑡 ) ensures that safety-critical and legally required items receive elevated utility regardless of learned preferences: 
+
+𝑢 sym  
+
+> 𝑖
+
+(𝑐 𝑡 ) =
+
+
+
+10 .0 if 𝑖 is regulatory-required (e.g., passport) 
+
+5.0 if 𝑖 is safety-critical (e.g., medication) 
+
+1.0 otherwise (6) This multiplicative decomposition preserves hard guarantees from symbolic reasoning (e.g., regulatory items always receive high utility) while enabling fine-grained personalization driven by learned preferences (e.g., distinguishing between multiple optional items based on context). 
+
+3.3 Constrained Optimization 
+
+We consider the problem of assigning a set of travel items to a lim-ited number of heterogeneous bags in order to maximize retained utility, while respecting physical feasibility, regulatory require-ments, environmental suitability, inter-item dependencies, and risk considerations. The problem captures the tension between strict feasibility constraints (e.g., airline regulations and bag capacities) and softer, preference-driven factors (e.g., convenience, fragility, and loss risk). 
+
+Problem Setting. Let I denote a set of items and B denote a set of bags (e.g., checked baggage, carry-on, personal item). Each item 𝑖 ∈ I is characterized by: (i) physical dimensions (𝑙 𝑖 , 𝑤 𝑖 , ℎ 𝑖 )
+
+and weight wt 𝑖 , (ii) a perceived utility 𝑢 𝑖 ≥ 0, (iii) a monetary value 𝑣 𝑖 ≥ 0 (representing replacement cost or intrinsic worth), and (iv) attributes governing regulatory eligibility, environmental sensitivity, and convenience. Each bag 𝑏 ∈ B is defined by: (i) internal dimensions (𝐿 𝑏 ,𝑊 𝑏 , 𝐻 𝑏 ),(ii) a maximum allowable weight 𝐶 𝑏 , and (iii) a loss probability 
+
+𝑝 𝑏 ∈ [ 0, 1], reflecting the relative risk of loss or damage (e.g., higher for checked baggage). The objective is to select a subset of items and assign each se-lected item to at most one bag so as to maximize expected retained utility while minimizing expected monetary loss, subject to feasi-bility and preference constraints. 
+
+Decision Variables. We introduce the following decision variables: (i) 𝑥 𝑖𝑏 ∈ { 0, 1}, which equals 1 if item 𝑖 is assigned to bag 𝑏 ; (ii) 
+
+𝑦 𝑖 ∈ { 0, 1}, which equals 1 if item 𝑖 is packed in any bag. These variables are linked by 𝑦 𝑖 = Í𝑏 ∈ B 𝑥 𝑖𝑏 , where ∀𝑖 ∈ I ensuring that each item is assigned to at most one bag. 
+
+Physical Feasibility Constraints. For each bag 𝑏 , total weight cannot exceed capacity, Í𝑖 wt 𝑖 𝑥 𝑖𝑏 ≤ 𝐶 𝑏 . Items must also fit dimen-sionally, which we model in two parts: (i) orientation compatibility : 
+
+> 4Hard Rules, Soft Preferences: Bridging Reasoning, Learning, and Optimization for Personalized Packing Checklist Generation ACM 2026, Feb 1, 2026, USA
+
+item 𝑖 fits in bag 𝑏 only if its sorted dimensions are component-wise no larger than 𝑏 ’s, otherwise 𝑥 𝑖𝑏 = 0; and (ii) volume capacity :∑︁ 
+
+> 𝑖
+
+vol 𝑖 𝑥 𝑖𝑏 ≤ 𝜂 𝑉 𝑏 , ∀𝑏 ∈ B , (7) where 𝜂 ∈ [ 0.7, 0.9] is a packing efficiency factor that controls realistic volume utilization. 
+
+Regulatory and Environmental Constraints. Let 𝐴 reg  
+
+> 𝑖𝑏
+
+∈ { 0, 1}
+
+indicate whether item 𝑖 is legally permitted in bag 𝑏 (e.g., spare lithium-ion batteries are barred from checked baggage), and 𝐴 env  
+
+> 𝑖𝑏
+
+∈{0, 1} whether bag 𝑏 is environmentally suitable for 𝑖 . We enforce: 
+
+𝑥 𝑖𝑏 ≤ 𝐴 reg  
+
+> 𝑖𝑏
+
+, ∀𝑖, 𝑏, 𝑥 𝑖𝑏 ≤ 𝐴 env  
+
+> 𝑖𝑏
+
+, ∀𝑖 ∈ I strict , 𝑏, (8) where Istrict ⊆ I contains items with strict environmental needs (e.g., insulin requiring temperature control). Moderately sensitive items (e.g., chocolate, aerosol sunscreen) are not hard-constrained but penalized via 𝑐 env  
+
+> 𝑖𝑏
+
+in the objective. 
+
+Inter-Item Dependency Constraints. Some item groups must be packed together (e.g., camera body, battery, lens, which are useless apart) or kept apart (e.g., liquids and electronics, to mitigate spillage). Let Gtogether , Gapart ⊆ 2I be the corresponding collections of item groups. We enforce: 
+
+𝑥 𝑖𝑏 = 𝑥 𝑗𝑏 ∀𝑖, 𝑗 ∈ 𝐺, ∀𝑏, 𝐺 ∈ G together ;∑︁  
+
+> 𝑖 ∈𝐺
+
+𝑥 𝑖𝑏 ≤ 1 ∀𝑏, 𝐺 ∈ G apart .
+
+Risk-Aware Objective. Each bag 𝑏 has loss probability 𝑝 𝑏 ∈ [ 0, 1].Two quantities drive the objective: expected retained utility (item is transported with probability 1 − 𝑝 𝑏 ) and expected monetary loss (proportional to item value 𝑣 𝑖 in lost bags): ∑︁ 
+
+> 𝑖,𝑏
+
+𝑢 𝑖 (1 − 𝑝 𝑏 ) 𝑥 𝑖𝑏 
+
+| {z }
+
+> retained utility
+
+,∑︁ 
+
+> 𝑏
+
+𝑝 𝑏 ∑︁ 𝑖 
+
+𝑣 𝑖 𝑥 𝑖𝑏 
+
+| {z }
+
+> expected loss
+
+. (9) This formulation discourages placing high-value items in high-risk bags (e.g., checked baggage), with the full trade-off combined in the overall objective below. 
+
+Overall Optimization Problem. We formulate packing as a CP-SAT problem that enforces all preceding constraints as hard and the following preferences as soft penalties: 
+
+max ∑︁ 
+
+> 𝑖,𝑏
+
+𝑢 𝑖 (1 − 𝑝 𝑏 ) 𝑥 𝑖𝑏 
+
+| {z }
+
+> expected retained utility
+
+− 𝛼 ∑︁ 
+
+> 𝑏
+
+𝑝 𝑏 ∑︁ 𝑖 
+
+𝑣 𝑖 𝑥 𝑖𝑏 
+
+| {z }
+
+> expected monetary loss
+
+−∑︁  
+
+> 𝑖 ∈ I\I strict , 𝑏
+
+𝑐 env  
+
+> 𝑖𝑏
+
+𝑥 𝑖𝑏 
+
+| {z }
+
+> environmental penalty
+
+−∑︁ 
+
+> 𝑖,𝑏
+
+𝑐 soft  
+
+> 𝑖𝑏
+
+𝑥 𝑖𝑏 
+
+| {z }
+
+> convenience and fragility penalty
+
+,
+
+(10) where 𝑐 env  
+
+> 𝑖𝑏
+
+= 𝑐 env  
+
+> 𝑖
+
+· ( 1−𝐴 env  
+
+> 𝑖𝑏
+
+) penalizes moderately sensitive items in unsuitable bags, 𝑐 soft  
+
+> 𝑖𝑏
+
+encodes bag-specific accessibility and fragility costs, and 𝛼 ≥ 0 trades off expected loss against expected utility. CP-SAT [ 16 ] natively handles the resulting mix of linear, logical, cardinality, equality, and bound constraints. 
+
+4 Evaluation 
+
+We evaluate the framework on labeled trip scenarios collected through a web-based annotation platform. The evaluation addresses four questions: (1) Does the symbolic engine recall the items label-ers ultimately select? (2) How accurately do the preference models predict item inclusion and relative priority? (3) Does the CP-SAT optimizer satisfy all hard constraints where baselines fail? (4) How close does the end-to-end pipeline come to the oracle-feasible recall under the optimizer’s capacity budget? 
+
+4.1 Dataset and Experimental Setup 
+
+We collected interaction data from labelers across 604 labeled trip scenarios. Each labeler was presented with a series of hypothetical trip contexts specifying origin, destination, duration, purpose, ac-commodation, luggage type, activities, and special needs. For each scenario, labelers received a seed checklist generated by the sym-bolic engine and were asked to curate a checklist as if they were packing for that trip. Labelers edited the checklist by removing unwanted items, optionally adding missing items, and providing a complete ranking over their final selections. Because labelers provide a complete ranking over their final selections, 604 scenarios produce a substantial training signal: 29K binary inclusion labels and 343K pairwise ranking comparisons. Our item catalog contains 378 unique items governed by 226 symbolic rules. The symbolic engine generates seed checklists av-eraging 48 .9 ± 20 .5 items, which labelers reduce to 32 .2 ± 11 .4 items on average (acceptance rate 75 .7% ). Labelers added an average of only 0.08 items beyond the seed, confirming the symbolic rules’ near-complete coverage of relevant items. 
+
+4.2 Stage 1: Symbolic Engine 
+
+The symbolic engine achieves mean recall of 99 .7% , with 96 .0% 
+
+of trips having perfect recall. Labelers remove 16 .7 ± 22 .5 items per scenario (the large variance reflecting different packing styles, motivating Stage 2 personalization). The moderate 75 .7% precision is by design: Stage 2 filters the over-generated seed. Table 2 reports performance by trip duration; recall remains near-perfect across all durations while precision varies from 54 .0% (1 to 3 days, where labelers are more selective) to 83 .4% (8 to 14 days, where labelers pack more comprehensively). Acceptance rates vary substantially by item category (Figure 2): personal items ( 78% ) and clothes ( 75% )lead; medical ( 48% ) and activity-specific items ( 52% ) trail, reflecting their conditional relevance. 
+
+4.3 Stage 2: Preference Learning 
+
+We compare candidate models for each Stage 2 component using 5-fold trip-level cross-validation, then report combined pipeline recall for the selected configuration. 
+
+Inclusion Model Selection. Table 3 compares four inclusion mod-els. Gradient boosted trees (GBM, depth=5) achieve the best deploy-able performance (AUC-ROC 0.943 , Precision 0.969 , Recall 0.813 ), outperforming logistic regression and random forests across all met-rics. Neural collaborative filtering (NCF) serves as a non-deployable ceiling (AUC-ROC 0.982 ): it requires a known user embedding and cannot generalize to cold-start users on mobile. 
+
+Ranking Model Selection. Table 4 compares four ranking models. LambdaMART achieves the best top-of-list accuracy (NDCG@5 
+
+0.923 , NDCG@10 0.899 ), which matters most since the optimizer uses utility scores to select items under capacity constraints. Item 
+
+> 5
+
+ACM 2026, Feb 1, 2026, USA Himel Dev 1, Madhusudan Basak 2, Tanmoy Sen 3, Paromita Shome 2, Bashima Islam 20.0 0.2 0.4 0.6 0.8 1.0 
+
+> Acceptance Rate
+> Medical
+> Activities
+> Travel
+> Toiletries
+> Documents
+> Electronics
+> Clothes
+> Personal
+> 48%
+> 52%
+> 63%
+> 71%
+> 71%
+> 73%
+> 75%
+> 78%
+> Stage 1: Acceptance Rate by Category
+
+Figure 2: Acceptance rate by item cat-egory. Personal items have highest ac-ceptance; medical items have lowest. 0.0 0.1 0.2 0.3 0.4 0.5 
+
+> Feature Importance (Gain)
+> rule_family_essential
+> category_PER
+> rule_family_traveler
+> rule_family_wellbeing
+> num_reasons
+> rule_family_activities
+> confidence_score
+> weight_grams_normalized
+> duration_days_normalized
+> num_activities
+> volume_ml_normalized
+> price_normalized
+> criticality_score
+> max_rule_priority
+> num_rules_supporting
+> Inclusion Model: Feature Importance
+
+Figure 3: Inclusion model feature im-portance by gain. Symbolic provenance features are the strongest predictors. CP-SAT Greedy Random  
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> Utilization (%)
+> 32%
+> 34%
+> 27% 26% 27%
+> 21%
+> Stage 3: Average Bag Utilization
+> Weight
+> Volume
+
+Figure 4: Average bag utilization by bag type. CP-SAT efficiently uses available capacity while satisfying constraints. Table 2: Stage 1 recall, precision, and final checklist size by trip duration. Re-call is near-perfect across all durations. Duration Recall Precision Final Size 
+
+1–3 days 99.6% 54.0% 20 .3 ± 15 .4
+
+4–7 days 99.6% 72.9% 30 .3 ± 11 .7
+
+8–14 days 99.9% 83.4% 37 .4 ± 8.1
+
+15+ days 100.0% 73.2% 29 .3 ± 11 .3
+
+Table 3: Inclusion model comparison (mean across 5-fold CV). NCF is only shown as a ceiling (non-deployable). Model AUC-ROC Precision Recall                 
+
+> Item Frequency 0.805 0.836 0.747 Logistic Regression 0.896 0.963 0.717 Random Forest 0.918 0.959 0.783
+> GBM 0.943 0.969 0.813
+> NCF †0.982 0.976 0.928
+
+Table 4: Ranking model comparison (mean across 5-fold CV). LambdaMART achieves the best top-of-list accuracy. Model NDCG@5 NDCG@10 MAP             
+
+> Item Frequency 0.908 0.892 0.860 Ridge Regression 0.872 0.866 0.818 Pairwise LR 0.737 0.750 0.735
+> LambdaMART 0.923 0.899 0.864
+
+frequency is a strong baseline (NDCG@5 0.908 ), confirming that simple priors capture much of the ranking signal. Pairwise logis-tic regression performs worst because pairwise binary training does not directly optimize ranking metrics; LambdaMART’s NDCG-weighted loss closes this gap. Figure 5 shows Recall@K for the GBM + LambdaMART pipeline under 5-fold cross-validation. The combined model retrieves 54 .0% 
+
+of labeler-preferred items in the top 20 and 87 .5% in the top 50, leav-ing Stage 3 a high-quality candidate pool to optimize over within its capacity budget. Symbolic provenance features (supporting rules, rule priority, criticality) are the strongest predictors for both mod-els (Figure 3), empirically confirming that Stage 1 structure carries directly into Stage 2 learning. 
+
+4.4 Stage 3: Constrained Optimization 
+
+The optimization stage assigns items to bags while satisfying hard constraints. We compare CP-SAT against greedy and random base-lines; Table 5 reports violations by constraint type. CP-SAT achieves 
+
+100% feasibility with zero violations. Greedy achieves only 28% 
+
+feasibility (883 total violations, mostly must-separate), and Ran-dom achieves 10% (1,549 violations, on both must-together and must-separate). Neither baseline violates regulatory or capacity constraints, which are checked during single-item assignment; only the dependency constraints, which require coordination across as-signments, defeat the heuristics. Figure 4 shows CP-SAT achieves high capacity utilization across all bag types. We compare four CP-SAT objective formulations to motivate the proposed risk-aware design; all achieve 100% feasibility by con-struction. Variants: ( i) EV (proposed): maximize expected retained utility minus expected monetary loss; ( ii ) MinimaxRegret : mini-mize worst-case regret over bag-loss scenarios; ( iii ) Survival : EV with hard constraints banning critical items from high-loss bags; (iv ) Sequential : greedy risk-corrected selection followed by CP-SAT bag assignment. Table 6 reports outcomes. EV achieves the highest retained utility and is our proposed formulation. Sequential yields essentially identical outcomes, suggesting the simpler EV objective is sufficient. MinimaxRegret is worse on all three reported metrics (utility, tail loss, critical-item survival) and takes nearly twice as long to solve. Survival sacrifices roughly 13% retained utility (220.0 vs. EV’s 253.6) for the lowest tail loss and highest critical-item survival, an appropriate trade when critical-item pro-tection is paramount. 
+
+4.5 End-to-End Evaluation 
+
+We evaluate the complete pipeline with 5-fold cross-validation on 604 scenarios; Stage 2 is trained on training trips and the full pipeline is evaluated on held-out trips. Figure 6 traces an item through the pipeline: 378 catalog items, 49 in the Stage 1 seed, 32 in the labeler reference, and 14 selected by Stage 3 under capacity and dependency constraints. Because the optimizer packs ≈ 14 items against a ≈ 32 -item labeler reference, no system, however accurate, can exceed an oracle recall of 14 /32 ≈ 43% . The pipeline achieves precision 80 .9% ±25 .5% and recall 34 .5% ±14 .3% , recovering roughly 
+
+80% of the oracle maximum. Recall in this setting is bounded by capacity, not by model quality. We compare our symbolic engine against frontier LLMs using a four-component validity rubric: (i) TSA compliance, (ii) weather appropriateness, (iii) activity requirements, and (iv) completeness, each scored in [0, 1] with overall score being their average. Our en-gine achieves 0.96 , substantially outperforming Gemini 3 Pro ( 0.81 ), Claude Opus 4.5 ( 0.80 ), and GPT-5 ( 0.78 ) (Figure 7). LLM outputs average 36 to 45 items per scenario, missing rubric-required items that our engine includes; our engine deliberately over-generates (69 to 81 items) to feed Stage 2 filtering. 
+
+6Hard Rules, Soft Preferences: Bridging Reasoning, Learning, and Optimization for Personalized Packing Checklist Generation ACM 2026, Feb 1, 2026, USA 10 20 30 40 50 
+
+> K (Top-K Predictions)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Recall
+> 31.6%
+> 54.0%
+> 69.9%
+> 87.5%
+> Combined Model: Recall@K
+
+Figure 5: Combined model Recall@K (5-fold CV). The GBM + LambdaMART pipeline retrieves 87.5% of top 50 items. Item 
+
+> Catalog
+> Stage 1
+> (Seed)
+> Stage 2
+> (Ranked)
+> Stage 3
+> (Optimized)
+> 0
+> 100
+> 200
+> 300
+> 400
+> Number of Items
+> 378
+> 49
+> 32
+> 14
+> Recall: 99.7%
+> Bag capacity
+> constraint
+> E2E recall: 34.5%
+> (Oracle recall: 43%)
+> End-to-End: Item Filtering Through Pipeline
+
+Figure 6: Item filtering through the pipeline. Each stage progressively re-fines the item set from catalog to final. GPT-5 Claude   
+
+> Opus 4.5
+> Gemini
+> 3 Pro
+> Our Engine
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Overall validity score (0--1)
+> 0.78 0.80 0.81
+> 0.96
+
+Figure 7: Overall packing-checklist va-lidity score. Our symbolic engine sub-stantially outperforms frontier LLMs. Table 5: Constraint violations for opti-mization methods, by constraint type. Only CP-SAT achieves zero violations. Optimization Packing Must Must Method Feasibility Together Separate          
+
+> CP-SAT 100% 00Greedy 28% 79 804 Random 10% 1,038 511
+
+Table 6: CP-SAT optimization formula-tion comparison. EV achieves the high-est retained utility. Formulation Retained CVaR-90 P(Critical Utility Loss Survived)             
+
+> EV (proposed) 253.6 17.0 98.6% MinimaxRegret 252.8 24.7 98.0% Survival 220.0 11.9 99.5%
+> Sequential 253.5 17.0 98.6%
+
+Table 7: Post-deployment engagement changes in FlyEnJoy relative to the prior template-based baseline. Metric Type Change 
+
+Checklist Initiations Usage +200% 
+
+Completed Checklists Usage +100% 
+
+DAU/WAU Ratio Engagement +29 pp Time per Session Efficiency −49 .6% 
+
+4.6 Post-Deployment Quantification 
+
+We deployed the symbolic reasoning and preference learning stages within FlyEnJoy, a production iOS travel application, and evaluated post-launch impact using anonymized interaction logs. The prior deployment was a static, template-based checklist with no person-alization or constraint optimization; the current system replaces the underlying logic but preserves the user interface, so observed changes reflect personalization quality rather than UI redesign. Due to business sensitivity, we report relative changes rather than abso-lute counts. Feature engagement increased substantially (Table 7). Checklist initiations rose by 200% and completed checklists by 100% ,indicating both improved discovery and task follow-through. Per-session time decreased sharply, driven by a sharp drop in manual edits: users now reach a satisfactory checklist with substantially fewer add and remove actions per session, our direct proxy for per-sonalization quality. Together, the adoption gains and the reduction in editing effort confirm that the framework delivers measurable real-world value over the prior template-only baseline. 
+
+5 Related Work 
+
+Existing works on packing checklist recommendations offer lit-tle personalization and do not explicitly model hard constraints. Learning-based approaches infer item co-occurrence from past lists [ 13 ] but produce unconstrained rankings. Travel-planning assistants including SwiftTrip [ 14 ], TripEase GenAI [ 10 ], and Trip-mate [ 12 ] generate packing lists from destination context and weather, but treat packing as an auxiliary feature with weak feasi-bility guarantees. Clothing-oriented systems focus on outfit recom-mendation rather than checklist feasibility [ 23 ]; luggage packing algorithms optimize geometric placement of fixed item sets [ 19 ]. In contrast, we generate personalized checklists that are feasible by construction under safety, capacity, and dependency constraints. Methodologically, our framework reconciles three research lines that have not previously been combined for personalized con-strained subset selection. Implicit-feedback recommenders learn preferences from interaction traces [ 7 –9, 15 ]; learning-to-rank meth-ods such as LambdaMART optimize ranking metrics directly [ 2, 11 ], but both assume an unconstrained candidate space. Knowledge-and constraint-based recommenders encode domain knowledge via rules or constraint satisfaction, improving interpretability and cold-start robustness, but typically require manually elicited preferences rather than learning them from behavior [ 1, 6, 22 ]. LLM-based rec-ommenders provide text-grounded explanations but cannot reliably enforce hard constraints and are unsuitable for offline, on-device deployment [ 24 ]. We combine the strengths of each line through neural-symbolic decomposition with CP-SAT optimization [ 4 , 16 ]. 
+
+6 Conclusion 
+
+We presented a three-stage framework that combines symbolic rule-based candidate generation, survivorship-bias-aware prefer-ence learning, and CP-SAT constrained optimization to produce personalized packing checklists that are feasible by construction. On 604 trip scenarios, the framework attains 99.7% candidate recall, AUC-ROC 0.943 for inclusion, NDCG@5 0.923 for ranking, and 100% constraint satisfaction. Deployment in FlyEnJoy, a production iOS travel app, doubled checklist completions and reduced editing and completion time. The end-to-end pipeline achieves 80.9% pre-cision against a labeler reference of ≈32 items while packing only 
+
+≈14 items under capacity, recovering roughly 80% of the oracle-feasible maximum. The architecture instantiates a general pattern for constrained personalization: encode hard rules symbolically, 
+
+> 7
+
+ACM 2026, Feb 1, 2026, USA Himel Dev 1, Madhusudan Basak 2, Tanmoy Sen 3, Paromita Shome 2, Bashima Islam 2
+
+learn preferences from behavior, and reconcile them through con-strained optimization. The pattern transfers naturally to settings where compliance and personalization coexist, such as clinical dis-charge planning and immigration documentation. The principal limitation is the cost of authoring and maintaining domain rules; we view rule reuse across families as a partial mitigation and a direction for future work. 
+
+GenAI Usage Disclosure 
+
+During the preparation of this work, the authors used LLM-based tools to assist with condensing and improving the clarity of the author-written text within selected sections. No new content, re-sults, analyses or claims were created by AI tools. All AI-assisted edits were reviewed, verified and approved by the authors. The authors take full responsibility for the accuracy and integrity of all content in this paper. 
+
+References 
+
+[1] Charu C Aggarwal. 2016. Knowledge-based recommender systems. In Recom-mender Systems . Springer, 167–197. [2] Christopher JC Burges. 2010. From RankNet to LambdaRank to LambdaMART: An overview. In Learning , Vol. 11. Microsoft Research Technical Report, 81. [3] Canva. 2026. Free and Customizable Travel Checklist Templates. https://www. canva.com/checklists/templates/travel/. Accessed: 2026-02-08. [4] Artur S. d’Avila Garcez, Marco Gori, L. Lamb, Luciano Serafini, Michael Spranger, and S. Tran. 2019. Neural-Symbolic Computing: An Effective Methodology for Principled Integration of Machine Learning and Reasoning. FLAP 6 (2019), 611–632. https://api.semanticscholar.org/CorpusID:155092677 [5] Federal Aviation Administration. 2026. Lithium Batteries. https://www.faa.gov/ hazmat/packsafe/lithium-batteries. Accessed: 2026-02-08. [6] Alexander Felfernig, Gerhard Friedrich, Dietmar Jannach, and Markus Zanker. 2015. Constraint-based recommender systems. In Recommender systems handbook .Springer, 161–190. [7] Xiangnan He, Lizi Liao, Hanwang Zhang, Liqiang Nie, Xia Hu, and Tat-Seng Chua. 2017. Neural collaborative filtering. In Proceedings of the 26th International Conference on World Wide Web . 173–182. [8] Yifan Hu, Yehuda Koren, and Chris Volinsky. 2008. Collaborative filtering for implicit feedback datasets. In 2008 Eighth IEEE International Conference on Data Mining . IEEE, 263–272. [9] Dawen Liang, Rahul G Krishnan, Matthew D Hoffman, and Tony Jebara. 2018. Variational autoencoders for collaborative filtering. In Proceedings of the 2018 World Wide Web Conference . 689–698. [10] Zhi-Sheng Lim, Asmar Yulastri, Sin-Ban Ho, and Chuie-Hong Tan. 2024. Enhanc-ing Travel Planning Efficiency with a Comprehensive TripEase GenAI Mechanism. 
+
+International Journal on Advanced Science, Engineering & Information Technology 
+
+14, 6 (2024). [11] Tie-Yan Liu. 2009. Learning to rank for information retrieval. Foundations and Trends in Information Retrieval 3, 3 (2009), 225–331. [12] Avishkar Nikam, Indresh Kumar Verma, and Pranita Ranade. 2025. An Interactive Mobile Application to Enhance Travel Planning Using a User-Centric Approach: A UX Design Case Study. International Journal of Interactive Mobile Technologies 
+
+19, 17 (2025). [13] Mudavath Ravi and Atul Negi. 2025. A Multi-tiered Solution for Personalized Baggage Item Recommendations using FastText and Association Rule Mining. 
+
+arXiv preprint arXiv:2501.09359 (2025). [14] R Regin and S Suman Rajest. 2024. SwiftTrip: Your Smart Travel Companion for Effortless Planning and Memorable Journeys. International Journal of Human Computing Studies 6, 3 (2024), 57–70. [15] Steffen Rendle, Christoph Freudenthaler, Zeno Gantner, and Lars Schmidt-Thieme. 2009. BPR: Bayesian personalized ranking from implicit feedback. In Proceedings of the Twenty-Fifth Conference on Uncertainty in Artificial Intelligence . 452–461. [16] Francesca Rossi, Peter Van Beek, and Toby Walsh. 2006. Handbook of constraint programming. (2006). [17] Sarkis, Christine. 2024. The Ultimate Packing List. https://www.smartertravel. com/the-ultimate-packing-list/. Accessed: 2026-02-08. [18] Talker Research. 2024. Survey: Nearly 90% of Americans Forget Essential Items While Traveling. https://www.talkerresearch.com/. Survey of 2,000 U.S. adults. [19] Santosh Tiwari, Georges Fadel, and Peter Fenyes. 2010. A Fast and Efficient Compact Packing Algorithm for SAE and ISO Luggage Packing Problems. Journal of Computing and Information Science in Engineering - JCISE 10 (06 2010). doi:10. 1115/1.3330440 [20] Transportation Security Administration. 2026. Travel Advisories. https://travel. state.gov/en/international-travel/travel-advisories.html. Accessed: 2026-02-08. [21] Transportation Security Administration. 2026. What Can I Bring? https://www. tsa.gov/travel/security-screening/whatcanibring/all. Accessed: 2026-02-08. [22] Mathias Uta, Alexander Felfernig, Viet-Man Le, Thi Ngoc Trang Tran, Damian Garber, Sebastian Lubos, and Tamim Burgstaller. 2024. Knowledge-based recom-mender systems: overview and research directions. Frontiers in big Data 7 (2024), 1304439. [23] Xishan Zhang, Jia Jia, Ke Gao, Yongdong Zhang, Dongming Zhang, Jintao Li, and Qi Tian. 2017. Trip outfits advisor: Location-oriented clothing recommendation. 
+
+IEEE Transactions on Multimedia 19, 11 (2017), 2533–2544. [24] Zihuai Zhao, Wenqi Fan, Jiatong Li, Yunqing Liu, Xiaowei Mei, Yiqi Wang, Zhen Wen, Fei Wang, Xiangyu Zhao, Jiliang Tang, et al . 2024. Recommender systems in the era of large language models (llms). IEEE Transactions on Knowledge and Data Engineering 36, 11 (2024), 6889–6907. 8
