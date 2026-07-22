@@ -6,52 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-21
-- 运行时间：2026-07-21 20:48:45 UTC
+- 最新运行日期：2026-07-22
+- 运行时间：2026-07-22 21:06:50 UTC
 - 运行状态：成功
-- 本次总论文数：10
+- 本次总论文数：8
 - 精读区：5
-- 速读区：5
+- 速读区：3
 
 ### 今日简报（AI）
-1. 今日聚焦多模态生成与个性化，两篇9.0高分论文分别攻克多参考图像生成的结构消歧与人-物视频个性化。  
-2. 最值得关注《StructGen》的结构化上下文建模方法和《HOMIE》的多模态视频增强，它们将提升生成内容的可控性与丰富度。  
-3. 普通读者可尝试将这类技术应用于定制化内容创作，例如利用结构化提示生成一致性更强的图像，或制作人物交互的视频片段。
-- 详情：[/202607/21/README](/202607/21/README)
+1) 今日精读5篇、速读3篇，聚焦人机对话个性化适应和视频多模态增强两大高分方向。  
+2) 最值得关注《PACE》（9.0）的人机交互个性诱发机制与《HOMIE》（9.0）的人物-物体中心视频个性化增强方法。  
+3) 建议普通读者优先阅读《RIMS》的小规模LLM检索增强生成优化思路，以及《Personalized Image Aesthetic Assessment》的偏好样本挖掘策略。
+- 详情：[/202607/22/README](/202607/22/README)
 
 ### 精读区论文标签
-1. [StructGen: Disambiguating Multi-Reference Image Generation via Structured Context Modeling](/202607/21/2607.15619v2-structgen-disambiguating-multi-reference-image-generation-via-structured-context-modeling)  
+1. [PACE: Persona Adaptation through Conversational Elicitation in Human-Robot Interaction](/202607/22/2607.15579v2-pace-persona-adaptation-through-conversational-elicitation-in-human-robot-interaction)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：多参考图像生成，整合多个参考的属性，实现个性化图像创建
-2. [HOMIE: Human-object Centric Video Personalization via Multimodal Intelligent Enchancement](/202607/21/2607.18217v1-homie-human-object-centric-video-personalization-via-multimodal-intelligent-enchancement)  
+   evidence：通过对话交互进行角色适配实现个性化人机交互
+2. [HOMIE: Human-object Centric Video Personalization via Multimodal Intelligent Enhancement](/202607/22/2607.18217v2-homie-human-object-centric-video-personalization-via-multimodal-intelligent-enhancement)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：基于多模态增强的人-物中心视频个性化
-3. [RECAP: Feedback-Driven Streaming Semantic User Profiles for Short-Video Recommendation](/202607/21/2607.15730v1-recap-feedback-driven-streaming-semantic-user-profiles-for-short-video-recommendation)  
+   evidence：直接针对人-物中心视频个性化，属于多模态个性化生成
+3. [Topology-Aware Tokenization for Generative Recommendation](/202607/22/2607.18600v1-topology-aware-tokenization-for-generative-recommendation)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：反馈驱动的流式语义用户画像生成用于推荐
-4. [AdaHome: An Adaptive Smart Home Assistant using Local Small Language Models](/202607/21/2607.18034v1-adahome-an-adaptive-smart-home-assistant-using-local-small-language-models)  
+   evidence：面向个性化的生成式推荐拓扑感知标记化
+4. [BlurDriving: Investigating How Personalized Blur Techniques Impact Drivers' Performance in Virtual Reality](/202607/22/2607.18628v1-blurdriving-investigating-how-personalized-blur-techniques-impact-drivers-performance-in-virtual-reality)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：基于本地小语言模型的自适应智能家居助手，支持长期个性化
-5. [Empowering On-Device Model Adaptation with an Edge AI Inference Accelerator](/202607/21/2607.18101v1-empowering-on-device-model-adaptation-with-an-edge-ai-inference-accelerator)  
+   evidence：针对驾驶员的个性化模糊技术
+5. [Sequential Learner Modeling Using Multi-Relational Graph Convolutional Networks](/202607/22/2607.19253v1-sequential-learner-modeling-using-multi-relational-graph-convolutional-networks)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：设备端模型自适应以实现终身个性化
+   evidence：个性化系统中的用户建模
 
 ### 速读区论文标签
-1. [Advanced Image Generation: Negative Prompt Optimization and Latent Classifier Guidance](/202607/21/2607.14580v1-advanced-image-generation-negative-prompt-optimization-and-latent-classifier-guidance)  
+1. [RIMS: Preference Optimization via Smoothed Multi-pair Aggregation for Small-Scale LLM Retrieval-Augmented Generation](/202607/22/2607.16431v1-rims-preference-optimization-via-smoothed-multi-pair-aggregation-for-small-scale-llm-retrieval-augmented-generation)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：负提示优化与分类器引导用于图像生成，可用于个性化图像生成
-2. [Semi-Supervised Conditional Generative Learning through Stochastic Interpolation and Sufficient Representations](/202607/21/2607.16725v1-semi-supervised-conditional-generative-learning-through-stochastic-interpolation-and-sufficient-representations)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：半监督条件生成框架，利用低维潜在表示，可适用于个性化生成
-3. [BraiNN: A Modern Simulator for Clinically Feasible Personalized Whole-Brain Network Modeling](/202607/21/biorxiv-10-64898-2026-07-08-737156-v1-brainn-a-modern-simulator-for-clinically-feasible-personalized-whole-brain-network-modeling)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：个性化全脑网络建模框架，适应个体患者数据
-4. [Stream-aware Side Adaptation for Large Pre-trained Multimodal Embedding Models in Sequential Recommendation](/202607/21/2607.10909v1-stream-aware-side-adaptation-for-large-pre-trained-multimodal-embedding-models-in-sequential-recommendation)  
+   evidence：用于大语言模型个性化生成的偏好优化
+2. [Personalized Image Aesthetic Assessment via Preference-rich Sample Mining and Cohort Merging](/202607/22/2607.15752v1-personalized-image-aesthetic-assessment-via-preference-rich-sample-mining-and-cohort-merging)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：侧适配多模态嵌入模型
-5. [I wanted it to feel more personal: Customization of social AI as AI individualism in practice](/202607/21/2607.17826v1-i-wanted-it-to-feel-more-personal-customization-of-social-ai-as-ai-individualism-in-practice)  
+   evidence：个性化图像美学评估与用户偏好建模
+3. [Beyond Fixed Depths and Widths: Optimizing Textual Decoding Tries in LLM-based Generative Recommendation](/202607/22/2607.16633v1-beyond-fixed-depths-and-widths-optimizing-textual-decoding-tries-in-llm-based-generative-recommendation)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：用户定制社交AI以反映个人偏好的研究
+   evidence：优化生成式推荐中的解码trie，属于个性化生成技术
 
 
 <div class="dpr-home-promo-card">
