@@ -1,0 +1,241 @@
+Title: SenWorld: A Digital-Twin Simulation for Generating Context-Rich Evaluation Data
+
+URL Source: https://arxiv.org/pdf/2607.19949v1
+
+Published Time: Thu, 23 Jul 2026 00:39:59 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# SenWorld: A Digital-Twin Simulation for Generating Context-Rich Evaluation Data 
+
+Zenghui Zhou, Xiaoyang Li, Xiaoxuan Qiao, Zhilang Wei, and Tianming Lei *
+
+ByteDance Inc. , Beijing, China zhouzenghui.p@gmail.com, {lixiaoyang.lxy1, qiaoxiaoxuan, weizhilang, leitianming }@bytedance.com 
+
+Abstract —Smartphone personal assistants reason over longi-tudinal personal data, yet evaluating them requires context-rich evaluation data whose correct answers are known, and real device traces are too privacy-sensitive to share. To address this challenge, we present SenWorld, a physically grounded, deterministic, event-sourced digital-twin simulation that generates such data with ground truth fixed by construction. In SenWorld, personas live through a full day in a world built from real map, weather, holiday, and network data; every observable signal is archived in full-system snapshots; and each evaluation case is labeled by a pointer to an existing record rather than by post-hoc annotation or a large language model (LLM) judge. We evaluate this method with 16 personas in Beijing. The generated data closely matches the held-out real-user benchmark in category distribution (Jensen–Shannon divergence (JSD) 0.070) and in the daily rhythm of communication records (JSD below 0.1), though generated records remain shorter than real ones. Without scripted interaction, personas form a fully reciprocated dialogue subgraph and differentiated behavioral repertoires. Projected into 717 evaluation cases, the generated data exposes 78 failures in a production smartphone assistant, concentrating on call and Short Message Service (SMS) records while contacts, schedules, and alarms never fail. The snapshot pointer confirms each failure as an assistant-side retrieval error, with no LLM judge involved. Overall, SenWorld offers a privacy-safe, reproducible, and distribution-checked path to evaluation data whose labels are fixed by construction. 
+
+Index Terms —digital twin, simulation-based testing, evaluation data generation, smartphone personal assistant, LLM evaluation 
+
+I. I NTRODUCTION 
+
+Smartphone personal assistants are increasingly deployed as autonomous software agents on personal devices. They retrieve private information, interpret user context, and execute device actions. This privileged position makes their failures qualitatively different from ordinary conversational errors: a hallucination can expose sensitive information, trigger destruc-tive device actions, or surface stale data [1]. As these assistants become more capable of reasoning over stateful, longitudinal personal data, pre-release evaluation becomes critical [2]. This evaluation is particularly demanding for multi-hop re-quests that span multiple data sources and require longitudinal context. For instance, when a user arrives at a friend’s apart-ment and asks the assistant to “call the friend who lives here,” a correct response requires the current location, the contact whose address matches it, and that contact’s number. These records must genuinely exist and interlink in the on-device 
+
+> *Corresponding author.
+
+state. Testing such requests demands context-rich personal-state data where the relevant records, temporal relations, and expected answers are definitively known. While real smart-phone traces are the most natural source of such data, they are fundamentally encumbered by privacy concerns, making them unshareable and unsuitable as reproducible evaluation assets. Consequently, the evaluation challenge is inherently a data-production problem: how can we synthesize realistic personal-state data that is privacy-safe, reproducible, and paired with reliable ground truth? Existing data-generation methods struggle to satisfy these requirements simultaneously. Manually constructed cases are safe and controllable but fail to capture the longitudinal complexity and long-tail combinations of real device states. Generation with large language models (LLMs) can scale volume, but typically lacks an underlying device state, leaving correctness verification to fragile manual checks or LLM judges [3], [4]. While recent state-grounded methods [5] fix truth over an underlying state, that state remains an abstract task backend rather than the actual smartphone ecosystem an assistant must navigate, and their correctness scoring still passes through an LLM judge. Our key insight is that simulated device state can serve as evaluation data whose labels are fixed by construction for ob-jectively world-determined properties, provided the simulation fully owns that state and evolves it strictly under real-world physical constraints. At any simulated moment, the correct answer to a query is not inferred post-hoc by a model. It is intrinsically determined by the exact records existing in the simulated smartphone state. This changes the question: not whether a generated answer is plausible, but whether the generated state is realistic, reproducible, and rich enough to support testing. We operationalize this insight with SenWorld, a physically grounded, deterministic, event-sourced digital-twin simulation. SenWorld advances personas, smartphones, external services, and physical contexts as a single, cohesive evolving world, exporting a full-system snapshot at every simulated frame. For each evaluation query, the ground-truth answer is simply encoded as a definitive pointer into the snapshot (a source-table identifier and a unique record ID). Evaluating a model thus reduces to verifying whether the agent locates the correct target record. While natural-language queries may be synthesized by an LLM, the ground-truth label strictly bypasses any LLM judge. arXiv:2607.19949v1 [cs.AI] 22 Jul 2026 We evaluate SenWorld along three dimensions: we compare the distribution of the generated data with a held-out real-user benchmark across six shared categories, examine what behavior and interaction data emerges across personas without hand-written interaction scripts, and ask whether the generated evaluation cases expose and help diagnose defects in a pro-duction smartphone assistant. This paper makes three contributions:  
+
+> •
+
+A physically grounded, deterministic digital-twin simula-tion for producing context-rich evaluation data, offering ground truth fixed by construction without any LLM judge.  
+
+> •
+
+A snapshot-centered projection mechanism that determin-istically translates one simulated world state into multiple downstream testing artifacts.  
+
+> •
+
+Three empirical evaluations demonstrating distribution-level fidelity to a held-out real-user benchmark, au-tonomous emergence of behavioral patterns, and practical utility in diagnosing defects within a production assistant. The rest of this paper is organized as follows: Section II gives the background, and Section III presents the SenWorld method. Section IV describes the evaluation setup, and Section V reports the results. Section VI concludes. II. B ACKGROUND 
+
+Modern smartphone assistants are shifting from rule-based command tools to LLM agents that reason on users’ personal data. Evaluating these agents requires datasets covering com-plete daily user-device interactions. This section introduces three foundations of our framework: LLM-based smartphone assistant agents as the systems under test, generative agent simulation as a method to synthesize realistic human be-havioral trajectories, and the digital twin as the provider of persistent, queryable smartphone-related state. 
+
+Smartphone assistant agents. Early intelligent personal assistants rely on intent recognition and handcrafted rules, which limits their practicality and scalability [6]. LLMs enable a new class of system. Li et al. define personal LLM agents 
+
+as LLM-based agents deeply integrated with personal data and personal devices, used for personal assistance [6]. Compared with general LLM agents, they are more deeply engaged with personal data and mobile devices, and are designed to assist people rather than replace them. Their architecture rests on three capabilities. Task execution translates user commands into actions on personal resources. Context sensing perceives the user’s status and environment. Memorization obtains, man-ages, and utilizes the user’s accumulating records [6]. AutoDroid, for instance, couples LLM reasoning with a structured memory of app states to automate tasks across arbitrary Android applications [7]. GPTVoiceTasker uses an LLM to parse voice commands and maintains an execu-tion memory that streamlines subsequent similar tasks [8]. A vision-language model can even operate a phone from screenshots alone, emitting human-like gestures without any API access [9]. Despite their different interfaces, these systems share a common dependence: the agent must retrieve and reason over the user’s personal data to act correctly. Evaluating this capability has itself become a research concern [2], with benchmarks such as SmartBench measuring on-device LLMs on realistic mobile tasks [10]. However, existing benchmarks primarily focus on isolated, short-horizon tasks. A correct answer often requires combining several personal records and their cross-source relations with the user’s current situation, such as where the user is, what time it is, and what just happened. Testing this ability therefore requires more than isolated input–output examples. It requires a realistic personal state that carries the records, their relations, and the user’s situation over a full day. 
+
+Generative agent simulation. LLM-based agent simulation has become an active research area for synthesizing believ-able human behavior [11]. Park et al. introduced Genera-tive Agents, which populated a small virtual town with 25 LLM-driven agents that formed social routines, maintained consistent personalities, and reacted plausibly to events over simulated days [12]. Their agents drew on persistent memory, reflection, and planning to sustain coherent behavior. Park et al. later scaled this idea to over a thousand agents grounded in real interviews, reproducing individual human attitudes with substantial fidelity on standard survey instruments [13]. These results show that a simulated population can yield credible behavioral data at scale, which makes simulation a viable alternative to collecting real traces. The major limitation, for our purpose, is that these simula-tions record what agents do and say as unstructured narrative text. They do not maintain a device-side state that an assistant can query. An agent does not operate on free-text traces of “John called Mary” but on structured app records such as a contacts database, a call log, or a notes table. Consequently, behavioral simulation alone cannot produce the data substrate on which a smartphone assistant runs. 
+
+Digital twins. A digital twin is a simulated counterpart of a physical or software system that maintains a faithful, queryable representation of that system’s state [14]. Digital twins have been adopted across cyber-physical and software systems as a testing substrate, where the twin stands in for the real system so that behavior can be exercised without operating the physical original [15], [16]. In our context, the digital twin encompasses not just the device, but the user’s entire digital and physical ecosystem. A key property of such a digital twin is that it strictly owns its state. Every record in the twin is placed there by the simulation, so the twin can report exactly what that state contains. Consequently, ground truth can be established by construction rather than relying on manual annotation or an LLM judge. This advantage directly addresses the test-oracle difficulty in agent evaluation [17], [18]. However, two challenges remain before this property can support assistant evaluation. The simulated state must be real-istic enough to resemble a real user’s device, and its generation must be reproducible. Meeting these two challenges, and thereby obtaining evaluation data whose ground truth is fixed by construction, is the subject of the rest of this paper. III. T HE SEN WORLD METHOD 
+
+A. Overview and Method Contract 
+
+Figure 1 shows the flow of a single run. A run is configured by a population of personas, a physical world built from real map, weather, holiday, and network data, and a run seed. During the simulated day, each persona repeatedly proposes its next action. The persona’s body checks the proposal against its closed set of executable atomic actions, the physically grounded world validates its physical feasibility, and every accepted action commits through the event bus as a recorded transition. Each committed transition yields one frame, at which the full system state is archived as a snapshot. After the run, read-only projections derive per-phone local databases and evaluation cases from the terminal snapshot without modifying the source state. The remainder of this section formalizes this flow as a state-transition contract and then describes the mechanisms that enforce it. SenWorld treats a day-long run as a state-transition system rather than as a text-generation procedure. Given a persona configuration, a world configuration, and a run seed, the simulator produces an ordered event trace and a sequence of full-system snapshots. At frame t, we represent a snapshot as St = ( Wt, V t, P t, D t), where Wt is the physical-world state, Vt is the service state, Pt is the joint objective state of all persons, and Dt is the joint state of all phones. Let 
+
+et denote a candidate event at frame t, such as a proposed move or phone interaction. A frame corresponds to a single event-triggered transition step, so multiple frames may share the same simulation time. Let C(St, e t) ∈ { 0, 1} be a binary constraint predicate that returns 1 when the event is valid in the current state and 0 otherwise. Let ∆ denote the state-transition function applied to an accepted event. The simulator commits a transition only when the candidate event satisfies the relevant world and entity constraints: 
+
+St+1 =
+
+(
+
+∆( St, e t), C(St, e t) = 1 ,
+
+St, C(St, e t) = 0 .
+
+The event trace records how the state changed, whereas the snapshot records what is true at a particular simulated frame. A rejected candidate commits no transition and archives no frame. The next candidate is evaluated against the unchanged state. The downstream projection Π( ST ) reads the terminal snapshot and produces device-local records and evaluation cases without changing the source state. For an objective evaluation case, the expected answer is the unique identifier of an existing phone state record in DT , rather than a post-hoc judgment of a generated answer. 
+
+B. Event-Sourced Execution 
+
+To enforce the state-transition contract defined above, the system must record how every state change happened. Sen-World therefore persists every candidate event et in an append-only log before dispatching it to any subscribers. Each event carries a stable identifier, and events scheduled for the same simulation time are consumed under a deterministic total order based on type priority and event ID. Recording each transition before subscriber execution makes the event log a replayable account of the run. All cross-entity state changes pass strictly through this event bus, while provider interfaces expose only read-only perceptions to the personas. Because the core also archives a full-system snapshot St at each frame, any replay can be audited against both the historical event trace and the resulting concrete state. Internally, all pseudorandom choices are derived from a fixed run seed, so state commits are reproducible under the ordering enforced by the event core. However, this determin-istic boundary applies exclusively to the simulator and exporter under fixed inputs. The run seed does not control an external LLM’s model version, prompt execution, sampling, retries, or service behavior [19]. Consequently, an LLM-driven run is fully reproducible only when these external responses and execution settings are also recorded and replayed. 
+
+C. Physically-Grounded State 
+
+The method also requires that generated state be constrained by physical realities rather than merely steered by textual prompts. Within our state-transition contract, the physical world state Wt is the authority for the physical-feasibility com-ponent of the constraint predicate C(St, e t). It is governed by five modeled subsystems: time, geography, weather, calendar, and network. The configuration relies on a simulation clock, a graph of geocoded points of interest with a distance matrix, historical weather replay, an official holiday calendar including shifted workdays, and location-bound Wi-Fi access points with globally unique basic service set identifiers (BSSIDs). These subsystems determine the physical-feasibility outcome of C(St, e t), constraining which transitions the simulator can commit and which environmental signals a phone can observe. For example, a brain may propose a movement event et
+
+to a new destination. The geographic subsystem resolves the canonical point of interest and checks reachability before the virtual body is allowed to change location. If the destina-tion is nonexistent or unreachable, the constraint predicate evaluates to C(St, e t) = 0. The transition is thus strictly rejected, leaving the location state unchanged ( St+1 = St). Consequently, while an LLM brain can propose arbitrary behavior, it cannot overwrite or bypass modeled physical truth. This same authority determines objective co-presence and dynamically links device observations (such as location-bound Wi-Fi BSSIDs) to the overarching physical state. This keeps the simulation physically consistent by construction. Whether the generated data resembles the held-out real-user benchmark is evaluated separately in RQ1. 
+
+D. Personas, Phones, and Observable Effects 
+
+SenWorld separates behavioral decisions, objective person state, and device-observable effects. Each persona contains a brain that proposes an action and a body that checks the proposal against its closed set of executable atomic actions and executes accepted actions. The two checks are distinct: the body determines whether the person can perform the action, Fig. 1. SenWorld overview. Personas propose actions through pluggable brains. A deterministic, event-sourced core validates and commits every transition against a physically grounded world, persisting each event before dispatch and archiving the full system state St = ( W, V, P, D ) per frame. Read-only projections then derive on-device records and evaluation cases whose labels are record pointers, not LLM judgments. 
+
+whereas the world determines whether the action is physically feasible. The brain is replaceable, for example by a rule-based or LLM-based decision component, while the body and world remain the state authorities. A person receives world and phone observations through provider interfaces and cannot directly mutate another entity. The phone twin is personality-free and exposes permission-level device state rather than simulator-internal state. Its context includes battery and charging status, screen state, foreground application, Wi-Fi service set identifier (SSID) and BSSID, cellular connectivity, Bluetooth, notifications, audio session state, posture, and assistant wake-up state. Its applica-tion stores hold records such as contacts, SMS, call history, alarms, notes, and schedules. Persona attributes and private simulator state are not emitted as phone-side observations unless they have a corresponding device record. When a person operates the phone, the simulator realizes the causal chain action → device effect → phone state → event . This separation makes user-specific behavior originate in the person while keeping the exported phone view aligned with what a real application could observe. 
+
+E. Snapshot and Projection 
+
+At each recorded frame, SenWorld serializes the system into four snapshot segments. The physical segment contains time, locations, weather conditions, the official holiday calendar, and network facts. The service segment contains the configured per-persona service state, such as messaging, calling, user calendar records, and weather-service content. The person segment contains objective state and decision context. The phone segment contains device context and the on-device databases accumulated during the run. The snapshot is the central artifact because it retains the state from which both labels and downstream views are derived. The service layer combines configured inputs with interac-tions produced inside the shared world. For example, scenario configuration may provide an external message, while a global phone-number directory routes one persona’s outgoing call or SMS to another persona’s phone. For the evaluation cases used in this paper, a read-only adapter selects an existing phone record under a predefined query template and retains its table and record identifier as the label. The pointer refers to a record in the exported state and is not an answer invented after generation. A checker can therefore determine whether an assistant selected the designated record without asking an LLM to judge correctness. An LLM may assist with the natural-language surface form of a query, but it does not define the target record. The pointer oracle supports objective properties represented in the snapshot, not subjective judgments about response quality or arbitrary open-ended explanations. After the run, the projection reads the terminal snapshot and derives per-phone local data and evaluation cases. Changing the persona or world configuration creates a new scenario, whereas changing only the downstream format creates another view of the same snapshot. Under fixed input, exporter, and serialization settings, this projection is deterministic. F. Scope and Boundaries 
+
+The implemented method targets multi-signal state and behavior within one smartphone per person. The reported configuration uses Beijing physical data and a persona pop-ulation designed for coverage rather than statistical repre-sentativeness. The no-judge property is limited to objective properties represented in the snapshot and exposed by adownstream adapter. Physical consistency does not by itself establish external behavioral realism, and some service inputs remain scripted. An LLM brain can also produce repetitive or implausible trajectories even when the world rejects physically invalid transitions. Earphone and watch types are architectural placeholders and do not participate in the method or evaluation reported in this paper. We leave these limitations to future work. They do not affect the evaluation of the method’s core properties: reproducibility, physical grounding, and ground truth fixed by construction. IV. E VALUATION SETUP 
+
+A. Research Questions and Study Design 
+
+The evaluation asks three research questions (RQs) regard-ing the realism of the generated data (RQ1), the generation of behaviors (RQ2), and the utility of the framework (RQ3):  
+
+> •
+
+RQ1 (Fidelity): How similar is the distribution of the generated data to that of a held-out real-user benchmark?  
+
+> •
+
+RQ2 (Emergence): What behavior and interaction data emerges across personas during simulation?  
+
+> •
+
+RQ3 (Utility): Can the generated evaluation cases expose and help diagnose defects in a production smartphone assistant? The three questions call for three kinds of study: RQ1 is a benchmark comparison that validates the generated data externally, RQ2 is an exploratory characterization of the behavior and interaction that emerge within one run, and RQ3 is an application study of the generated cases on a production assistant. We first catalog the shared study objects and then describe the data, metrics, and procedure of each study in turn. 
+
+B. Study Objects 
+
+The evaluation builds on the artifacts of one simulation run and on one external dataset. The run was configured with 16 personas in a shared Beijing world and produced two recorded products: an ordered event trace of 4,036 committed events, which feeds RQ2, and a sequence of 611 full-system snapshots. The persona brains are LLM-based (Doubao 2.0 Lite, temperature 0). Every brain response is recorded in the event trace, so the archived run can be re-audited without re-invoking the model. Read-only projections derive the remain-ing two generated objects from the terminal snapshot without modifying the source state. For RQ1, the projection exports 336 structured personal-information records in six categories: contacts, SMS, call history, alarms, notes, and schedules. For RQ3, it produces 717 evaluation cases. The cases span the exported phones of the 16 personas (25 to 57 cases per persona). Each case carries a snapshot pointer as its source of correctness. The external object is the held-out real-user benchmark used by RQ1. Of its on-device records, 1,186 fall into the same six categories and enter the comparison. We call these six categories the shared categories . The benchmark contains real-user records whose provenance is subject to confidentiality and cannot be disclosed. It is used exclusively for the validation reported in RQ1 and is itself never released. 
+
+C. RQ1: Benchmark Comparison 
+
+We compare the distributions of the generated data and the benchmark over the shared categories. We normalize the record counts of the generated data and the benchmark and report Jensen–Shannon divergence (JSD, base-2) and total-variation distance (TVD) over the shared categories. We fur-ther compare content form and temporal rhythm. For content form, we run two-sample Kolmogorov–Smirnov (KS) tests on the per-category record-length distribution ( α = 0 .05 ). For temporal rhythm, we compute the JSD of the hour-of-day dis-tribution of record timestamps. We interpret these as similarity in category structure, content form, and daily rhythm, not as a match to natural usage frequency. The benchmark is strictly held out: it is never used to generate scenarios, assign labels, or tune persona behavior, so the comparison is an external validation rather than a construction target [20]. 
+
+D. RQ2: Emergence Characterization 
+
+We build a directed interaction graph from the person-to-person dialogue events in the event trace and report node and edge counts, graph density, and reciprocity. We measure behavioral diversity as the Shannon entropy of each persona’s action-type distribution. No interaction is scripted: the run configuration contains no interaction schedule, and peer in-teraction arises only from shared-world dynamics, while ex-ternal inbound messages remain configuration-provided (Sec-tion III-F). 
+
+E. RQ3: Defect Exposure 
+
+The 717 cases are constructed over the exported phone databases of the 16 personas, following the production as-sistant’s existing evaluation scheme. The query-type and diffi-culty annotations of each case come with the scheme. Case labels are assigned by a deterministic labeling component that reads objective world and phone state only and never accesses the benchmark. The 717 cases are run against the target production assistant in its dedicated evaluation en-vironment. Each case is annotated with one of five query types (direct entity reference, relational appellation, weak-semantics colloquial, event-topic, time-constrained) and one of three difficulty levels (easy, medium, hard). An offline checker then evaluates correctness by comparing the assistant’s selected record against the stored pointer in the evaluation case, bypassing any LLM judge [3]. A failure is a case whose selected record does not match the pointer. We report failure counts and rates by query type and difficulty and diagnose each failure by tracing the pointer back to the snapshot state. V. R ESULTS 
+
+In this section, we present the evaluation results to answer the three research questions formulated in Section IV. 
+
+A. Answer to RQ1 
+
+RQ1 investigates how closely the distribution of the gener-ated data matches that of the held-out real-user benchmark. To answer this question, we evaluate the generated data from three complementary perspectives: category structure, measured by JSD and TVD; daily rhythm, measured by the JSD of hour-of-day timestamps; and content form, measured by KS tests on record lengths.                    
+
+> TABLE I CATEGORY DISTRIBUTION OF THE GENERATED DATA AND THE
+> HELD -O UT REAL -U SER BENCHMARK .
+> Category Gen Real
+> contacts 61 (18.1%) 320 (27.0%) SMS 93 (27.7%) 378 (31.9%) call history 54 (16.1%) 224 (18.9%) schedules 51 (15.2%) 213 (18.0%) notes 50 (14.9%) 11 (0.9%) alarms 27 (8.0%) 40 (3.4%)
+
+The first perspective is category structure. Table I lists the generated and benchmark records over the shared categories. The two distributions are close overall (JSD 0.070, TVD 0.186). Four categories agree point-wise within five percentage points: SMS (27.7% vs. 31.9%), call history (16.1% vs. 18.9%), schedules (15.2% vs. 18.0%), and alarms (8.0% vs. 3.4%). The residual difference concentrates in two categories with opposite directions. The benchmark holds a larger con-tact share (27.0% vs. 18.1%), which we read mainly as an accumulation effect: contact lists on real phones are a stock built up over years, whereas a day-long run reproduces the flow mix but not the accumulated stock. The generated data instead carries a much larger note share (14.9% vs. 0.9%). Personas author notes actively during the day, whereas the benchmark records almost none. The second perspective is daily rhythm. The hour-of-day distribution of generated timestamps closely matches the benchmark for the two communication categories (JSD 0.064 for SMS and 0.085 for call history). The match is weaker for schedules (JSD 0.252), alarms (JSD 0.459), and notes (JSD 0.603). The benchmark histograms point to recording artifacts. Specifically, 34% of its schedule timestamps fall at 22:00 and 20% of its alarm timestamps at 00:00, suggesting batch entry rather than natural setting times. The generated timestamps instead spread across active hours, with 70% of generated alarms between 6:00 and 9:00. The notes comparison rests on only 11 benchmark timestamps and is therefore high-variance. Contacts carry no generated-side timestamps and are excluded from this comparison. The third perspective is content form. Table II reports two-sample KS tests on the per-category record-length distribu-tions. A test rejects a shared length distribution when D
+
+exceeds the critical value determined by the two sample sizes at α = 0 .05 . The tests reject for all six categories, but the gap varies widely. Schedules are nearly identical in length (generated mean 70.7 vs. real 75.6 characters, D = 0 .234 
+
+barely above its critical value 0.212). Communication records show the largest substantive gap. Real SMS messages are about twice as long as generated ones (means 114.1 vs. 53.1 characters), because they may carry more intents, whereas generated records are single concise entries. Alarms are the only category where generated records are longer than real ones (means 55.1 vs. 44.2 characters). The note test yields the largest D (0.880) but rests on only 11 benchmark records, so we consider it inconclusive. We report this content-form gap openly and leave content enrichment to future work.                           
+
+> TABLE II TWO -S AMPLE KS T ESTS ON PER -C ATEGORY RECORD LENGTHS .
+> Category Gen mean Real mean KS D
+> contacts 22.9 44.8 0.746 SMS 53.1 114.1 0.806 call history 20.3 72.9 0.594 schedules 70.7 75.6 0.234 notes 51.6 340.0 0.880 alarms 55.1 44.2 0.527
+
+Answer to RQ1: Overall, the generated data closely matches the benchmark in category distribution and in the daily rhythm of communication records, though generated records remain shorter and note-taking is more frequent than in the benchmark. 
+
+B. Answer to RQ2 
+
+Having established how closely the generated data matches real distributions, we next examine what the simulation itself produces. RQ2 investigates what behavior and interaction emerge when personas share one world without scripted in-teraction. To answer this question, we evaluate the reported run from three complementary perspectives: interaction struc-ture, measured by the dialogue graph; behavioral diversity, measured by per-persona action-type entropy; and generated content, examined qualitatively. The first perspective is interaction structure. Fig. 2 shows the dialogue matrix of the 560 person-to-person dialogue events, restricted to the seven active personas (the nine personas without dialogue are omitted). The dialogue is concentrated. Only 7 of the 16 personas engage, and the heaviest pair alone (the spouses p_001 and p_004 ) carries 69% of all utterances. It is also mutual: the 14 directed edges form 7 fully reciprocated pairs (density 0.333, reciprocity 1.0 within the active subgraph). No interaction schedule is scripted. This structure arises from personas meeting and relating inside the shared world. The second perspective is behavioral diversity. Fig. 3 sorts the per-persona action-type entropy, which averages 1.846 bits and spans 0.622 to 2.613 bits. The two lowest entropies belong p_001  
+
+> p_002
+> p_003
+> p_004
+> p_005
+> p_006
+> p_013
+> listener
+> p_001
+> p_002
+> p_003
+> p_004
+> p_005
+> p_006
+> p_013
+> speaker
+> 194
+> 194
+> 31
+> 29
+> 20
+> 19
+> 17
+> 13
+> 17
+> 15
+> 5
+> 32
+> 1
+> 0
+> 50
+> 100
+> 150
+> 194
+> utterances Fig. 2. Person-to-person dialogue of the active personas.
+
+to the spouse pair: p_001 (0.622) and p_004 (0.831), whose days are dominated by reflection and each other. Reflection counts also spread widely, from 33 to 244 across personas. Repertoires thus differ from persona to persona rather than replaying one template. The third perspective is generated content. The run also leaves 1,377 thought traces and 560 utterances whose content couples persona identity with world state (translated from the generated traces). For example, a night-shift nurse ( p_014 ,22:52) thinks “the ward is finally quiet. . . I will prepare the IV refill for bed 18 before midnight.” Such excerpts indicate that the agents maintain their personas and situational awareness, a baseline content consistency distinct from the system-level emergence discussed above. 
+
+Answer to RQ2: Without any scripted interaction, per-sonas form a fully reciprocated dialogue subgraph, their behavioral repertoires differ measurably, and their generated content successfully maintains situational awareness. 0.0 0.5 1.0 1.5 2.0 2.5 3.0  
+
+> action-type entropy (bits)
+> p_001
+> p_004
+> p_016
+> p_011
+> p_013
+> p_005
+> p_015
+> p_014
+> p_007
+> p_010
+> p_002
+> p_009
+> p_012
+> p_008
+> p_006
+> p_003
+> 0.622
+> 0.831
+> 1.459
+> 1.513
+> 1.660
+> 1.786
+> 1.786
+> 1.858
+> 1.875
+> 2.078
+> 2.184
+> 2.236
+> 2.271
+> 2.320
+> 2.451
+> 2.613
+> mean 1.846
+> Fig. 3. Per-persona action-type entropy (bits). Dialogue-active personas are shown as hatched blue bars.
+
+C. Answer to RQ3 
+
+Having established what the run produces and how closely it matches real distributions, we finally ask whether the gen-erated data is useful in practice. RQ3 investigates whether the generated evaluation cases expose and help diagnose defects in a production smartphone assistant. To answer this question, we evaluate the 717 cases from three complementary perspectives: failure distribution, measured by failure counts and rates across query types and difficulties; defect pattern, measured by the concentration of failures across data types; and defect diagnosis, examined through pointer-based root-cause tracing of individual failures.                                   
+
+> TABLE III PRODUCTION -A SSISTANT FAILURES BY QUERY TYPE AND DIFFICULTY .
+> Query type Cases Failures Rate
+> direct entity reference 320 36 11.3% relational appellation 75 12 16.0% weak-semantics colloquial 99 88.1% event-topic 150 20 13.3% time-constrained 73 22.7%
+> Difficulty
+> easy 354 38 10.7% medium 264 32 12.1% hard 99 88.1%
+> Overall 717 78 10.9%
+
+The first perspective is failure distribution. Table III reports the failure counts and rates categorized by query type and difficulty. Overall, the assistant fails 78 of the 717 cases (10.9%), demonstrating the diagnostic value of the generated cases. Across query types, the failure rate ranges from 2.7% (time-constrained) to 16.0% (relational appellation). We read the six-fold spread as type-dependent retrieval difficulty: re-lational appellation fails most because answering it requires first resolving a social-role appellation (such as “my wife”) to a contact entity. Direct entity reference, which constitutes the largest category (44.6% of cases), exhibits an intermediate failure rate of 11.3%, so even explicit naming does not guarantee correct retrieval. The failure rate does not increase with difficulty (easy 10.7%, medium 12.1%, hard 8.1%). The annotated difficulty therefore does not predict where the assistant fails. The second perspective is the defect pattern. Grouping the failures by data type shows that the defect is structural rather than scattered: 92% of all failures (72 of 78) fall on communication records, where 27 of 77 call-history cases (35.1%) and 45 of 209 SMS cases (21.5%) fail, whereas only 6 of 110 note cases (5.5%) fail and contacts, schedules, and alarms never fail. Case inspection sharpens the pattern: self-initiated records, messages the user sent and calls the user made, recur prominently among the failures, whereas queries over incoming records largely pass, suggesting that the assistant handles outgoing and incoming communication asymmetrically. The generated cases thus separate where the assistant is reliable from where it is not, although the zero-failure categories may partly reflect less challenging cases rather than mastered behavior. The third perspective is defect diagnosis. Because the pointer denotes a record that exists in the exported state by construction, it isolates assistant-side errors from data-generation errors. This attribution holds for every case by construction, so all 78 failures are diagnosable with-out an LLM judge. For example, one query asks for the SMS replying to human resources (HR) about a can-didate interview, with the pointer targeting SMS_101_4 
+
+(table SMS , record 101_4 ). The assistant returns five other records ( NOTE_601_9 , SMS_101_15 , SMS_101_46 ,
+
+SMS_101_1 , and SCHEDULE_401_3 ), none of them the target. The other failed cases whose returned records are documented show the same form: a fixed-size candidate list of topically plausible records that never contains the target. The diagnosis is consistent across these cases: the target exists but is never selected, and the assistant substitutes plausible context records from other stores for it, a cross-store distraction in record selection. This case-level verdict agrees with the set-level pattern, in which communication records account for 92% of all failures. 
+
+Answer to RQ3: The evaluation cases expose a defect pattern concentrated on call and SMS records, in which the target exists but is never selected and the assistant substitutes plausible context records from other stores for it. VI. C ONCLUSION AND FUTURE WORK 
+
+We presented SenWorld, a physically grounded, determin-istic, event-sourced digital-twin simulation that advances per-sonas, phones, services, and physical contexts as one evolving world and archives a full-system snapshot at every frame. Because the simulation owns its state and evolves it under real physical constraints, whatever is true at a simulated moment is itself labeled data: an evaluation case is answered by a snapshot pointer to an existing record, and checking the answer requires no LLM judge. Three studies evaluated the generated data. The generated data closely matches the held-out real-user benchmark in category distribution (JSD 0.070) and in the daily rhythm of communication records (JSD below 0.1), while the gaps in record length and note-taking frequency remain open. Without any scripted interaction, personas form a fully reciprocated dialogue subgraph and measurably different behavioral repertoires. Projected into 717 evaluation cases, the generated data exposes a consistent defect pattern in a production smartphone assistant: failures concentrate on call and SMS records (35.1% and 21.5%) while contacts, schedules, and alarms never fail, and the pointer confirms every failure as an assistant-side retrieval error. Two directions remain open. First, a controlled ablation would isolate the causal contribution of physical grounding to fidelity, which this paper attributes by design rather than by experiment. Second, grounding the world in more cities, across seeds, and over longer simulated horizons would test whether the reported fidelity and emergence properties hold at scale. The benchmark, the generated data, and the evaluation cases cannot be released under the applicable data-governance policy. Overall, SenWorld offers a privacy-safe, reproducible, and distribution-checked path to evaluation data whose ground truth is fixed by construction. REFERENCES [1] L. Huang et al. , “A survey on hallucination in large language models: Principles, taxonomy, challenges, and open questions,” ACM Transac-tions on Information Systems , vol. 43, no. 2, 2025. [2] Y. Chang et al. , “A survey on evaluation of large language models,” ACM Transactions on Intelligent Systems and Technology , vol. 15, no. 3, pp. 1–45, 2024. [3] J. Gu et al. , “A survey on LLM-as-a-judge,” The Innovation , 2026. [4] F. Molina, A. Gorla, and M. d’Amorim, “Test oracle automation in the era of LLMs,” ACM Transactions on Software Engineering and Methodology , vol. 34, no. 5, 2025. [5] R. Khedar et al. , “State-grounded multi-agent synthetic data generation for tool-augmented LLMs,” 2026, arXiv:2606.16307. [6] Y. Li, H. Wen, W. Wang, X. Li et al. , “Personal LLM agents: In-sights and survey about the capability, efficiency and security,” 2024, arXiv:2401.05459. [7] H. Wen, Y. Li, G. Liu, S. Zhao, T. Yu et al. , “AutoDroid: LLM-powered task automation in Android,” in Proceedings of the 30th Annual International Conference on Mobile Computing and Networking (MobiCom) , 2024. [8] M. D. Vu et al. , “GPTVoiceTasker: Advancing multi-step mobile task efficiency through dynamic interface exploration and learning,” in Pro-ceedings of the 37th Annual ACM Symposium on User Interface Software and Technology (UIST) , 2024, pp. 48:1–48:17. [9] N. Dorka, J. Marecki, and A. Anwar, “Training a vision language model as smartphone assistant,” in ICLR 2024 Workshop on Generative Models for Decision Making , 2024, arXiv:2404.08755. [10] X. Lu et al. , “SmartBench: Is your LLM truly a good Chinese smart-phone assistant?” in Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing (EMNLP) , 2025. [11] C. Gao et al. , “Large language models empowered agent-based modeling and simulation: A survey and perspectives,” Humanities and Social Sciences Communications , vol. 11, 2024. [12] J. S. Park, J. C. O’Brien, C. J. Cai, M. R. Morris, P. Liang, and M. S. Bernstein, “Generative agents: Interactive simulacra of human behavior,” in Proceedings of the 36th Annual ACM Symposium on User Interface Software and Technology (UIST) , 2023, arXiv:2304.03442. [13] J. S. Park et al. , “LLM agents grounded in self-reports enable general-purpose simulation of individuals,” 2024, arXiv:2411.10109. [14] B. R. Barricelli, E. Casiraghi, and D. Fogli, “A survey on digital twin: Definitions, characteristics, applications, and design implications,” IEEE Access , vol. 7, pp. 167 653–167 671, 2019. [15] R. J. Somers, J. A. Douthwaite, D. J. Wagg, N. Walkinshaw, and R. M. Hierons, “Digital-twin-based testing for cyber-physical systems: A systematic literature review,” Information and Software Technology ,2023. [16] M. A. Guinea-Cabrera and J. A. Holgado-Terriza, “Digital twins in soft-ware engineering—a systematic literature review and vision,” Applied Sciences , vol. 14, p. 977, 2024. [17] E. T. Barr, M. Harman, P. McMinn, M. Shahbaz, and S. Yoo, “The oracle problem in software testing: A survey,” IEEE Transactions on Software Engineering , vol. 41, no. 5, pp. 507–525, 2015. [18] F. Dobslaw, R. Feldt, J. Yoon, and S. Yoo, “Challenges in testing large language model based software: A faceted taxonomy,” ACM Transactions on Software Engineering and Methodology , 2025. [19] S. Ouyang, J. M. Zhang, M. Harman, and M. Wang, “An empirical study of the non-determinism of ChatGPT in code generation,” ACM Transactions on Software Engineering and Methodology , vol. 34, no. 2, pp. 1–28, 2025. [20] R. Xu, Z. Wang, R.-Z. Fan, and P. Liu, “Benchmarking benchmark leakage in large language models,” 2024, arXiv:2404.18824.

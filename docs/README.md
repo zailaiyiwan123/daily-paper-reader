@@ -6,46 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-22
-- 运行时间：2026-07-22 21:06:50 UTC
+- 最新运行日期：2026-07-23
+- 运行时间：2026-07-23 21:21:04 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：5
-- 速读区：3
+- 本次总论文数：6
+- 精读区：1
+- 速读区：5
 
 ### 今日简报（AI）
-1) 今日精读5篇、速读3篇，聚焦人机对话个性化适应和视频多模态增强两大高分方向。  
-2) 最值得关注《PACE》（9.0）的人机交互个性诱发机制与《HOMIE》（9.0）的人物-物体中心视频个性化增强方法。  
-3) 建议普通读者优先阅读《RIMS》的小规模LLM检索增强生成优化思路，以及《Personalized Image Aesthetic Assessment》的偏好样本挖掘策略。
-- 详情：[/202607/22/README](/202607/22/README)
+今日审阅6篇论文，精读1篇【自主语言代理学习推荐工具】（8.0分），速读涵盖数字孪生仿真、可解释状态空间模型与身份保真视频生成。最值得关注方向：自主语言代理赋能个性化推荐，以及SenWorld数字孪生仿真为生成上下文丰富评估数据提供创新路径。建议后续优先探索语言代理在推荐系统中的应用实践，同时关注数字孪生仿真如何提升AI评估的真实性。
+- 详情：[/202607/23/README](/202607/23/README)
 
 ### 精读区论文标签
-1. [PACE: Persona Adaptation through Conversational Elicitation in Human-Robot Interaction](/202607/22/2607.15579v2-pace-persona-adaptation-through-conversational-elicitation-in-human-robot-interaction)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：通过对话交互进行角色适配实现个性化人机交互
-2. [HOMIE: Human-object Centric Video Personalization via Multimodal Intelligent Enhancement](/202607/22/2607.18217v2-homie-human-object-centric-video-personalization-via-multimodal-intelligent-enhancement)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：直接针对人-物中心视频个性化，属于多模态个性化生成
-3. [Topology-Aware Tokenization for Generative Recommendation](/202607/22/2607.18600v1-topology-aware-tokenization-for-generative-recommendation)  
+1. [Personalized Recommendation Tool Learning via Autonomous Language Agents](/202607/23/2607.19739v1-personalized-recommendation-tool-learning-via-autonomous-language-agents)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：面向个性化的生成式推荐拓扑感知标记化
-4. [BlurDriving: Investigating How Personalized Blur Techniques Impact Drivers' Performance in Virtual Reality](/202607/22/2607.18628v1-blurdriving-investigating-how-personalized-blur-techniques-impact-drivers-performance-in-virtual-reality)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：针对驾驶员的个性化模糊技术
-5. [Sequential Learner Modeling Using Multi-Relational Graph Convolutional Networks](/202607/22/2607.19253v1-sequential-learner-modeling-using-multi-relational-graph-convolutional-networks)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：个性化系统中的用户建模
+   evidence：大语言模型中的个性化
 
 ### 速读区论文标签
-1. [RIMS: Preference Optimization via Smoothed Multi-pair Aggregation for Small-Scale LLM Retrieval-Augmented Generation](/202607/22/2607.16431v1-rims-preference-optimization-via-smoothed-multi-pair-aggregation-for-small-scale-llm-retrieval-augmented-generation)  
+1. [SenWorld: A Digital-Twin Simulation for Generating Context-Rich Evaluation Data](/202607/23/2607.19949v1-senworld-a-digital-twin-simulation-for-generating-context-rich-evaluation-data)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：用于大语言模型个性化生成的偏好优化
-2. [Personalized Image Aesthetic Assessment via Preference-rich Sample Mining and Cohort Merging](/202607/22/2607.15752v1-personalized-image-aesthetic-assessment-via-preference-rich-sample-mining-and-cohort-merging)  
+   evidence：为个性化助手生成评估数据的数字孪生模拟
+2. [User-Centric Modeling of Transactional Sequences with Explainable State Space Models](/202607/23/2607.20228v1-user-centric-modeling-of-transactional-sequences-with-explainable-state-space-models)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：用户中心建模、个性化用户分析、状态空间模型
+3. [Vera: Identity-Faithful Human Subject-to-Video Generation](/202607/23/2607.20247v1-vera-identity-faithful-human-subject-to-video-generation)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：身份忠实生成可用于个性化视频生成
+4. [SmartRAG: Native Graph-Based RAG for Mobile Device](/202607/23/2607.14661v2-smartrag-native-graph-based-rag-for-mobile-device)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：个性化图像美学评估与用户偏好建模
-3. [Beyond Fixed Depths and Widths: Optimizing Textual Decoding Tries in LLM-based Generative Recommendation](/202607/22/2607.16633v1-beyond-fixed-depths-and-widths-optimizing-textual-decoding-tries-in-llm-based-generative-recommendation)  
+   evidence：基于LLM的移动个人助手，持续学习实现个性化
+5. [ProteinSketch translates spatial intuition into protein design with bimanual interaction in VR](/202607/23/biorxiv-10-64898-2026-07-19-739460-v1-proteinsketch-translates-spatial-intuition-into-protein-design-with-bimanual-interaction-in-vr)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：优化生成式推荐中的解码trie，属于个性化生成技术
+   evidence：通过VR手绘进行用户交互式蛋白质生成
 
 
 <div class="dpr-home-promo-card">
