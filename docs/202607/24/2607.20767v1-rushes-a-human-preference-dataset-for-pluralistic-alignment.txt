@@ -1,0 +1,910 @@
+Title: Rushes: A Human Preference Dataset for Pluralistic Alignment
+
+URL Source: https://arxiv.org/pdf/2607.20767v1
+
+Published Time: Fri, 24 Jul 2026 00:19:41 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Rushes : A Human Preference Dataset for Pluralistic Alignment 
+
+Michael Xu Jorge Leandro Sudha Rao Weijia Xu Nebojsa Jojic Gabriel DesGarennes Chris Quirk Bill Dolan 
+
+Microsoft Research 
+
+michaelxu@microsoft.com 
+
+Figure 1: Overview of the Rushes data collection framework. Left: The generation pipeline expands a user-provided synopsis into story segments and iteratively generates distinct options using similarity and quality checks. Center: 
+
+The game interface presents the narrative and visual context, allowing players to select predefined choices or submit their own suggestions. Right: The data collection mechanism aggregates user votes and individual playthrough trajectories into a revealed-preference interaction dataset. 
+
+Abstract 
+
+We introduce Rushes , a dataset and benchmark for studying revealed human engagement pref-erences in interactive narrative environments. 
+
+Rushes was collected through a game interface in which users interacted with AI-generated branching narratives and selected one choice from a small, explicit candidate set at each de-cision point. Each interaction logs the full can-didate set, the user’s choice, and the evolving narrative context, yielding time-ordered trajec-tories with persistent user-level identifiers. 
+
+Rushes contains 44,226 decision events from 8,167 unique users across six games , captur-ing sequential, personalized engagement behav-ior rather than static judgments. We show that user choices exhibit structured, non-random patterns, quantified by lower mean choice en-tropy than a uniform four-choice baseline. We position Rushes as a diagnostic bench-mark for pluralistic alignment and demonstrate an Engagement Gap : state-of-the-art LLMs, including GPT-5, do not outperform simple baselines. An SVD-based matrix factorization model captures measurable personalized sig-nal (37.7%), whereas GPT-5 with user history reaches 34.2%, below the popularity baseline at 36.4%, on event-level choice prediction. This gap suggests that population-level objectives, such as those used in modern RLHF, may be insufficient to capture heterogeneous, context-dependent engagement signals. Even highly capable models may therefore default to major-ity preferences rather than adapt to individual trajectories. We release Rushes to support re-search into pluralistic alignment and sequential decision-making in generative systems. 
+
+1 Introduction 
+
+Foundational work on large language models (LLMs) remains largely focused on capability and safety, codified by datasets that reward helpful and arXiv:2607.20767v1 [cs.CL] 22 Jul 2026 harmless outputs. In both safety research and prac-tice, the goal is often convergence: to minimize harm for all users. Entertainment domains such as games, movies, or books, however, introduce an orthogonal dimension to model development. Here the goal is divergence: to maximize “interesting-ness” and “fun” for specific individuals. Learning what makes an experience meaningful across sub-jective dimensions will be critical in applications with multiple valid targets for different users. A personalized notion of engagement calls for pluralistic alignment, in which models adapt to di-verse human values rather than collapse to a single mean. Current alignment methods, however, often fail to capture this subjectivity. As noted by Ali et al. (2025), aggregating diverse preferences into a single reward model suppresses minority view-points, leading to generic outputs. Furthermore, contextual history plays an important role in these settings because prior user choices can inform sub-sequent model predictions. To our knowledge, no prior large-scale human preference dataset jointly addresses engagement alignment, sequential decision-making, and per-sonalized modeling. We present Rushes , a dataset and benchmark built around human responses to AI-generated branching narratives that include text, images, video, and audio narration. 
+
+The Engagement Gap: Our experiments re-veal a critical limitation in current frontier mod-els. When tasked with predicting user choices in 
+
+Rushes , models such as GPT-4o (OpenAI, 2024) and GPT-5 (OpenAI, 2025) do not outperform sim-ple popularity heuristics. This mirrors popularity bias in recommender systems but highlights a dis-tinct failure mode in LLMs: they are fine-tuned to be “universally acceptable” rather than “person-ally compelling.” Recent work by Castricato et al. (2025) with the PERSONA benchmark has begun to address this problem using synthetic user proxies. 
+
+Rushes complements this synthetic approach with organic, revealed preferences from human trajec-tories, capturing the noisy and implicit nature of engagement. Figure 1 provides an overview of the system used to collect the dataset. We created six AI-generated games for users to play. Each game establishes a context and plot, then asks players what should happen next at a branching point. Users select from a small set of options, typically four. The selected option is incorporated into the story, which con-tinues to the next branching point. This process  
+
+> Figure 2: Distribution of user vote entropy across de-cision points. The dashed line marks the entropy of a uniform distribution over four choices, the typical candidate-set size. Mean observed entropy is lower than this baseline, indicating structured, non-random choice behavior without implying convergence to a single dom-inant outcome.
+
+repeats until the end of the day at depth 4. Because the stories are open-ended, the system can gener-ate additional days before concluding the narrative. During this voting process, we log the selected option, the alternatives, and additional metadata. No payments or instruction-following tasks were required; users participated because the activity it-self was enjoyable, yielding preferences that reflect natural, in situ behavior. Mean user-vote entropy is lower than the uniform four-choice baseline (Fig-ure 2), indicating non-random preferences. This observation aligns with information-theoretic ap-proaches to narrative evaluation, such as Fabula Entropy Indexing (Castricato et al., 2021), which posits that high-quality narratives exhibit low en-tropy in human question-answering tasks. The current snapshot of our dataset consists of 44,226 preference votes by 8,167 unique users across the six games. We frame Rushes as a bench-mark for predicting personalized user engagement in interactive narratives. Our contributions are: 1. A method for collecting large-scale, user-level preferences that reflect subjective engagement, including fun and interest; 2. A large-scale dataset of 44,226 preference votes by 8,167 unique users across six narrative-based games (with multimodal con-tent); 3. A comprehensive benchmarking suite that es-tablishes performance baselines using collab-orative filtering and state-of-the-art LLMs, identifying an Engagement Gap that chal-lenges current alignment techniques; 4. Code and prompts for the generation pipeline, together with an archived version of the envi-ronment, to be released publicly. We hope that our release will support re-searchers interested in personalized alignment, en-gagement modeling, and interactive narrative cre-ation. Rushes is designed as a testbed for studying human preferences in open-ended, multimodal en-vironments. 
+
+2 Related Work 
+
+Interactive Narrative and Storytelling Bench-marks Recent interactive narrative benchmarks include TextQuests (Phan et al., 2025), which uses classic interactive fiction to benchmark agents’ rea-soning and planning capabilities. Whereas Tex-tQuests evaluates whether an agent can solve a puzzle (competence), Rushes evaluates whether a model can predict what a human wants to happen next (engagement). This distinction is important for developing agents that are not only capable but also enjoyable. Similarly, What-If (Huang et al., 2024) and Nar-rative Studio (Ghaffari and Hokamp, 2025) explore the generative mechanics of branching narratives. 
+
+Narrative Studio , for instance, employs Monte Carlo Tree Search (MCTS) to maximize narrative diversity during generation. Rushes complements these system-focused works by providing data for evaluating the “fun” of the resulting generations. Although we employ similar semantic diversity checks in our generation pipeline (Section 3.1) to prevent redundancy, our primary contribution is the capture of revealed human preferences within these diverse structures rather than the generation method itself. 
+
+Personalized Alignment and RLHF Prior work on aligning large language models (LLMs) with human preferences has focused primarily on di-mensions such as safety, helpfulness, or factual correctness (Ouyang et al., 2022; Bai et al., 2022). These datasets typically lack the longitudinal user history required for personalization. Recent work has highlighted the “cold-start” problem in personalized alignment, arguing that static reward models fail to capture evolving user intent. LiteraryTaste (Chung et al., 2025) addresses this problem in creative writing, finding that ex-plicit surveys (“stated preferences”) often fail to predict actual choices (“revealed preferences”). 
+
+Rushes captures revealed preferences through ac-tions rather than surveys. Furthermore, LikeBench 
+
+(Rahman et al., 2025) measures likability using sim-ulated personas. Rushes complements this work with human trajectories, whose preferences are of-ten noisier and more context-dependent than those of simulated agents. 
+
+Drama Management and Interactive Narrative 
+
+Classical drama managers (DMs) sought to adapt ongoing narratives to user preferences to maximize agency or enjoyment (Yu and Riedl, 2013; Riedl and Bulitko, 2013). However, these systems often relied on handcrafted rules or symbolic planners, making them difficult to scale. Although neural ap-proaches such as AI Dungeon (Walton, 2019) and 
+
+Hierarchical Story Generation (Fan et al., 2018) demonstrated the potential of open-ended text gen-eration, they often lack the structured, longitudinal preference data necessary for personalized model-ing. Rushes modernizes this objective by scaling the environment with LLMs. Unlike classical DMs, which operate on restricted state spaces, Rushes 
+
+leverages the open-ended generation capabilities of frontier models while capturing revealed prefer-ences at the scale of more than 44,000 interactions. These data can support user models for modern, LLM-based drama management. 
+
+Subjective Evaluation Metrics Measuring “fun” is difficult for standard reward models. Writing-PreferenceBench (Ying et al., 2025) demonstrated that sequence-based reward models—the standard for RLHF—achieve only 52.7% accuracy on sub-jective writing tasks, barely outperforming random chance. This result aligns with our finding that neural preference models struggle to beat popular-ity baselines in Rushes . It suggests that modeling engagement may require architectural innovations, such as the Generative Reward Models proposed by Ying et al. (2025), which can reason about style and subtext. 
+
+3 Rushes 
+
+3.1 Game Generation 3.1.1 Generating branching narrative text 
+
+In the current release, all narrative text and decision options are generated using GPT-4o with a temper-ature of 0.3 and a fixed prompting template (see Aspect Rushes (Ours) RLHF Chat Datasets SeqRec Datasets                    
+
+> Multi-choice Decision Space ( k > 2)Yes Limited (Binary) Yes Longitudinal User History Yes No (Stateless) Yes Sequential Context Dependency Yes Limited No (ID-based) Multimodal Assets (Image/Video) Yes No Limited
+> Modeling Objective Personalized Engagement Safety & Helpfulness Clicks & Purchase
+> Table 1: Comparison of Rushes with prior work. Standard RLHF datasets focus on safety without longitudinal history, whereas sequential recommendation (SeqRec) datasets track item IDs rather than narrative context. Rushes
+> combines long-term user trajectories with rich, multimodal interactive narratives.
+
+Appendix A for all prompts). All generated nodes and options are stored prior to gameplay. Each story begins from a high-level synopsis that speci-fies the intended narrative trajectory, and the gener-ation process recursively expands the story tree to a depth of four, yielding approximately 330 nodes that can be manually reviewed before release. We selected a depth of four to mirror a concise narrative arc while keeping generation computa-tionally manageable. Each decision node presents four options, a branching factor chosen to balance computational cost with sufficient variance to cap-ture distinct behavioral strategies, such as aggres-sive, diplomatic, exploratory, or passive choices. 
+
+Semantic Diversity Enforcement To prevent the generation of redundant options, a common fail-ure mode in LLM storytelling, we employ a se-mantic similarity filter. At each decision node, an LLM-based checker compares the candidate option against previous options along the trajectory. If the option is judged too similar (considering ac-tion type, complexity, and narrative outcome), it is discarded and regenerated. 
+
+Lexical Diversity via Deterministic Paraphras-ing To mitigate lexical repetition and discourage users from navigating based on memorized surface text, we generate multiple semantic paraphrases for each option node during story generation. The num-ber of variants scales with tree depth and expected traffic at each node, increasing lexical variety in high-traffic branches while limiting generation cost (see Appendix A.2). At runtime, the system selects a variant deterministically using a hash of the user’s anonymized ID and the node identifier. This pro-vides stable per-user lexical variation while preserv-ing the underlying action semantics and avoiding real-time generation. 
+
+3.1.2 Generating image, audio, and video 
+
+Each narrative node is paired with multimodal as-sets to enhance immersion. Image generation is per-formed using a staged prompt construction pipeline (meta-prompts, similar to Huang et al. (2024)) that improves character consistency and stylistic coher-ence. Images are then used as input to generative video models to create short clips using LTX-Video 
+
+(HaCohen et al., 2025). Audio narration is synthe-sized using the Azure Text-to-Speech (TTS) API with expressive styles. 
+
+3.1.3 Generating narrative continuations 
+
+To support multi-session narratives, Rushes enables dynamic story continuation across multiple "days" of gameplay. At the end of each day, we identify all active leaf nodes. We prune the exponential expansion by clustering leaf scenes into four broad narrative categories using an LLM. We then gener-ate custom continuations for each active node that align with these categories. 
+
+3.1.4 Quality Control and Responsible AI 
+
+All generated content is passed through an auto-mated safety screening pipeline (Azure Content Safety API), with results summarized in Table 2. Across 3,982 screened generations, the system maintained strict safety standards on sensitive di-mensions. The vast majority of content was classi-fied as safe (Severity 0) for Hate (99.7%), Sexual (98.5%), and Self-Harm (99.0%). As expected for a dataset focused on action and adventure genres, the violence dimension had a higher flagging rate, with 31.5% of generations scoring above Severity 0. Most flagged generations received Severity 2 (1,142 generations, or 28.7% of all generations), consistent with standard genre tropes (e.g., science-fiction combat or dramatic ten-sion) rather than graphic or gratuitous violence. Only 0.05% of all generations received a Severity 6 score in any dimension. Counts by Severity Level Percentage (%) Dimension 0 2 4 6 Total > 0 0 2 4 6 Total > 0                                                       
+
+> Hate 3,969 13 0013 99.67 0.33 0.00 0.00 0.33 Self-Harm 3,943 31 8039 99.02 0.78 0.20 0.00 0.98 Sexual 3,922 52 7160 98.49 1.31 0.18 0.03 1.51 Violence 2,726 1,142 113 11,256 68.46 28.68 2.84 0.03 31.54
+> Any Flag (non-zero) 2,674 1,182 124 21,308 67.15 29.68 3.11 0.05 32.85
+> Table 2: Azure Content Safety analysis ( N= 3 ,982 ). Distribution of safety severity scores across four dimensions. Severity levels range from 0 (safe) to 6 (high). The higher prevalence of low-severity violence flags reflects the action-adventure nature of the narrative genres.
+> Figure 3: Mean semantic diversity, measured as pair-wise cosine distance between embeddings from Ope-nAI’s text-embedding-3-small model. Error bars show standard error. The dip at depth 5 reflects end-of-day narrative consolidation.
+
+All content was reviewed manually and ap-proved by the authors. The gameplay interface also includes a user-facing reporting mechanism; however, we received no reports from users during the release. 
+
+3.2 Analysis of Generated Games 3.2.1 Lexical and Semantic Diversity 
+
+We also evaluate the diversity of generated branches and options at each depth using average cosine distance in sentence-embedding space (Fig-ure 3). Diversity drops at depth 5, reflecting the episodic generation pipeline: at the end of each day, leaf nodes are clustered into a small set of broad thematic continuations, temporarily consoli-dating the narrative state. This process helps main-tain long-term coherence and manage complexity before the story expands into divergent paths on the subsequent day, mirroring serialized television. The variance in diversity also decreases over time, which may result from cumulative prompt growth constraining generation variability. 
+
+3.2.2 Multimodal Asset Evaluation 
+
+We observed occasional inconsistencies between text and generated media (images and video), and some users reported that narration quality varied across scenes. Despite these imperfections, the multimodal assets may have increased immersion by grounding decisions in a narrative world rather than isolated text prompts. This context may en-courage in-world decision-making and reduce su-perficial text skimming. Because the benchmark evaluations in this paper are text-conditioned, we release the accompanying media primarily to pre-serve the context in which preferences were re-vealed and to support future multimodal modeling work. 
+
+3.2.3 Summary 
+
+Our goal in generating these narratives was not to use LLMs to break new ground in narrative con-struction, but rather to construct plausible stimuli that could be easily understood and enjoyed by our players. These results suggest that users are presented, on average, with distinct and non-redundant alter-natives at each decision point. This property is important for preference data collection: if options were trivially similar or repetitive, observed choices could be dominated by noise or superficial cues rather than substantive engagement. Taken together with the low choice entropy ob-served in user behavior, the generation analysis supports the interpretation that Rushes captures structured, context-dependent decisions rather than arbitrary clicks. This validates the dataset as a suitable testbed for studying revealed preferences, sequential decision-making, and the limits of cur-rent alignment methods in interactive generative environments. Statistic Value Active users 8,167 Total decision events (votes) 44,226 Number of games 6Average trajectory depth (decisions per playthrough) 5.4 Average games played per user 1.4 Users who played all 6 games 195 Typical candidate set size per decision 4 options 
+
+Table 3: Summary statistics for the current Rushes snap-shot. Each decision event logs the full candidate set and the user’s chosen option, plus metadata (e.g., time taken and session depth). 
+
+3.3 Data Collection User Recruitment All participants in Rushes 
+
+were authenticated users recruited through the Xbox Insiders Program. Participation required sign-ing in with verified Xbox credentials, providing per-sistent account-level identities rather than anony-mous or crowdsourced accounts. Users voluntarily opted into the experience and engaged without fi-nancial incentives, reflecting intrinsic motivation and familiarity with interactive gaming environ-ments. 
+
+3.3.1 Logging and Schema 
+
+Each click generates a vote, which is recorded in a standardized schema: • user_id (anonymized identifier); • game_id and level (narrative depth); • vote (selected option text) and 
+
+other_options (unselected candidates); • Metadata: time_taken_ms , user_agent ,
+
+session_depth .Each record captures both the decision context and behavioral outcome, allowing reconstruction of complete narrative trajectories. 
+
+3.3.2 Dataset Composition 
+
+The final dataset comprises 44,226 distinct deci-sion events generated by 8,167 unique users across the six available titles (Table 3). The distribution of user engagement follows a long-tailed pattern typical of gaming environments. While the average participant interacted with 1.4 games, a dedicated core of 195 “power users” engaged with all six narrative environments. In terms of session length, the average trajectory reached a depth of 5.4 decision points. Because the standard “day” cycle concludes at depth 4, this indicates that many users continued past the initial narrative loop to experience multi-day continua-tions. The participant pool consists exclusively of authenticated Xbox Insiders, and the interface was presented in English. Recruitment therefore likely favored users familiar with English-language branching game mechanics. We also observe that engagement is non-uniform. As shown in Figure 2, mean user-vote entropy (1.04 nats) is lower than the uniform four-choice baseline (1.39 nats), indicating structured, context-dependent narrative preferences at the aggregate level. 
+
+3.3.3 Preference Transformation and Modeling 
+
+To support alignment research, the raw interaction logs can be transformed into training-ready formats. We convert each “choose 1 of k” decision (typically 
+
+k = 4 ) into k −1 distinct pairwise comparisons, de-noted as (ochosen ≻ orejected ). These pairs encode the observed choice as a preference for the selected option over each alternative, enabling the training of standard reward models and Direct Preference Optimization (DPO). 
+
+4 Experiments and Results 
+
+Task Definition We frame evaluation as event-level, text-based candidate-choice prediction. At each decision point, the model observes the narra-tive context, the available candidate options, and the user’s interaction history up to that point and must predict which single option the user selected. We use top-1 accuracy because Rushes cap-tures single, irreversible user decisions rather than graded preferences or ranked lists. Pairwise and ranking metrics would answer a different question by decomposing one holistic choice into multiple comparisons, obscuring the difficulty of predicting the user’s committed action. 
+
+Evaluation Protocol We evaluate event-level top-1 choice prediction using a user-stratified chronological split. For each user, interactions are ordered by time, with the first 80% used for training and the remaining 20% held out for testing, ensuring that all test decisions occur after the user’s training history. 
+
+4.1 Main Results Popularity Bias as a Strong Baseline We ob-serve that SVD (37.73%) slightly outperforms Baseline Accuracy [95% CI] N Samples Description SVD Collab. Filtering 0.3773 [0.3669, 0.3878] 8293 Matrix factorization on user-option interactions Popularity (Most Freq) 0.3639 [0.3536, 0.3743] 8293 Always select the historically most popular option GPT-5 with History 0.3423 [0.3321, 0.3526] 8293 GPT-5 prompted with user history SASRec 0.3406 [0.3304, 0.3509] 8293 Self-Attentive Sequential Recommendation Semantic Classifier 0.3000 [0.2902, 0.3100] 8293 Fine-tuned DeBERTa-v3 on context+option pairs Random (Uniform) 0.2541 [0.2448, 0.2636] 8293 Uniform selection among 4 available options 
+
+Table 4: Main baseline accuracy on the Rushes test set with 95% Wilson confidence intervals. All models are evaluated on the same held-out test split. 
+
+Depth Accuracy [95% CI] N Samples 
+
+0 0.3048 [0.2726, 0.3390] 735 1 0.3100 [0.2854, 0.3357] 1300 2 0.3740 [0.3494, 0.3993] 1441 3 0.3763 [0.3620, 0.3908] 4361 4 0.4207 [0.3761, 0.4666] 454 
+
+Table 5: Popularity baseline accuracy by narrative depth. Accuracy peaks at depth 4. Two test events without matched narrative-depth metadata are omitted.          
+
+> History Type Accuracy [95% CI] NSamples
+> Same-game history 0.3886 [0.3775, 0.3999] 7310 Cross-game history 0.2909 [0.2634, 0.3201] 983 All history (SVD) 0.3773 [0.3669, 0.3878] 8293
+
+Table 6: Impact of history source on prediction accuracy. Same-game history is more predictive than cross-game history. 
+
+the popularity baseline (36.39%), suggesting that 
+
+Rushes contains personalized signals that distin-guish individual users from the aggregate mean. However, frontier LLMs still fail to capture this signal, falling behind both classical collaborative filtering and simple popularity heuristics. This result mirrors findings in recommender systems, where popularity bias can overshadow user-specific signals, and in recent creative-writing bench-marks (Ying et al., 2025; Chung et al., 2025). In these subjective domains, standard reward mod-els frequently struggle to decouple “generic qual-ity” from “personal appeal,” defaulting to safe, high-probability tokens rather than riskier, context-dependent predictions. We further evaluate SASRec (Self-Attentive Se-quential Recommendation) (Kang and McAuley, 2018) to test whether specialized sequential mod-eling can bridge the engagement gap. SASRec 
+
+achieves 34.06% accuracy, performing on par with the much larger GPT-5 with history (34.23%). However, both methods fail to outperform the pop-        
+
+> Method Sparse Players [95% CI] Active Players [95% CI]
+> Random 0.2540 [0.2450, 0.2632] 0.2491 [0.2008, 0.3045] Popularity 0.3523 [0.3390, 0.3660] 0.3778 [0.3618, 0.3940]
+> SVD 0.3840 [0.3704, 0.3978] 0.3683 [0.3523, 0.3845]
+
+Table 7: Accuracy stratified by user activity level. Sparse players played one game; active players played two or more games. Bold indicates the highest accuracy in each group.           
+
+> Model Accuracy [95% CI] N Samples
+> GPT-4o (Zero-Shot) 0.3030 [0.2931, 0.3130] 8293 GPT-5 (Zero-Shot) 0.3090 [0.2991, 0.3191] 8293 GPT-4o (with History) 0.3390 [0.3288, 0.3493] 8293 GPT-5 (with History) 0.3423 [0.3321, 0.3526] 8293
+
+Table 8: Impact of model scaling and context. Scaling from GPT-4o to GPT-5 yields marginal gains ( < 1% ). Adding historical context provides a larger boost ( ≈
+
+4% ). 
+
+ularity baseline (36.39%) and trail SVD (37.73%). This result suggests that, in the current formulation, sequential attention alone does not outperform sim-pler identity-based baselines. 
+
+4.2 Ablation Studies 
+
+To examine whether user preferences contain per-sonalized signal beyond global trends, we analyze the limits of the popularity baseline. Popularity reaches 36.4% accuracy, leaving 63.6% of choices uncaptured by a global majority heuristic. This residual reflects substantial heterogeneity across decisions, but it does not by itself distinguish stable user-specific preferences from context-dependent variation. SVD’s improvement over popularity pro-vides more direct evidence of personalized signal. 
+
+4.2.1 Engagement by Narrative Depth 
+
+We analyzed the popularity baseline’s accuracy at different depths of the story tree (Table 5). Accu-racy consistently rises as the narrative progresses, peaking at depth 4 (42.07%). This suggests that as users deepen their engagement with a specific narrative arc, their choices become easier to predict under popularity heuristics. 
+
+4.2.2 The Role of History 
+
+We evaluated how user history impacts prediction in Table 6. 
+
+Same-Game History: When a user has history within the current game, accuracy is 38.86%. 
+
+Cross-Game History: When a user has history only from different games, accuracy drops to 29.09%. This 9.8-point gap suggests that pref-erences are highly context-dependent. A user’s preference for “action” in a science-fiction game does not necessarily transfer to a mystery game, highlighting the difficulty of transfer learning in narrative engagement. 
+
+4.2.3 Active vs. Sparse Players 
+
+As shown in Table 7, active players (those return-ing for two or more games) are harder for SVD to predict (36.83%) than sparse players (38.40%). The popularity baseline performs best for active players (37.78%). One possible explanation is that highly engaged users may actively explore the sys-tem, making choices that deviate from their own history while aligning with globally interesting con-tent. We leave disentangling exploratory behavior from model limitations to future work. 
+
+4.2.4 Frontier Model Scaling: GPT-5 vs. GPT-4o 
+
+To assess whether reasoning capabilities improve alignment, we evaluated GPT-5 against GPT-4o on the full test set (Table 8). Scaling offers marginal zero-shot gains (30.9% for GPT-5 vs. 30.3% for GPT-4o), whereas adding user history provides a larger boost, lifting GPT-5 to 34.2%. However, GPT-5 with the available user history still fails to outperform the popularity baseline (36.4%). This result reinforces the finding from WritingPrefer-enceBench that scaling model capacity or context alone does not fully bridge the engagement gap. Capturing “fun” may require explicit alignment with subjective values and idiosyncratic prefer-ences that diverge from population trends. 
+
+5 Conclusion 
+
+As large language models evolve from passive tools to interactive agents, modeling engagement becomes as important as modeling competence. 
+
+Rushes shows that organic user choices exhibit structured, non-random patterns that remain dif-ficult for current frontier LLMs to predict under standard training and evaluation paradigms. The performance gap between a simple personalized-history model and state-of-the-art LLMs highlights the difficulty of modeling engagement in sequen-tial narrative settings. Rushes provides a diagnostic benchmark for studying these limitations and ad-vancing research on pluralistic alignment, in which models must adapt to diverse, subjective notions of meaningful experiences rather than converge to population-level averages. 
+
+Ethical considerations 
+
+Data Provenance and Recruitment Participants were recruited through the Xbox Insiders Program (Public Ring), a platform where users voluntarily opt-in to test pre-release content and experiments. Users were presented with a clear consent page explaining that their anonymized interaction data would be logged for research purposes and poten-tially released as an open-source dataset. Participa-tion was strictly voluntary, and no financial incen-tives were provided; users engaged with the system solely for the intrinsic value of the gameplay expe-rience. 
+
+Responsible AI and Dual Use We release the Rushes dataset and the associated code to foster research into personalized alignment. However, we acknowledge that methods for optimizing "engage-ment" can be dual-use, potentially applicable to addictive design patterns or dark patterns in UI/UX. We condemn the use of this dataset for manip-ulative purposes and urge the community to fo-cus on pluralistic alignment—serving diverse user needs—rather than engagement maximization for its own sake. The release is governed by a license that prohibits malicious use, and no personal iden-tifiable information (PII) is included in the release; all user IDs have been cryptographically hashed. 
+
+Limitations 
+
+This report relates to Rushes as implemented us-ing GPT-4o. The results shown in the demonstra-tion will differ if other LLMs are used. No claim is made to the superiority of performance of any LLM. Outputs will vary under different tempera-ture settings and with different prompting strategies and formats. This system relates to games generation only. In principle, the approach taken by Rushes should be extensible to multimodal games generation, par-ticularly those with a visual component, e.g., in a storyboarding application, but that is beyond the scope of this work. The system is implemented using English-language prompts. It has not been investigated in other languages. Given our observation that Rushes appears to perform better on better documented set-tings, we expect that some degradation may occur when used with languages other than English. As we have noted elsewhere, the architecture of this system readily lends itself to iterative edit-ing and reprompting for further exploration of paths. Full implementation of this feature, how-ever, involves application-specific considerations and harm mitigations for public presentation. This must be left for future work. Given the recruitment platform, the user base is demographically skewed towards gaming-literate populations who are likely comfortable with branching narrative mechanics. Furthermore, as the generated content and interface were presented exclusively in English, the dataset reflects the pref-erences of English-speaking users, predominantly from regions with high Xbox Insider adoption. Consequently, the engagement patterns observed in Rushes should not be interpreted as a universal baseline for human preference but rather as a spe-cific reflection of this gamer-centric demographic. We explicitly caution against generalizing these findings to non-gaming or non-English speaking populations without further validation. 
+
+Acknowledgments 
+
+We would like to thank Leland Olney for his instru-mental support and partnership in facilitating the Xbox Insiders recruitment and data collection pro-cess. We are also deeply grateful to Chris Brockett for his insightful feedback and support throughout the development of this project. 
+
+References 
+
+Dalia Ali, Dora Zhao, Allison Koenecke, and Orestis Papakyriakopoulos. 2025. Operationalizing pluralis-tic values in large language model alignment reveals trade-offs in safety, inclusivity, and model behavior. Yuntao Bai, Andy Jones, Kamal Ndousse, Amanda Askell, Anna Chen, Nova DasSarma, Dawn Drain, Stanislav Fort, Deep Ganguli, Tom Henighan, et al. 2022. Training a helpful and harmless assistant with reinforcement learning from human feedback. CoRR .Louis Castricato, Spencer Frazier, Jonathan Balloch, and Mark Riedl. 2021. Fabula entropy indexing: Ob-jective measures of story coherence. In Proceedings of the Third Workshop on Narrative Understanding ,pages 84–94, Virtual. Association for Computational Linguistics. Louis Castricato, Nathan Lile, Rafael Rafailov, Jan-Philipp Fränken, and Chelsea Finn. 2025. PER-SONA: A reproducible testbed for pluralistic align-ment. In Proceedings of the 31st International Con-ference on Computational Linguistics , pages 11348– 11368, Abu Dhabi, UAE. Association for Computa-tional Linguistics. John Joon Young Chung, Vishakh Padmakumar, Melissa Roemmele, Yi Wang, Yuqian Sun, Tiffany Wang, Shm Garanganao Almeda, Brett A. Halperin, Yuwen Lu, and Max Kreminski. 2025. Literarytaste: A pref-erence dataset for creative writing personalization. Angela Fan, Mike Lewis, and Yann Dauphin. 2018. Hierarchical neural story generation. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 889–898, Melbourne, Australia. Association for Computational Linguistics. Parsa Ghaffari and Chris Hokamp. 2025. Narrative studio: Visual narrative exploration using LLMs and Monte Carlo Tree Search. Yoav HaCohen, Nisan Chiprut, Benny Brazowski, Daniel Shalem, Dudu Moshe, Eitan Richardson, Eran Levin, Guy Shiran, Nir Zabari, Ori Gordon, Poriya Panet, Sapir Weissbuch, Victor Kulikov, Yaki Bitterman, Zeev Melumian, and Ofir Bibi. 2025. Ltx-video: Realtime video latent diffusion. arXiv preprint arXiv:2501.00103 .Runsheng "Anson" Huang, Lara J. Martin, and Chris Callison-Burch. 2024. What-if: Exploring branching narratives by meta-prompting large language models. Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recommendation. In 2018 IEEE International Conference on Data Mining (ICDM) ,pages 197–206. OpenAI. 2024. Gpt-4o system card. arXiv preprint, 
+
+https://arxiv.org/abs/2410.21276 . Accessed 2025-09-22. OpenAI. 2025. Gpt-5 system card. https://openai. com/index/gpt-5-system-card . Accessed: 2025-09-22. Long Ouyang et al. 2022. Training language mod-els to follow instructions with human feedback. In 
+
+NeurIPS .Long Phan, Mantas Mazeika, Andy Zou, and Dan Hendrycks. 2025. Textquests: How good are LLMs at text-based video games? Md Awsafur Rahman, Adam Gabrys, Doug Kang, Jingjing Sun, Tian Tan, and Ashwin Chandramouli. 2025. Likebench: Evaluating subjective likability in LLMs for personalization. Mark O. Riedl and Vadim Bulitko. 2013. Interactive narrative: An intelligent systems approach. AI Mag-azine , 34(1):67–77. Nick Walton. 2019. Ai dungeon: Dragon model up-grade. Aidungeon. io .Shuangshuang Ying, Yunwen Li, Xingwei Qu, Xin Li, Sheng Jin, Minghao Liu, Zhoufutu Wen, Xeron Du, Tianyu Zheng, Yichi Zhang, Letian Ni, Yuyang Cheng, Qiguang Chen, Jingzhe Ding, Shengda Long, Wangchunshu Zhou, Jiazhan Feng, Wanjun Zhong, Libo Qin, Ge Zhang, Wenhao Huang, Wanxiang Che, and Chenghua Lin. 2025. Beyond correctness: Eval-uating subjective writing preferences across cultures. Hong Yu and Mark Riedl. 2013. Data-driven personal-ized drama management. Proceedings of the AAAI Conference on Artificial Intelligence and Interactive Digital Entertainment , 9(1):191–197. A Rushes Game Generation Pipeline 
+
+A.1 Configuration Parameters Parameter Value 
+
+LLM Model GPT-4o API Version 2024-10-01-preview Expected Players 5,000 Options per Level 4Maximum Depth 4 levels per day Speech Service Azure TTS (Fable HD) Image Model FLUX.1 schnell 
+
+> Table 9: System configuration parameters
+
+A.2 Deriving the paraphrase scaling rule 
+
+Rushes pre-generates multiple surface realizations (paraphrases) for each option to reduce repeated wording across users. Let P be the expected number of players for a game, b the branching factor (number of options per node; in our setup b = 4 ), and d the depth index of a decision node (root at d = 0 ). Assuming players are approximately evenly distributed across branches, 1 the expected number of players who reach a particular node at depth d is: 
+
+E[# players at node depth d] ≈ Pbd . (1) Each such node presents b options. Under the same uniformity assumption, let M (d) denote the expected number of players who select a particular option at depth d:
+
+M (d) = E[# selections per option at depth d] ≈ Pbd+1 . (2) Allocating one surface variant per expected selection would grow linearly with player traffic and be prohibitively expensive. Instead, Rushes uses a square-root heuristic. Let K(d) denote the total number of surface variants available for an option at depth d, including the original phrasing: 
+
+K(d) = 
+
+lp M (d)
+
+m
+
+=
+
+&r Pbd+1 
+
+'
+
+. (3) Since we store the original phrasing plus V (d) additional paraphrases, K(d) = V (d) + 1 , yielding: 
+
+V (d) = 
+
+&r Pbd+1 
+
+'
+
+− 1. (4) This heuristic increases lexical variety with expected traffic while keeping generation costs sublinear. It reduces repeated wording but does not guarantee a unique variant for every player. 
+
+Variant assignment. At interaction time, a single variant is selected deterministically using a hash of (anonymized) user_id and the (node_id, option_id) pair. This provides stable per-user lexical variation without any on-demand generation. 
+
+> 1This assumption is used only to size the paraphrase budget; the actual distribution may be skewed.
+
+A.3 Main Generation Pipeline GenerateNewGame: Create Complete Interactive Narrative Require: synopsis , game _name , num _options , max _depth 
+
+Ensure: game _uuid , complete game data  
+
+> 1:
+
+game _uuid ← GenerateUUID()  
+
+> 2:
+
+setup ← LLM + StorySetup( synopsis ) 
+
+> 3:
+
+theme ← setup.theme {Visual themes for consistency}  
+
+> 4:
+
+results ← LLM + CreateStory(  
+
+> 5:
+
+synopsis , num _options , max _depth , 
+
+> 6:
+
+levels , checkpoint _f ile ) 
+
+> 7:
+
+SaveToFile( game _name , results.levels , theme ) 
+
+> 8:
+
+return game _uuid 
+
+A.4 Story Setup and Theme Generation A.4.1 Theme Extraction Prompt 
+
+LLM Prompt 
+
+System Prompt: 
+
+TASK: Storywriting INSTRUCTIONS: You are a writer tasked with creating visuals for a short story based on a provided synopsis. Give the user a concise but detailed description of the overall art style of the story and look of the subjects. For the medium, specify: digital art, illustration, oil painting, 3D rendering, photography, etc. For the style, specify: impressionist, surrealist, pop art, realism, fantasy, etc. For the colors, list the main colors that should be used. For lighting, specify: natural, artificial, neon, dark, bright, etc. Include additional details using EXTRA that would help an artist. Use only keywords and short phrases. End with 'END '.EXAMPLE: Synopsis: A detective investigates mysterious disappearances in dystopian futuristic America. OUTPUT: MEDIUM: Digital art ARTISTIC STYLE: hyperrealistic, fantasy, dark art COLORS: iridescent gold, deep purple, midnight blue LIGHTING: studio lighting, shadows at sharp angles EXTRA: sci-fi elements, neon lighting, retro-futuristic tech END 
+
+User Input: Synopsis: {synopsis} 
+
+Assistant Output: {theme} 
+
+A.5 Recursive Story Generation CreateStory: Generate Branching Narrative Tree Require: synopsis , n_options , max _depth , levels 
+
+Ensure: Complete story tree with multiple paths  
+
+> 1:
+
+System: Set context as game design expert  
+
+> 2:
+
+User: "I want a story about {synopsis}. Begin writing and stop at CROSSROADS."  
+
+> 3:
+
+Assistant: initial _story ← LLM.generate(stop="CROSSROADS")  
+
+> 4:
+
+levels ["start" ] ← {  
+
+> 5:
+
+dialog: [ initial _story ],  
+
+> 6:
+
+depth: 1,  
+
+> 7:
+
+menu: {buttons: []}  
+
+> 8:
+
+} 
+
+> 9:
+
+levels ← GenerateLevel(  
+
+> 10:
+
+initial _story , depth=0, max_depth= max _depth , 
+
+> 11:
+
+n_options , level_id="start", checkpoint _f ile ) 
+
+> 12:
+
+return levels 
+
+A.6 Level Generation with Branching GenerateLevel: Create Single Story Node with Options Require: story , depth , max _depth , n_options , level _id 
+
+Ensure: Updated levels with new branches  
+
+> 1:
+
+Create level entry in levels [level _id ] with story , depth  
+
+> 2:
+
+if depth ≥ max _depth then  
+
+> 3:
+
+return levels {Reached maximum depth}  
+
+> 4:
+
+end if  
+
+> 5:
+
+n_variations ← ⌈ pEXP ECT ED _P LAY ERS/n _options depth +1 ⌉ − 1 
+
+> 6:
+
+options ← LLM + CreateOptions( n_options , depth , n_variations ) 
+
+> 7:
+
+parent _menu _texts ← Extract titles from options  
+
+> 8:
+
+seen _options ← Accumulate seen options for uniqueness checking  
+
+> 9:
+
+for each new _level _id , option in options do  
+
+> 10:
+
+Ensure new _level _id is unique (append counter if needed)  
+
+> 11:
+
+User: "User chose: {option.action}"  
+
+> 12:
+
+if depth = max _depth − 1 then  
+
+> 13:
+
+User: "This is the last level. Provide conclusion. ENDSTORY."  
+
+> 14:
+
+else  
+
+> 15:
+
+User: "Continue story, stop at next CROSSROADS."  
+
+> 16:
+
+end if  
+
+> 17:
+
+Assistant: option _story ← LLM.generate(stop=["CROSSROADS", "ENDSTORY"])  
+
+> 18:
+
+levels [new _level _id ] ← Create new level with option _story  
+
+> 19:
+
+levels ← GenerateLevel(  
+
+> 20:
+
+option _story , depth + 1 , max _depth , 
+
+> 21:
+
+n_options , new _level _id ) 
+
+> 22:
+
+end for  
+
+> 23:
+
+return levels A.7 Option Generation with Variations A.7.1 Option Creation Prompt 
+
+LLM Prompt 
+
+User Prompt: 
+
+Provide {n_options} short and descriptive options on what the user could do next. REQUIREMENTS: - Each choice must be fully ACTIONABLE (not vague or mental) - Each choice must be narratively and visually engaging - Each choice must be unique in this level - Titles must be in lowercase snake_case format NARRATIVE GUIDANCE: {depth > 0: "Unfold narrative smoothly while introducing action-heavy, tense, and cinematic events." else: "Since we 're at the beginning, unfold smoothly with actionable options without building tension yet."} OUTPUT FORMAT: <think>[Your reasoning for each option]</think> OPTION 1: [title]: [option description] OPTION 2: [title]: [option description] ... OPTION {n_options}: [title]: [option description] ENDOPTIONS CreateOptions: Generate Diverse Action Choices Require: n_options , depth , enf orce _unique , n_variations 
+
+Ensure: Set of unique, actionable options with variations  
+
+> 1:
+
+options ← Empty dictionary  
+
+> 2:
+
+while len( options ) < n _options do  
+
+> 3:
+
+User: Request n_options using format above  
+
+> 4:
+
+Assistant: response ← LLM.generate(stop="ENDOPTIONS")  
+
+> 5:
+
+parsed _options ← ExtractOptions( response ) via regex  
+
+> 6:
+
+for each option in parsed _options do  
+
+> 7:
+
+if enf orce _unique then  
+
+> 8:
+
+is _similar ← CheckSimilarity( option.text , seen _options ) 
+
+> 9:
+
+if is _similar then  
+
+> 10:
+
+Continue {Skip similar option}  
+
+> 11:
+
+end if  
+
+> 12:
+
+end if  
+
+> 13:
+
+if n_variations > 0 then  
+
+> 14:
+
+expanded ← ExpandOption( option , n_variations ) 
+
+> 15:
+
+option.variations ← expanded.variations  
+
+> 16:
+
+option.details ← expanded.details  
+
+> 17:
+
+option.outcome ← expanded.outcome  
+
+> 18:
+
+end if  
+
+> 19:
+
+Add option to options  
+
+> 20:
+
+end for  
+
+> 21:
+
+end while  
+
+> 22:
+
+return options 
+
+A.8 Similarity Checking for Uniqueness LLM Prompt 
+
+System Prompt: 
+
+You are a story similarity checker. Task: Determine if the provided option is overly similar to any previous nodes that have been seen by the user. Analyze similarity across these dimensions: - Nature of Action (combat vs. dialogue vs. exploration) - Complexity (simple vs. multi-step) - Physicality (physical action vs. mental/social) - Outcome (consequences and story progression) OUTPUT FORMAT: <think>[Your detailed analysis comparing current option to previous nodes]</think> <answer>[True or False: True ONLY if current option is overly similar to a previous node, otherwise False]</answer> ENDRESPONSE 
+
+User Input: 
+
+Previous nodes: {seen_options} Current option: {current_option_text} 
+
+Assistant Output: {analysis + answer} 
+
+A.9 Option Expansion for Variation ExpandOption: Generate Detailed Variations Require: option , n_variations 
+
+Ensure: Expanded option with process details and outcome  
+
+> 1:
+
+System: "Generate concrete description of option and outcome."  
+
+> 2:
+
+User: "Option Title: {option[0]} \nOption Action: {option[1]}"  
+
+> 3:
+
+Assistant: details _response ← LLM.generate(  
+
+> 4:
+
+format="DETAILS: Details/Process: ... Immediate Outcome: ...")  
+
+> 5:
+
+details ← Extract from details _response  
+
+> 6:
+
+outcome ← Extract from details _response  
+
+> 7:
+
+System: "Generate {n_variations} variations of Details/Process"  
+
+> 8:
+
+"Keep title, action, outcome same. Vary only process."  
+
+> 9:
+
+Assistant: variations _response ← LLM.generate(  
+
+> 10:
+
+format="VARIATION X: Details/Process: ...")  
+
+> 11:
+
+variations ← Extract all variations via regex  
+
+> 12:
+
+return {details, outcome, variations} LLM Prompt 
+
+Paraphrase Generation Prompt: 
+
+TASK: Generate Variations of Options Given the current option, generate {n_variations} distinct, actionable variations, keeping the general idea consistent. RULES: 1. Preserve every piece of context from the original: - Character names, locations, roles, relationships - Specializations or backstory 2. Each variation must: - Begin by restating essential context - Offer fresh style or approach in two sentences - Avoid repeating exact wording while keeping details - Not assume prior knowledge FORMAT: VARIATION X: Option Action: [brief two sentence description] Stop when you have exactly {n_variations} variations. Print ENDOPTIONS. 
+
+A.10 Game Continuation Algorithm 
+
+For multi-day games, the system continues stories from active player paths: 
+
+ContinueGame: Extend Game from Active Storylines Require: game _uuid , current _day , n_storylines , num _options 
+
+Ensure: New day’s story branches  
+
+> 1:
+
+game _data ← LoadFromDatabase( game _uuid ) 
+
+> 2:
+
+levels ← LoadFromDatabase( game _uuid , current _day ) 
+
+> 3:
+
+story _tree ← GenerateStoryTree( levels , root="start")  
+
+> 4:
+
+current _depth ← 5 {End of previous day}  
+
+> 5:
+
+storylines ← GetActiveStorylines( votes _db , game _uuid , current _depth ) 
+
+> 6:
+
+stories ← Map storylines to story text from story _tree  
+
+> 7:
+
+if len( stories ) = 0 then  
+
+> 8:
+
+return {No active players}  
+
+> 9:
+
+end if  
+
+> 10:
+
+merged ← LLM + MergeOptions(  
+
+> 11:
+
+n_storylines , num _options , stories , levels , current _depth ) 
+
+> 12:
+
+next _day ← current _day + 1  
+
+> 13:
+
+results ← LLM + ContinueStory(  
+
+> 14:
+
+synopsis , num _options , current _depth + 2 , current _depth , 
+
+> 15:
+
+merged , story _tree , levels ) 
+
+> 16:
+
+SaveToDatabase( game _uuid , next _day , results.levels ) 
+
+> 17:
+
+return results 
+
+A.11 Image Prompt Generation A.11.1 Character Extraction and Management GenerateImagePrompt: Create Stable Diffusion Prompts Require: themes , caption , subjects 
+
+Ensure: Image prompt for scene  
+
+> 1:
+
+System: "Extract characters from text. Convert to snake_case."  
+
+> 2:
+
+"Use existing names if already in EXISTING SUBJECTS."  
+
+> 3:
+
+User: "EXISTING SUBJECTS: {subjects.keys()} \nINPUT: {caption}"  
+
+> 4:
+
+Assistant: scene _subjects ← LLM.generate(format="char1, char2 ENDOUTPUT")  
+
+> 5:
+
+Parse scene _subjects into list  
+
+> 6:
+
+for each subject in scene _subjects do  
+
+> 7:
+
+if subject not in subjects then  
+
+> 8:
+
+System: "Create detailed character description."  
+
+> 9:
+
+"Format: species, gender, age, appearance, clothing, traits"  
+
+> 10:
+
+"Must be fully clothed and appropriate."  
+
+> 11:
+
+User: "Create character named: {subject}"  
+
+> 12:
+
+Assistant: char _desc ← LLM.generate(stop="END")  
+
+> 13:
+
+subjects [subject ] ← char _desc  
+
+> 14:
+
+end if  
+
+> 15:
+
+end for  
+
+> 16:
+
+System: "Create detailed Stable Diffusion prompt."  
+
+> 17:
+
+"Third-person, vivid visual details, comma-separated."  
+
+> 18:
+
+"Match themes: {themes}"  
+
+> 19:
+
+"AVAILABLE CHARACTERS: {subjects for scene_subjects}"  
+
+> 20:
+
+User: "I want an image about: ’{caption}’"  
+
+> 21:
+
+Assistant: image _prompt ← LLM.generate()  
+
+> 22:
+
+return image _prompt , subjects 
+
+A.12 Audio Generation with SSML 
+
+LLM Prompt 
+
+Audio Prompt Generation: 
+
+TASK: Audio Synthesis You are an expert in generating audio prompts for text. Generate SSML to narrate the scene, including character dialogue in distinct voices. - Use voice `en-US-FableMultilingualHD ` for narration - Set mstts:express-as style to `narration-professional `
+
+- Use <prosody> for rate, pitch, volume adjustments - Use <mstts:express-as> for character roles and styles OUTPUT FORMAT: <speak>SSML Prompt</speak> INPUT: {caption} 
+
+A.13 Media Generation Pipeline GenerateGameMedia: Create Images and Audio Require: game _uuid , day 
+
+Ensure: Image prompts and audio files  
+
+> 1:
+
+levels ← LoadFromDatabase( game _uuid , day ) 
+
+> 2:
+
+game _data ← LoadFromDatabase( game _uuid ) 
+
+> 3:
+
+try  
+
+> 4:
+
+images _data ← LoadFromDatabase( game _uuid , day , type="images")  
+
+> 5:
+
+theme ← images _data.theme  
+
+> 6:
+
+subjects ← images _data.subjects  
+
+> 7:
+
+catch  
+
+> 8:
+
+setup ← LLM + StorySetup( synopsis ) 
+
+> 9:
+
+theme ← setup.theme  
+
+> 10:
+
+subjects ← {}  
+
+> 11:
+
+end try  
+
+> 12:
+
+dialog _texts ← Extract dialog from all levels  
+
+> 13:
+
+for each level _id , text in dialog _texts do  
+
+> 14:
+
+if level _id not in image _prompts then  
+
+> 15:
+
+prompt ← LLM + GenerateImagePrompt( theme , text , subjects ) 
+
+> 16:
+
+image _prompts [level _id ] ← prompt.image _prompt  
+
+> 17:
+
+subjects ← prompt.subjects {Update character registry}  
+
+> 18:
+
+SaveCheckpoint( image _prompts , checkpoint _f ile ) 
+
+> 19:
+
+end if  
+
+> 20:
+
+end for  
+
+> 21:
+
+SaveToDatabase( game _uuid , day , image _prompts , subjects , theme ) 
+
+> 22:
+
+audio _texts ← Extract dialog texts  
+
+> 23:
+
+job _id ← "{game_name}-{day}"  
+
+> 24:
+
+GenerateAudioBatch( audio _texts , job _id ) {Azure TTS}

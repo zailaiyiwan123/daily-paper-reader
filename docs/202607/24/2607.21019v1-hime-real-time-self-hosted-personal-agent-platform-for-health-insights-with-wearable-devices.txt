@@ -1,0 +1,430 @@
+Title: HiMe: Real-Time Self-Hosted Personal Agent Platform for Health Insights with Wearable Devices
+
+URL Source: https://arxiv.org/pdf/2607.21019v1
+
+Published Time: Fri, 24 Jul 2026 00:37:51 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+## HiMe: Real-Time Self-Hosted Personal Agent Platform for Health Insights with Wearable Devices 
+
+Wei Liu ∗⋆
+
+, Siya Qi ∗⋆
+
+, Linhai Zhang ⋆
+
+, Lorainne Tudor Car ⋆
+
+, Yulan He ⋆♠B
+
+,
+
+> ⋆
+
+King’s College London, ♠
+
+The Alan Turing Institute, 
+
+{wei.4.liu, yulan.he}@kcl.ac.uk 
+
+Abstract 
+
+Traditional approaches to wearable health sig-nal analysis, such as smartwatches, are con-strained by rigid analytical frameworks and limited personalisation. The emergence of LLM agents creates a new opportunity for Per-sonal Health Agentic Analysis, where health insights can be generated adaptively and in context. However, currently there is no open-source locally deployable platform capable of processing personal health data in real time while preserving privacy. We present H IME,a locally deployable, privacy-first agent plat-form that is fully compatible with real-time health data ecosystems across a wide range of wearable devices. HIME is guided by three design principles. The database is treated as a first-class component. Effectiveness and effi-ciency are jointly optimised to achieve a low-cost Pareto-optimal balance. Data are pro-cessed in real time while the user is modelled over the long term. Together, these principles make it practical for individuals to harness Per-sonal Health Agents for continuous, person-alised health monitoring for better wellbeing 1.
+
+1 Introduction 
+
+Wearable devices have moved health monitoring out of the clinic and into everyday life. Mod-ern smartwatches and smartphones continuously record signals such as heart rate, blood oxygen, sleep, and workouts into private on-device stores. Over time, these signals form a longitudinal record of an individual’s health. But making full use of this stream is hard. Conventional wearable analyt-ics rely on fixed statistics that often ignore both signal dynamics and user preferences, while the long-term raw trace is too large to fit within the context window of a large language model (LLM) directly for intelligent analysis. 
+
+> *
+
+Equal contribution. 
+
+> 1
+
+Available at https://github.com/thinkwee/ HiMe Agent System            
+
+> Monitor Panel
+> Unified Database
+> Toolset
+> Direct
+> Wearable to
+> Server Sync
+> Wearable to
+> Phone Sync
+> Communication
+> Health Metric
+> Dashboard
+> Chat
+> Interaction
+> Proactive
+> Tasks
+> Health
+> Reports
+> Agentic Deep
+> Health Analysis
+> User
+> Agent Server
+> Wearable Devices
+> Agent
+> App
+
+Figure 1: Overview of the H IME system. 
+
+LLM agents that reason and act through tools of-fer a promising alternative (Yao et al., 2023). Such agents can access health data through tools, de-cide what is worth analysing, and explain their findings in natural language. This promise has mainly been pursued in two settings (Lin et al., 2026), neither of which fully addresses individ-uals living with their own continuous wearable health data. Clinical multi-agent systems reason over encounter-based records for clinician-facing use cases (Tang et al., 2024; Kim et al., 2024; Schmidgall et al., 2026), making the clinician, not the patient, the primary user. Personal coaching systems such as GPTCoach (Jörke et al., 2025) and MindScape (Nepal et al., 2024) are built around guided dialogue or journal prompts rather than a continuous data stream. General-purpose self-hosted assistants such as OpenClaw (Steinberger, 2026) have also popularised a local-first personal agent reached through messaging channels, but are built for chat and scheduled tasks, not a high-rate 1arXiv:2607.21019v1 [cs.AI] 23 Jul 2026 Data 
+
+Layer 
+
+Agent 
+
+Layer                           
+
+> Tool
+> Layer
+> Interaction
+> Layer
+> Skills Prompts Memory Report Tasks Customisation
+> Wearable
+> Signals
+> Unified
+> Database
+> Interaction
+> Main Agent
+> Analysis
+> Sub Agent
+> Management
+> Sub Agent
+> Plan
+> Sub Agent
+> Dispatch
+> Skill Read Messaging SQL Code Dashboard File Edit
+> Chat
+> Digital Twin
+> Proactive
+> Notification
+> Panel
+> User Push Communicate
+> User
+> Intention
+> Picked
+> Visible Domain for
+> Analysis Sub Agent
+> Invoke
+> Operate
+> Read -only for Agents Editable for Agents Created by Agents
+
+Figure 2: The four layers of the H IME framework. 
+
+physiological stream or months-long models of in-dividuals. There is still no open-source platform that lets individuals run, on their own hardware, an agent that ingests wearable data in real time and generates long-term personal health insights. We present H IME, the Health Intelligence 
+
+Management Engine. This locally deployable, privacy-first agent platform connects to real-time health data ecosystems from a wide range of wear-able devices. H IME is built on three design princi-ples for personal health. 1) The database is treated as a first-class component. This enables the agent to analyse wearable signals, personal preference and its own memory jointly, while the checkable terminal state of the database provides a direct tar-get for evaluating LLM agents on H IME’s health insight generation tasks. 2) Effectiveness and ef-ficiency are optimised jointly, seeking a Pareto-optimal trade-off among quality, cost, and latency, allowing always-on agency to remain affordable on consumer hardware and local models. 3) Real-time data processing is combined with long-term user modelling. This allows the system to cap-ture both momentary anomalies and months-long trends, supporting timely intervention and longi-tudinal understanding. Each user is effectively a continuous, heterogeneous data stream. Such per-sonal data are an asset fundamentally different from the public data used to train large models. H IME
+
+is built to harness LLM agents for this stream, not only to satisfy a momentary request but to help each user become a healthier self over time. The modular design also supports AI researchers requir-ing environments for evaluating and training health agents, and medical research applying large models to real-world wearable data. 
+
+2 Architecture 
+
+2.1 Overall 
+
+HIME is a self-hosted platform consisting of an agent server and companion apps for the smart-phone and wearable (Figure 1). A single agent sits between the user and a continuously growing store of personal data, as the user never queries the data directly, and the agent reads, analyses and writes it on the user’s behalf, turning a raw physiological stream into personalised insight, with the whole pipeline running on the user’s own hardware. A wearable collects signals such as heart rate, blood oxygen, heart-rate variability, sleep and workouts in real time, buffering readings into batches re-layed via the phone to the agent server, where a data adapter normalises any wearable format and deduplicates each sample before storage. All data land in one unified per-user database, a signal store alongside agent-state tables for memory, the user profile, reports, scheduled tasks and monitoring rules, to which the agent may add tables of its own. In the evaluation (§4), public datasets are replayed through the same adapter, so H IME doubles as an off-the-shelf platform for wearable agent bench-marking. The agent server runs a single loop that inter-leaves user messages, real-time monitor triggers, and scheduled tasks. Each wakes the interaction agent, which routes to specialised sub-agents and acts through a small tool set, reading the signal store over several steps and writing the result back as a report, a memory update or a new task, before replying on the channel the request arrived from. Every reported number is checked against its query evidence. Acting unprompted, a cheap statistical 2trigger watches the stream at full resolution for free and wakes the expensive analysis only when it fires, pushing the resulting insight to the phone and watch — turning a continuous physiological stream into personalised, auditable insight without the data ever leaving the user’s hardware. 
+
+2.2 Layered Design 
+
+Figure 2 shows the four layers behind this pipeline. 
+
+Data layer. All information the agent holds lives in one unified database, with tables for wearable signals, memory and the user profile, and the agent may create custom tables for whatever else it needs, so heterogeneous data are analysed jointly. Asked for a health-check report, for example, the agent reads established baselines from its own tables and analysis skills from the skill table, queries the sig-nal table over several steps, replies, writes the result to the report table, and may add a morning proac-tive task. Each agent holds its own table permis-sions, so every operation stays safe. No workflow is hard-coded. HIME supplies only the tool set and schema design principles rather than rigid con-straints, which lets weaker LLMs emit well-formed outputs while leaving stronger ones unconstrained. 
+
+Tool layer. With the database as a first-class com-ponent, the tool layer stays simple. In principle, the agent only reads and writes operations over the unified database, and a code execution tool is needed, with scenario-specific variants for reply-ing, editing files or generating dashboards sharing the same abstraction. The code tool keeps Jupyter-style state across calls (Kluyver et al., 2016), so the agent builds on earlier steps instead of rewriting from scratch. To curb tool-use hallucination, a fact verifier classifies every outbound message from its tool trace, checks each reported number against the matching query result, and stores a hashed evidence trail behind a show-evidence button. 
+
+Agent layer. The interaction agent is the primary, user-facing agent, and at any tool-use step it can invoke specialised sub-agents, including an anal-ysis agent, a management agent for memory up-dates and proactive tasks, and a plan agent for personalised health plans. Prompts are assem-bled from modular layers (system instructions, role, soul, responsibilities and experience), maximising reuse and keeping the prefix stable for better key-value (KV) cache utilisation. The backend sup-ports 15 LLM API providers, though we recom-mend serving open-source models locally through vLLM (Kwon et al., 2023) for privacy. 
+
+Interaction layer. Users reach the agent through the built-in chat or integrated messaging platforms such as WeChat and Telegram, and a gateway reg-istry routes each reply back to the channel the mes-sage arrived on. As interactions accumulate, the agent keeps updating its memory and the user pro-file and configures proactive tasks autonomously, all of which stay editable in the agent server panel, either manually or by instructing the agent. Proac-tive tasks cover time-based schedules and event-based triggers that the agent authors itself, letting it push notifications to the smartphone and watch. A pixel-art cat acts as a digital twin whose animations reflect the user’s current health status in real time. §3 walks through a session across these surfaces. 
+
+From principles to design. These three prin-ciples, not the field’s defaults, explain why the system takes this shape. Treating the database as first-class makes the agent an interface over persis-tent state rather than a transient reasoning engine. The user model stays as agent-editable Markdown rather than an opaque vector store (Packer et al., 2024; Chhikara et al., 2025; Xu et al., 2025), ev-ery action leaves a checkable terminal state that automates evaluation, and a new capability be-comes a new table rather than a new agent. Jointly optimising effectiveness and efficiency removes needless computation, as lightweight filters run be-fore expensive inference, narrow roles carry small prompts routed to the cheapest adequate model, and a static prefix improves KV-cache reuse. Pair-ing real-time processing with long-term modelling lets cheap components watch the stream at full resolution while the LLM wakes only on mean-ingful triggers, capturing transient anomalies and long-horizon trends in one framework. §4 analyses these choices. 
+
+3 Demonstration Walkthrough 
+
+This section demonstrates a typical user journey from first launch to daily use. 2 As shown in Fig-ure 3, deployment begins with a guided setup wiz-ard that configures the LLM backend, timezone, optional messaging integration, and agent server, followed by smartphone onboarding for health-data permission, server connection, consent, and  
+
+> 2A screencast of this walkthrough is available at https: //www.youtube.com/watch?v=5gurIKyDMH4 .
+
+31 Onboarding                     
+
+> Health Plan
+> Survey
+> 2HiMe Main Tab
+> Digital Twin)
+> 3.b) Advanced Management Interface
+> Wearable
+> Signal Dashboard Reports Proactive
+> Tasks
+> 3.a) Basic Interface
+> Chat with
+> Agent
+> Receive Proactive
+> Task Notification
+> 4Agent Server Panel
+> Check Wearable
+> Signals
+
+Figure 3: User-facing demonstration flow, from onboarding through a day of use across the in-app chat, wearable device status check, advanced management tabs, and agent server panel for comprehensive monitoring. 
+
+a lightweight goal survey. The plan agent uses these inputs together with available health data to create personalised monitoring tasks, scheduled analyses, and an initial health plan. During daily use, the digital-twin interface provides an ambient summary through the cat avatar, while users can request instant analyses or interact with the agent through chat, notifications, messaging platforms, and wearable views. Agent-generated reports ex-pose supporting evidence through database-backed queries, ensuring transparent and inspectable re-sults (§2.2). Advanced tabs allow users to inspect collected data, agent status, reports, schedules, and personalised pages, while the agent server panel provides comprehensive control over models, live execution, prompts, memories, skills, tools, and generated content. Together, these interfaces allow users to both benefit from autonomous health assis-tance and retain full visibility and control over the agent’s operation. 
+
+4 Evaluation 
+
+HIME is a demonstration system rather than a benchmark, yet the first principle makes it mea-surable. Because every capability leaves a termi-nal database state, most actions are scored by re-playing a public wearable trace, letting the agent act and comparing the resulting state against a gold state computed independently from the same trace. We drive the deployed agent offline over ten randomly sampled participants from each of five public wearable corpora, namely LifeSnaps (Yfan-tidou et al., 2022), PMData (Thambawita et al., 2020), MMASH (Rossi et al., 2020), CovIden-tify (Cho et al., 2024) and GLOBEM (Xu et al., 2022), each through its own data adapter. The sweep covers 22 backbones. Nineteen run lo-cally and span the Qwen2.5 (Yang et al., 2024), Qwen3 (Yang et al., 2025), Qwen3.5 (Qwen Team, 2026a), Qwen3.6 (Qwen Team, 2026b) and Gemma-4 (Google DeepMind, 2026) families from 1.5B to 35B parameters, along with nemotron-3-nano, granite-4.1-8b and glm-4.7-flash. GPT-5-mini, DeepSeek-V4-flash and Gemini-3.5-flash are hosted-API frontier references. On-device execu-tion is the right target for privacy and latency, so the question that matters is how far local small backbones remain from frontier models. We bench-marked latency and show the results in Appendix E. 
+
+4.1 Per-role agentic capability 
+
+We give every agent in H IME the same backbone and score it against a terminal-state oracle that requires no LLM judge. Results are reported as pass@1 (Chen et al., 2021) over three runs. Each of the five role columns isolates one capability with its own closed-form check. Route scores top-level dispatch. The interaction agent must hand a user message to exactly the sub-agents it needs, with ev-ery required role present and none spurious. Anal-ysis answers a natural-language question over the replayed trace. It succeeds when the reported num-ber ˆv matches the value v of an independent ref-erence query, |ˆv − v| ≤ max(0 .02 |v|, 0.5) , and is backed by a real query or code run. Memory 
+
+executes a write instruction. It succeeds when the resulting user profile and proactive task state match the request, with the protected file header intact and 4no collateral edits. Plan drives onboarding. It suc-ceeds when the created scheduled tasks carry valid cron expressions, cover every stated health goal and ship with a published report. Halluc. captures the failure mode shared across these roles, the rate of asserting a number with no backing query, mea-sured on the analysis tasks. Each role keeps its own oracle, so a failure can be attributed to the role that caused it, a diagnosis unavailable in a single-role agent design. 
+
+Per-role results. Table 1 reports results for 12 representative backbones. Three findings stand out. First, local deployment rivals hosted frontier mod-els. The strongest local backbones reach an analy-sis score of 0.91 (Qwen3.6-27b and Qwen3.5-35b-a3b), matching or surpassing DeepSeek-V4-flash (0.85) and GPT-5-mini (0.76) with no hallucina-tions; only Gemini-3.5-flash clearly leads (0.94). Second, capability does not scale monotonically with model size. Qwen3-30b-a3b, despite ∼3B active of 30B total parameters, trails the smaller dense Qwen3-8b on analysis (0.36 versus 0.47) and memory (0.33 versus 0.96). Analysis is the most discriminative capability, ranging 0.00–0.94, while routing saturates for the most capable back-bones. Third, small models lag substantially. The 1.5B model fails across all capabilities with the highest hallucination rate (0.47), so current small on-device models remain insufficient for personal health agent tasks. 
+
+Composite rundown. The per-role scores mea-sure each capability in isolation, which overstates what a user experiences. We therefore run a com-posite rundown , a five-turn persistent chat ordered as a realistic daily interaction, including a weekly check-in plan covering sleep and activity, recalling what was just set up, the average heart rate on the user’s most active day (requiring a grounded num-ber), a durable preference written to memory, and a final turn that compounds the recall, switches to metric units, and asks for the all-time peak heart rate, so both the number and the preference must be correct. With ai,t and ri,t marking whether turn 
+
+t of session i passes its task and routing checks, over N sessions we report MT (Mean per Turn) score and S5 (Strict all-five-turns pass) score, 
+
+MT = 15N
+
+X
+
+> i,t
+
+ai,t , S5 = 1
+
+N
+
+X
+
+> i
+
+Y
+
+> t
+
+ri,t ai,t .
+
+We also report s/sess, the median wall-clock of one session on a single isolated H200, the latency a 0 10 20 30 40  
+
+> Stress/recovery rubric (%)
+> DeepSeek-V4-flash
+> qwen3.6-35b-a3b
+> GPT-5-mini
+> glm-4.7-flash
+> qwen3.6-27b
+> nemotron-3-nano
+> Gemini-3.5-flash
+> qwen3.5-9b
+> qwen3-32b
+> qwen3-4b
+> qwen3.5-4b
+> qwen2.5-1.5b
+> qwen2.5-32b
+> gemma-4-26b-a4b
+> qwen3-30b-a3b
+> qwen2.5-14b
+> qwen2.5-7b
+> gemma-4-e4b
+> qwen3-8b
+> granite-4.1-8b
+> qwen3-14b
+> qwen3-1.7b
+> 45.8
+> 37.5
+> 35.4
+> 25.0
+> 22.2
+> 18.7
+> 14.6
+> 13.3
+> 11.9
+> 10.4
+> 10.4
+> 8.3
+> 8.3
+> 6.2
+> 6.2
+> 4.2
+> 2.2
+> 2.1
+> 2.1
+> 0.0
+> 0.0
+> 0.0 Local
+> Hosted API
+
+Figure 4: Cross-modal report understanding, the stress/recovery rubric score (0 to 100%) of a wearable-only summary judged against the participant’s held-out self-report. The breakdown is in Table A1. 
+
+user waits per rundown (Appendix E). Performance degrades over long interaction trajectories. Per-turn scores remain strong, with Gemini-3.5-flash at 0.98 and Qwen3.5-35b-a3b at 0.96, yet flawless sessions are rare because per-turn errors compound. The best S5 values are only 0.44 (Gemma-4-26b-a4b) and 0.37 (Gemini-3.5-flash), and most back-bones sit at zero. Reliably chaining competent roles across a session is therefore an open frontier for on-device agents. 
+
+Does decomposition help? Splitting the agent into roles is first an engineering choice, as each role owns a bounded slice of the task, easing manage-ment and attributing failures rather than tangling tool calls inside a single persona. The ablation shows this split is also nearly free on the metric (Table A3). Most backbones that can run the multi-role protocol gain or break even, led by +0 .65 for Qwen3-8b and +0 .23 for Qwen3-32b, with only Qwen3.6-27b ( −0.36 ) and Gemma-4-e4b ( −0.71 )paying a substantial cost. In deployment, where a monolithic persona must hold every role in one long context, the advantage of factored responsibil-ities should only widen. 5Backbone Route Analysis Memory Plan Halluc. ↓ MT S5 tok/sess s/sess ↓
+
+Gemini-3.5-flash † 0.98 0.94 0.89 0.98 0.01 0.98 0.37 42k –DeepSeek-V4-flash † 1.00 0.85 0.97 1.00 0.00 0.84 0.00 66k –GPT-5-mini † 0.88 0.76 0.99 0.88 0.00 0.63 0.00 206k –Qwen3.6-27b 1.00 0.91 1.00 0.99 0.00 0.76 0.20 253k 97.3 Qwen3.5-35b-a3b 1.00 0.91 0.98 0.84 0.00 0.96 0.26 169k 21.3 Qwen3-32b 1.00 0.68 0.81 0.80 0.00 0.69 0.00 178k 55.9 Gemma-4-26b-a4b 1.00 0.48 0.93 0.33 0.26 0.89 0.44 236k 32.8 Qwen3-8b 0.61 0.47 0.96 0.57 0.00 0.68 0.00 194k 45.6 Qwen3-4b 1.00 0.43 0.67 0.37 0.00 0.57 0.00 33k 12.3 Qwen3-1.7b 0.50 0.41 0.01 0.99 0.00 0.26 0.00 123k 10.8 Qwen3-30b-a3b 0.97 0.36 0.33 0.99 0.00 0.61 0.00 242k 34.7 Qwen2.5-1.5b 0.37 0.00 0.00 0.00 0.47 0.26 0.00 20k 4.0 
+
+> Table 1: Per-role capability for 12 representative backbones, 3 hosted ( †) and 9 local, auto-scored on replayed public traces as pass@1 over three runs. MT is the mean per-turn score and S5 the strict all-five-turns rate of the composite rundown, Halluc. the unbacked-number rate, tok/sess the mean tokens per five-turn session, and s/sess the median wall-clock seconds of that session on one isolated H200 (Appendix E), shown as – for the hosted APIs, which we do not self-serve. The full 22-backbone sweep is in Table A2.
+
+4.2 Data-to-report evaluation 
+
+When asked for a personalised health report, the agent must read a participant’s multivariate history and commit to what it means. This cross-modal task, from time series to a natural-language ver-dict, probes understanding rather than retrieval (Liu et al., 2026). A fixed LLM judge (Liu et al., 2023) scores the wearable-only summary against the par-ticipant’s held-out self-report on a rubric covering fatigue, readiness and stress. Figure 4 shows the task is hard. The best backbone reaches only 46% (DeepSeek-V4-flash), and Gemini-3.5-flash leads single-turn analysis at 0.94 yet scores 14.6% here, while nemotron-3-nano at 0.85 analysis reaches 18.7%. Narrating subjective state is therefore a competence separate from retrieving numbers, the one a personal agent adds on top of question an-swering. 
+
+4.3 Real-time triggering analysis 
+
+An always-on health agent must act unprompted, monitoring a continuous wearable stream without paying for an LLM call at every reading. H IME
+
+lets the agent compile a user’s intent into a trigger, a cheap statistical condition that runs continuously for free and wakes the expensive multi-turn anal-ysis only when it fires (§2). To test whether this gating preserves detection while cutting cost, we compare it against a polling baseline that runs the identical analysis on a fixed schedule, measuring Backbone Polling Trigger Tokens recall recall saved Qwen3-1.7b 0.00 0.29 121 ×
+
+Qwen3-8b 0.69 0.89 76 ×
+
+Gemma-4-26b-a4b 0.57 0.43 83 ×
+
+Qwen3-30b-a3b 0.58 0.52 49 ×
+
+> Table 2: Detection on injected anomalies across PM-Data, LifeSnaps and MMASH, five participants per cor-pus and 47 events per backbone.
+
+how well each discovers injected anomalies in the stream (Appendix D gives the full protocol). Ta-ble 2 reports conditional recall given trigger acti-vation for four backbones. Agent-authored trig-gers identify more events on average than polling, and the gain is larger for smaller models, which a fixed schedule otherwise overwhelms with normal signals so that critical readings are missed. For larger models the trigger instead buys an order-of-magnitude cut in token usage at only a modest cost in recall. 
+
+4.4 Longitudinal Real-User Study 
+
+Whether H IME helps users is a question only real use can answer, and the aim is not momentary satis-faction but a healthier self over time. We conducted a two-month field study with nine non-technical participants using H IME on their own devices, col-lecting end-of-study feedback on a five-point Lik-64.67   
+
+> 4.00 4.33
+> 4.56 4.22
+
+Usability 
+
+Analysis 
+
+Relevance 
+
+Trustworthiness 
+
+Proactive 
+
+Experience 
+
+Personalised 
+
+Plan Figure 5: Mean participant ratings of H IME across five dimensions on a five-point Likert scale. 
+
+ert scale (Figure 5; survey instrument and further breakdown in Appendix F). Ratings were positive but uneven across dimensions (4.00–4.67). Usabil-ity (4.67) and proactive experience (4.56) scored highest, with participants reporting that proactive sleep and recovery reports helped them re-engage with previously overlooked health data. Person-alised plan fit was the weakest dimension (4.00), and a few participants found scheduled plans slow to adapt to a changed routine. Compared with prior tools, participants credited H IME mainly with gains in proactivity and personalisation, and less often with gains in raw accuracy or speed (Ap-pendix F). Reported failures were infrequent and mostly minor, so they did not outweigh the per-ceived benefit of continuous, evidence-backed mon-itoring, though the sample remains small and self-selected. 
+
+5 Conclusion 
+
+We presented H IME, a self-hosted agent platform that turns continuous wearable streams into per-sonal health insights, with three design principles making its architecture measurable, auditable and extensible. Across five corpora and 22 backbones, strong local models already rival hosted APIs, mak-ing privacy-preserving personal health agents in-creasingly practical, though multi-turn reliability and data-to-report narration remain open. We hope HIME supports research toward trustworthy per-sonalised health agents. 
+
+Acknowledgements 
+
+This work was supported in part by the UK Engineering and Physical Sciences Research Council through a Turing AI Fellowship (grant no. EP/V020579/1, EP/V020579/2) and Inkfish through the EMBRACE research programme. Wei is supported by a PhD studentship provided by King’s College London (KCL). The authors ac-knowledge the use of Computational Research, En-gineering and Technology Environment (CREATE) at KCL. 
+
+References 
+
+Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, and 1 others. 2021. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374 .Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj Yadav. 2025. Mem0: Building production-ready AI agents with scalable long-term memory. In European Conference on Artificial Intel-ligence (ECAI) .Peter Cho, Md Mobashir Hasan Shandhi, Ali Rogha-nizad, and Jessilyn Dunn. 2024. CovIdentify dataset. PhysioNet. Version 1.0.0. Google DeepMind. 2026. Gemma 4: Byte for byte, the most capable open models. https: //blog.google/innovation-and-ai/ technology/developers-tools/ gemma-4/ .Matthew Jörke, Shardul Sapkota, Lyndsea Warkenthien, Niklas Vainio, Paul Schmiedmayer, Emma Brunskill, and James A. Landay. 2025. GPTCoach: Towards LLM-based physical activity coaching. In Proceed-ings of the 2025 CHI Conference on Human Factors in Computing Systems . Association for Computing Machinery. Yubin Kim, Chanwoo Park, Hyewon Jeong, Yik Siu Chan, Xuhai Xu, Daniel McDuff, Hyeonhoon Lee, Marzyeh Ghassemi, Cynthia Breazeal, and Hae Won Park. 2024. MDAgents: An adaptive collaboration of LLMs for medical decision-making. In Advances in Neural Information Processing Systems .Thomas Kluyver, Benjamin Ragan-Kelley, Fernando Pérez, Brian Granger, Matthias Bussonnier, Jonathan Frederic, Kyle Kelley, Jessica Hamrick, Jason Grout, Sylvain Corlay, Paul Ivanov, Damián Avila, Safia Ab-dalla, Carol Willing, and Jupyter Development Team. 2016. Jupyter notebooks – a publishing format for re-producible computational workflows. In Positioning and Power in Academic Publishing: Players, Agents and Agendas , pages 87–90. IOS Press. Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gon-zalez, Hao Zhang, and Ion Stoica. 2023. Efficient memory management for large language model serv-ing with PagedAttention. In Proceedings of the 29th Symposium on Operating Systems Principles (SOSP) ,pages 611–626. ACM. 
+
+7Georgianna Lin, Rencong Jiang, Noémie Elhadad, and Xuhai ‘Orson’ Xu. 2026. A framework for longitudi-nal health ai agents. Nature Health , pages 1–10. Wei Liu, Peijie Yu, Michele Orini, Yali Du, and Yulan He. 2026. Hunt instead of wait: Evaluating deep data research on large language models. arXiv preprint arXiv:2602.02039 .Yang Liu, Dan Iter, Yichong Xu, Shuohang Wang, Ruochen Xu, and Chenguang Zhu. 2023. G-Eval: NLG evaluation using GPT-4 with better human alignment. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP) , pages 2511–2522. Association for Com-putational Linguistics. Subigya Nepal, Arvind Pillai, William Campbell, Talie Massachi, Michael V. Heinz, Ashmita Kunwar, Eu-nsol Soul Choi, Xuhai Xu, Joanna Kuc, Jeremy F. Huckins, Jason Holden, Sarah M. Preum, Colin Depp, Nicholas C. Jacobson, Mary P. Czerwinski, Eric L. Granholm, and Andrew T. Campbell. 2024. Mind-Scape study: Integrating LLM and behavioral sensing for personalized AI-driven journaling experiences. 
+
+Proceedings of the ACM on Interactive, Mobile, Wear-able and Ubiquitous Technologies (IMWUT) , 8(4). Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang, Shishir G. Patil, Ion Stoica, and Joseph E. Gon-zalez. 2024. MemGPT: Towards LLMs as operat-ing systems. In Conference on Language Modeling (COLM) .Qwen Team. 2026a. Qwen3.5: Towards native multi-modal agents. https://qwen.ai/blog?id= qwen3.5 .Qwen Team. 2026b. Qwen3.6-27B: Flagship-level cod-ing in a 27B dense model. https://qwen.ai/ blog?id=qwen3.6-27b .Alessio Rossi, Eleonora Da Pozzo, Dario Menicagli, Chiara Tremolanti, Corrado Priami, Alina Sirbu, David Clifton, Claudia Martini, and David Morelli. 2020. Multilevel monitoring of activity and sleep in healthy people. PhysioNet. Version 1.0.0. Samuel Schmidgall, Rojin Ziaei, Carl Harris, Ji Woong Kim, Eduardo Pontes Reis, Jeffrey Jopling, and Michael Moor. 2026. AgentClinic: A multimodal benchmark for tool-using clinical AI agents. npj Digital Medicine .Peter Steinberger. 2026. OpenClaw: Your own personal AI assistant. Any OS. Any platform. https:// github.com/openclaw/openclaw . Open-source software project, first released as Clawdbot in November 2025. Transfer to the non-profit OpenClaw Foundation announced February 2026. Xiangru Tang, Anni Zou, Zhuosheng Zhang, Ziming Li, Yilun Zhao, Xingyao Zhang, Arman Cohan, and Mark Gerstein. 2024. MedAgents: Large language models as collaborators for zero-shot medical rea-soning. In Findings of the Association for Computa-tional Linguistics: ACL 2024 . Association for Com-putational Linguistics. Vajira Thambawita, Steven Alexander Hicks, Hanna Borgli, Håkon Kvale Stensland, Debesh Jha, Mar-tin Kristoffer Svensen, Svein-Arne Pettersen, Dag Johansen, Håvard Dagenborg Johansen, Susann Dahl Pettersen, Simon Nordvang, Sigurd Pedersen, Anders Gjerdrum, Tor-Morten Grønli, Per Morten Fredrik-sen, Ragnhild Eg, Kjeld Hansen, Siri Fagernes, Chris-tine Claudi, and 7 others. 2020. PMData: A sports logging dataset. In Proceedings of the 11th ACM Multimedia Systems Conference (MMSys) , pages 231– 236. Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao Tan, and Yongfeng Zhang. 2025. A-MEM: Agentic memory for LLM agents. In Advances in Neural Information Processing Systems (NeurIPS) .Xuhai Xu, Han Zhang, Yasaman Sefidgar, Yiyi Ren, Xin Liu, Woosuk Seo, Jennifer Brown, Kevin Kuehn, Mike Merrill, Paula Nurius, Shwetak Patel, Tim Al-thoff, Margaret Morris, Eve Riskin, Jennifer Mankoff, and Anind Dey. 2022. GLOBEM dataset: Multi-year datasets for longitudinal human behavior modeling generalization. In Advances in Neural Information Processing Systems (NeurIPS): Datasets and Bench-marks Track .An Yang, Anfeng Li, Baosong Yang, and 1 others. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .An Yang, Baosong Yang, Beichen Zhang, and 1 others. 2024. Qwen2.5 technical report. arXiv preprint arXiv:2412.15115 .Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2023. ReAct: Synergizing reasoning and acting in language models. In The Eleventh International Conference on Learning Representations (ICLR) .Sofia Yfantidou, Christina Karagianni, Stefanos Efs-tathiou, Athena Vakali, Joao Palotti, Dimitrios Pan-teleimon Giakatos, Thomas Marchioro, Andrei Ka-zlouski, Elena Ferrari, and Šar ¯unas Girdzijauskas. 2022. LifeSnaps, a 4-month multi-modal dataset cap-turing unobtrusive snapshots of our lives in the wild. 
+
+Scientific Data , 9(1):663. 
+
+8A Report Rubric Breakdown 
+
+This appendix reports the complete result tables behind §4, using the same replayed-trace protocol and terminal-state oracles as the main text. Ta-ble A1 breaks the data-to-report rubric of §4.2 into its three dimensions on 16 PMData participants. 
+
+Backbone Overall% Fatigue% Readi.% Stress% DeepSeek-V4-flash † 45.8 62.5 31.2 43.8 Qwen3.5-35b-a3b 37.5 25.0 18.8 68.8 GPT-5-mini † 35.4 37.5 18.8 50.0 glm-4.7-flash 25.0 37.5 25.0 12.5 Qwen3.6-27b 22.2 20.0 20.0 26.7 nemotron-3-nano 18.7 37.5 6.2 12.5 Gemini-3.5-flash † 14.6 6.2 18.8 18.8 Qwen3.5-9b 13.3 20.0 0.0 20.0 Qwen3-32b 11.9 7.1 14.3 14.3 Qwen3-4b 10.4 6.2 18.8 6.2 Qwen3.5-4b 10.4 12.5 6.2 12.5 Qwen2.5-1.5b 8.3 6.2 12.5 6.2 Qwen2.5-32b 8.3 18.8 0.0 6.2 Gemma-4-26b-a4b 6.2 6.2 6.2 6.2 Qwen3-30b-a3b 6.2 18.8 0.0 0.0 Qwen2.5-14b 4.2 6.2 6.2 0.0 Qwen2.5-7b 2.2 0.0 0.0 6.7 Gemma-4-e4b 2.1 0.0 0.0 6.2 Qwen3-8b 2.1 0.0 0.0 6.2 granite-4.1-8b 0.0 0.0 0.0 0.0 Qwen3-14b 0.0 0.0 0.0 0.0 Qwen3-1.7b 0.0 0.0 0.0 0.0 
+
+Table A1: Full cross-modal report results on 16 PM-Data participants: overall rubric percentage and per-dimension hit rate. † hosted API. 
+
+B Full Per-Role Sweep 
+
+Table A2 extends Table 1 of §4.1 to all 22 back-bones, sorted by analysis score, and sharpens the main findings. The newest local generations close most of the gap to hosted APIs, with Qwen3.5-9b the cheapest competent configuration, reach-ing 0.87 analysis with perfect memory and plan scores at only 44k tokens. Single-turn skill does not guarantee session-level reliability. Nemotron-3-nano pairs 0.85 analysis with a collapsed multi-turn score of 0.02, and routing saturates near 1.00 for over half the field yet falls to 0.37 at the 1.5B floor. 
+
+C Decomposition Ablation 
+
+Table A3 reports the single-turn composed task of §4.1 for the 13 local backbones of the ablation run (the other nine postdate this run). The full list bears out the main text. Six backbones gain from the split, led by Qwen3-8b at +0 .65 and Qwen3-32b at 
+
++0 .23 , and five more sit within 0.09 of break-even. Only Qwen3.6-27b at −0.36 and Gemma-4-e4b at 
+
+−0.71 pay a real cost, while the two smallest fail under either protocol. Factoring into roles therefore costs little even on a single turn, the setting least favourable to it.                                                                                                                                                                                         
+
+> Backbone Rt An Mem Pl H↓MT S5 tok Gemini-3.5-flash †0.98 0.94 0.89 0.98 0.01 0.98 0.37 42k Qwen3.6-27b 1.00 0.91 1.00 0.99 0.00 0.76 0.20 253k Qwen3.5-35b-a3b 1.00 0.91 0.98 0.84 0.00 0.96 0.26 169k Qwen3.5-9b 1.00 0.87 1.00 1.00 0.00 0.91 0.01 44k nemotron-3-nano 0.99 0.85 0.93 0.66 0.00 0.02 0.00 52k DeepSeek-V4-flash †1.00 0.85 0.97 1.00 0.00 0.84 0.00 66k Qwen3.5-4b 1.00 0.77 0.84 0.18 0.00 0.66 0.00 50k GPT-5-mini †0.88 0.76 0.99 0.88 0.00 0.63 0.00 206k Qwen2.5-32b 1.00 0.72 0.66 0.07 0.00 0.74 0.22 159k Qwen3-32b 1.00 0.68 0.81 0.80 0.00 0.69 0.00 178k granite-4.1-8b 0.60 0.64 0.93 0.80 0.00 0.00 0.00 34k Qwen3-14b 1.00 0.52 0.79 0.00 0.00 0.44 0.00 162k Gemma-4-26b-a4b 1.00 0.48 0.93 0.33 0.26 0.89 0.44 236k Qwen3-8b 0.61 0.47 0.96 0.57 0.00 0.68 0.00 194k Qwen3-4b 1.00 0.43 0.67 0.37 0.00 0.57 0.00 33k Qwen3-1.7b 0.50 0.41 0.01 0.99 0.00 0.26 0.00 123k Qwen2.5-7b 0.60 0.38 0.66 0.91 0.12 0.31 0.00 38k Qwen3-30b-a3b 0.97 0.36 0.33 0.99 0.00 0.61 0.00 242k glm-4.7-flash 1.00 0.27 0.83 0.92 0.00 0.00 0.00 33k Qwen2.5-14b 0.74 0.15 0.63 0.22 0.22 0.62 0.00 102k Gemma-4-e4b 1.00 0.02 0.67 0.00 0.00 0.37 0.00 144k Qwen2.5-1.5b 0.37 0.00 0.00 0.00 0.47 0.26 0.00 20k
+
+Table A2: Full per-role capability over 22 backbones (pass@1, three runs), sorted by analysis; abbreviated columns as in Table 1. † hosted API. 
+
+Backbone Dec Mono ∆
+
+Qwen3-8b 0.98 0.33 +0 .65 
+
+Qwen3-32b 0.52 0.29 +0 .23 
+
+Qwen2.5-7b 0.21 0.09 +0 .12 
+
+Qwen3-14b 0.77 0.66 +0 .11 
+
+Qwen3-30b-a3b 0.29 0.22 +0 .07 
+
+Gemma-4-26b-a4b 0.69 0.63 +0 .06 
+
+Qwen3-1.7b 0.00 0.00 0.00 
+
+Qwen2.5-1.5b 0.00 0.00 0.00 
+
+Qwen3.5-35b-a3b 0.90 0.91 −0.01 
+
+Qwen2.5-32b 0.07 0.11 −0.04 
+
+Qwen2.5-14b 0.80 0.89 −0.09 
+
+Qwen3.6-27b 0.63 0.99 −0.36 
+
+Gemma-4-e4b 0.01 0.72 −0.71 
+
+Table A3: Decomposition ablation, decomposed (Dec) versus monolithic (Mono), for the 13 local backbones in the ablation run, sorted by ∆.
+
+D Trigger Detection Protocol 
+
+This appendix details the detection experiment of §4.3. The same agent invoked two ways, polling 
+
+(full multi-turn analysis on a fixed five-minute schedule) versus trigger (identical analysis only when an agent-authored condition fires). The back-bone authors its own rules from one plain-language request covering spikes, sustained elevation, slow heart rate, low blood oxygen and low heart-rate variability, each choosing a signal, a threshold or standard-deviation condition, a window and a cooldown. We replay PMData, LifeSnaps and MMASH, the three intraday heart-rate corpora, un-der a frozen clock that ingests batches in order so a rule only sees samples up to the simulated present. Since no corpus labels real anomalies, we inject a 9fixed, diverse set of events as ground truth. Heart-rate spikes and drops (baseline mean ± several stan-dard deviations, floored or ceilinged at a fixed bpm), a sustained tachycardic run, a blood-oxygen dip to 86%, and a low heart-rate-variability sample, each replacing the real reading in its batch so it is the latest value the signal has when the gate evaluates. A fire is credited only within a 45-minute grace window after onset, and a fixed LLM judge (Liu et al., 2023) checks, per event, whether the woken analysis surfaced that abnormality, flagging unsup-ported concerns as false alarms. We report recall on events whose gate fires, over five participants per corpus and 47 events per backbone; the token saving in Table 2 is the ratio of the trigger arm’s few daily analyses to polling’s fixed schedule. 
+
+E On-Device Latency Profile 
+
+The main text reports token count because it is hardware-independent, but H IME runs on the user’s own machine, so wall-clock latency mat-ters too. Table A4 reports the rundown for every local backbone, the end-to-end wall-clock of the five-turn composite session of §4.1 (the session scored there for MT and S5), each served alone on one NVIDIA H200 through vLLM (Kwon et al., 2023) in bfloat16 (bf16) with reasoning backbones thinking, median over five PMData participants. Decode throughput at batch one ranged from 53 tok/s at 32B to 536 tok/s at 1.5B, tracking active rather than total parameters, so the 30B mixture-of-experts decoded as fast as a dense 4B. 
+
+F Human Evaluation Survey Design 
+
+This appendix gives the survey instrument behind §4.4. Beyond the Likert questionnaire (Figure 5), participants answered three multiple-choice ques-tions, including which health domains they tracked, how they managed those before H IME, and where HIME improved on their previous approach (Fig-ure A1). Participants adopted H IME as a daily sleep companion, extending to fitness and stress management, having relied mostly on fragmented apps before. They credited H IME with proactiv-ity and personalisation gains, fewer in usability, accuracy or speed (§4.4). 
+
+Backbone Params Rundown ↓ (s) Qwen2.5-1.5b 1.5B 4.0 glm-4.7-flash 31B † 4.3 Qwen2.5-7b 7B 9.4 Qwen3-1.7b 1.7B 10.8 nemotron-3-nano 4B 12.2 Qwen3-4b 4B 12.3 Gemma-4-e4b 8B 12.4 Qwen3.5-35b-a3b 35B † 21.3 Qwen3.5-9b 9B 23.8 Qwen2.5-14b 14B 26.7 Qwen3.5-4b 4B 27.9 Qwen3-14b 14B 29.4 Gemma-4-26b-a4b 26B † 32.8 Qwen3-30b-a3b 30B † 34.7 Qwen2.5-32b 32B 44.6 Qwen3-8b 8B 45.6 Qwen3-32b 32B 55.9 Qwen3.6-27b 27B 97.3 granite-4.1-8b 8B 230.2 ‡
+
+Table A4: Composite-rundown latency on one NVIDIA H200, median over five PMData participants. † mixture-of-experts. ‡ unreliable: loops on malformed tool calls until timeout. 0 1 2 3 4 5 6 7 8               
+
+> Chronic disease
+> Weight
+> Recovery / rehab
+> Everyday monitoring
+> Stress / mood
+> Exercise / fitness
+> Sleep
+> Which aspects did you track with HiMe?
+> 012345678
+> Consulting a doctor
+> Did not track
+> General AI tools
+> Other 3rd-party apps
+> Phone native apps
+> How health was managed before HiMe?
+> 01234567
+> Speed
+> Accuracy
+> Usability
+> Goal alignment
+> Personalisation
+> Proactivity
+> Where HiMe is better than before?
+
+Figure A1: Participants’ multiple-choice responses on HIME usage scenarios, prior health-management meth-ods, and advantages over previous approaches. 
+
+10
