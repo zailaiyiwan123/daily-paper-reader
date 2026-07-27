@@ -1,0 +1,667 @@
+Title: MoE^2-LoRA: When MoE Models Meet MoE-style Low-Rank Adaptation
+
+URL Source: https://arxiv.org/pdf/2607.21978v1
+
+Published Time: Mon, 27 Jul 2026 00:23:56 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# MoE 2-LoRA: When MoE Models Meet MoE-style Low-Rank Adaptation 
+
+Qingyu Yang 1,2,∗ Haonan He 1,3,∗,† Minglei Li 1,4 Jingqi Ye 1,3
+
+Tao Chen 1 Lei Bai 1 Peng Ye 1,4,5,‡       
+
+> 1Shanghai Artificial Intelligence Laboratory 2KTH Royal Institute of Technology
+> 3University of Science and Technology of China 4Fudan University
+> 5The Chinese University of Hong Kong * Equal contribution. †Project Lead. ‡Corresponding author. Email: yepeng@pjlab.org.cn
+
+Abstract 
+
+Mixture-of-Experts (MoE) architectures have been widely adopted in large language mod-els, yet parameter-efficient fine-tuning (PEFT) for MoE models remains underexplored. Ex-isting PEFT methods for MoE either ignore router priors with uniform adapters, reducing efficiency and risking forgetting, or rely on static expert selection, limiting per-token ca-pacity and cross-expert feature learning. In this paper, we make the first attempt to fine-tune MoE models with MoE-style low-rank adaptation: our method, entitled MoE 2-LoRA, deeply couples the pretrained expert special-ization with task-specific adaptivity via a dual-channel Routing-Conditioned Projection (RCP) module, which reuses base router activations to inform LoRA routing. We further introduce a single global LoRA expert pool shared across all layers, enabling model-wide adaptation with emergent layer-wise affinities and balanced ex-pert utilization. MoE 2-LoRA simultaneously benefits from the advantages of prior reuse, dy-namic adapter routing, and model-wide knowl-edge sharing. Evaluated on multiple MoE back-bones with varying scales and expert granulari-ties, MoE 2-LoRA consistently achieves state-of-the-art downstream accuracy while retaining stronger general capabilities. 
+
+1 Introduction 
+
+Mixture-of-Experts (MoE) (Jacobs et al., 1991) architectures, which activate only a small frac-tion of parameters for each input, have recently been widely adopted by large language models (LLMs) such as DeepSeek-V3 (Liu et al., 2024a) and Qwen3 (Yang et al., 2025), owing to their ad-vantages including reasoning efficiency and scaling performance comparable to that of dense models. For dense architecture based LLMs, efficient and effective fine-tuning methods have been thoroughly studied. For example, LoRA (Hu et al., 2022), one of the most widely used parameter-efficient fine-tuning (PEFT) methods designed for dense models, matches the performance of full fine-tuning by de-composing weight updates into low-rank subspaces. In comparison, how to efficiently fine-tune MoE models remains an underexplored problem, primar-ily due to their sparse activation nature, unstable gradient flow, and massive parameter scale, which highlights the pressing need for PEFT methods specifically tailored for MoE models. Existing PEFT methods for MoE models are predominantly built upon applying LoRA adapters to MoE experts (Fig. 1(I.a)), and further attempt to exploit the routing priors of the MoE model to guide expert-level adaptation, that is, to decide which experts should receive adaptation or how much (Fig. 1(I.b)). For example, ESFT (Wang et al., 2024) and DAS-LoRA (Tang et al., 2026) first collect offline router statistics to identify a sub-set of critical experts, and then apply LoRA only to those experts; DR-LoRA (Deng et al., 2026) adap-tively assigns higher ranks to experts with higher routing frequency and gradient-based importance. While these methods improve parameter efficiency, they still suffer from two major limitations: (i) Insufficient adaptation of critical experts. By se-lecting a subset of trainable experts or high-rank experts, any expert who falls outside this subset but is activated at inference time receives insufficient task-specific updates. (ii) Lack of high-level inter-actions: Adapting experts independently neglects both the cooperative dynamics among co-activated experts and the cross-layer interactions of MoE models (Fig. 5), which could enhance performance and reduce parameter redundancy. To address these limitations, we seek to fine-tune MoE models with dedicated MoE mechanisms, shifting the adaptation horizon from individual ex-perts to each MoE module and the entire MoE model. This direction resonates with another line of research that integrates LoRA with an MoE struc-ture (Fig. 1(I.c)), which yields MoE-style LoRA methods such as MoELoRA (Luo et al., 2024) and arXiv:2607.21978v1 [cs.CL] 24 Jul 2026 (III) LoRA Experts Preference  
+
+> c. MoELoRA -style
+
+⋯ 
+
+> Base output LoRA output
+
+h     
+
+> LoRA LoRA LoRA
+> a. Per -expert LoRA
+> d. MoE 2(Ours)
+
+𝐸 !
+
+G
+
+⋯ 
+
+> Base output LoRA output
+
+h
+
+⋯𝐸 # 𝐸 $   
+
+> 𝑙𝑜𝑔𝑖𝑡𝑠 𝑧
+> b. Static expert -subset selection
+> (I) Comparison of PEFT-on-MoE methods
+> output
+
+h
+
+𝐸 %𝐸 # 𝐸 $ 𝐸 !
+
+> LoRA
+> LoRA
+> LoRA
+> LoRA
+> LoRA
+> LoRA
+
+G
+
+> top-K
+
+⋯ ⋯
+
+> output
+
+hG
+
+𝐸 %𝐸 &
+
+> Offline expert selecting
+> LoRA
+> LoRA
+> top-K
+> Tr ainable
+> Fr ozen
+> La yer-sp ecific
+
+G Pr etrained
+
+> Ro uter
+
+𝐸 C 
+
+> Pr etrained
+> Ba seExpert
+
+ℎ Hi dden State  
+
+> La yer-sh ared
+> (II) Annotation
+> Ro uting-
+> Co nditioned
+> Pr oje ction
+> Dense FFN Weight RCP RCP LoRA Router
+
+⋯  
+
+> LoRA 1LoRA p
+> LoRA qLoRA m
+
+Figure 1: (I) Comparison of PEFT-on-MoE methods: (a) Per-expert LoRA, which equip each MoE expert with a LoRA adapter; (b) Static expert-subset selection methods, which select a subset of experts offline to be trained with LoRA; (c) MoELoRA-style methods, which adapt each MoE module with a MoE-style low-rank adapter; (d) MoE 2.(II) Annotation. (III) LoRA Experts Preference: We present the preferred layers of LoRA experts in MoE 2’s global expert pool, demonstrating the layer-specific learning and cross-layer learning capabilities of MoE 2.
+
+MoLA (Gao et al., 2025). These methods, however, are not specifically designed for MoE models: their MoE mechanisms operate independently of those inherent to MoE models, thereby leaving the expert interactions and cross-layer interactions encoded in the base MoE models unutilized. In light of this, if it is possible to deeply bind the two MoE mechanisms of MoE models and MoE-style LoRA, we could mitigate the aforementioned limitations. These observations naturally raise a unifying ques-tion: When MoE models meet MoE-style low-rank adaptation, how can we deeply bind the two MoE mechanisms at both the MoE module level and the MoE model level, thereby enhancing task per-formance while preserving general capabilities? 
+
+To answer this question, we introduce MoE 2-LoRA (Figure 1(I.d)), an MoE-style low-rank adap-tation method tailored for MoE models. At its core lies the Routing-Conditioned Projection (RCP) module, which reuses the pretrained MoE rout-ing activations to drive LoRA expert selection. Concretely, RCP fuses two routing signals: a pri-mary channel z carrying the base router activa-tions, along with an auxiliary channel hc, which injects a task-specific correction. A learnable ma-trix Wl maps the concatenated input into the LoRA routing space, producing LoRA expert selection coupled with the base model’s expert selection. Further, in order to enable model-level knowledge sharing, we maintain a global pool of LoRA ex-perts shared across all MoE layers. As demon-strated in Figure 1(III), this design yields a strik-ing emergent property: each LoRA expert devel-ops a pronounced layer affinity, while still con-tributing to other layers to a lesser extent, and the overall assignment of experts across layers remains highly uniform. This indicates that the global pool achieves model-wide cross-layer knowledge shar-ing with high parameter utilization, avoiding the isolation and redundancy of layer-specific adapters. As a result, our MoE 2-LoRA unifies three key properties: pretrained routing prior reuse, MoE-style LoRA expert selection, and model-level cross-layer learning through a global expert pool. Equipped with this model-level design, MoE 2-LoRA attains state-of-the-art downstream accu-racy on four MoE backbones of varying scale and expert granularity, OLMoE-1B-7B (Muen-nighoff et al., 2024), DeepSeek-V2-Lite (Liu et al., 2024a), Qwen3-30B-A3B (Yang et al., 2025), and Qwen3.5-35B-A3B (Qwen Team, 2026), improv-ing over the strongest PEFT baselines by up to +2.56 points in in-domain average accuracy, while exhibiting superior general capability retention. Our contributions are summarized as follows: • We diagnose two key limitations of existing PEFT methods for MoE models and intro-duce the principle of fine-tuning MoE models with MoE-style PEFT, which requires deeply binding the two MoE mechanisms and estab-lishing both module level and model level interactions. This principle unifies expert-level, module-level, and model-level adapta-tion, overcoming the identified limitations and serving as the foundation for our method de-sign. • We propose MoE 2-LoRA, which realizes this insight through two key components: (1) a Routing-Conditioned Projection (RCP) mod-ule that repurposes the base router’s activa-tions to drive LoRA expert selection, and (2) a single global LoRA expert pool shared across all MoE layers. As visualized in Figure 1(I), the global pool yields emergent layer affini-ties and balanced expert utilization, achieving efficient model-wide knowledge sharing. • Across four MoE backbones (OLMoE-1B-7B, DeepSeek-V2-Lite, Qwen3-30B-A3B, Qwen3.5-35B-A3B) and various benchmarks (math, code, general, multimodal), MoE 2-LoRA achieves state-of-the-art downstream performance and general capability retention, improving over the base model in both task and general performance. 
+
+2 Related Work 
+
+2.1 PEFT and LoRA. 
+
+The scaling of LLMs to billions of parameters has rendered conventional full fine-tuning computation-ally prohibitive. This bottleneck has spurred the widespread adoption of PEFT techniques, epito-mized by LoRA, owing to its plug-and-play de-ployability, strong downstream performance, and zero inference latency. By restricting updates to a small subset of trainable parameters, these methods enable resource-efficient model adapta-tion while preserving the model’s original infer-ence cost. Though LoRA matches the performance of full fine-tuning in many scenarios, a gap persists on challenging tasks such as scientific reasoning and coding. This gap has been extensively investi-gated and effectively narrowed by a recent body of follow-up work that refines LoRA with improved algorithms. For example, LoRA+ (Hayou et al., 2024) decouples the learning rates for the down-and up-projection weights of a low-rank adapter, effectively enhancing training stability over stan-dard LoRA. GoRA (He et al., 2025) adaptively assigns ranks to adapters based on gradient infor-mation, thereby strengthening parameter utiliza-tion. Similarly, methods such as MoELoRA (Luo et al., 2024), MoLA (Gao et al., 2025), and Lo-RAMoE (Dou et al., 2023) improve LoRA’s perfor-mance by integrating MoE mechanisms. 
+
+2.2 PEFT for MoE models. 
+
+PEFT methods are predominantly implemented and evaluated on dense models, without being tailored to MoE architectures. Existing studies on PEFT methods for MoE models remain sparse and insuf-ficiently comparative. Though PERFT (Liu et al., 2026) has briefly investigated various strategies for training MoE models with LoRA, most PEFT methods for MoE models concentrate on select-ing experts to be fine-tuned or adaptively assigning ranks to the adapters of MoE experts based on rout-ing statistics and expert importance information. For example, ESFT (Wang et al., 2024) analyzes the router’s output probability distribution on down-stream task data and accordingly selects a subset of experts to be fine-tuned; MoE-Sieve (Manzoni, 2026) counts how many tokens each expert receives per layer on a small calibration dataset, then applies LoRA adapters exclusively to the selected experts; CEFT (Bai et al., 2025) identifies experts that pro-gressively amplify attention to relevant contextual information and selectively fine-tunes only these experts; DR-LoRA (Deng et al., 2026) assigns het-erogeneous LoRA ranks across experts based on an expert saliency score that jointly considers routing frequency and gradient-based rank importance. 
+
+3 Method 
+
+3.1 MoE Routing and LoRA 
+
+An MoE layer contains a router G(·) and NE feed-forward experts {Ei}NE
+
+> i=1
+
+. Given a token representa-tion h ∈ RD, the router produces logits z = G(h)
+
+and activates a top-K expert set Sh. The MoE output is 
+
+MoE( h) = X
+
+> i∈S h
+
+gi(h)Ei(h),
+
+where gi(h) is the normalized routing weight. LoRA parameterizes a low-rank update to a pre-trained weight W ∈ Rdout ×din as 
+
+∆W = αr BA, 
+
+where A ∈ Rr×din , B ∈ Rdout ×r, and r ≪
+
+min( dout , d in ). In PEFT-on-MoE, the pretrained router and experts are frozen, and only the intro-duced adapter parameters are optimized. 𝒛             
+
+> Sum
+> Softmax &Top -K
+> [𝒛 ,ℎ"]Routing -
+> Conditioned
+> Projection
+> Input 𝒉
+> ×V𝑝 #,%
+> 𝑝 #
+> Reuse
+> 𝒐 𝒃𝒂𝒔𝒆 𝒐 𝑳𝒐𝑹𝑨
+> Output 𝒚
+> Softmax &Top -K
+> Base MoE
+> Block
+> MoE 2LoRA
+> Branch
+
+𝐸 !⋯𝐸 # 𝐸 $      
+
+> ×Z𝑝 .LoRA 1LoRA p⋯
+> LoRA qLoRA m⋯
+> Global LoRA Pool
+> Sum
+> 𝑾 𝒉
+> 𝑾 𝑳
+> d
+> s
+> n+s
+> k
+
+Gd
+
+> n
+
+# Plan to use Figure 2: Overview of the MoE 2-LoRA forward pass on a single MoE layer. 
+
+3.2 Routing-Conditioned Projection ( Wl)
+
+MoE 2-LoRA introduces an additional LoRA ex-pert pool {ELoRA  
+
+> j
+
+}NL 
+
+> j=1
+
+and learns per-token rout-ing pL ∈ RNL over this pool. The key design choice is the routing input : rather than learning routing from raw hidden state h or hardwiring it to base routing, MoE 2-LoRA uses a two-channel input : (1) Primary channel: the base router logits 
+
+z = G(h) ∈ RNE . This provides a directly pre-trained routing signal for LoRA expert selection instead of learning routing entirely from scratch; (2) Auxiliary channel: a low-rank projection of the hidden state, hc = Wh · h ∈ Rdb with db ≪ D.This adds a learn from scratch signal that comple-ments the base router channel. The LoRA routing is computed as: 
+
+pL = softmax  Wl · [ z ; hc ], (1) where Wl ∈ RNL×(NE +db) is a learnable per-layer projection matrix. We then select the top-
+
+KL LoRA experts, SLoRA  
+
+> h
+
+= TopK( pL), and renormalize their weights to sum to one: ˜pL,j =
+
+pL,j / P
+
+> j′∈S LoRA
+> h
+
+pL,j ′ . Fig. 2 illustrates the com-plete forward pass. This design conditions LoRA routing on pre-trained routing signals while preserving the flexi-bility of task-specific routing adaptation through the learnable projection Wl.
+
+3.3 Global Shared LoRA Pool 
+
+MoE 2-LoRA’s LoRA expert pool is shared across layers : a set of NL LoRA experts is reused by multiple MoE blocks, with each block accessing the pool through its own per-layer Wl.This contrasts with heuristic allocation-based designs such as MoLA, which modifies layer het-erogeneity by statically pre-specifying each layer’s expert pool size and composition, an architectural choice that requires search over per-layer capac-ity schemes. MoE 2-LoRA instead handles layer heterogeneity dynamically at the routing level :each layer can flexibly select from the shared pool through its learnable Wl, with no per-layer capacity hyperparameter. The same expert can serve multi-ple layers, and the same layer can route differently from its neighbors. An evident advantage of cross-layer expert shar-ing is that the parameter count of the trainable LoRA experts pool do not scale linearly with model depth, in contrast to per-layer pool designs where the parameter count grows as L × Nper -layer . The choice of the total number of LoRA experts and the number of activated experts per input and per layer is clearly more flexible than that of the per-layer pool designs. 
+
+3.4 Forward Pass 
+
+Combining the RCP routing of §3.2 with the global shared pool of §3.3, the MoE 2-LoRA block output is 
+
+y = MoE( h) + X
+
+> j∈S LoRA
+> h
+
+˜pL,j · ELoRA  
+
+> j
+
+(h), (2) where ELoRA  
+
+> j
+
+(h) = ( α/r ) Bj Aj h is the rank-r
+
+LoRA expert, and ˜pL,j are the renormalized top-
+
+KL routing weights defined in §3.2 (or its hierar-chical variant when G > 1). 
+
+4 Experiments 
+
+In this section, we evaluate MoE 2-LoRA and base-line methods on multiple MoE backbones across various tasks (math, code, general-retention, and multimodal). 
+
+4.1 Main Experiments Base Models. We conduct the main experi-ments on three MoE backbones: OLMoE-1B-7B (Muennighoff et al., 2024), DeepSeek-V2-Lite (DeepSeek-AI, 2024), and Qwen3-30B-A3B (Yang et al., 2025), covering different model scales and MoE architectures. This wide set of models ensures a comprehensive evaluation across scales and model families. Baselines. We compare MoE 2-LoRA against five baselines covering the dominant families of PEFT-for-MoE: PERFT-E (Liu et al., 2026) (per-expert LoRA following the base routing), MoELoRA (Luo et al., 2024) (per-layer LoRA expert pool with an independent learned router), MoLA (Gao et al., 2025) (heuristic expert alloca-tion for MoE-style LoRA), DAS-LoRA (Tang et al., 2026) (DAS-guided static selection of a subset of base experts for adaptation), and FFT (full fine-tuning). All methods are applied only to the MoE modules while keeping all other modules frozen. 
+
+Datasets. We organize datasets by domain. Math: 
+
+fine-tune on MetaMathQA-R1 (Yu et al., 2024); evaluate on GSM8K (Cobbe et al., 2021) and MATH-500 (Lightman et al., 2023). Code: fine-tune on MagicCoder-OSS (Wei et al., 2023) (75 K samples); evaluate on MBPP (Austin et al., 2021) and HumanEval (Chen et al., 2021). 
+
+General retention: evaluation on five general-domain benchmarks (MMLU(Hendrycks et al., 2021), WinoGrande(Sakaguchi et al., 2021), ARC-Challenge(Clark et al., 2018), StrategyQA(Geva et al., 2021), and CommonsenseQA(Talmor et al., 2019)) using the code fine-tuned checkpoints to measure general capability retention after domain-specific adaptation. 
+
+Fair comparison. We keep all essential evalu-ation criteria identical for all evaluated baselines: sharing the same training and testing recipe. For all evaluated methods except FFT, the trainable parameter budgets vary by at most ∼10% . (per-method counts and configurations are listed in Ap-pendix A.2, and training-time and memory com-parisons with PEFT baselines are reported in Ap-pendix A.4). 
+
+4.2 Main Experimental Results 
+
+Tab. 1 reports in-domain performance (Math and Code) together with out-of-domain general reten-tion across three MoE backbones. Across all three backbones, MoE 2-LoRA achieves the highest in-domain average among PEFT methods while maintaining strong general ca-pability retention after domain-specific fine-tuning. The gains remain consistent across models with dif-ferent scales and expert granularities, ranging from OLMoE-1B-7B to Qwen3-30B-A3B. In particular, MoE 2-LoRA improves over prior PEFT-on-MoE methods on both math and code benchmarks si-multaneously, whereas several baselines show a stronger trade-off between in-domain adaptation and out-of-domain retention. 
+
+4.3 Multimodal Experiments 
+
+To evaluate whether MoE 2-LoRA remains effective in multimodal settings, we further conduct exper-iments on a vision-language MoE model in the medical imaging domain. 
+
+Setup. We evaluate MoE 2-LoRA and two repre-sentative baselines on Qwen3.5-35B-A3B (Qwen Team, 2026). For in-domain medical VQA (Vi-sion Question Answering) we fine-tune on a mix-ture of LLaVA-Med (Li et al., 2023) and the train splits of three medical VQA datasets, and evaluate on the test splits of VQA-RAD (Lau et al., 2018), SLAKE (Liu et al., 2021), and PathVQA (He et al., 2020). For general VL retention , we evaluated the checkpoints trained on medical VQA datasets on MMBench (Liu et al., 2024b), MME (Fu et al., 2025), and RealWorldQA (xAI, 2024). 
+
+Results. Tab. 2 reports both axes. MoE 2-LoRA achieves the best accuracy on every in-domain benchmark and the best positive transfer on every general benchmark, demonstrating the effective-ness of MoE 2-LoRA on multimodal settings. 
+
+4.4 Experiments on Capacity Scaling 
+
+We study scaling behavior under different trainable parameter budgets ( 0.12% , 0.24% , and 0.48% ) on OLMoE math (Tab. 3). As the trainable budget increases, MoE 2-LoRA consistently improves on GSM8K, rising from 0.3707 at 0.12% to 0.3980 
+
+at 0.48% . In contrast, MoELoRA shows limited gains under larger budgets, particularly on GSM8K, where performance remains around 0.30 across all settings. The results show that MoE 2-LoRA maintains stronger scaling behavior than MoELoRA under increased adaptation capacity. 
+
+5 Analysis and Discussion 
+
+In this section, we first implement ablation studies on MoE 2-LoRA to evaluate the effectiveness of its components. We then conduct in-depth analyses on the working mechanisms of the RCP and the global expert pool, uncovering the underlying advantages of our designs. 
+
+5.1 Component Ablation 
+
+We isolate MoE 2-LoRA’s two architectural choices, routing-conditioned projection (RCP) and the In-domain (Math + Code) General Retention Method GSM8K MATH MBPP HE Avg MMLU WG ARC-C SQA CSQA Avg 
+
+OLMoE-1B-7B(Muennighoff et al., 2024) 
+
+Base 1.06 0.2 23.01 14.23 9.63 45.08 51.22 52.84 56.74 45.54 50.28 FFT 46.70 17.2 28.79 21.75 28.61 45.01 50.67 52.05 53.42 48.48 49.93 per-expert LoRA(Liu et al., 2026) 29.11 7.6 28.79 14.43 19.98 48.44 50.99 56.83 52.11 47.58 51.19 MoLA(Gao et al., 2025) 26.38 7.8 29.18 15.24 19.65 48.58 51.22 57.42 50.80 46.68 50.94 MoELoRA(Luo et al., 2024) 29.91 5.6 29.57 15.85 20.23 47.71 51.46 56.48 53.86 45.21 50.94 DAS-LoRA(Tang et al., 2026) 34.87 8.2 29.96 16.46 22.37 47.82 51.54 57.68 52.84 45.37 51.05 
+
+MoE 2-LoRA 36.32 11.2 31.91 16.87 24.07 48.50 51.46 58.19 53.28 46.60 51.61 
+
+DeepSeek-V2-Lite(DeepSeek-AI, 2024) 
+
+Base 3.71 0.0 26.46 18.90 12.27 46.09 49.96 55.03 49.34 42.59 48.60 FFT 65.05 26.0 47.86 40.45 44.84 51.55 52.17 64.42 49.49 50.12 53.55 per-expert LoRA(Liu et al., 2026) 49.28 14.4 47.86 32.32 35.97 51.59 51.30 64.85 49.20 49.80 53.35 MoLA(Gao et al., 2025) 46.25 13.8 49.03 34.15 35.81 51.60 50.12 64.33 49.20 52.42 53.53 MoELoRA(Luo et al., 2024) 48.52 14.6 49.81 33.13 36.52 51.22 50.91 64.42 51.53 49.96 53.61 DAS-LoRA(Tang et al., 2026) 46.55 14.6 49.03 33.54 35.93 49.64 51.54 61.77 51.09 49.80 52.77 
+
+MoE 2-LoRA 52.24 18.4 52.14 33.54 39.08 51.72 51.85 65.53 50.22 52.01 54.27 
+
+Qwen3-30B-A3B(Yang et al., 2025) 
+
+Base 73.69 30.6 69.26 63.41 59.24 77.77 71.82 92.83 72.49 85.34 80.05 FFT 95.30 74.40 72.76 82.52 81.23 74.46 71.35 92.75 61.86 81.98 76.48 per-expert LoRA(Liu et al., 2026) 94.47 71.60 72.37 82.11 80.14 75.05 72.38 93.34 70.16 84.03 78.99 MoLA(Gao et al., 2025) 95.07 72.60 71.98 82.11 80.44 73.79 72.77 92.24 71.03 82.72 78.51 MoELoRA(Luo et al., 2024) 94.84 72.00 73.54 82.52 80.73 68.17 71.03 86.01 72.05 75.43 74.54 DAS-LoRA(Tang et al., 2026) 94.69 73.20 73.93 81.71 80.88 69.18 71.11 87.80 73.65 84.03 77.15 
+
+MoE 2-LoRA 95.22 74.40 74.32 82.32 81.57 76.21 71.51 93.60 70.01 85.83 79.43 
+
+Table 1: Main results across three MoE backbones on in-domain tasks (Math, Code) and out-of-domain general retention. Avg denotes the combined in-domain average over GSM8K, MATH, MBPP, HumanEval. Bold indicates the best PEFT result excluding FFT. 
+
+Medical VQA General Retention Method VQA-RAD SLAKE PathVQA Avg MMBench MME RealWorldQA Avg 
+
+Qwen3.5-35B-A3B(Qwen Team, 2026) 
+
+Base model 69.32 72.28 50.47 64.02 90.14 91.03 46.41 75.86 MoELoRA(Luo et al., 2024) 68.20 87.30 64.82 73.44 91.61 92.04 46.14 76.60 DAS-LoRA(Tang et al., 2026) 68.60 87.40 64.60 73.53 91.61 92.38 46.54 76.84 
+
+MoE 2-LoRA 69.25 87.68 65.67 74.20 92.19 92.42 47.19 77.27 
+
+Table 2: Medical VQA accuracy and general VL retention on Qwen3.5-35B-A3B. 
+
+Method Params GSM8K MATH-500 
+
+MoELoRA 0.12% 29.91 5.6 MoELoRA 0.24% 30.10 8.4 MoELoRA 0.48% 30.02 9.4 MoE 2-LoRA 0.12% 37.07 8MoE 2-LoRA 0.24% 39.58 9.2 MoE 2-LoRA 0.48% 39.8 10.6 
+
+Table 3: Capacity scaling on OLMoE math. MoE 2-LoRA scales more effectively than MoELoRA. 
+
+shared global pool,through a matched-budget abla-tion chain on DeepSeek-V2-Lite (math). Starting from a MoELoRA-style baseline, we first replace hidden-state routing with RCP while keeping the per-layer pool fixed, and then introduce the globally shared pool on top of RCP. Tab. 4 shows the main ablation chain (top three rows) together with additional reference variants (bottom). Replacing hidden-state routing with RCP under a fixed per-layer pool improves Avg from 
+
+31 .56 to 32 .23 , showing that incorporating pre-trained router structure improves LoRA expert se-lection even without cross-layer sharing. Introduc-ing the globally shared pool on top of RCP further improves Avg to 35 .32 , indicating that global shar-ing and routing-conditioned projection are comple-mentary. We further ablate the hc (Auxiliary channel) by routing only from pretrained router logits z ∈ RNE .Both router-only variants underperform the full RCP design, indicating that pretrained routing structure alone is insufficient. Effective LoRA rout-Variant Pool Routing GSM8K MATH-500 Avg                                 
+
+> Baseline per-layer hidden-state 48.52 14.6 31.56 + RCP per-layer RCP 49.05 15.4 32.23 + Global Pool (MoE 2-LoRA) global RCP 52.24 18.4 35.32
+> Global Only global hidden-state 48.07 16.2 32.14 Router-only (per-layer) per-layer zonly 45.49 16.8 31.15 Router-only (global) global zonly 46.17 15.8 30.99
+
+Table 4: Component ablation on DeepSeek-V2-Lite math. 0 5 10 15 20 25 
+
+> Layer index
+> 0
+> 100
+> 200
+> 300
+> Per-layer F-statistic  MoE2 (mean 75.0)
+> MoELoRA (mean 26.4)
+
+Figure 3: Per-layer routing-alignment F-statistic on DeepSeek-V2-Lite: MoE 2-LoRA (red) versus the independent-routing baseline (gray). 
+
+ing requires combining inherited router priors with input-dependent adaptation signals from the hidden state. 
+
+5.2 Analysis on RCP 
+
+To verify that RCP’s per-layer projection Wℓ actu-ally inherits information from the base MoE router rather than learning an independent routing func-tion, we measure the F-statistic of structural align-ment between LoRA routing and base routing, with details provided in Appendix B.2. A larger F-statistic indicates that LoRA expert selection varies more systematically with the base router’s expert assignments, and therefore better reflects the rout-ing structure learned by the pretrained MoE model. On DeepSeek-V2-Lite, MoE 2-LoRA achieves 
+
+F = 75 .0, compared with F = 26 .4 for MoELoRA, yielding a 2.8× margin. Fig. 3 fur-ther breaks down this comparison across layers. MoE 2-LoRA obtains a higher F-statistic on all 26 layers. This layer-wise consistency suggests that the alignment does not come from a few isolated layers, but is a systematic effect of conditioning LoRA routing on pretrained router logits. These results show that RCP produces LoRA routing patterns that are substantially more aligned with the base MoE routing structure than MoELoRA’s independent router. This provides di-rect evidence that the pretrained router logits are ef-fectively reflected in adapter selection, supporting the intended role of RCP as a router-conditioned projection rather than an independently learned LoRA router. 
+
+5.3 Analysis on Global Pool 
+
+The shared pool architecture imposes no explicit depth constraint on expert usage. We analyze the resulting organization of the trained pool on DeepSeek-V2-Lite, focusing on its layer-aware depth organization (§5.3.1), non-uniform capac-ity allocation (§5.3.2), and the cross-layer repre-sentational overlap that may support such sharing (§5.3.3). For the trained-model probes, we run forward passes of the trained MoE 2-LoRA on 300 GSM8K test prompts and collect the set T of all token po-sitions. For each layer ℓ and LoRA expert e, we record the top-KL selection frequency 
+
+fℓ,e = 1
+
+|T |
+
+X
+
+> t∈T
+
+⊮e ∈ S LoRA 
+
+> ht
+
+,
+
+where SLoRA  
+
+> ht
+
+is the activated LoRA set for token 
+
+t at layer ℓ (§3.2). We use the discrete top-KL fre-quency rather than the soft routing weight to align with the experts that the model actually engages at inference. 
+
+5.3.1 Global Pool Learns Layer-aware Expert Assignment 
+
+A potential concern of a shared global LoRA pool is that experts may be used in an unstructured man-ner across layers, without reflecting layer-specific adaptation behavior. We therefore analyze whether the learned routing exhibits depth-dependent orga-nization. For each expert e, we compute its pre-ferred depth 
+
+¯ℓe =
+
+P 
+
+> ℓ
+
+ℓ · fℓ,e 
+
+P 
+
+> ℓ
+
+fℓ,e 
+
+,
+
+where fℓ,e denotes the activation frequency of ex-pert e at layer ℓ. Experts are then sorted by ¯ℓe.0 5 10 15 20 25    
+
+> Layer index
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Effective expert count (perplexity)
+> Peak: 49
+> Trough: 15
+> Math (GSM8K), mean=23.3
+> Code (MBPP), mean=24.3
+> MoELoRA fixed allocation (N=20/layer)
+> Per-layer effective expert allocation |Math vs Code Pearson r=0.85
+
+Figure 4: Per-layer effective expert count on math (blue) and code (orange) probes. Dashed line: the fixed alloca-tion used by MoELoRA. 
+
+Fig. 1(III) visualizes the activation matrix fℓ,e de-fined above, with MoE layers on the x-axis, LoRA experts sorted by preferred depth ¯ℓe on the y-axis, and color intensity denoting activation frequency. The resulting diagonal structure, quantified by a Spearman correlation of ρ = 0 .92 between ¯ℓe and each expert’s most frequently activated layer, indi-cates that expert usage is depth-structured rather than layer-agnostic. Notably, the resulting structure is localized rather than strictly layer-exclusive. Individual experts typ-ically concentrate their activation mass within a nar-row band of neighboring layers, instead of being ac-tivated by only a single layer. As a result, the global pool simultaneously preserves layer-dependent spe-cialization and enables cross-layer expert reuse. Appendix B.1 shows that this depth-organized structure remains consistent across different pool sizes NL ∈ { 128 , 256 , 512 } and across both math and code probes (Figs. 6, 7). 
+
+5.3.2 Per-layer Expert Capacity Is Non-uniform 
+
+For each layer ℓ, we compute the effective expert count as the perplexity of its usage distribution, 
+
+exp( H(fℓ)) . Fig. 4 shows that the learned allo-cation is highly non-uniform: the effective expert count ranges from ≈ 15 in the deepest layers to 
+
+≈ 49 in the shallowest layers, a 3.3× variation. This result suggests that adaptation demand varies substantially across depth, which is dif-ficult to capture with fixed per-layer allocation. MoELoRA assigns the same number of experts to each layer ( N =20 ; dashed line), while MoLA requires manually specifying a layer-wise schedule such as bottom-heavy, top-heavy, or hourglass. In contrast, MoE 2-LoRA exposes no explicit archi-tectural knob for per-layer capacity, yet learns a non-uniform allocation automatically. 0 6 13 19 25  
+
+> Layer index j
+> 0
+> 6
+> 13
+> 19
+> 25
+> Layer index  i
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Linear CKA
+
+Figure 5: Linear CKA between MoE block outputs across the 26 layers of DeepSeek-V2-Lite (base model, no LoRA). 
+
+5.3.3 Cross-layer Representational Overlap Supports Pool Sharing 
+
+We further examine why sharing LoRA experts across layers is feasible. Specifically, we measure linear CKA(Appendix B.3) between MoE block outputs of every layer pair on the frozen DeepSeek-V2-Lite base model over 200 GSM8K prompts. Fig. 5 shows clear cross-layer similarity: off-diagonal CKA averages 0.43 , with adjacent layers averaging 0.56 compared with 0.35 for distant pairs (|i−j|≥ 10 ). This depth-local representational over-lap provides a plausible basis for sharing LoRA experts across nearby or related layers, consistent with the soft depth-affinity pattern observed above. 
+
+6 Conclusion 
+
+We introduced MoE 2-LoRA, an MoE-style PEFT method that deeply binds the MoE mechanisms of pretrained MoE models and MoE-style low-rank adaptation through routing-conditioned pro-jection (RCP) and a globally shared LoRA expert pool. Across four MoE backbones spanning dif-ferent scales and expert granularities, MoE 2-LoRA achieves strong downstream performance while preserving general capabilities under matched train-ing budgets. Further analysis shows that MoE 2-LoRA learns structured cross-layer adaptation while preserving alignment with pretrained MoE routing, confirming the effectiveness of its model-level design. Together, these results show that MoE 2-LoRA is an effective approach to PEFT for MoE models. Limitations 
+
+Adapter merging is not straightforward. Like other routing-based PEFT methods such as MoELoRA, MoE 2-LoRA relies on dynamic token-wise expert selection rather than a fixed low-rank update. As a result, the learned adaptation can-not be directly merged into the base weights in the same manner as standard LoRA. Developing mergeable approximations for dy-namic routing-based PEFT architectures remains an important direction for future work. 
+
+Scaling the global pool increases projection pa-rameter cost. The globally shared expert pool improves adaptation flexibility, but scaling the pool size also increases the parameter cost of the routing/projection interface, particularly the layer-specific projection matrices used for expert selec-tion. A naive design that routes directly from hid-den states would cause these projection parameters to grow rapidly with both hidden dimension and pool size. MoE 2-LoRA mitigates this issue by performing routing in the pretrained router space rather than the full hidden-state space, substantially reducing projection parameter growth while preserving rout-ing expressiveness. Nevertheless, scaling to ex-tremely large shared pools may still require more parameter-efficient routing mechanisms. 
+
+References 
+
+Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le, and 1 others. 2021. Program synthesis with large language models. arXiv preprint arXiv:2108.07732 .Jun Bai, Minghao Tong, Yang Liu, Zixia Jia, and Zi-long Zheng. 2025. Understanding and leveraging the expert specialization of context faithfulness in mixture-of-experts llms. In Proceedings of the 2025 Conference on Empirical Methods in Natural Lan-guage Processing .Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde De Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, and 1 others. 2021. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374 .Peter Clark and 1 others. 2018. Think you have solved question answering? try arc, the ai2 reasoning chal-lenge. arXiv preprint arXiv:1803.05457 .Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, and 1 others. 2021. Training verifiers to solve math word problems. arXiv preprint arXiv:2110.14168 .DeepSeek-AI. 2024. Deepseek-v2: A strong, economi-cal, and efficient mixture-of-experts language model. 
+
+arXiv preprint arXiv:2405.04434 .Guanzhi Deng, Bo Li, Ronghao Chen, Huacan Wang, Lijie Wen, and Linqi Song. 2026. Dr-lora: Dynamic rank lora for mixture-of-experts adaptation. arXiv preprint arXiv:2601.04823 .Shihan Dou, Enyu Zhou, Yan Liu, Songyang Gao, Jun Zhao, Wei Shen, Yuhao Zhou, Zhiheng Xi, Xiao Wang, Xiaoran Fan, and 1 others. 2023. Loramoe: Revolutionizing mixture of experts for maintain-ing world knowledge in language model alignment. 
+
+arXiv preprint arXiv:2312.09979 , 4(7). Chaoyou Fu, Peixian Chen, Yunhang Shen, Yulei Qin, Mengdan Zhang, Xu Lin, Jinrui Yang, Xiawu Zheng, Ke Li, Xing Sun, Yunsheng Wu, Rongrong Ji, Caifeng Shan, and Ran He. 2025. Mme: A compre-hensive evaluation benchmark for multimodal large language models. Preprint , arXiv:2306.13394. Chongyang Gao, Kezhen Chen, Jinmeng Rao, Ruibo Liu, Baochen Sun, Yawen Zhang, Daiyi Peng, Xi-aoyuan Guo, and VS Subrahmanian. 2025. Mola: Moe lora with layer-wise expert allocation. In Find-ings of the Association for Computational Linguistics: NAACL 2025 , pages 5097–5112. Mor Geva, Daniel Khashabi, Elad Segal, Tushar Khot, Dan Roth, and Jonathan Berant. 2021. Did Aristo-tle Use a Laptop? A Question Answering Bench-mark with Implicit Reasoning Strategies. Transac-tions of the Association for Computational Linguis-tics (TACL) .Soufiane Hayou, Nikhil Ghosh, and Bin Yu. 2024. Lora+: Efficient low rank adaptation of large models. 
+
+arXiv preprint arXiv:2402.12354 .Haonan He, Peng Ye, Yuchen Ren, Yuan Yuan, Luyang Zhou, Shucun Ju, and Lei Chen. 2025. Gora: Gradient-driven adaptive low rank adaptation. 
+
+Preprint , arXiv:2502.12171. Xuehai He, Yichen Zhang, Luntian Mou, Eric Xing, and Pengtao Xie. 2020. Pathvqa: 30000+ questions for medical visual question answering. arXiv preprint arXiv:2003.10286 .Dan Hendrycks and 1 others. 2021. Measuring massive multitask language understanding. In ICLR .Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. Lora: Low-rank adaptation of large language models. In International Conference on Learning Representations (ICLR) .Robert A Jacobs, Michael I Jordan, Steven J Nowlan, and Geoffrey E Hinton. 1991. Adaptive mixtures of local experts. Neural computation , 3(1):79–87. Jason J Lau, Soumya Gayen, Asma Ben Abacha, and Dina Demner-Fushman. 2018. A dataset of clini-cally generated visual questions and answers about radiology images. Scientific data , 5(1):180251. Chunyuan Li, Cliff Wong, Sheng Zhang, Naoto Usuyama, Haotian Liu, Jianwei Yang, Tristan Nau-mann, Hoifung Poon, and Jianfeng Gao. 2023. Llava-med: Training a large language-and-vision assistant for biomedicine in one day. Preprint ,arXiv:2306.00890. Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri Edwards, Bowen Baker, Teddy Lee, Jan Leike, John Schulman, Ilya Sutskever, and Karl Cobbe. 2023. Let’s verify step by step. arXiv preprint arXiv:2305.20050 .Aixin Liu, Bei Feng, Bin Wang, Bingxuan Wang, Bo Liu, Chenggang Zhao, Chengqi Dengr, Chong Ruan, Damai Dai, Daya Guo, and 1 others. 2024a. Deepseek-v2: A strong, economical, and efficient mixture-of-experts language model. arXiv preprint arXiv:2405.04434 .Bo Liu, Li-Ming Zhan, Li Xu, Lin Ma, Yan Yang, and Xiao-Ming Wu. 2021. Slake: A semantically-labeled knowledge-enhanced dataset for medical visual ques-tion answering. In 2021 IEEE 18th international sym-posium on biomedical imaging (ISBI) , pages 1650– 1654. IEEE. Yilun Liu, Yunpu Ma, Yuetian Lu, Shuo Chen, Zifeng Ding, and Volker Tresp. 2026. Parameter-efficient routed fine-tuning: Mixture-of-experts demands mix-ture of adaptation modules. In Findings of the Asso-ciation for Computational Linguistics: EACL 2026 ,pages 4439–4457, Rabat, Morocco. Association for Computational Linguistics. Yuan Liu, Haodong Duan, Yuanhan Zhang, Bo Li, Songyang Zhang, Wangbo Zhao, Yike Yuan, Jiaqi Wang, Conghui He, Ziwei Liu, Kai Chen, and Dahua Lin. 2024b. Mmbench: Is your multi-modal model an all-around player? Preprint , arXiv:2307.06281. Tongxu Luo, Jiahe Lei, Fangyu Lei, Weihao Liu, Shizhu He, Jun Zhao, and Kang Liu. 2024. Moelora: Contrastive learning guided mixture of experts on parameter-efficient fine-tuning for large language models. Preprint , arXiv:2402.12851. Andrea Manzoni. 2026. Moe-sieve: Routing-guided lora for efficient moe fine-tuning. arXiv preprint arXiv:2603.24044 .Niklas Muennighoff, Luca Soldaini, and 1 others. 2024. Olmoe: Open mixture-of-experts language models. 
+
+arXiv preprint arXiv:2409.02060 .Qwen Team. 2026. Qwen3.5: Towards native multi-modal agents. Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavat-ula, and Yejin Choi. 2021. Winogrande: An adver-sarial winograd schema challenge at scale. Commu-nications of the ACM , 64(9):99–106. Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan Berant. 2019. Commonsenseqa: A question answering challenge targeting commonsense knowl-edge. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Tech-nologies, Volume 1 (Long and Short Papers) , pages 4149–4158. Yiru Tang, Kun Zhou, Xin Zhao, Jing Sha, Zhichao Sheng, and Shijin Wang. 2026. Exploring expert concentration for parameter-efficient fine-tuning of mixture-of-expert LLMs. Zihan Wang and 1 others. 2024. Let the expert stick to his last: Expert-specialized fine-tuning for sparse architectural large language models. arXiv preprint arXiv:2407.01906 .Yuxiang Wei, Zhe Wang, Jiawei Liu, Yifeng Ding, and Lingming Zhang. 2023. Magicoder: Empowering code generation with oss-instruct. arXiv preprint arXiv:2312.02120 .xAI. 2024. Grok-1.5 Vision Preview. https: //x.ai/blog/grok-1.5v . RealWorldQA dataset, available at https://huggingface. co/datasets/xai-org/RealworldQA .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, and 1 others. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .Longhui Yu, Weisen Jiang, Han Shi, Jincheng Yu, Zhengying Liu, Yu Zhang, James Kwok, Zhenguo Li, Adrian Weller, and Weiyang Liu. 2024. Meta-math: Bootstrap your own mathematical questions for large language models. In International Con-ference on Learning Representations , volume 2024, pages 45040–45061. 
+
+A Reproducibility Details 
+
+A.1 Evaluation Protocol 
+
+This appendix specifies the evaluation protocol used in all main-text experiments. The protocol is shared verbatim across MoE 2-LoRA and all base-lines; only the trained adapter weights differ. 
+
+Inference configuration. The decoding config-uration is shared across all methods within each benchmark; only the trained adapter weights differ. All benchmarks are evaluated in a strictly zero-shot setting without in-context examples. GSM8K, MATH-500, and MBPP use greedy decod-ing ( do sample=False , temperature=0 ), while HumanEval uses stochastic decoding with 
+
+temperature=0.2 and top p=0.95 . We use max new tokens=1024 for all benchmarks. MBPP is evaluated with pass@1, and for Hu-manEval we generate n=3 samples per problem and report the average pass@1 across runs to re-duce variance on the small 164-task test set. 
+
+Prompt templates. We use a single fixed prompt template per benchmark, applied identically to ev-ery method: • GSM8K : "Solve the following math problem step by step. End your answer with ‘#### <number>’. \n\nQuestion: 
+
+{question }\ nAnswer:" 
+
+• MATH-500 : "Solve the following math problem step by step. Put your final answer in 
+
+\boxed {... }. \n\nProblem: 
+
+{problem }\ nSolution:" 
+
+• MBPP / HumanEval : standard function-completion prompts (problem description plus public test signature); the model is asked to produce the function body, which is then exe-cuted against the held-out unit tests. 
+
+Answer extraction. Answer extraction is identi-cal across all methods. For GSM8K, we extract the final numeric answer using a regex match against 
+
+#### \s*(-?[0-9.,]+) and evaluate after nu-meric normalization. For MATH-500, we extract the contents of the first \boxed {... } expression (including nested braces) and evaluate after whites-pace and LaTeX-symbol normalization. For MBPP and HumanEval, the generated function body is parsed from the completion and executed against the official unit tests, with pass@1 reported follow-ing the standard benchmark protocols. 
+
+A.2 Hyperparameters MoE 2-LoRA. Table 5 summarizes the key hyper-parameters used for MoE 2-LoRA across different backbones. Here, NL denotes the size of the shared LoRA expert pool, rank the per-expert LoRA rank, top-K the number of activated LoRA experts per token, and db the hidden-state bottleneck dimen-sion used in routing-conditioned projection. 
+
+MoELoRA (Luo et al., 2024). We use a per-layer LoRA expert pool with dynamic routing from hidden states. The configuration uses 16 experts (rank 8, top-2) on OLMoE-1B-7B, 32 experts (rank 6, top-4) on DeepSeek-V2-Lite, and 32 experts (rank 6, top-4) on Qwen3-30B-A3B, corresponding to approximately 8.9M, 21 M, and 41 M trainable parameters. 
+
+MoLA (Gao et al., 2025). MoLA uses a per-layer LoRA expert pool with a layer-wise increas-ing allocation, motivated by the observation that deeper transformer layers benefit from more LoRA experts. LoRA experts are routed independently from hidden states (top-2 per token). Following the original paper’s allocation scheme, we use ranks 8,
+
+22 , and 40 on OLMoE-1B-7B, DeepSeek-V2-Lite, and Qwen3-30B-A3B respectively, with per-layer expert counts ranging from 8 to 24 (OLMoE, 4 stages), 4 to 16 (DeepSeek, 26 layers), and 2 to 8
+
+(Qwen3, 4 stages). On DeepSeek-V2-Lite we scale MoLA’s rank from the original 16 to 22 to match the parameter budget of other baselines. This yields approximately 8.9M, 21 .4M, and 39 M trainable pa-rameters. 
+
+DAS-LoRA (Tang et al., 2026). For DAS-LoRA, we retain the original CDAS-based expert selection procedure but restrict training to the selected LoRA modules only, without additionally tuning router or dense backbone parameters, in order to maintain comparable PEFT settings across methods. Fol-lowing the original paper, we pre-select a subset of base experts using Domain Advantage Score and attach LoRA modules only to the selected ex-perts. We use rank 32 on OLMoE-1B-7B, 52 on DeepSeek-V2-Lite, and 48 on Qwen3-30B-A3B, yielding approximately 8.4M, 22 M, and 38 M train-able parameters. 
+
+Training. Within each backbone, all PEFT meth-ods share the same optimizer (AdamW), cosine learning-rate schedule with warmup ratio 0.1, batch size, and number of epochs. Method-specific hyper-parameters are tuned on the validation split under comparable trainable parameter budgets. 
+
+A.3 Training Compute 
+
+All experiments are conducted on a single 8×NVIDIA H800 80GB node using bfloat16 train-ing. DeepSeek-V2-Lite and OLMoE use standard DDP, while Qwen3-30B-A3B uses DeepSpeed ZeRO-3. Typical wall-clock training time per run is approximately 35 minutes for OLMoE, 1.5 hours for DeepSeek-V2-Lite, and 2.5–3 hours for Qwen3-Backbone NL rank top-K db #params OLMoE-1B-7B 128 16 4 16 9.1M DeepSeek-V2-Lite 256 16 6 64 21M Qwen3-30B-A3B 256 32 6 32 39M 
+
+Table 5: MoE 2-LoRA hyperparameters across backbones. On Qwen3-30B-A3B the pool is further partitioned into 
+
+G=2 groups (hierarchical routing); the other two backbones use a single flat pool ( G=1 ). 
+
+30B-A3B. The total compute budget for all experi-ments is approximately 200 GPU-hours. 
+
+Reproducibility note. Each adapter is trained once per (method, backbone) configuration. We report the per-benchmark scores from that run di-rectly, following the evaluation protocol in Ap-pendix A.1: a single greedy sample for GSM8K, MATH-500 and MBPP, and n=3 stochastic sam-ples (temperature 0.2) averaged for HumanEval. Multi-run training-time statistics are not reported due to compute cost. 
+
+A.4 Training-time and memory comparability with PEFT baselines 
+
+Table 6 compares training time and peak train-ing memory on DeepSeek-V2-Lite using 80k sam-ples extracted from MetaMathQA for one training epoch. Training time is measured on 8× H800 80GB GPUs with DDP, while peak memory is mea-sured on a single H800 without ZeRO using batch size 1 and sequence length 2048 . All PEFT base-lines are matched to roughly 22 M trainable param-eters; per-expert LoRA is included for reference. All PEFT methods exhibit broadly compara-ble training-time and memory cost, with training time falling within a narrow 17 –20 minute range and peak memory between 41 .8–46 .4 GB. MoE 2-LoRA lies slightly above the lightest baselines in both metrics, largely because it activates more LoRA experts per token. Compared with per-expert LoRA, the globally shared pool also avoids the larger training overhead associated with materializ-ing independent LoRA modules for every expert. 
+
+B Additional Analysis Details 
+
+B.1 Robustness of the Depth-Organized Expert Allocation 
+
+To verify that the depth-organized diagonal ob-served in Section 5.3.1 is not specific to a particular configuration, we reproduce the analysis across (i) different global pool sizes and (ii) different probe domains. 0 5 10 15 20 25               
+
+> Layer index
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 120
+> Expert (sorted by preferred depth)
+> NL= 128
+> 0510 15 20 25
+> Layer index
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> NL= 256
+> 0510 15 20 25
+> Layer index
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> NL= 512
+> 0.00
+> 0.50
+> 0.70
+> 0.85
+> 0.95
+> 1.00 Activation (per-row normalized)
+
+Figure 6: Expert-affinity matrices on GSM8K for MoE 2-LoRA with different global pool sizes NL ∈{128 , 256 , 512 } on DeepSeek-V2-Lite. Rows are ex-perts sorted by preferred depth; columns are MoE layers. A consistent depth-organized diagonal emerges across all pool sizes. 
+
+Across pool sizes. Fig. 6 shows the expert-affinity matrices on GSM8K for NL ∈{128 , 256 , 512 }. The same depth-organized diag-onal appears in all three settings, indicating that experts consistently specialize to contiguous depth regions. As NL increases, the diagonal becomes thinner because the 26-layer depth axis is parti-tioned among more experts; smaller pools produce correspondingly broader depth bands. 
+
+Across domains. Fig. 7 compares GSM8K and MBPP using the same trained adapter ( NL = 512 ). Both domains exhibit the same depth-organized structure, despite the code probe appearing slightly noisier due to the smaller MBPP evaluation set. Across both pool sizes and probe domains, the same depth-organized allocation consistently emerges, suggesting that it is an intrinsic property of the shared global pool with routing-conditioned projection rather than an artifact of a particular setting. 
+
+B.2 F-statistic for routing alignment 
+
+The routing-alignment F-statistic reported in Sec-tion 5.2 is a one-way ANOVA statistic that mea-sures how much of the variance in LoRA routing Method Trainable Params Train Time (min) Peak Train Mem (GB) 
+
+MoE 2-LoRA 21.7M 16.6 44.65 MoELoRA (Luo et al., 2024) 22.2M 19.8 43.6 MoLA (Gao et al., 2025) 21.4M 17.2 42.7 DAS-LoRA (Tang et al., 2026) 22.2M 17.8 41.8 per-expert LoRA (Liu et al., 2026) † 27.3M 23.2 44.3 FFT (DeepSeek-V2-Lite reference) ‡ 16B 143 120 
+
+Table 6: Training-time efficiency on DeepSeek-V2-Lite math. †Per-expert LoRA cannot be configured to a 22M budget without collapsing to rank-1; we report its native 27M configuration. 0 5 10 15 20 25       
+
+> Layer index
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> Expert (sorted by preferred depth),  NL = 512
+> Math (GSM8K probe)
+> 0510 15 20 25
+> Layer index
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> Code (MBPP probe)
+> 0.00
+> 0.50
+> 0.70
+> 0.85
+> 0.95
+> 1.00 Activation (per-row normalized)
+
+Figure 7: Expert-affinity matrices for the same trained adapter evaluated on GSM8K (left) and MBPP (right). Each panel is independently sorted by preferred depth. The depth-organized structure is preserved across do-mains. 
+
+can be explained by the base MoE router’s expert assignment—higher values indicate stronger struc-tural inheritance of the pretrained routing prior. Formally, let T denote the token set, pL(t) ∈
+
+RNL the LoRA routing distribution for token t, and 
+
+eb(t) = arg max e pB (t) the base router’s top-1 expert for t. We partition T into K groups indexed by the base expert, Ge = {t ∈ T : eb(t) = e},with sizes ne = |Ge| (groups with ne < 5 are dropped to avoid noisy estimates). Let μe =
+
+1
+
+ne
+
+P
+
+t∈Ge pL(t) denote the group-mean LoRA dis-tribution and ¯μ = 1
+
+|T |
+
+P
+
+t pL(t) the grand mean. The between- and within-group sums of squares are 
+
+SS between =
+
+KX
+
+e=1 
+
+ne ∥μe − ¯μ∥22, (3) 
+
+SS within =
+
+KX
+
+e=1 
+
+X
+
+t∈Ge
+
+∥pL(t) − μe∥22, (4) and the F-statistic is the ratio of mean squares 
+
+F = SS between /(K − 1) SS within /(|T | − K) . (5) A larger F indicates that LoRA routing distribu-tions are tightly clustered within each base-expert group and well-separated across groups—i.e., the LoRA router behaves predictably as a function of the base router. We treat F as a structural-fit di-agnostic for the RCP projection Wℓ rather than a quality metric; passive coupling schemes (e.g., per-expert LoRA) attain trivially high F by con-struction. 
+
+B.3 Linear CKA 
+
+Given centered layer representations Xi ∈ Rn×di
+
+and Xj ∈ Rn×dj , we compute linear centered ker-nel alignment (CKA) as 
+
+CKA( Xi, X j ) = ∥X⊤
+
+i Xj ∥2
+
+F
+
+∥X⊤
+
+i Xi∥F ∥X⊤
+
+j Xj ∥F
+
+.
+
+Here ∥ · ∥ F denotes the Frobenius norm. For each layer pair, Xi and Xj are constructed from the corresponding MoE block outputs collected over the evaluation prompts.
