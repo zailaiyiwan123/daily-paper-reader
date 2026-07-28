@@ -6,37 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-27
-- 运行时间：2026-07-27 20:57:15 UTC
+- 最新运行日期：2026-07-28
+- 运行时间：2026-07-28 21:44:49 UTC
 - 运行状态：成功
-- 本次总论文数：5
+- 本次总论文数：8
 - 精读区：2
-- 速读区：3
+- 速读区：6
 
 ### 今日简报（AI）
-今日精读两篇8分论文：自回归生成推荐的结构适配与知识型社交机器人在高教中的初步评估。  
-最值得关注的方向：推荐系统的生成式结构改进，以及大模型在教育场景的落地应用。  
-建议优先阅读精读论文，把握生成式推荐范式变化与知识型社交机器人的实际效果，为后续研究打好基础。
-- 详情：[/202607/27/README](/202607/27/README)
+今日推荐8篇论文，重点涵盖人形机器人个性化记忆与推荐系统两大方向。  
+精读首选《Not Forgotten》（9/10）的类人记忆实现与《Mosaic》（8/10）的Meta用户嵌入专家模型。  
+建议继续追踪多模态记忆机制及生成式推荐的内化歧视消解方法。
+- 详情：[/202607/28/README](/202607/28/README)
 
 ### 精读区论文标签
-1. [Bridging the Structural Gap: Adapting Autoregressive Generation for Recommendation](/202607/27/2607.21028v2-bridging-the-structural-gap-adapting-autoregressive-generation-for-recommendation)  
+1. [Not Forgotten: Implementation and Evaluation of a Personalized Episodic Memory for the Humanoid Robot Head Kim](/202607/28/2607.24190v1-not-forgotten-implementation-and-evaluation-of-a-personalized-episodic-memory-for-the-humanoid-robot-head-kim)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：个性化情景记忆模块用于机器人对话生成
+2. [Mosaic: A Fleet of User Embedding Specialists for Recommendation at Meta](/202607/28/2607.24015v1-mosaic-a-fleet-of-user-embedding-specialists-for-recommendation-at-meta)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：面向个性化内容生成的生成式推荐方法
-2. [Teachy Mini: Development and Preliminary Evaluation of a Knowledge-Based Generative Social Robot for Higher Education](/202607/27/2607.22345v1-teachy-mini-development-and-preliminary-evaluation-of-a-knowledge-based-generative-social-robot-for-higher-education)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：利用生成式社交机器人进行个性化辅导
+   evidence：用户嵌入专家集群用于个性化模型适应
 
 ### 速读区论文标签
-1. [Appearance Pointers -- Multimodal Region Control of Diffusion Transformers](/202607/27/2607.19344v1-appearance-pointers----multimodal-region-control-of-diffusion-transformers)  
+1. [IndicTalk: A Large-Scale Persona-Based Multilingual Conversational Corpus for Indic Languages](/202607/28/2607.23242v1-indictalk-a-large-scale-persona-based-multilingual-conversational-corpus-for-indic-languages)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：基于人物属性的多语言对话语料库，用于个性化生成
+2. [OxygenREC-v2: Internalizing Discrimination into Generative Recommendation](/202607/28/2607.24255v1-oxygenrec-v2-internalizing-discrimination-into-generative-recommendation)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：利用用户行为个性化的生成式推荐
+3. [PRISM: Prompt Refinement via Image-grounded Self-rewarding Mechanism for Text-to-Image Generation](/202607/28/2607.24353v1-prism-prompt-refinement-via-image-grounded-self-rewarding-mechanism-for-text-to-image-generation)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：提示精炼机制考虑人类偏好，可用于个性化图像生成
+4. [Universal BCI Personalization: One API for Frozen EEG Trunks and Foundation Models](/202607/28/2607.22397v1-universal-bci-personalization-one-api-for-frozen-eeg-trunks-and-foundation-models)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：使用外观指针的多模态区域控制，使用户能够指定区域内容，实现个性化图像生成
-2. [MoE$^2$-LoRA: When MoE Models Meet MoE-style Low-Rank Adaptation](/202607/27/2607.21978v1-moe2-lora-when-moe-models-meet-moe-style-low-rank-adaptation)  
+   evidence：面向脑机接口的个性化模型适配
+5. [CogRec: Structure-Cognitive Fast-and-Slow Reasoning for Generative Recommendation](/202607/28/2607.24402v1-cogrec-structure-cognitive-fast-and-slow-reasoning-for-generative-recommendation)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：使用LoRA进行参数高效微调以适应模型
-3. [Bringing GRACE to Recommendation: Fine-Tuning for Sustainable and Accurate Personalization](/202607/27/2607.22341v1-bringing-grace-to-recommendation-fine-tuning-for-sustainable-and-accurate-personalization)  
+   evidence：生成式推荐中的个性化推理
+6. [LaRec: Unleashing LLM-based Latent Reasoning for Generative Recommendation](/202607/28/2607.24617v1-larec-unleashing-llm-based-latent-reasoning-for-generative-recommendation)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：用于个性化推荐适应的微调框架
+   evidence：面向个性化推荐的潜在推理
 
 
 <div class="dpr-home-promo-card">

@@ -1,0 +1,1294 @@
+Title: PRISM: Prompt Refinement via Image-grounded Self-rewarding Mechanism for Text-to-Image Generation
+
+URL Source: https://arxiv.org/pdf/2607.24353v1
+
+Published Time: Tue, 28 Jul 2026 01:56:07 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+## PRISM: Prompt Refinement via Image-grounded Self-rewarding Mechanism for Text-to-Image Generation 
+
+Guo Tang 1, HongJie Luo 2, Tianxu Wang 3, Ying Zhang 4, Hao Wang 3,
+
+1Harbin Institute of Technology, Shenzhen, 2Sun Yat-sen University, 
+
+3South China University of Technology, 4Guangdong University of Technology 
+
+Correspondence: guot3907@gamil.com 
+
+Abstract 
+
+Text-to-image generation models can synthe-size high-quality images from natural language descriptions, but their performance remains highly sensitive to prompt formulation. Exist-ing prompt optimization methods mainly rely on text-side rewriting, prompt expansion, or external reward signals, offering limited image-grounded diagnosis and weak support for learn-ing reusable optimization policies. In this pa-per, we propose PRISM , a Prompt Refinement framework via Image-grounded Self-rewarding 
+
+Mechanism. PRISM closes the prompt-image-feedback loop by interpreting generated im-ages with structured visual diagnosis and scor-ing them along semantic consistency, aesthetic quality, and human preference alignment. It first initializes a unified VLM through multi-task supervised fine-tuning, and then improves the prompt policy via self-rewarding optimiza-tion with a hybrid ideal-point and Cheby-shev reward. Extensive experiments show that PRISM improves holistic image quality and fine-grained semantic alignment, while provid-ing interpretable feedback for targeted prompt refinement. The code is available at https:// anonymous.4open.science/r/PRISM-FF81 
+
+1 Introduction 
+
+Text-to-image (T2I) generation has made remark-able progress in synthesizing high-quality images from natural language descriptions (Esser et al., 2024; Podell et al., 2024; Chen et al., 2024). How-ever, its performance remains highly sensitive to prompt formulation, as under-specified prompts of-ten fail to provide the object, attribute, style, and composition details required for controllable and faithful generation (Huang et al., 2023; Mahajan et al., 2024). As a result, prompt optimization has become an important technique for improving gen-eration quality (Chen et al., 2025). Existing prompt optimization methods have explored text-side rewriting, prompt expansion, B. Key Insights  
+
+> Prompt optimization should be guided by what the image
+> actually shows !
+> Understand
+> generated image
+> Structured visual feedback
+> Semantic consistency
+> Missing fine -grained
+> details
+> 3/10
+> Aesthetic
+> Weak composition
+> Human preference
+> Limited visual appeal
+> 1/10
+> 3/10
+> Raw Prompt
+> A little bird is standing
+> on the branch with the
+> sun rising behind it.
+> Generated Images
+> Text -side rewriting
+> No image understanding
+> Prompt expansion
+> Add descriptive keywords
+> Scalar rewards
+> RL -based adaptation Test -time visual refinement
+> Prompt
+> Judge separately
+> Reward
+> 1.0
+> 0.0
+> Remaining limitations
+> Text only patterns or scalar rewards
+> Weak visual diagnosis
+> Lead to incomplete
+> prompt optimization
+> Prompt Prompt
+
+A. Limitations of Existing Methods 
+
+> object
+> style
+> composition
+> attributes
+> space
+> Prompt
+> Visual
+> Critic
+> No unified modeling of semantic,
+> aesthetic, and preference feedback
+
+Figure 1: Motivation of the proposed PRISM frame-work. 
+
+and reinforcement learning-based prompt adapta-tion (Cao et al., 2023; Pavlichenko and Ustalov, 2023; Yang et al., 2025). While effective, most of them rely on textual patterns or scalar rewards, providing limited diagnostic guidance on why a generated image succeeds or fails. Recent visual-feedback-based methods incorporate generated im-ages into prompt refinement, but they are often implemented as test-time pipelines with separate critic and rewriter modules, which limits their abil-ity to learn a reusable optimization policy (Wu et al., 2025; Khan et al., 2025). Moreover, exist-ing feedback signals usually emphasize isolated objectives, rather than jointly modeling semantic consistency, aesthetic quality, and preference align-ment within a unified framework (Zhang et al., 1arXiv:2607.24353v1 [cs.CV] 27 Jul 2026 2024). As illustrated in Fig. 1, these limitations suggest that prompt optimization should be guided by structured visual feedback derived from what the generated image actually shows. Motivated by this observation, we propose 
+
+PRISM , a Prompt Refinement framework via Image-grounded Self-rewarding Mechanism for T2I prompt optimization. Instead of learning prompt rewriting solely from text pairs, our method directly interprets generated images through struc-tured visual diagnosis and uses the feedback to guide prompt optimization. Specifically, we train a Vision-Language Model (VLM) to assess gen-erated images along three complementary dimen-sions: semantic consistency, aesthetic quality, and human preference alignment. The predicted di-agnostic feedback and dimension-specific scores are then used for both prompt revision and re-ward computation. We initialize the VLM through multi-task supervised fine-tuning for joint prompt rewriting and visual feedback assessment, and fur-ther optimize the prompt policy via self-rewarding learning using Group Sequence Policy Optimiza-tion (GSPO) (Zheng et al., 2025). A hybrid ideal-point and Chebyshev reward encourages the opti-mized prompts to approach the ideal visual feed-back scores while penalizing weak dimensions, leading to more balanced improvements. The main contributions of this work are summa-rized as follows: • PRISM framework. We propose a unified multimodal framework that learns a reusable prompt optimization policy by integrating vi-sual feedback assessment and prompt rewrit-ing. • A diagnosis-guided reward mechanism. We introduce a multi-dimensional reward mech-anism based on structured visual diagnosis, where semantic consistency, aesthetic quality, and human preference alignment are jointly considered through a hybrid ideal-point and Chebyshev objective. • Comprehensive empirical validation. Ex-tensive experiments on multiple benchmarks demonstrate the effectiveness of PRISM in prompt optimization and targeted feedback-guided refinement. 
+
+2 Related Work 
+
+2.1 Text-to-Image generation 
+
+T2I generation aims to synthesize visually realistic and semantically aligned images from natural lan-guage descriptions. Early studies explored GAN-based text-conditioned generation (Reed et al., 2016; Zhang et al., 2017; Xu et al., 2018), while autoregressive models further formulated image synthesis as sequence modeling over visual to-kens (Ramesh et al., 2021; Ding et al., 2021). More recently, diffusion models have become the dominant paradigm for high-fidelity T2I genera-tion (Ho et al., 2020; Dhariwal and Nichol, 2021). Representative systems such as GLIDE (Nichol et al., 2021), Imagen (Saharia et al., 2022), La-tent Diffusion Models (Rombach et al., 2022), SDXL (Podell et al., 2024), and Stable Diffusion 3 (Esser et al., 2024) have substantially improved photorealism, image-text alignment, efficiency, and high-resolution synthesis. Despite these advances, T2I models remain highly sensitive to prompt formulation. Well-designed prompts are often required to specify ob-jects, attributes, relations, style, and composition, making prompt engineering and automatic prompt optimization important directions for controllable and preference-aligned generation. 
+
+2.2 Prompt Engineering 
+
+Prompt engineering aims to improve the control-lability, fidelity, and visual quality of T2I gen-eration by refining input prompts. For exam-ple, BestPrompt searches effective prompt key-words with genetic algorithms (Pavlichenko and Ustalov, 2023), and PEZ optimizes discrete hard prompts via gradient-based search (Wen et al., 2023). Promptist learns to adapt user inputs into model-preferred prompts using supervised fine-tuning and reinforcement learning (Hao et al., 2023), while BeautifulPrompt further leverages vi-sual AI feedback (Cao et al., 2023). More recently, self-rewarding VLMs have been explored to unify prompt rewriting and image evaluation within a sin-gle model (Yang et al., 2025). Although these meth-ods improve prompt quality, they provide limited image-grounded diagnosis of generation failures. Beyond text-side optimization, recent methods incorporate generated images or external evaluators into prompt refinement. PromptMagician supports interactive prompt exploration by retrieving similar prompt-image pairs and recommending important 2keywords (Feng et al., 2023). OPT2I iteratively revises prompts with an LLM to maximize prompt-image consistency (Mañas et al., 2024), while T2I-Copilot (Chen et al., 2025) and PromptSculptor (Xi-ang et al., 2025) employ multi-agent systems for evaluator-guided refinement. TIR performs closed-loop test-time refinement by using an MLLM to check prompt-image alignment and update prompts with history-aware feedback (Khan et al., 2025). VisualPrompter further decomposes prompts into atomic semantic concepts with Davidsonian Scene Graphs (Cho et al., 2024) and uses visual feedback to identify missing concepts for target-specific opti-mization (Wu et al., 2025). These feedback-aware methods show the value of generated images for prompt refinement, but they are often constrained by fragmented feedback objectives, reliance on ex-ternal or test-time evaluators, and limited ability to transform structured visual feedback into a reusable self-optimizing prompt policy. 
+
+3 Methodology 
+
+In this section, we introduce PRISM for image-grounded self-rewarding prompt refinement. The overall framework is shown in Fig. 2. We formulate prompt optimization as a closed-loop process that connects the user prompt, prompt optimizer, T2I generator, and generated image. Based on struc-tured visual feedback, we introduce a two-stage training procedure consisting of supervised initial-ization and self-rewarding prompt optimization. 
+
+3.1 Problem Formulation 
+
+Given a user prompt x, prompt optimization aims to generate an improved prompt ˆx that preserves the user intent while better adapting to a target T2I generator. Let πθ denote the prompt optimization policy and G denote the frozen T2I generator. The generation process is formulated as 
+
+ˆx ∼ πθ(· | x), I = G(ˆ x), (1) where I is the image generated from the optimized prompt. To incorporate visual evidence into prompt opti-mization, we define a visual feedback function F
+
+that produces both textual diagnosis and numerical scores: 
+
+F = F (x, ˆx, I )= {(fsem , r sem ), (faes , r aes ), (fpref , r pref )} ,
+
+(2) where fsem , faes , and fpref denote textual diag-nostic feedback, and rsem , raes , and rpref denote the corresponding scores for semantic consistency, aesthetic quality, and preference alignment, respec-tively. The scores are collected into a reward vector 
+
+r = [ rsem , r aes , r pref ] , (3) and further aggregated into a scalar reward by 
+
+R(x, ˆx, I ) = Φ( r). (4) Thus, the objective of our framework is to learn a reusable prompt optimization policy by maximiz-ing the expected visual-feedback reward: 
+
+max  
+
+> θ
+
+Ex∼D , ˆx∼πθ (·| x) [R(x, ˆx, G (ˆ x))] . (5) 
+
+3.2 Visual Feedback Construction 
+
+As defined in Equation (2), visual feedback F con-tains both textual diagnosis and numerical scores along three dimensions: semantic consistency, aes-thetic quality, and preference alignment. Semantic consistency measures whether the generated im-age preserves the original user intent, including objects, attributes, actions, counting, spatial rela-tions, and interactions. Aesthetic quality evaluates visual appeal beyond semantic correctness, such as composition, lighting, color harmony, clarity, details, and artifacts. Preference alignment cap-tures holistic user-oriented judgments, including naturalness, coherence, style appropriateness, at-tractiveness, and overall satisfaction. Details are provided in the Appendix A.4. 
+
+3.3 Supervised Initialization for Prompt Rewriting and Visual Feedback Assessment 
+
+Before self-rewarding optimization, the VLM is initialized with two core abilities: prompt rewrit-ing and structured visual feedback assessment. We train a single VLM under a multi-task supervised objective, enabling it to act as both the prompt opti-mizer and the feedback provider in the subsequent optimization stage. 
+
+Training data construction. We construct the supervised dataset from four instruction types: 
+
+Dsup = Drew ∪ D fb ∪ D score ∪ D fgr . (6) The prompt rewriting set is defined as 
+
+Drew = {(x, ˆx∗)}, (7) 31. Raw Prompt  2. Generated image  5. Improved image 4. Optimized prompt 3. Feedback 
+
+> A little bird is
+> standing on the
+> branch with
+> the sun rising
+> behind it.
+> feedback guided
+> refinement
+
+Inference Example    
+
+> ⚫sunrise not prominent
+> ⚫insufficient color
+> contrast
+> ⚫bird lacks visual focus
+> a small red bird sitting on a gnarled branch
+> against a massive, vibrant sunrise. The sky
+> is a dramatic gradient of fiery orange, gold,
+> and deep pink. The sun is a perfect orb
+> positioned directly behind the bird. High
+> contrast, ethereal atmosphere, wide angle
+> landscape composition, serene mood.
+
+Stage I: Multi -task Supervised 
+
+Initialization      
+
+> Supervised initialization equips
+> the model with both rewriting and
+> feedback assessment abilities.
+> Unified VLM
+> Prompt Optimizer
+> Prompt
+> Rewriting
+> Visual
+> Diagnosis
+> prompt + image -->
+> reasoning + scores
+> Visual Feedback
+> Assessment Data
+> raw prompt -->
+> rewritten prompt
+> Prompt Rewriting
+> Data
+> The model evaluates its own generations ,converts back into rewards and updates a reusable prompt optimization policy.
+
+Structured Visual Feedback Raw prompt  Current policy  Candidate  T2I Generator  Generated Image 
+
+Stage Ⅱ: Self -Rewarding Policy Optimization  
+
+> A little bird
+> is standing
+> on a branch
+> with the
+> sun rising
+> behind it.
+> Prompt
+> Optimizer
+> candidate 1
+> candidate 2
+> candidate 3
+> Image
+> Generator
+> Aesthetic Quality
+> flat lighting ;
+> weak atmosphere
+> Score
+> (1 -10)
+
+2
+
+> Score
+> (1 -10)
+
+3 
+
+> composition lacks focus;
+> low visual impact
+> Preference Alignment
+> Semantic Consistency
+> bird size/color unclear;
+> sunrise not dominant
+> Score
+> (1 -10)
+
+4
+
+Hybrid Reward Aggrega tion    
+
+> Ideal -Point Reward Encourage
+> overall
+> improvement
+> Chebyshev Reward Penalize
+> the worst
+> dimension
+> Hybrid Reward Balance global
+> quality and worse -
+> case correction
+
+GSPO policy update Figure 2: Overview of the proposed PRISM framework. Stage I performs multi-task supervised initialization to equip the VLM with prompt rewriting and visual feedback assessment abilities. Stage II optimizes the prompt policy through self-rewarding learning, where candidate prompts are rendered by a frozen T2I generator, evaluated with structured visual feedback, and updated using hybrid reward aggregation. The bottom row illustrates an inference example of feedback-guided prompt refinement. 
+
+where x is the user prompt and ˆx∗ is the reference optimized prompt. The visual feedback assessment set is defined as 
+
+Dfb = {(p, I p, F∗
+
+p )}, p ∈ { x, ˆx∗}, I p = G(p),
+
+(8) where F∗
+
+p contains reference diagnostic feedback and dimension-specific scores. To calibrate numer-ical judgment, we further construct a score-only subset 
+
+Dscore = {(p, I p, r∗
+
+p)}, (9) where r∗
+
+p = [ r∗
+
+sem , r ∗
+
+aes , r ∗
+
+pref ]. Finally, the feed-back guided rewriting set is defined as 
+
+Dfgr = {(x, I x, F∗
+
+x , ˆx∗)}, (10) which trains the model to revise under-specified prompts using explicit visual feedback. Detailed data construction procedures and instruction tem-plates are provided in Appendix A. 
+
+Multi-task supervised fine-tuning. All training samples are converted into instruction-following formats and can be viewed in the Appendix B. Let T = {rew , fb , score , fgr } denote the set of supervised tasks, corresponding to prompt rewrit-ing, visual feedback assessment, score-only cal-ibration, and feedback-guided prompt rewriting, respectively. For each task t ∈ T , we denote the instruction input as u and the target response as 
+
+y. The model is optimized with a response-only autoregressive objective: 
+
+LSFT = − X
+
+t∈T 
+
+λtE(u,y )∼D t
+
+
+
+|y|
+
+X
+
+j=1 
+
+log πθ(yj | u, y <j )
+
+ ,
+
+(11) where λt controls the contribution of task t, and Dt
+
+denotes its corresponding training set. Task-specific instructions are used to spec-ify the expected output format, including opti-mized prompts, diagnostic feedback with scores, score-only responses, and feedback-guided revised prompts. This multi-task initialization enables the same VLM to perform both prompt rewriting and visual feedback assessment, providing the starting policy for self-rewarding optimization. 
+
+3.4 Self-Rewarding Prompt Optimization 
+
+After supervised initialization, the VLM is further optimized through self-rewarding training. In each iteration, the model acts as a prompt policy to gen-erate candidate prompts and as a visual judge to provide reward signals. Given a user prompt x, we 4sample K candidate prompts from the old policy: 
+
+ˆxi ∼ πθold (· | x), i = 1 , . . . , K, (12) and generate the corresponding images with the frozen T2I generator: 
+
+Ii = G(ˆ xi). (13) A frozen copy of the initialized VLM is then used in feedback assessment mode to produce dimension-specific scores: 
+
+Fi = Fθold (x, ˆxi, I i), ri = [ ri
+
+> sem
+
+, r i
+
+> aes
+
+, r i 
+
+> pref
+
+].
+
+(14) 
+
+Hybrid reward aggregation. The multi-dimensional feedback scores are aggregated into a scalar reward for policy optimization. Since seman-tic consistency, aesthetic quality, and preference alignment capture complementary aspects of gen-eration quality, optimizing a single dimension may lead to biased prompt improvement. We therefore adopt a hybrid reward aggregation strategy that combines the ideal-point distance with the Cheby-shev distance. The feedback scores are first normalized into 
+
+[0 , 1] , yielding ¯ri = [¯ ri
+
+> sem
+
+, ¯ri
+
+> aes
+
+, ¯ri 
+
+> pref
+
+]. We define the ideal feedback vector as r∗ = [1 , 1, 1] and com-pute the weighted deviation: 
+
+di = w ⊙ (r∗ − ¯ri), (15) where w = [ wsem , w aes , w pref ] controls the impor-tance of different feedback dimensions. The scalar reward combines an ideal-point objective and a Chebyshev objective: 
+
+Rideal  
+
+> i
+
+= 1 − ∥di∥2
+
+∥w ⊙ r∗∥2
+
+,Rcheb  
+
+> i
+
+= 1 − ∥di∥∞
+
+∥w ⊙ r∗∥∞
+
+,Ri = αR ideal  
+
+> i
+
++ (1 − α)Rcheb  
+
+> i
+
+.
+
+(16) Here, Rideal  
+
+> i
+
+encourages overall improvement to-ward the ideal feedback vector, while Rcheb  
+
+> i
+
+pe-nalizes the weakest dimension. The coefficient 
+
+α ∈ [0 , 1] controls the trade-off between overall quality and worst-dimension penalty. 
+
+Group-wise advantage estimation. To reduce absolute score bias, we compute relative advan-tages within each candidate group: 
+
+Ai = Ri − mean( {Rj }Kj=1 )std( {Rj }Kj=1 ) + ϵ . (17) This group-wise normalization encourages the pol-icy to prefer prompts that achieve stronger visual feedback than other candidates sampled for the same input. Since the reward is assigned to the whole op-timized prompt, we adopt GSPO (Zheng et al., 2025), which performs sequence-level rewarding, clipping, and policy optimization. For each candi-date prompt ˆxi = ( y1, . . . , y T ), the sequence-level importance ratio is defined as 
+
+ρi(θ) = exp 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+log πθ(yt | x, y <t )
+
+πθold (yt | x, y <t )
+
+!
+
+.
+
+(18) We clip the ratio by 
+
+˜ρi(θ) = clip ( ρi(θ), 1 − ϵc, 1 + ϵc) , (19) where ϵc is the sequence-level clipping threshold. The self-rewarding loss is 
+
+LSR = −Ex
+
+"
+
+1
+
+K
+
+> K
+
+X
+
+> i=1
+
+min ( ρi(θ)Ai, ˜ρi(θ)Ai)
+
+#
+
++ βDKL (πθ∥πref ) ,
+
+(20) where πref denotes the supervised initialized refer-ence policy and β controls the KL regularization strength. This self-rewarding stage reinforces prompts that receive stronger multi-dimensional visual feed-back, enabling the policy to progressively improve prompt optimization without relying on a fixed ex-ternal reward model. 
+
+4 Experiments 
+
+We evaluate PRISM on T2I prompt optimization. Our experiments examine whether the learned prompt policy improves image-text alignment, vi-sual quality, and human preference alignment, and whether visual feedback and self-rewarding opti-mization provide consistent gains over supervised initialization. 
+
+4.1 Experimental Settings 
+
+We adopt Qwen3-VL-8B-Instruct (Bai et al., 2025) as the backbone VLM. Stable Diffusion 3.5 medium 1 is used as the primary target T2I genera-tor with 28 denoising steps, while additional results 
+
+> 1https://huggingface.co/stabilityai/ stable-diffusion-3.5-medium
+
+5Table 1: Holistic image-level evaluation on the BeautifulPrompt test set. PRISM-SFT denotes the supervised-initialized variant without self-rewarding optimization, and PRISM denotes the full model. Best and second-best results within each group are highlighted in bold and underlined, respectively.                                                                                           
+
+> Method CLIPScore ↑Aesthetic ↑PickScore ↑HPSv2 ↑ImageReward ↑
+> Original Prompt 0.282 6.106 21.219 0.276 0.989
+> Text-only prompt optimization
+> BestPrompt 0.268 6.182 20.143 0.260 0.914 BeautifulPrompt 0.272 6.291 21.088 0.277 1.050 Promptist 0.283 6.263 21.506 0.281 1.019 NeuroPrompts 0.277 6.219 22.195 0.285 1.112 Qwen3-VL-8B 0.245 6.136 21.128 0.278 1.195 PRISM-SFT 0.280 6.198 22.149 0.297 1.201 PRISM 0.291 6.307 22.457 0.302 1.218
+> Text-image feedback-based prompt optimization
+> VisualPrompter 0.304 6.131 21.208 0.288 0.993 TIR 0.285 6.176 21.657 0.280 0.972 OPT2I 0.291 6.150 21.501 0.272 1.006 GPT-4o 0.275 6.255 21.955 0.283 1.198 Qwen3-VL-235B-A22B 0.269 6.172 22.381 0.289 1.269 Qwen3-VL-8B 0.261 6.129 21.628 0.288 1.176 PRISM-SFT 0.278 6.223 22.254 0.303 1.252 PRISM 0.299 6.318 22.526 0.305 1.285
+
+on FLUX.2-klein 2 are reported in Appendix C to evaluate cross-generator generalization. 
+
+Supervised fine-tuning. We train the VLM with AdamW (Loshchilov and Hutter, 2017) using β1 =0.9, β2 = 0 .95 , a batch size of 32, and weight decay of 0.1. The learning rate is initialized to 2 ×
+
+10 −5 and scheduled with linear warm-up followed by cosine decay. For the multi-task SFT objective, we set the task loss weights to λrew : λfb : λscore :
+
+λfgr = 1 : 1 : 1 : 2 emphasizing feedback-guided prompt rewriting. 
+
+Self-rewarding optimization. For each in-put prompt, the policy samples K = 8 candi-date prompts with temperature T = 0 .9 and top-
+
+p = 0 .9. We set the sequence-level clipping thresh-old to ϵc = 0 .2 and the KL coefficient to β = 0 .3,using the SFT model as the reference policy πref .The scalar reward follows the hybrid aggregation strategy in Section 3.4, with w = [0 .5, 0.25 , 0.25] 
+
+to emphasize semantic consistency. Each visual assessment is repeated three times and averaged for stability. We perform two self-rewarding iterations. During training and evaluation, all T2I genera-tors are frozen. All methods are evaluated under the same generation settings for fair comparison. All experiments are conducted on NVIDIA A800 80G GPUs. 
+
+> 2https://huggingface.co/black-forest-labs/ FLUX.2-klein-4B
+
+4.2 Benchmarks and Evaluation Metrics 
+
+We evaluate PRISM on two types of benchmarks. For general prompt optimization, we use the 2k BeautifulPrompt test prompts (Cao et al., 2023) and report CLIPScore (Hessel et al., 2021), Aes-thetic Score (Podell et al., 2024), ImageReward (Xu et al., 2023), PickScore (Kirstain et al., 2023), and HPSv2 (Wu et al., 2023) to measure image-text alignment, visual quality, and human prefer-ence. For fine-grained semantic alignment, we evaluate on T2I-CompBench (Huang et al., 2023) and TIFA (Hu et al., 2023). T2I-CompBench as-sesses compositional generation over attributes, re-lations, and complex prompts, while TIFA mea-sures prompt-image faithfulness via automatically generated visual questions. For all benchmarks, metrics are computed with respect to the original user prompt rather than the optimized prompt, en-suring that the evaluation reflects preservation and enhancement of the original user intent. 
+
+4.3 Comparative Results Holistic image-level evaluation. Table 1 reports the main results on the BeautifulPrompt test set. In the text-only setting, PRISM achieves the best results across all five metrics, showing consistent gains over both original prompts and prior prompt optimization methods. In the text-image feed-back setting, PRISM obtains the best Aesthetic, 6Table 2: Fine-grained semantic alignment evaluation on TIFA and T2I-CompBench. Best and second-best results are highlighted in bold and underlined, respectively.                                                                                   
+
+> Method TIFA ↑T2I-CompBench ↑
+> Color Shape Texture Spatial NonSpatial Complex Avg. Original Prompt 76.1 0.736 0.510 0.627 0.259 0.265 0.298 0.449 VisualPrompter 87.8 0.791 0.605 0.692 0.403 0.315 0.402 0.535 TIR 82.4 0.820 0.559 0.715 0.355 0.309 0.384 0.524 OPT2I 85.1 0.812 0.592 0.724 0.386 0.314 0.372 0.533 GPT-4o 90.3 0.835 0.548 0.713 0.415 0.302 0.377 0.532 Qwen3-VL-235B-A22B 89.6 0.808 0.577 0.708 0.392 0.318 0.395 0.533 Qwen3-VL-8B 87.5 0.754 0.580 0.682 0.371 0.313 0.364 0.511 PRISM-SFT 88.9 0.793 0.585 0.704 0.385 0.311 0.396 0.529 PRISM 91.4 0.843 0.603 0.732 0.429 0.316 0.405 0.555
+
+PickScore, HPSv2, and ImageReward scores, while remaining competitive on CLIPScore. These re-sults indicate that visual-feedback-driven optimiza-tion improves prompt quality in a balanced manner, enhancing not only image-text alignment but also aesthetic quality and human preference alignment. 
+
+Fine-grained semantic alignment. Table 2 re-ports the results on TIFA and T2I-CompBench. PRISM achieves the best overall performance, im-proving TIFA from 76.1 to 91.4 and the T2I-CompBench average from 0.449 to 0.555 compared with the original prompts. It also surpasses the strongest baselines on both TIFA and the average compositional score, and obtains the best results on color, texture, spatial relation, and complex composition. Moreover, the gains over PRISM-SFT demonstrate that the self-rewarding stage fur-ther strengthens fine-grained semantic alignment by leveraging structured visual feedback, particu-larly for attribute binding, spatial reasoning, and complex compositions. 
+
+4.4 Ablation Study 
+
+Table 3: Ablation on feedback sources. PS denotes PickScore. FB denotes feedback source. 1R/2R denote one/two test-time refinement rounds. CT2I and CVLM 
+
+denote the numbers of T2I and VLM calls per input prompt.                                       
+
+> Method FB Train PS ↑TIFA ↑CT2I ↓CVLM ↓
+> TF-Ext (1R) Ext No 20.984 86.3 21TF-Ext (2R) Ext No 21.343 88.2 32Self-FB Self SFT 22.254 88.9 21Ext-VLM Ext RL 22.411 90.0 21PRISM Self RL 22.526 91.4 21
+
+Effect of feedback source. Table 3 shows that learning with feedback is more effective than training-free refinement. Under the same infer-ence cost as TF-Ext (1R), Self-FB improves PS from 20.984 to 22.254 and TIFA from 86.3 to 88.9. With self-rewarding optimization, PRISM further achieves the best results on both PS and TIFA, outperforming Ext-VLM under the same cost. This suggests that integrating self-feedback into the trainable policy provides more effective and consistent reward signals. 
+
+Figure 3: Iterative feedback refinement results across multiple refinement rounds. 
+
+Iterative feedback refinement. We further eval-uate whether the model can benefit from repeated visual feedback. Starting from the original prompt, we perform multiple refinement rounds by feeding the generated image and its visual feedback back into the model. As shown in Fig. 3, the second re-finement round brings additional improvements, es-pecially for samples with low first-pass scores. This 7A child flying a kite 
+
+in a sunny park. 
+
+A fantasy castle in 
+
+the forest. 
+
+A mountain lake at 
+
+sunrise. 
+
+Raw prompt 
+
+A candid photograph of a happy child running through a 
+
+sunny park while flying a colorful kite, wide green lawn, 
+
+trees and flowers in the background, warm afternoon 
+
+sunlight, clear blue sky, soft natural shadows, joyful 
+
+expression, realistic details, cinematic framing, shallow 
+
+depth of field, 35mm lens, high -resolution photography 
+
+Optimized prompt 
+
+Realistic landscape photograph of a quiet mountain 
+
+lake at sunrise, mirror -like water reflecting rugged 
+
+snow -covered peaks, golden hour light, soft mist, 
+
+pine trees on the shore, dramatic yet natural sky, 
+
+wide -angle lens, sharp focus, high dynamic range, 
+
+professional nature photography, 8k detail 
+
+Diagnosis 
+
+A fairytale castle nestled in a lush enchanted forest, 
+
+elegant towers and glowing windows, vines and 
+
+flowers climbing the stone walls, sparkling fireflies, 
+
+soft mist, warm magical light, ancient trees 
+
+surrounding the castle, dreamy atmosphere, 
+
+whimsical fantasy illustration, soft colors, beautiful 
+
+composition, highly detailed, storybook style 
+
+an anthropomorphic 
+
+bag of trash, trending 
+
+on artstation 
+
+This is a digital illustration of a cartoonish, 
+
+anthropomorphic trash bag. The character has a large, 
+
+round, brown body with a white, crumpled top, 
+
+resembling a typical plastic garbage bag. It has a friendly, 
+
+smiling face with large, expressive eyes and a wide grin. 
+
+The image partially matches the prompt, but the main body does not 
+
+clearly read as a trash bag, making the core object identity ambiguous .
+
+The image has some concept -art texture, but muddy colors, rough 
+
+body shape, and a single -eye design reduce clarity and polish. 
+
+The image is creative but visually creepy and messy , which weakens 
+
+friendliness, charm, and general user appeal. 
+
+still shot of a  dinosaur 
+
+trex in jurassic park 
+
+A cinematic still shot of a massive, realistic 
+
+Tyrannosaurus rex in Jurassic Par k. The T -Rex ’s intense 
+
+gaze locks onto the camera, muscles rippling under its 
+
+scaly skin, teeth bared in a silent roar. Background 
+
+features iconic park architecture  — a weathered 
+
+wooden fence, distant power lines, and a rusted sign 
+
+reading  “Jurassic Park. ” Shallow depth of field 
+
+emphasizing the dinosaur ’s imposing presence. Hyper -
+
+detailed, photorealistic, 8K resolution, epic scale. 
+
+Image clearly shows a realistic T -Rex in a jungle -like setting, but it 
+
+lacks recognizable Jurassic Park context such as gates, fences, 
+
+signs, or cinematic park details .
+
+Image has realistic dinosaur texture and natural lighting, but the 
+
+close crop, plain background, and less dramatic atmosphere make 
+
+the composition feel relatively static. 
+
+Image is visually convincing, but it lacks stronger cinematic lighting, 
+
+environmental storytelling, and iconic park -related elements. 
+
+Image mostly matches the prompt by showing a child, a kite, and a 
+
+sunny park, but the child appears unnaturally floating rather than 
+
+clearly running or flying the kite .
+
+Image has natural outdoor lighting, but the overexposed grass, 
+
+plain white kite, dark background, and awkward pose reduce 
+
+visual polish and composition quality. 
+
+Image is understandable but less appealing because it lacks a joyful 
+
+expression, vivid kite colors, and the warm, energetic atmospher e.
+
+Image strongly matches the prompt by showing a fantasy -style 
+
+castle surrounded by dense forest, though it lacks some stronger 
+
+magical cues such as glowing windows or enchanted details .
+
+Image has a coherent composition, atmospheric lighting, and 
+
+detailed architecture, but the muted colors and slightly hazy 
+
+rendering make it less vivid and polished .
+
+Image is visually pleasing and immersive, but it feels more static 
+
+and less enchanting .
+
+Image shows a mountain lake, but the sunrise cues are 
+
+weak and lack clear golden -hour illumination .
+
+Image is calm and realistic, but the dark foreground 
+
+and muted colors reduce visual polish .
+
+Image feels peaceful, but weak lighting, low contrast, 
+
+and limited atmosphere reduce overall appeal .Figure 4: Qualitative examples of PRISM. Each example shows the original prompt, initial generated image, structured visual feedback, optimized prompt, and final generated image, illustrating how diagnosed visual issues guide targeted prompt refinement. 
+
+suggests that PRISM can act as a feedback-aware prompt optimizer rather than a one-shot prompt enhancer. 
+
+Effect of reward aggregation. Table 4 com-pares different reward aggregation strategies. The hybrid reward achieves the best performance across all metrics. Compared with the weighted-sum re-ward, the hybrid strategy further improves TIFA by 3.3 points while maintaining slightly better aes-thetic and preference scores. Although the ideal-point and Chebyshev rewards improve semantic faithfulness over the weighted-sum baseline, they show weaker aesthetic or preference performance when used alone. These results indicate that com-bining overall closeness to the ideal feedback pro-file with worst-dimension penalty leads to more balanced prompt optimization. 
+
+Table 4: Ablation on reward aggregation strategies. 
+
+Reward Aesthetic ↑ PickScore ↑ TIFA ↑
+
+Weighted Sum 6.312 22.512 88.1 Ideal-point 6.281 22.495 89.8 Chebyshev 6.275 22.403 89.2 Hybrid 6.318 22.526 91.4 
+
+4.5 Qualitative Analysis 
+
+Fig. 4 presents representative examples of the visual-feedback-guided prompt refinement process in PRISM. The model identifies concrete genera-tion issues, such as missing objects, weak spatial re-lations, and style mismatch, and revises the prompt accordingly. These examples demonstrate that structured visual feedback provides interpretable correction cues for targeted prompt refinement. 
+
+5 Conclusion 
+
+In this paper, we propose PRISM, a Prompt Re-finement framework via Image-grounded Self-rewarding Mechanism for text-to-image prompt optimization. PRISM uses structured visual diag-nosis to guide prompt rewriting and reward compu-tation across semantic consistency, aesthetic qual-ity, and preference alignment. Through multi-task supervised initialization and self-rewarding policy optimization, the VLM learns to jointly perform prompt rewriting and visual feedback assessment. Extensive experiments demonstrate that PRISM improves holistic image quality and fine-grained semantic alignment, while providing interpretable feedback for targeted prompt refinement. 8Limitations 
+
+Although PRISM demonstrates strong effective-ness, several aspects remain open for future work. First, the current feedback design focuses on se-mantic consistency, aesthetic quality, and prefer-ence alignment; extending it to more fine-grained or domain-specific criteria could further improve controllability. Second, iterative feedback refine-ment is evaluated with a limited number of rounds to maintain inference efficiency, while adaptive stopping strategies may provide a better trade-off between quality and cost. 
+
+References 
+
+Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, Wenbin Ge, Zhi-fang Guo, Qidong Huang, Jie Huang, Fei Huang, Binyuan Hui, Shutong Jiang, Zhaohai Li, Mingsheng Li, and 45 others. 2025. Qwen3-vl technical report. 
+
+arXiv preprint arXiv:2511.21631 .Tingfeng Cao, Chengyu Wang, Bingyan Liu, Ziheng Wu, Jinhui Zhu, and Jun Huang. 2023. Beautiful-prompt: Towards automatic prompt engineering for text-to-image synthesis. In Proceedings of the 2023 Conference on Empirical Methods in Natural Lan-guage Processing: Industry Track , pages 1–11. Chieh-Yun Chen, Min Shi, Gong Zhang, and Humphrey Shi. 2025. T2i-copilot: A training-free multi-agent text-to-image system for enhanced prompt interpreta-tion and interactive generation. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 19396–19405. Junsong Chen, Jincheng Yu, Chongjian Ge, Lewei Yao, Enze Xie, Zhongdao Wang, James Kwok, Ping Luo, Huchuan Lu, and Zhenguo Li. 2024. Pixart-α: Fast training of diffusion transformer for photorealistic text-to-image synthesis. In International conference on learning representations , volume 2024, pages 57611–57640. Jaemin Cho, Yushi Hu, Jason Baldridge, Roopal Garg, Peter Anderson, Ranjay Krishna, Mohit Bansal, Jordi Pont-Tuset, and Su Wang. 2024. Davidsonian scene graph: Improving reliability in fine-grained evalua-tion for text-to-image generation. In International conference on learning representations , volume 2024, pages 15625–15645. Prafulla Dhariwal and Alexander Nichol. 2021. Diffu-sion models beat gans on image synthesis. Advances in neural information processing systems , 34:8780– 8794. Ming Ding, Zhuoyi Yang, Wenyi Hong, Wendi Zheng, Chang Zhou, Da Yin, Junyang Lin, Xu Zou, Zhou Shao, Hongxia Yang, and Jie Tang. 2021. Cogview: Mastering text-to-image generation via transformers. 
+
+Advances in neural information processing systems ,34:19822–19835. Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas Müller, Harry Saini, Yam Levi, Do-minik Lorenz, Axel Sauer, Frederic Boesel, Dustin Podell, Tim Dockhorn, Zion English, Kyle Lacey, Alex Goodwin, Yannik Marek, and Robin Rombach. 2024. Scaling rectified flow transformers for high-resolution image synthesis. In Forty-first interna-tional conference on machine learning .Yingchaojie Feng, Xingbo Wang, Kam Kwai Wong, Si-jia Wang, Yuhong Lu, Minfeng Zhu, Baicheng Wang, and Wei Chen. 2023. Promptmagician: Interactive prompt engineering for text-to-image creation. IEEE Transactions on Visualization and Computer Graph-ics , 30(1):295–305. Yaru Hao, Zewen Chi, Li Dong, and Furu Wei. 2023. Optimizing prompts for text-to-image generation. 
+
+Advances in Neural Information Processing Systems ,36:66923–66939. Jack Hessel, Ari Holtzman, Maxwell Forbes, Ronan Le Bras, and Yejin Choi. 2021. Clipscore: Areference-free evaluation metric for image captioning. In Proceedings of the 2021 conference on empirical methods in natural language processing , pages 7514– 7528. Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. De-noising diffusion probabilistic models. Advances in neural information processing systems , 33:6840– 6851. Yushi Hu, Benlin Liu, Jungo Kasai, Yizhong Wang, Mari Ostendorf, Ranjay Krishna, and Noah A Smith. 2023. Tifa: Accurate and interpretable text-to-image faithfulness evaluation with question answering. In 
+
+Proceedings of the IEEE/CVF International Confer-ence on Computer Vision , pages 20406–20417. Kaiyi Huang, Kaiyue Sun, Enze Xie, Zhenguo Li, and Xihui Liu. 2023. T2i-compbench: A comprehen-sive benchmark for open-world compositional text-to-image generation. Advances in Neural Information Processing Systems , 36:78723–78747. Mohammed Abdul Hafeez Khan, Yash Jain, Siddhartha Bhattacharyya, and Vibhav Vineet. 2025. Test-time prompt refinement for text-to-image models. In Pro-ceedings of the IEEE/CVF International Conference on Computer Vision , pages 6506–6516. Yuval Kirstain, Adam Polyak, Uriel Singer, Shahbuland Matiana, Joe Penna, and Omer Levy. 2023. Pick-a-pic: An open dataset of user preferences for text-to-image generation. Advances in neural information processing systems , 36:36652–36663. Ilya Loshchilov and Frank Hutter. 2017. Decou-pled weight decay regularization. arXiv preprint arXiv:1711.05101 .
+
+9Shweta Mahajan, Tanzila Rahman, Kwang Moo Yi, and Leonid Sigal. 2024. Prompting hard or hardly prompting: Prompt inversion for text-to-image diffu-sion models. In Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition ,pages 6808–6817. Oscar Mañas, Pietro Astolfi, Melissa Hall, Candace Ross, Jack Urbanek, Adina Williams, Aishwarya Agrawal, Adriana Romero-Soriano, and Michal Drozdzal. 2024. Improving text-to-image consis-tency via automatic prompt optimization. arXiv preprint arXiv:2403.17804 .Alex Nichol, Prafulla Dhariwal, Aditya Ramesh, Pranav Shyam, Pamela Mishkin, Bob McGrew, Ilya Sutskever, and Mark Chen. 2021. Glide: To-wards photorealistic image generation and editing with text-guided diffusion models. arXiv preprint arXiv:2112.10741 .Nikita Pavlichenko and Dmitry Ustalov. 2023. Best prompts for text-to-image models and how to find them. In Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval , pages 2067–2071. Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas Müller, Joe Penna, and Robin Rombach. 2024. Sdxl: Improving latent diffusion models for high-resolution image synthesis. In International Conference on Learning Representa-tions , volume 2024, pages 1862–1874. Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott Gray, Chelsea Voss, Alec Radford, Mark Chen, and Ilya Sutskever. 2021. Zero-shot text-to-image gener-ation. In International conference on machine learn-ing , pages 8821–8831. Pmlr. Scott Reed, Zeynep Akata, Xinchen Yan, Lajanugen Logeswaran, Bernt Schiele, and Honglak Lee. 2016. Generative adversarial text to image synthesis. In 
+
+International conference on machine learning , pages 1060–1069. Pmlr. Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. 2022. High-resolution image synthesis with latent diffusion mod-els. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695. Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li, Jay Whang, Emily Denton, Seyed Kamyar Seyed Ghasemipour, Burcu Karagol Ayan, S. Sara Mahdavi, Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho, David J Fleet, and Mohammad Norouzi. 2022. Photorealistic text-to-image diffusion mod-els with deep language understanding. Advances in neural information processing systems , 35:36479– 36494. Yuxin Wen, Neel Jain, John Kirchenbauer, Micah Gold-blum, Jonas Geiping, and Tom Goldstein. 2023. Hard prompts made easy: Gradient-based discrete opti-mization for prompt tuning and discovery. Advances in Neural Information Processing Systems , 36:51008– 51025. Shiyu Wu, Mingzhen Sun, Weining Wang, Yequan Wang, and Jing Liu. 2025. Visualprompter: Semantic-aware prompt optimization with visual feedback for text-to-image synthesis. In The Four-teenth International Conference on Learning Repre-sentations .Xiaoshi Wu, Yiming Hao, Keqiang Sun, Yixiong Chen, Feng Zhu, Rui Zhao, and Hongsheng Li. 2023. Hu-man preference score v2: A solid benchmark for eval-uating human preferences of text-to-image synthesis. 
+
+arXiv preprint arXiv:2306.09341 .Dawei Xiang, Wenyan Xu, Kexin Chu, Tianqi Ding, Zixu Shen, Yiming Zeng, Jianchang Su, and Wei Zhang. 2025. Promptsculptor: Multi-agent based text-to-image prompt optimization. In Proceedings of the 2025 Conference on Empirical Methods in Nat-ural Language Processing: System Demonstrations ,pages 774–786. Jiazheng Xu, Xiao Liu, Yuchen Wu, Yuxuan Tong, Qinkai Li, Ming Ding, Jie Tang, and Yuxiao Dong. 2023. Imagereward: Learning and evaluating human preferences for text-to-image generation. Advances in Neural Information Processing Systems , 36:15903– 15935. Tao Xu, Pengchuan Zhang, Qiuyuan Huang, Han Zhang, Zhe Gan, Xiaolei Huang, and Xiaodong He. 2018. Attngan: Fine-grained text to image generation with attentional generative adversarial networks. In Pro-ceedings of the IEEE conference on computer vision and pattern recognition , pages 1316–1324. Hongji Yang, Yucheng Zhou, Wencheng Han, and Jianbing Shen. 2025. Self-rewarding large vision-language models for optimizing prompts in text-to-image generation. In Findings of the Association for Computational Linguistics: ACL 2025 , pages 7332– 7349. Han Zhang, Tao Xu, Hongsheng Li, Shaoting Zhang, Xiaogang Wang, Xiaolei Huang, and Dimitris N Metaxas. 2017. Stackgan: Text to photo-realistic image synthesis with stacked generative adversarial networks. In Proceedings of the IEEE international conference on computer vision , pages 5907–5915. Sixian Zhang, Bohan Wang, Junqiang Wu, Yan Li, Tingting Gao, Di Zhang, and Zhongyuan Wang. 2024. Learning multi-dimensional human preference for text-to-image generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pat-tern Recognition , pages 8018–8027. Chujie Zheng, Shixuan Liu, Mingze Li, Xiong-Hui Chen, Bowen Yu, Chang Gao, Kai Dang, Yuqiong Liu, Rui Men, An Yang, Jingren Zhou, and Jun-yang Lin. 2025. Group sequence policy optimization. 
+
+arXiv preprint arXiv:2507.18071 .
+
+10 A Data Processing Pipeline 
+
+We construct four types of training data for PRISM: (i) rewriting data Drew , (ii) visual feedback data 
+
+Dvf , and (iii) score-only calibration data Dscore .The rewriting data are sampled from Beautiful-Prompt. For visual feedback data, we first build a tractable candidate pool from open community T2I data sources, including DiffusionDB, JourneyDB, and Pick-a-Pic. We then select high-quality image-text pairs from this candidate pool and construct degraded prompts through controlled simplifica-tion. The resulting data support three objectives: basic prompt rewriting x → ˆx, visual feedback estimation F (x, ˆx, I ), and feedback-conditioned prompt refinement (x, I, F) → ˆx.
+
+A.1 Unified Quality Score 
+
+Let ai, pi, and ci denote the Aesthetic score, PickScore, and CLIPScore of the i-th sample, re-spectively. For a candidate pool U, each metric is normalized by pool-wise min–max scaling: 
+
+˜mi = mi − min j∈U mj
+
+max j∈U mj − min j∈U mj + ϵ , (21) where m ∈ { a, p, c } and ϵ = 10 −8. We then define a unified quality score: 
+
+Si = 0 .25 ˜ ai + 0 .25 ˜ pi + 0 .50 ˜ ci. (22) The larger CLIPScore weight emphasizes image-text semantic alignment. We use Equation( (22) )for ranking samples in both Type-I and Type-II data construction. 
+
+A.2 BeautifulPrompt Rewriting Data 
+
+BeautifulPrompt contains approximately 143 kprompt pairs. Since its training metadata already provides Aesthetic, PickScore, and CLIPScore an-notations, we do not perform additional external rescoring. We rank the BeautifulPrompt training pool UBP using Eqs. (21) – (22) , and retain the top 
+
+N1 = 10 ,000 pairs, corresponding to about 7.0% 
+
+of the original training pool. The resulting Type-I dataset is Drew =
+
+{(xi, ˆxi)}N1
+
+> i=1
+
+, where xi is a low-quality prompt, and ˆxi is its high-quality rewritten version. This dataset is used only for supervised initialization of the prompt optimizer πθ, i.e., x → ˆx.
+
+A.3 Community Data and Controlled Prompt Simplification A.3.1 Candidate pool construction 
+
+We construct feedback-oriented data from publicly available and license-permissive AI-generated im-age resources. Rather than processing full-scale community datasets, we first sample a tractable can-didate pool UT2I with C image-text pairs. In our implementation, we set C = 50 ,000 and perform all metric computation and filtering only within this sampled pool. The pool can be instantiated from open community T2I resources, including Diffu-sionDB, JourneyDB, and Pick-a-Pic, depending on data availability and experimental needs. Each candidate sample is represented as 
+
+(ˆ xi, I + 
+
+> i
+
+), where ˆxi is a community-written prompt and I+ 
+
+> i
+
+is its associated generated image. Since community prompts often contain rich visual de-tails and generation-oriented expressions, we treat 
+
+ˆxi as a model-preferred prompt. For each candi-date pair, we compute three quality indicators: ai
+
+for aesthetic quality, pi for preference alignment, and ci for image-text alignment. After min–max normalization within UT2I , we compute the unified quality score in Equation( (22) ) and retain the top 
+
+N2 = 5 ,000 high-quality pairs. The retained high-quality pool is denoted as 
+
+Dhigh = {(ˆ xi, I + 
+
+> i
+
+)}N2
+
+> i=1
+
+. This pool serves as the source for constructing paired prompts (xi, ˆxi) and their feedback-oriented supervision. 
+
+A.3.2 Controlled prompt simplification 
+
+For each high-quality prompt ˆxi, we apply a stochastic simplification operator T to construct an under-specified counterpart xi = T (ˆ xi). The goal is not to introduce semantic errors, but to pre-serve the core intent while removing details that are commonly missing in user-provided prompts. This yields paired prompts (xi, ˆxi) with explicit optimization gaps. The simplification process follows four primary strategies: • Summarization and abstraction ( 30% ). We compress a long prompt into a short sentence or tag chain, with target length ratio r ∼U(0 .25 , 0.50) . Fine-grained nouns may be replaced by more generic hypernyms, while the main entity and action are retained. For example, a Victorian gothic cathedral, dramatic backlight, intricate stone 
+
+11 texture is simplified to an old cathedral with dramatic light .• Removal of style and quality modifiers (25% ). We remove common style, quality, and rendering modifiers, such as masterpiece, best quality, ultra-detailed, 8k, RAW photo, cinematic lighting, octane render, artstation, unreal engine, sharp focus . Specifically, we randomly delete 60% ∼ 100% of matched modifiers. For example, masterpiece, ultra detailed, 8k, cinematic lighting, 1 girl is re-duced to 1 girl .• Weakening attributes, relations, scenes, and composition ( 30% ). We decompose ˆxi
+
+into atomic semantic units and remove 1 ∼ 3
+
+non-core atoms, preferably attributes, rela-tions, scene details, and composition descrip-tions. This includes removing color, mate-rial, texture, clothing, spatial relations, exact counts, camera views, and framing details. For example, three red apples on the left side of a wooden table, close-up shot is simplified to apples on a table .• Omission of secondary entities (15% ). 
+
+When a prompt contains multiple entities, background objects, or auxiliary events, we keep the main entity and at most one support-ing entity, while removing peripheral clauses and minor interactions. For example, a boy reading near a window, with a cat on the sofa and plants in the background 
+
+is simplified to a boy reading near awindow .To improve degradation diversity, we addition-ally apply one secondary micro-edit with probabil-ity 0.35 . During simplification, we enforce three constraints: at least one main entity is preserved, the token retention ratio satisfies r ∈ [0 .25 , 0.70] ,and the degraded prompt is non-empty. For each paired prompt sample (xi, ˆxi), we as-sociate images with prompts p ∈ { xi, ˆxi}. Specifi-cally, Ii is generated by the frozen target T2I gener-ator G, i.e., Ii = G(xi). For the optimized prompt 
+
+ˆxi, we reuse the original community image I+ 
+
+> i
+
+.This produces intermediate prompt-image samples of the form {xi, I i, ˆxi, I + 
+
+> i
+
+}. These samples are then organized into the feedback assessment, score-only calibration, and feedback-guided rewriting datasets described below. 
+
+A.4 Visual Feedback Annotation Pipeline Semantic feedback. Semantic feedback evalu-ates whether the generated image Ip preserves the semantic intent specified by the reference prompt p.Similar to Davidsonian Scene Graph(DSG)-based semantic prompt analysis, we decompose the refer-ence prompt into atomic semantic units and com-pare them with the image through question answer-ing. When p = xi, we use ˆxi as the reference prompt, so that the feedback can reveal semantic and compositional details missing from the under-specified prompt. When p = ˆ xi, the optimized prompt itself is used as the reference. Concretely, we first use Qwen3 to parse the ref-erence prompt into DSG-style atomic units and convert them into yes/no questions. The questions cover entity, attribute, relation, count, text, and spa-tial concepts. Given Ip, Qwen3-VL answers each question to obtain the predicted label ˆyq ∈ { 0, 1},where yq ∈ { 0, 1} denotes the expected answer. We compute the semantic score by dependency-aware question-answering accuracy: 
+
+¯rp, sem = 1
+
+|Q|
+
+X
+
+> q∈Q
+
+1[ˆ yq = yq], ¯rp, sem ∈ [0 , 1] .
+
+(23) The atomic comparison results {(q, y q, ˆyq)}q∈Q are then summarized by Qwen3 into concise textual di-agnostic feedback f ∗
+
+> p, sem
+
+. The final semantic score 
+
+r∗ 
+
+> p, sem
+
+∈ { 1, . . . , 10 } is obtained by discretizing 
+
+¯rp, sem in Appendix A.5. 
+
+Aesthetic feedback. Aesthetic feedback evalu-ates the visual quality of the generated image Ip.We use Qwen3-VL to produce textual diagnostic feedback f ∗ 
+
+> p, aes
+
+according to a fixed rubric: com-position, lighting, color harmony, image clarity, visual details, artifacts . Qwen3-VL is only used for diagnosis generation and does not provide the final supervised score. For numerical assessment, we compute an aes-thetic metric score ap for Ip and normalize it: 
+
+¯rp, aes = mm( ap; Dhigh ), where mm( ·) denotes the min–max normalization in Equation( (21) ). The normalized score ¯rp, aes ∈ [0 , 1] is used only as an intermediate continuous score. The final aesthetic score r∗ 
+
+> p, aes
+
+∈ { 1, . . . , 10 } is obtained by quantile-based discretization in Appendix. A.5. 
+
+Preference feedback. Preference feedback cap-tures overall user satisfaction and preference align-ment. The textual feedback f ∗ 
+
+> p, pref
+
+is generated 12 from five aspects: naturalness, coherence, style ap-propriateness, attractiveness, overall satisfaction .The numerical preference score is computed by averaging normalized scores from multiple prefer-ence scorers: 
+
+¯rp, pref = ˜rIR  
+
+> p
+
++ ˜ rPS  
+
+> p
+
++ ˜ rHPS 
+
+> p
+
+3 , ¯rp, pref ∈ [0 , 1] .
+
+(24) where ˜rIR  
+
+> p
+
+, ˜rPS  
+
+> p
+
+, and ˜rHPS  
+
+> p
+
+denote normalized Im-ageReward, PickScore, and HPSv2 scores, re-spectively. The final preference score r∗ 
+
+> p, pref
+
+∈{1, . . . , 10 } is obtained by quantile-based dis-cretization in Appendix. A.5. This design decou-ples interpretable textual critique from reproducible numerical supervision. 
+
+A.5 Discretization 
+
+The feedback annotation pipeline first pro-duces continuous intermediate scores ¯rp =[¯ rp, sem , ¯rp, aes , ¯rp, pref ] ∈ [0 , 1] 3. For supervi-sion and reward computation, we discretize them into integer scores r∗ 
+
+> p
+
+= [ r∗
+
+> p, sem
+
+, r ∗
+
+> p, aes
+
+, r ∗ 
+
+> p, pref
+
+] ∈{1, . . . , 10 }3. Thus, r∗ 
+
+> p
+
+denotes the final reference score vector used in Dfb , Dscore , and reward aggre-gation. For semantic consistency, we use uniform bins over [0 , 1] :
+
+r∗ 
+
+> p, sem
+
+=
+
+
+
+10 , ¯rp, sem = 1 ,
+
+⌊10¯ rp, sem ⌋ + 1 , 0 ≤ ¯rp, sem < 1.
+
+(25) For aesthetic quality and preference alignment, we use training-set quantile bins to reduce distribu-tion imbalance. For each u ∈ { ¯rp, aes , ¯rp, pref }, we compute nine decile thresholds on the training split: 
+
+ek(u) = Quantile( utrain , 0.1k), k = 1, . . . , 9.The discretized score is then defined as 
+
+r∗ 
+
+> p,d
+
+= 1+ 
+
+> 9
+
+X
+
+> k=1
+
+1[¯ rp,d ≥ ek(d)] , d ∈ { aes , pref }.
+
+(26) All final scores are therefore integers in 
+
+{1, . . . , 10 }, where larger values indicate better semantic consistency, aesthetic quality, or preference alignment. 
+
+A.6 Supervision Formats 
+
+The constructed samples are organized into four supervision formats, consistent with the main paper. Table 5 summarizes the training datasets. 
+
+Prompt rewriting data. The first type is prompt rewriting data: 
+
+Drew = {(x, ˆx∗)}. (27) We use a curated 10 k-sample subset of Beautiful-Prompt. This dataset teaches the prompt optimizer 
+
+πθ to transform simple or under-specified user prompts into more detailed and model-preferred prompts. 
+
+Visual feedback assessment data. The second type is visual feedback assessment data: 
+
+Dfb = {(p, I p, F∗ 
+
+> p
+
+)}. (28) Here, p ∈ { xi, ˆxi}, Ip is the generated or reused image associated with prompt p, and F∗ 
+
+> p
+
+contains structured diagnostic feedback and scores over se-mantic consistency, aesthetic quality, and prefer-ence alignment. This dataset initializes the model’s ability to assess generated images and produce in-terpretable feedback. 
+
+Score-only calibration data. To stabilize numer-ical scoring, we additionally construct score-only calibration data: 
+
+Dscore = {(p, I p, r∗
+
+> p
+
+)}. (29) This subset removes long-form diagnostic text and retains only the score vector r∗ 
+
+> p
+
+=[r∗
+
+> p, sem
+
+, r ∗
+
+> p, aes
+
+, r ∗ 
+
+> p, pref
+
+]. It prevents score prediction from being overwhelmed by free-form diagnostic supervision. 
+
+Feedback-guided prompt rewriting data. The final instruction type is feedback-guided prompt rewriting data: 
+
+Dfgr = {(xi, I i, F∗ 
+
+> xi
+
+, ˆxi)}. (30) Unlike Dfb , this task explicitly connects visual di-agnosis with prompt revision. Given an under-specified prompt xi, its generated image Ii =
+
+G(xi), and its visual feedback F∗ 
+
+> xi
+
+, the model is trained to revise the prompt toward the optimized counterpart ˆxi. This encourages the model to use visual feedback as explicit correction cues rather than treating image assessment and prompt rewrit-ing as isolated tasks. 
+
+B Training Data Prompt Templates 
+
+We provide the prompt templates used to construct the four types of training data. Each template is 13 Dataset Source Sample Format Size                       
+
+> Drew BeautifulPrompt (x, ˆx∗)10 ,000
+> Dfb Sampled community T2I pool (p, I p,F∗
+> p)10 ,000
+> Dscore Generated or reused images (p, I p,r∗
+> p)10 ,000
+> Dfgr Sampled community T2I pool +target T2I (x, I x,F∗
+> x,ˆx)5,000
+
+Table 5: Summary of the training datasets. Here p ∈ { x, ˆx}, F∗ 
+
+> p
+
+denotes reference visual feedback, and r∗ 
+
+> p
+
+=[r∗
+
+> p, sem
+
+, r ∗
+
+> p, aes
+
+, r ∗ 
+
+> p, pref
+
+]. The size M depends on the number of samples included for score-only calibration. 
+
+written in an instruction-style format, matching the actual input-output structure used during data generation. 
+
+Prompt Rewriting Template for Drew 
+
+Please rewrite the following T2I prompt into a higher-quality prompt. The rewritten prompt should: • preserve the original user intent; • improve visual descriptiveness and clarity; • add appropriate details about attributes, scene, composition, style, and image quality; • avoid introducing objects or meanings that are inconsistent with the original prompt; • be suitable for T2I generation. 
+
+Original prompt: 
+
+{x} 
+
+Output format: 
+
+Optimized prompt: <Your rewritten prompt >
+
+Visual Feedback Template for Dfb 
+
+[IMAGE] Please evaluate the generated image accord-ing to the given prompt. 
+
+Prompt: 
+
+{p} 
+
+Task. Assess the image from three dimen-sions: semantic consistency, aesthetic qual-ity, and preference alignment. For each di-mension, provide a discrete score from 1 to 10 and a concise image-grounded explana-tion. The scoring should follow the scoring reference box provided below in Appendix B. The three dimensions should be judged independently. 
+
+Output format: 
+
+Semantic consistency score: <score from 1 to 10 > Semantic consistency feedback: <concise explanation > Aesthetic quality score: <score from 1 to 10 >Aesthetic quality feedback: <concise expla-nation > Preference alignment score: <score from 1 to 10 > Preference alignment feedback: <concise explanation > 
+
+Visual Score Template for Dscore 
+
+[IMAGE] Please score the generated image according to the given prompt. 
+
+Prompt: 
+
+{p} 
+
+Task. Assign three independent scores from 1 to 10 for semantic consistency, aesthetic quality, and preference alignment, follow-ing the scoring reference box provided be-low in Appendix B. Only output the numer-ical scores without additional explanations. 
+
+Output format: 
+
+Semantic consistency score: <score from 1 to 10 > Aesthetic quality score: <score from 1 to 10 >Preference alignment score: <score from 1 to 10 > 14 Feedback-Guided Refinement Template for Dfgr 
+
+[IMAGE] Please refine the original T2I prompt accord-ing to the generated image and the visual feedback. 
+
+Original prompt: 
+
+{x} 
+
+Visual feedback: 
+
+{F∗ 
+
+> x
+
+}
+
+Task: 
+
+Rewrite the original prompt to improve the next generated image. The refined prompt should: • preserve the original user intent; • correct semantic omissions, weak at-tribute binding, and relationship-level inconsistencies mentioned in the feed-back; • improve aesthetic quality by adding ap-propriate visual details about composi-tion, lighting, style, and image quality; • improve preference alignment while avoiding unnecessary or inconsistent content; • remain concise and suitable for T2I generation. 
+
+Output format: 
+
+Refined prompt: <Your feedback-guided optimized prompt > 
+
+For Dfb and Dscore , all visual scores are as-signed according to a shared 1–10 scoring rubric. This shared reference ensures consistent criteria between feedback annotation and reward score gen-eration. The detailed scoring rubric is provided below. 
+
+Scoring Reference for Visual Evaluation 
+
+All visual scores are assigned on a discrete scale from 1 to 10, where higher scores in-dicate better quality. The three dimensions are evaluated independently. 
+
+Semantic consistency. Score 1: almost unrelated to the prompt. Score 2: only a few prompt elements are captured. Score 3: some relevant content is present but with clear semantic errors. Score 4: the main intent is partially followed, with sev-eral missing or inconsistent details. Score 5: the main idea is captured, but fine-grained attributes or relations are weak. Score 6: most major elements are correct, with remaining detail-level errors. Score 7: generally consistent with minor omissions. Score 8: accurately reflects most objects, at-tributes, relations, and scene details. Score 9: highly faithful with negligible imperfec-tions. Score 10: fully matches the prompt, including objects, attributes, relations, ac-tions, and scene details. 
+
+Aesthetic quality. Score 1: severe aesthetic flaws and poor visual balance. Score 2: ma-jor issues in composition, color, lighting, or clarity. Score 3: limited visual appeal with obvious flaws. Score 4: understandable but weak in composition or harmony. Score 5: acceptable but generic or noticeably im-provable. Score 6: moderately appealing but lacking refinement. Score 7: good com-position, color, lighting, and overall appeal. Score 8: visually strong, coherent, and well balanced. Score 9: excellent harmony, cre-ativity, and visual impact. Score 10: out-standing aesthetic quality with exceptional composition, balance, and creativity. 
+
+Preference alignment. Score 1: highly un-likely to satisfy human preference. Score 2: low appeal with major issues in natural-ness, coherence, or style. Score 3: partially acceptable but with obvious preference-related flaws. Score 4: limited appeal and possibly awkward or inconsistent. Score 5: acceptable but not especially attractive or satisfying. Score 6: moderately pre-ferred with reasonable coherence and ap-peal. Score 7: likely to be preferred by users. Score 8: strongly preferred, with ap-pealing content and coherent style. Score 9: highly preferred with strong attractiveness and satisfaction. Score 10: exceptionally satisfying and highly aligned with human preference. 15 Table 6: Holistic image-level evaluation results on Flux.2-klein 4B. The best and second-best results in each setting are highlighted in bold and underlined, respectively.                                                                                           
+
+> Method CLIPScore ↑Aesthetic ↑PickScore ↑HPSv2 ↑ImageReward ↑
+> Original Prompt 0.285 6.129 20.782 0.274 1.066
+> Text-only prompt optimization
+> BestPrompt 0.274 6.215 20.576 0.283 1.096 BeautifulPrompt 0.249 6.201 21.505 0.285 1.112 Promptist 0.287 6.127 20.802 0.279 1.147 NeuroPrompts 0.265 6.180 21.945 0.270 1.198 Qwen3-VL-8B 0.251 6.188 20.247 0.281 1.074 PRISM-SFT 0.283 6.224 21.584 0.295 1.181 PRISM 0.292 6.296 22.319 0.301 1.205
+> Text-image feedback-based prompt optimization
+> VisualPrompter 0.308 6.124 21.286 0.286 0.981 TIR 0.288 6.184 21.594 0.282 0.989 OPT2I 0.302 6.163 21.448 0.274 1.017 GPT-4o 0.272 6.228 20.946 0.296 1.218 Qwen3-VL-235B-A22B 0.273 6.145 22.659 0.291 1.247 Qwen3-VL-8B 0.258 6.118 21.702 0.287 1.193 PRISM-SFT 0.276 6.209 22.371 0.302 1.231 PRISM 0.300 6.334 22.948 0.306 1.286
+
+C Additional Results on FLUX.2-klein 
+
+We provide the comparison results on FLUX.2-klein 4B with 4 denoising steps as additional evi-dence of cross-generator generalization. The evalu-ation protocol follows the main experiments, with all methods tested under the same settings. 
+
+Holistic image-level evaluation. Table 6 re-ports the results on the BeautifulPrompt test set. Consistent with the Stable Diffusion 3.5 results, our method achieves stronger overall performance across alignment, aesthetic quality, and preference-related metrics. This shows that PRISM can im-prove image-level generation quality on FLUX.2-klein as well. 
+
+Fine-grained semantic alignment. Table 7 presents the results on T2I-CompBench and TIFA. PRISM also obtains better fine-grained semantic alignment, indicating that the optimized prompts better preserve compositional attributes, object re-lations, and detail-level prompt-image consistency. 
+
+Qualitative analysis. Figure 5 shows qualitative comparisons on FLUX.2-klein. Compared with the original prompts and baseline prompt optimization methods, PRISM generates images with more faith-ful prompt-image correspondence and richer visual details. In particular, the optimized prompts help recover missing attributes, improve object-level relationships, and produce more coherent compo-sition and style. These examples further show that PRISM can provide effective prompt corrections under a different T2I generator. Overall, the FLUX.2-klein results are consis-tent with the main experiments, further supporting the robustness and cross-generator applicability of PRISM. 
+
+D Artifact Licenses, Terms of Use, and Intended Use 
+
+We use existing publicly available artifacts only for research purposes, including pretrained mod-els, text-to-image generators, datasets, benchmarks, and evaluation tools. The main artifacts include Qwen3-VL, Stable Diffusion 3.5, FLUX.2-klein, BeautifulPrompt, DiffusionDB, JourneyDB, Pick-a-Pic, T2I-CompBench, TIFA, CLIPScore, Im-ageReward, PickScore, and HPSv2. We follow the licenses, terms of use, and access conditions specified by the original creators and distribution platforms. Our use of these artifacts is consistent with their intended research and evaluation pur-poses. The derived training and evaluation data constructed in this work are intended only for re-search on text-to-image prompt optimization and visual-feedback-based model analysis, and should not be used outside research contexts or for gener-ating harmful, misleading, or unauthorized content. No existing artifact is redistributed as part of this submission. 16 Table 7: Fine-grained semantic alignment evaluation on Flux.2-klein 4B. The best and second-best results are highlighted in bold and underlined, respectively.                                                                                   
+
+> Method TIFA ↑T2I-CompBench ↑
+> Color Shape Texture Spatial NonSpatial Complex Avg. Original Prompt 76.7 0.785 0.516 0.634 0.266 0.271 0.305 0.463 VisualPrompter 88.2 0.841 0.602 0.701 0.410 0.322 0.410 0.548 TIR 83.1 0.828 0.566 0.723 0.363 0.316 0.391 0.531 OPT2I 85.7 0.825 0.599 0.732 0.394 0.321 0.380 0.542 GPT-4o 90.8 0.813 0.555 0.721 0.436 0.315 0.386 0.538 Qwen3-VL-235B-A22B 90.2 0.816 0.584 0.716 0.405 0.326 0.402 0.541 Qwen3-VL-8B 88.0 0.794 0.587 0.691 0.379 0.320 0.372 0.524 PRISM-SFT 89.5 0.801 0.592 0.719 0.393 0.318 0.403 0.538 PRISM 91.3 0.852 0.609 0.738 0.425 0.330 0.414 0.561
+
+E AI Assistance Statement 
+
+The authors used AI-assisted tools only for gram-mar checking, formatting inspection, and language polishing of the manuscript. No AI tools were used to generate the research ideas, formulate the method, design or conduct experiments, analyze results, create figures or tables, or draw scientific conclusions. All technical content, experimental results, claims, and final manuscript decisions were written, reviewed, and verified by the authors, who take full responsibility for the accuracy, originality, and integrity of the work. 17 full page scan of an 
+
+antique lithograph 
+
+illustration of 
+
+bioluminescent 
+
+fantasy flora 
+
+a still from a studio 
+
+ghibli film showing 
+
+one giant grey ufo . in 
+
+the background is 
+
+machu pichu on a 
+
+misty and starry night. 
+
+by studio ghibli . very 
+
+dull muted colors 
+
+a futuristic wanderer 
+
+gazing into a universe 
+
+full of mystical colorful 
+
+light nebulae and 
+
+galaxies in the style 
+
+artstyle of caspar david 
+
+friedrich , mythic color 
+
+scheme 
+
+Raw prompt 
+
+Antique lithograph full page scan, 1800s botanical 
+
+plate on foxed paper, Ernst Haeckel inspired 
+
+bioluminescent fantasy flora, ethereal blue -green 
+
+glow, intricate scientific line art, hand -colored 
+
+luminescent details, aged sepia tones, vintage 
+
+marginalia, archival museum quality 
+
+Optimized prompt 
+
+Futuristic wanderer silhouette on cosmic precipice, 
+
+gazing into sublime universe of swirling prismatic 
+
+nebulae and distant galaxies, Caspar David 
+
+Friedrich romantic style, mythic palette of deep 
+
+indigo violet and gold, vast scale, ethereal lighting, 
+
+oil painting texture 
+
+Diagnosis 
+
+Studio Ghibli film still, massive grey UFO 
+
+hovering over Machu Picchu, misty starry night, 
+
+heavily desaturated muted palette, soft 
+
+atmospheric fog, cinematic anime composition, 
+
+earthy tones, dreamlike ambience 
+
+mysterious fantasy 
+
+winged creature, 4 k, 
+
+photorealistic, golden 
+
+light, volumetric, foggy 
+
+This is a digital illustration of a fantastical, winged 
+
+creature with a humanoid upper body and a large, 
+
+feathered tail. The creature is depicted in a dynamic 
+
+pose, as if in mid -flight, against a dark, atmospheric 
+
+background with a warm, golden light source. The 
+
+overall style is ethereal and otherworldly. 
+
+Image matches the prompt well by showing a mysterious golden winged 
+
+fantasy creature, but the foggy atmosphere and creature anatomy are 
+
+not fully clear .
+
+Image has dramatic golden lighting and detailed wings, but 
+
+overexposure and a plain background reduce visual balance and polish .
+
+Image feels epic and visually striking, but harsh highlights and 
+
+ambiguous body details slightly weaken its readability and appeal .
+
+a sleek futuristic city 
+
+with elegant skyscrapers, 
+
+by hr giger and 
+
+beksinski and stephan 
+
+martiniere , 4 k 
+
+resolution. 
+
+Sleek futuristic megacity with elegant biomechanical 
+
+skyscrapers, Stephan Martiniere and H.R. Giger 
+
+aesthetic, dramatic atmospheric lighting, cinematic 
+
+composition, photorealistic, 8k, highly detailed, 
+
+octane render, volumetric fog, neon accents 
+
+Image 1 shows a city with tall buildings, but It shows a city with tall 
+
+buildings, but the scene looks like a real modern city at night 
+
+rather than a sleek futuristic city with highly imaginative 
+
+skyscraper design .
+
+Image 1 has clean reflections and composition, but lacks visual 
+
+richness, scale, and depth .
+
+Image 1 is clear but not very immersive, with limited futuristic 
+
+atmosphere and design appeal .
+
+Image captures bioluminescent fantasy flora, but the antique 
+
+lithograph and full -page scan style are weakly expressed .
+
+Image has a soft mystical atmosphere, but the dark tones and blurry 
+
+structure reduce clarity and detail .
+
+Image feels artistic and dreamy, but limited readability and weak 
+
+antique illustration cues reduce overall appeal .
+
+It matches the prompt well, showing one giant grey UFO above a 
+
+Machu Picchu -like setting on a misty, starry night, though the 
+
+background of Machu Picchu is not detailed .
+
+Image has a calm, atmospheric composition and muted palette, but 
+
+the scene feels slightly flat and lacks stronger depth and detail .
+
+It is pleasant and readable, but the subdued colors and limited 
+
+visual drama reduce overall excitement and memorability .
+
+The image merely loosely matches the hints, showing a humanoid 
+
+figure in the cosmic landscape, a chaotic galactic background, and 
+
+most specific narrative details .
+
+Image is colorful and visually rich, with a strong cosmic composition, 
+
+but the scene is more like a fantasy illustration than a clear anime 
+
+poster .
+
+Image is imaginative and appealing, but the unclear subject identity 
+
+and missing story elements reduce overall impact .Figure 5: Qualitative examples of PRISM. Each example shows the original prompt, initial generated image, structured visual feedback, optimized prompt, and final generated image, illustrating how diagnosed visual issues guide targeted prompt refinement. 
+
+18

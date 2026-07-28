@@ -1,0 +1,238 @@
+Title: Not Forgotten: Implementation and Evaluation of a Personalized Episodic Memory for the Humanoid Robot Head Kim
+
+URL Source: https://arxiv.org/pdf/2607.24190v1
+
+Published Time: Tue, 28 Jul 2026 01:44:40 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Not Forgotten: Implementation and Evaluation of a Personalized Episodic Memory for the Humanoid Robot Head Kim 
+
+Steve Aschenbrenner 1 and Marcel Heisler 1 and Thomas Sievers 2 and Christian Becker-Asano 1
+
+Abstract — Social robots that rely on large language models for conversation are unable to retain information across sessions. This absence of memory violates social expectations, potentially preventing the formation of persistent relationships. This paper presents a lightweight episodic memory module that integrates vector-based semantic retrieval with an LLM-controlled dialog system, deployed on the humanoid robot head Kim. The module employs a hybrid scoring function combining cosine similarity with a memory strength metric to retrieve contextually relevant past interactions and inject them into the generation prompt. The system was evaluated in a within-subjects video-based online study ( N = 43 ) using the Human-Robot Interaction Evaluation Scale (HRIES). Results show that episodic memory significantly increased perceived sociability ( d = 0 .60 , p < .001 ), with the strongest effects on perceived trustworthiness (d = 0 .62 ) and warmth ( d = 0 .56 ). Perceived disturbance remained unchanged ( d = 0 .00 ), indicating that the implemented approach to personalized recall did not trigger privacy-related discomfort or uncanny valley effects. These findings suggest that episodic memory serves as a social lubricant in embodied Human-Robot Interaction, enhancing relational quality without eliciting negative affective responses. 
+
+I. I NTRODUCTION 
+
+Social robots designed for companionship, therapy support, and everyday assistance require the ability to maintain persistent relationships with their users [1], [2]. Unlike task-oriented industrial systems, these agents operate under an implicit social contract: users who share personal information expect that information to be retained across interactions [3]. Yet, large language models (LLMs) that increasingly serve as the conversational backbone of such robots are stateless by design [4]. Since interactions are either reset across sessions or constrained by finite context windows, they produce responses that are coherent in isolation but socially discontinuous over time. For text-based chatbots, this limitation is an inconve-nience. For embodied humanoid robots, whose physical form invites attributions of agency and social capability [5], [6], statelessness constitutes a violation of the expectations that embodiment itself creates [7]. From an engineering perspective, the problem of persis-tence has been addressed. Retrieval-Augmented Generation (RAG) [8] and derivative architectures such as MemGPT [9] enable LLMs to query external databases and inject retrieved context into the generation prompt. Simulated environments have further demonstrated that LLM-driven agents equipped with memory can exhibit believable social behaviors [10]. However, these systems are optimized for factual retrieval     
+
+> 1Stuttgart Media University, Germany
+
+{sa121, heisler, becker-asano }@hdm-stuttgart.de 2University of L ¨ubeck 
+
+t.sievers@uni-luebeck.de 
+
+accuracy and evaluated primarily through functional bench-marks or virtual sandboxes. The transfer to embodied social robotics introduces a distinct concern that existing work has not adequately addressed: the impact of memory on human users. This gap is twofold. First, the few empirical studies on memory in human-robot interaction (HRI) focus on system capability rather than user perception [11], [12]. Research has concentrated on how to build [13] memory architectures rather than on how users experience them. Whether episodic memory enhances perceived social attributes such as warmth, trustworthiness, or likeability of an embodied agent remains an open empirical question. Second, the introduction of personal recall by an artificial agent raises a complementary concern: the very act of a machine tracking and remembering past interactions may cross the boundary from attentive to intrusive [14], [15]. It remains unclear whether users perceive a memory-enabled robot as a socially competent companion or if the retention of personal details triggers discomfort akin to surveillance. Determining whether memory-enabled robots are perceived as more sociable, more disturbing, or both requires controlled experimentation with human participants. The central research question guiding this work is: What is the differential impact of a personalized episodic memory system on the perceived sociability and the perceived distur-bance of a humanoid robot, compared to a Baseline system without memory? 
+
+First, a lightweight episodic memory module is presented that integrates vector-based semantic retrieval via a Qdrant database with an LLM-controlled dialog system deployed on a humanoid robot head. Second, a controlled within-subjects study ( N = 43 ) is reported that evaluates the effects of this memory system in a video-based paradigm using the validated Human-Robot Interaction Evaluation Scale (HRIES) [5]. Therefore, Section II reviews existing memory architectures and their social implications. Section III details the implementation of the proposed episodic memory module deployed on the robotic platform. Section IV outlines the methodology of the controlled user study, followed by the presentation of the empirical results in Section V. Finally, Section VI discusses the findings along with their limitations, and Section VII concludes with implications for future system designs. II. R ELATED WORK 
+
+A. Episodic Memory in Social HRI 
+
+The role of memory in sustaining long-term human-robot relationships has received growing attention. Leite et arXiv:2607.24190v1 [cs.RO] 27 Jul 2026 al. [7] identified long-term memory as a prerequisite for context-sensitive social interaction, arguing that agents lacking persistent recall cannot establish the continuity required for sustained user engagement. Peller-Konrad et al. [13] provided a structured taxonomy of memory types for robotic agents, distinguishing procedural, semantic, and episodic subsystems. Within this hierarchy, episodic memory, defined as the encod-ing of specific past experiences including their temporal and contextual attributes [16], is identified as the primary driver of perceived personalization. For instance, recent realizations of such social memories demonstrate that humanoid robots proactively adapt to their interaction partners by integrating dynamic person models with recognized emotional states [17]. Pinto-Bernal et al. [11] similarly reinforced this position, reporting that users who interacted with a memory-enabled social robot described the recall of personal details as creating a sense of continuity interpreted as social attentiveness. Their exploratory evaluation indicated that memory-driven person-alization enhanced perceived trust and naturalness, constructs that relate to the broader social dimensions formalized in the Human-Robot Interaction Evaluation Scale (HRIES) by Spatola et al. [5]. However, these findings rest largely on qualitative observation rather than controlled experimental comparison. Earlier foundational work by Kasap and Magnenat-Thalmann [18] investigated the impact of episodic memory on an embodied, human-like robotic head in a tutoring scenario. In a controlled experiment comparing a memory-enabled versus a memoryless robot, they demonstrated that episodic memory significantly increased overall social presence and task engagement across multiple sessions. However, their dialogue management was heavily structured, relying on Finite State Machines (FSMs) and Hierarchical Task Networks (HTNs). Consequently, interactions were constrained to predefined, rule-based scripts, lacking the open-ended conversational flexibility and semantic adaptability that modern LLM-based architectures provide. A complementary concern is that persistent recall may also increase user discomfort. Stein and Ohler [14] introduced the concept of the Uncanny Valley of Mind, proposing that attributed cognitive capabilities, including memory, can trigger eeriness when they exceed expected human-like boundaries. Dorri and Zwick [15] extended this argument by identifying a memory power asymmetry. The agent retains a complete record while the user naturally forgets, creating a dynamic that may be perceived as surveillance rather than social attentiveness. 
+
+B. LLM-Based Memory Architectures 
+
+The statelessness of LLMs has been addressed through external memory mechanisms. RAG [8] provides the foun-dational pattern. Relevant documents are retrieved from an external store and injected into the generation prompt. MemGPT [9] extends this pattern with an explicit memory management layer that handles context overflow by swapping information between a limited working memory and apersistent long-term store. Both approaches optimize for factual retrieval accuracy in text-based assistant settings. Park et al. [10] demonstrated that LLM-driven agents equipped with a memory stream, scored by recency, impor-tance, and relevance, can maintain coherent social behavior in a simulated 2D environment over extended periods. Their Generative Agents architecture showed that appropriate mem-ory retrieval directly contributed to perceived believability. Middleware frameworks such as LangChain [19] have since standardized the engineering components (vector stores, re-trieval chains) required to implement such systems. Neverthe-less, these architectures were largely developed and evaluated for disembodied or virtual agents, their optimization targets remaining closely tied to information accuracy rather than the social-perceptual quality of the interaction. Conversely, alternative approaches specific to HRI attempt to solve this by coupling LLMs with psychologically grounded cognitive architectures like ACT-R, through which humanoid robots retrieve memories via associative cognitive processes rather than pure semantic similarity [20]. While such neuro-symbolic systems offer excellent theoretical plausibility, evaluating the explicit psychological impact of any memory mechanism on human users during physical interaction remains critical. 
+
+C. Embodiment and Memory Interdependence 
+
+Physical embodiment fundamentally alters user expecta-tions. Embodied agents elicit stronger attributions of agency and social capability than screen-based interfaces [6], [21], but this elevated expectation creates a liability. When an embodied humanoid fails to recall prior interactions, the resulting dis-appointment may reduce perceived social competence below that of a less anthropomorphic system [22], [23]. Conversely, memory without embodiment lacks the social presence needed to leverage recalled information for relationship building [24]. The combination of physical presence and memory-based consistency is therefore required for an agent to be perceived as a genuine social entity [7], [12]. 
+
+D. Research Gap 
+
+The reviewed literature reveals a consistent pattern. Mem-ory architectures have been built and evaluated in simula-tion [10] or assessed through technical retrieval metrics [8], [9]. In contrast, theoretical work in HRI has articulated the expected benefits of memory for sustained engagement [7], [11] and provided structured architectural taxonomies [13], but without controlled empirical validation on embodied plat-forms. No existing study provides a controlled within-subjects comparison of a memory-enabled versus a memoryless agent in an embodied HRI context using a validated instrument. As a first empirical step, this paper deploys a RAG-based episodic memory module on a humanoid robot head and measures its effect on perceived sociability and disturbance through a video-based evaluation using the HRIES [5]. III. S YSTEM DESIGN 
+
+A. Architecture Overview and Robotic Platform 
+
+The system extends an existing robotic base infrastruc-ture [25] with a dedicated episodic memory module. The Fig. 1. Humanoid robot head Kim that has been used in this study 
+
+overall architecture follows a microservice-oriented design in which all components are containerized using Docker and communicate via a combination of HTTP REST APIs and websockets. The robotic base platform provides Automatic Speech Recognition (ASR) based on Whisper, Text-To-Speech (TTS) synthesis using XTTS [26], lip synchronization, and face tracking, each running as an isolated service on an Nvidia Jetson Orin AGX development board. The physical embodiment is a humanoid robot head (“Kim”) that is equipped with 14 pneumatic actuators for head movement and facial expression control [27], see Figure 1. The interaction pipeline proceeds sequentially. Audio input is captured via microphone, transcribed by the ASR service, routed through the memory module for context retrieval, and forwarded to the LLM for response generation. The generated text is then synthesized into speech and rendered with synchronized lip movements. Figure 2 illustrates the complete data flow, highlighting the memory module as an intermediary between perception and generation. 
+
+B. Episodic Memory Module 
+
+The memory module is the primary contribution of this work. Implemented as a FastAPI microservice, it exposes RESTful endpoints for storing new interactions (POST /memory ), retrieving relevant past context ( POST /memory/query ), and triggering memory consolidation (POST /memory/consolidate-all ). The system uses 
+
+gpt-4.1-nano as its underlying language model, governed by a system prompt that explicitly defines its persona as an ironic, friendly android robot head named Kim. 
+
+1) Vectorization and Storage: Text fragments from each conversational turn are converted into 1536-dimensional vector embeddings using the OpenAI Embeddings API (text-embedding-3-small ) and stored in a local Qdrant database. Vector storage facilitates retrieval by con-ceptual similarity rather than rigid keyword matching. While the architecture is designed to capture true episodic memories preserving temporal context, the experimental setup utilized pre-populated user preferences to ensure baseline consistency. Within the scope of this evaluation, the stored data thus functions as semantic profiles embedded within an episodic framework. Each memory is additionally annotated with emotional metadata based on Russell’s Circumplex Model [28]. This psy-chological model represents emotions in a two-dimensional space defined by valence (pleasure-displeasure) and arousal (activation-deactivation). Valence v and arousal a scores are obtained through LLM-based sentiment classification at storage time. To achieve this, the model is explicitly instructed with the following prompt: ’EMOTION OUTPUT: Analyze the USER’s emotional state (not your response). Valence: -1 (negative) to +1 (positive). Arousal: -1 (calm/sad/tired) to +1 (excited/angry/alert). Sad news like death = negative arousal. ”response”: ”text”, ”valence”: float, ”arousal”: float.’ Based on this output, the emotional intensity is computed as 
+
+I = √v2 + a2, (the Euclidean distance from the neutral origin in the Valence-Arousal plane). This emotional annotation enables the system to prioritize emotional events during retrieval. 
+
+2) Hybrid Retrieval Scoring: Retrieval follows a two-stage strategy. In the first stage, the system queries Qdrant using cosine similarity and over-fetches by a factor of three (i.e., 
+
+3k candidates for k desired results). In the second stage, a hybrid scoring function re-ranks the candidates: 
+
+R(m) = α · sim (m) + S(m), (1) where R(m) is the final hybrid retrieval score, sim (m) ∈
+
+[0 , 1] is the cosine similarity score, α = 50 is a heuristically calibrated scaling factor, and S(m) is a memory strength score. While standard Retrieval-Augmented Generation archi-tectures rely solely on semantic similarity, this approach adapts the recency and access frequency scoring from generative agents [10]. This approach is further extended by integrating emotional intensity, hypothesizing that prioritizing emotional events returns more natural recall. The scaling factor ensures semantic relevance remains the dominant criterion while memory strength acts as a tie-breaker. The memory strength term is defined as 
+
+S(m) = max 
+
+
+
+0,
+
+
+
+wtFtime + waFaccess 
+
++ wr Frecency 
+
+
+
+· Memotion 
+
+
+
+,
+
+(2) with weights wt = 3 .0, wa = 2 .0, and wr = 1 .5. Its components are 
+
+Ftime = max(0 , 1 − 0.1 ∆ tcreation ) ,Faccess = ln(1 + Naccess ) ,Frecency = max(0 , 1 − 0.05 ∆ tlast access ) ,
+
+(3) and 
+
+Memotion = 1 + 0 .5 pv2 + a2, (4) where (v, a ) are valence and arousal scores from Russell’s Circumplex Model [28]. Thus, emotional intensity acts as a multiplicative reinforcement, rendering highly emotional memories more resistant to decay. Fig. 2. High-level system architecture. User speech is transcribed, enriched with retrieved episodic context, and passed to the LLM. Storage of new memories runs concurrently in a background thread. 
+
+Substituting these definitions yields the exact closed-form expression used in the implementation: 
+
+S(m) = max 
+
+
+
+0,
+
+
+
+3.0 · max(0 , 1 − 0.1 ∆ tcreation )+ 2 .0 · ln(1 + Naccess )+ 1 .5 · max(0 , 1 − 0.05 ∆ tlast access )
+
+
+
+·
+
+
+
+1 + 0 .5 · pv2 + a2
+
+ 
+
+,
+
+(5) where ∆tcreation and ∆tlast access are measured in days, and 
+
+Naccess is the retrieval count. The inner max( ·) terms clip negative time and recency contributions to zero. After re-ranking, the top k memories are injected into the LLM system prompt as contextual background. The prompt explicitly enforces conversational rules (e.g., ’use memories naturally’, ’don’t enforce all info at once’), framing retrieved context as optional background knowledge rather than mandatory facts to avoid forced or intrusive references. Because retrieval adds latency (embedding: ∼0.32 s; search/re-ranking: ∼0.36 s), the controller splits the pipeline into blocking retrieval and non-blocking storage. Retrieval runs synchronously before generation, while memory writing is offloaded to a background thread. 
+
+C. Experimental Condition Toggle 
+
+To enable controlled comparison, the experimental ma-nipulation was managed via container orchestration. In the Baseline condition, the memory Docker container was stopped. This forced the client’s retrieval request to time out after 5 seconds, causing the LLM to generate responses using solely the current conversational turn with the memory prompt omitted. In the Memory-Enhanced condition, the active module queried the Qdrant database, which was pre-populated with the individual personal preferences collected from the respective participant during the first survey. IV. S TUDY DESIGN 
+
+A. Design and Conditions 
+
+The evaluation followed a within-subjects design. Each participant experienced both experimental conditions: the Memory-Enhanced system with active episodic retrieval and a Baseline system without memory utilization. The presentation order of the two conditions was randomized to mitigate order effects. This design enables direct pairwise comparison while controlling for individual differences in personality traits and prior attitudes toward robots. The study was conducted as an asynchronous video-based online study administered via the university’s self-hosted LimeSurvey instance. The video-based format was selected for three reasons. First, pre-recorded stimuli ensured strict control over lighting, audio quality, and the robot’s movement timing, variables that are difficult to standardize in live HRI studies. Second, the absence of an examiner during evaluation reduced social desirability bias. Third, the asynchronous format circumvented potential technical disruptions (e.g., network latency, TTS failures) and enabled location-independent recruitment. The procedure consisted of two phases. In Phase 1(Profiling), participants first gave informed consent after having read about the purpose of the study for which the robot head Kim was shown as a static picture. Then they completed a structured questionnaire collecting six personal preferences (comfort food, current hobby, disliked music genre, preferred morning beverage, dream travel destination, and name). These responses were converted manually into memory entries and injected into the Qdrant database via the storage API. To generate the experimental stimuli, the robot’s resulting interactions were recorded with a webcam from a fixed frontal perspective. The raw footage was subsequently edited using Adobe Premiere to remove extended pauses. The prompts were visually overlaid onto the video, and subtitles were added for the robot’s spoken responses. A week later, in Phase 2 (Evaluation), each participant viewed two of these video sequences showing the robot responding to six identical social prompts. The attached supplementary video showcases these exact six dialogue examples to illustrate the behavioral differences between the two study conditions. In the Baseline condition, the robot produced generic, non-personalized responses (e.g., “How about ordering some pizza?” ). In the Memory-Enhanced condition, responses incorporated retrieved personal information (e.g., “How about ordering some Ramen? You mentioned it’s your go-to comfort meal.” ). The Baseline video was identical for all participants; Memory-Enhanced videos were individualized. The presentation order of the two conditions was randomized per participant to mitigate order and carry-over effects. Item order within the questionnaires was randomized independently. 
+
+B. Hypotheses 
+
+Two primary hypotheses guided the analysis, directly aligned with the core contribution:  
+
+> •
+
+H1 (Sociability): The Memory-Enhanced condition will lead to higher ratings on the Sociability subscale (items: 
+
+warm, likeable, trustworthy, friendly ) compared to the Baseline condition.  
+
+> •
+
+H4 (Disturbance): A memory-enabled robot is per-ceived as more or less disturbing as compared to a memoryless robot. While memory can foster connection, the precise recall of personal information could be perceived as intrusive, potentially evoking the Uncanny Valley of Mind effect [14]. Additionally, Agency (H2) and Animacy (H3) were assessed as secondary measures to characterize the breadth of mem-ory’s perceptual impact. Finally, a forced-choice question was included to assess participants’ global overall preference (H G) between the two systems on an exploratory basis. 
+
+C. Measurement Instrument 
+
+Perceived social attributes were measured using the HRIES [5]. The HRIES comprises 16 adjective items dis-tributed across four subscales: Sociability (warm, likeable, trustworthy, friendly), Agency (self-reliant, rational, inten-tional, intelligent), Animacy (alive, natural, real, human-like), and Disturbance (creepy, scary, uncanny, weird). Each item is rated on a 7-point Likert scale ranging from 1 (strongly disagree ) to 7 ( strongly agree ). Subscale scores were computed as the arithmetic mean of the four constituent items. The HRIES was selected over alternatives such as the Godspeed Questionnaire [29] because it measures interaction-based perception rather than appearance-based impressions, providing greater sensitivity to the cognitive manipulation under investigation. 
+
+D. Participants and Statistical Analysis 
+
+Of 52 participants who completed Phase 1, N = 43 
+
+provided complete responses in Phase 2 and were included in the final analysis. Participants were recruited through university mailing lists at Stuttgart Media University, resulting in a sample consisting predominantly of students. Specific demographic data (such as exact age, gender, or prior robot experience) were not collected during the procedure following the rule of data minimization as stipulated by the General Data Protection Regulation. The normality of difference scores (Memory-Enhanced minus Baseline) was verified for all subscales using Shapiro-Wilk tests. Paired-samples t-tests were employed as the primary inferential method. To control the family-wise error rate across four simultaneous comparisons (H1–H4), a Bonferroni correction was applied, yielding an adjusted significance threshold of αadj = .0125 . Effect sizes were quantified using Cohen’s d [30]. A chi-square goodness-of-fit test assessed the global preference distribution (H G). V. R ESULTS 
+
+A. Reliability 
+
+Internal consistency was assessed using Cronbach’s alpha for each HRIES subscale under both conditions. All subscales demonstrated acceptable to good reliability ( α ≥ .67 ). Sociability yielded α = .72 (Baseline) and α = .74 (Memory-Enhanced). Agency showed the lowest consistency ( α = .67 
+
+in both conditions). Animacy ( α = .87 /. 92 ) and Disturbance (α = .87 /. 86 ) exhibited high internal consistency. These values confirm that the subscale scores can be interpreted with sufficient confidence. 
+
+B. H1: Sociability 
+
+Participants rated the Memory-Enhanced system signifi-cantly higher on Sociability than the Baseline system. The difference scores were normally distributed (Shapiro-Wilk 
+
+W = .97 , p = .289 ). A paired-samples t-test confirmed the effect: t(42) = −4.15 , p < . 001 (Bonferroni-corrected 
+
+p < . 001 ), with a medium-to-large effect size ( d = 0 .60 ). The item-level analysis, detailed in Table I, reveals that this effect was not uniform across items. The gains were primarily driven by trustworthy (MBL = 3 .21 , MME = 4 .09 ,
+
+d = .62 ) and warm (MBL = 3 .07 , MME = 3 .91 , d = .56 ), both showing medium-to-large effects with p ≤ .001 . The item likeable increased significantly with a smaller effect ( d =
+
+.33 , p = .022 ). In contrast, friendly showed no significant change ( d = .24 , p = .114 ), having already received high Baseline ratings ( M = 5 .00 ). 
+
+C. H4: Disturbance 
+
+The Memory-Enhanced system did not increase perceived disturbance. The two conditions produced near-identical mean ratings ( MBL = 4.22 , MME = 4.23 ). A paired-samples 
+
+t-test yielded no significant difference: t(42) = −0.05 ,
+
+p = .960 (Bonferroni-corrected p = 1.000 ), d = 0.00 .As shown in Table I, none of the four constituent items TABLE I PAIRED t-TEST RESULTS FOR SOCIABILITY AND DISTURBANCE .BONFERRONI -CORRECTED THRESHOLD : αADJ = .0125 .                                                           
+
+> Item BL M(SD )ME M(SD )t(42) pd
+> Soc.
+> warm 3.07 (1.37) 3.91 (1.62) −3.56 .001 .56 likeable 3.81 (1.45) 4.28 (1.33) −2.38 .022 .33 trustworthy 3.21 (1.32) 4.09 (1.51) −3.91 <.001 .62 friendly 5.00 (1.40) 5.33 (1.34) −1.61 .114 .24
+> Scale 3.77 (1.02) 4.40 (1.09) −4.15 <.001 .60
+> Dist.
+> creepy 4.23 (1.93) 4.19 (2.01) 0.32 .750 .02 scary 3.49 (1.79) 3.74 (1.95) −1.60 .117 .14 uncanny 4.44 (1.80) 4.60 (1.71) −1.10 .279 .09 weird 4.72 (1.52) 4.37 (1.57) 1.41 .164 .23
+> Scale 4.22 (1.50) 4.23 (1.53) −0.05 .960 .00
+
+approached significance individually, and all item-level effect sizes remained negligible ( d < . 25 ). 
+
+D. Secondary Measures: Agency and Animacy 
+
+Neither Agency nor Animacy showed significant differ-ences at the scale level. For Agency, the two conditions produced near-identical means ( MBL = 4 .25 , MME = 4 .36 ;
+
+t(42) = −0.89 , pcorr = 1 .000 , d = 0 .11 ). For Animacy, a small non-significant trend was observed ( MBL = 2 .78 ,
+
+MME = 3 .02 ; t(42) = −1.62 , pcorr = .452 , d = 0 .17 ), with both conditions remaining below the scale midpoint. Fig. 3 provides a visual comparison across all four subscales. 
+
+E. Global Preference 
+
+When asked to indicate an overall preference, 27 partici-pants (63%) selected the Memory-Enhanced system and 16 participants (37%) selected the Baseline system. A chi-square goodness-of-fit test against an equal distribution yielded a non-significant result: χ2(1) = 2 .81 , p = .093 , Cohen’s 
+
+w = 0 .26 . The observed preference distribution cannot be distinguished from chance at the conventional significance level. VI. D ISCUSSION 
+
+A. Episodic Memory as a Social Lubricant 
+
+The significant sociability effect ( d = 0 .60 ) is consistent with three predicted theoretical mechanisms: the cumulative establishment of Common Ground [31], [32], the progression from superficial to intimate exchange described by Social Penetration Theory [33], and the avoidance of a relational reset through the psychological significance of not being forgotten [3]. The item-level pattern is informative. The effect was driven by trustworthy (d = .62 ) and warm (d = .56 ), while friendly remained unchanged due to a ceiling effect (MBL = 5 .00 ). Basic politeness was attributed regardless of memory. What memory added was a deeper sense of being known. This aligns with Common Ground [31] and relational progression [33] affecting relational depth rather than courtesy. Trust requires an expectation of continuity which memory directly provides. Conversely, the Baseline system’s failure to reference past exchanges communicated relational indifference [3]. This distinction offers a clear design guideline. Memory references are most valuable when they communicate care and attentiveness rather than merely demonstrating technical recall. Furthermore, while memory significantly enhanced these specific relational qualities, the global preference (63% for Memory-Enhanced) did not reach significance. This suggests that improved social impressions do not automatically dictate overall preference, although the sample may have been underpowered to detect this exploratory measure. These findings extend prior work by Leite et al. [7], who identified the novelty effect as a core limitation of stateless architectures. The present results demonstrate that the mechanism of memory operates not merely through novelty preservation but through affective dimensions, trust and warmth, that were not the primary focus of earlier longitudinal studies. 
+
+B. Absence of Disturbance 
+
+The near-zero disturbance effect ( d = 0 .00 ) indicates that the memory system did not trigger the Uncanny Valley of Mind [14] or surveillance concerns associated with memory power asymmetry [15]. Two factors likely contributed. First, the hybrid scoring function (Eq. 1), calibrated to prioritize semantic relevance ( α = 50 ) over access frequency, prevented the retrieval of irrelevant details. The prompt design further framed memories as optional background knowledge. This combination implemented the contextual selectivity that Grice’s maxims of Quantity and Relation [34] require for cooperative communication. Second, the stored preferences were relatively favorable and presented in a single video exposure. Participants might react differently if the robot recalled sensitive details unexpectedly during live interactions. The present design cannot separate whether the absence of disturbance is caused by the architectural filtering or the limited scenario. Longitudinal deployments with organically growing databases are required to test this at scale. 
+
+C. Architectural Enablers 
+
+Two architectural decisions appear to have been prerequi-sites for the observed effects. First, vector-based semantic retrieval, rather than keyword matching, enabled the system to bridge lexical paraphrases across sessions, producing topically appropriate memory references that supported the sense of shared understanding. Second, the hybrid scoring function ensured that the most semantically relevant memories were surfaced rather than the most frequently accessed ones, preventing irrelevant intrusions that could have disrupted both sociability gains and disturbance thresholds. The same filter-ing that prevented social violations, however, also concealed the selective cognition that could have enhanced perceived agency, an inherent trade-off in the current design. 
+
+D. Scope of the Comparison 
+
+The present study compared a memory-enabled system against a memoryless Baseline, establishing the perceptual Fig. 3. HRIES subscale scores by condition ( N = 43 ). Only Sociability exhibits a visible distributional shift between Baseline (left) and Memory-Enhanced (right). The remaining subscales show largely overlapping distributions. 
+
+value of personalization itself. This design does not iso-late the contribution of the specific architectural decisions (vector-based semantic retrieval, hybrid scoring) from simpler alternatives such as keyword matching or template-based insertion. It is therefore possible that any system capable of injecting personal details into responses would produce a comparable sociability effect. Disentangling the contribution of the retrieval architecture from the mere presence of personalized content requires a multi-condition follow-up study comparing the proposed system against simpler memory implementations. The architectural claims in this paper are therefore limited to demonstrating feasibility and describing the mechanisms that enabled socially appropriate recall; the empirical contribution lies in the effect of memory availability, not in the superiority of a particular retrieval strategy. 
+
+E. Limitations 
+
+Several constraints bound the interpretation of these results. First, the video-based format excluded real-time dialogue and reduced the bandwidth through which memory could influence user judgments. Also, observing personalized responses in a single session limits ecological validity and prevents the empirical testing of long-term factors like time decay. The null results on Agency and Animacy may partly reflect this reduced validity [5]. Second, constructs such as Narrative Identity [35] and the Intentional Stance [36] require sustained temporal depth to develop. Third, the sample of N = 43 
+
+university students limits statistical power. Furthermore, specific demographic data were not collected due to data minimization principles. This restricts the generalizability of the findings regarding individual differences in privacy attitudes. Fourth, LLM variability introduced uncontrolled within-group variance, as the quality of memory integration ranged from naturally woven references to scripted insertions. VII. C ONCLUSION AND FUTURE WORK 
+
+This paper investigates whether equipping a humanoid robot head with an LLM-integrated episodic memory module affects perceived social attributes. A lightweight memory architecture based on vector-based semantic retrieval and hybrid scoring is developed, and its impact is evaluated through a within-subjects study ( N = 43 ) using the HRIES. The central finding is that episodic memory significantly increases perceived sociability ( d = 0 .60 , p < . 001 ), driven by gains in trust and warmth, while perceived disturbance remains unchanged ( d = 0 .00 ). Memory operates as a social facilitator without eliciting privacy-related discomfort. These results carry direct implications for HRI design. The observed effect of memory on sociability combined with the absence of effects on agency suggests that the architecture primarily influences relational perception. This highlights the potential of memory modules designed around social bonding features. The empirical results demonstrate that personalized recall improves sociability. However, the findings do not prove that the proposed hybrid architecture is superior to simpler methods like template-based keyword retrieval. The architectural claims validate viability rather than definitive superiority. Furthermore, it remains an open question whether a system with unfiltered recall would trigger privacy concerns. Designers should consider treating retrieval logic as a component with social-perceptual consequences, not merely as an information retrieval optimization problem. Three directions for future work emerge from the identified limitations. First, a longitudinal study spanning multiple weeks with organically growing memory databases is required to test whether the null effects on Agency and Animacy emerge with greater interaction depth, and to empirically validate the forgetting mechanism. In this context, comparing the proposed LLM-driven filtering approach to the native cognitive decay mechanisms found in architectures like ACT-R could isolate how different algorithmic approaches to forgetting mitigate perceived disturbance. Second, live interaction studies should replicate and extend the present findings by restoring the real-time dialogue, non-verbal cues, and embodiment channels that the video-based format precludes. Third, future research should evaluate explainable memory retrieval strategies, where the agent occasionally verbalizes why it references a particular memory. Exposing this internal filtering process could unlock the agency gains that the current silent approach does not achieve. REFERENCES [1] K. Matheus, R. Ramnauth, B. Scassellati, and N. Salomons, “Long-Term Interactions with Social Robots: Trends, Insights, and Recom-mendations,” J. Hum.-Robot Interact. , vol. 14, no. 3, pp. 55:1–55:42, Jun. 2025. [2] N. Gasteiger, M. Hellou, and H. S. Ahn, “Factors for Personalization and Localization to Optimize Human–Robot Interaction: A Literature Review,” International Journal of Social Robotics , vol. 15, no. 4, pp. 689–701, Apr. 2023. [3] D. G. Ray, S. Gomillion, A. I. Pintea, and I. Hamlin, “On being forgotten: Memory and forgetting serve as signals of interpersonal importance,” Journal of Personality and Social Psychology , vol. 116, no. 2, pp. 259–276, 2019. [4] L. Yu, J. Lin, and J. Li, “Stateful Large Language Model Serving with Pensieve,” in Proceedings of the Twentieth European Conference on Computer Systems , Mar. 2025, pp. 144–158. [5] N. Spatola, B. K ¨uhnlenz, and G. Cheng, “Perception and Evaluation in Human–Robot Interaction: The Human–Robot Interaction Evaluation Scale (HRIES) —A Multicomponent Approach of Anthropomorphism,” 
+
+International Journal of Social Robotics , vol. 13, no. 7, pp. 1517–1539, Nov. 2021. [6] J. Li, “The benefit of being physically present: A survey of experimental works comparing copresent robots, telepresent robots and virtual agents,” 
+
+International Journal of Human-Computer Studies , vol. 77, pp. 23–37, May 2015. [7] I. Leite, C. Martinho, and A. Paiva, “Social Robots for Long-Term Interaction: A Survey,” International Journal of Social Robotics , vol. 5, no. 2, pp. 291–308, Apr. 2013. [8] P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal, H. K ¨uttler, M. Lewis, W.-t. Yih, and T. Rockt ¨aschel, “Retrieval-augmented generation for knowledge-intensive nlp tasks,” in Advances in Neural Information Processing Systems , vol. 33, pp. 9459–9474. [Online]. Available: https://arxiv.org/abs/2005.11401 [9] C. Packer, V. Fang, S. Patil, K. Lin, S. Wooders, and J. Gonzalez, “MemGPT: Towards LLMs as operating systems.” [Online]. Available: https://arxiv.org/abs/2310.08560v2 [10] J. S. Park, J. O’Brien, C. J. Cai, M. R. Morris, P. Liang, and M. S. Bernstein, “Generative Agents: Interactive Simulacra of Human Behavior,” in Proceedings of the 36th Annual ACM Symposium on User Interface Software and Technology . ACM, pp. 1–22. [Online]. Available: https://dl.acm.org/doi/10.1145/3586183.3606763 [11] M. Pinto-Bernal, M. Biondina, and T. Belpaeme, “Designing Social Robots with LLMs for Engaging Human Interaction,” Applied Sciences ,vol. 15, no. 11, Jun. 2025. [12] M. Mauliana, A. Ashok, D. Czernochowski, and K. Berns, “Exploring LLM-powered multi-session human-robot interactions with university students,” Frontiers in Robotics and AI , vol. 12, Jun. 2025. [13] F. Peller-Konrad, R. Kartmann, C. R. G. Dreher, A. Meixner, F. Reister, M. Grotz, and T. Asfour, “A Memory System of a Robot Cognitive Architecture and its Implementation in ArmarX,” Robotics and Au-tonomous Systems , vol. 164, p. 104415, Jun. 2023. [14] J.-P. Stein and P. Ohler, “Venturing into the uncanny valley of mind— The influence of mind attribution on the acceptance of human-like characters in a virtual reality setting,” Cognition , vol. 160, pp. 43–50, Mar. 2017. [15] R. Dorri and R. Zwick. Memory Power Asymmetry in Human-AI Relationships: Preserving Mutual Forgetting in the Digital Age. [Online]. Available: http://arxiv.org/abs/2512.06616 [16] E. Tulving, “Memory and consciousness,” Canadian Psychology / Psychologie canadienne , vol. 26, no. 1, pp. 1–12, 1985. [17] A. Werk, S. Scholz, T. Sievers, and N. Russwinkel, “How to provide a dynamic cognitive person model of a human collaboration partner to a pepper robot,” in Society for Mathematical Psychology, ICCM .[18] Z. Kasap and N. Magnenat-Thalmann, “Building long-term relationships with virtual and robotic characters: The role of remembering,” vol. 28, no. 1, pp. 87–97. [Online]. Available: http://link.springer.com/10.1007/s00371-011-0630-7 [19] H. Chase, “LangChain,” GitHub. [Online]. Available: https: //github.com/langchain-ai/langchain [20] T. Sievers and N. Russwinkel, “Retrieving Memory Content from a Cognitive Architecture by Impressions from Language Models for Use in a Social Robot,” Applied Sciences , vol. 15, no. 10, p. 5778, Jan. 2025. [21] J. Wainer, D. Feil-seifer, D. Shell, and M. Mataric, “The role of physical embodiment in human-robot interaction,” in ROMAN 2006 - The 15th IEEE International Symposium on Robot and Human Interactive Communication . Univ. of Hertfordshire, Hatfield, UK: IEEE, Sep. 2006, pp. 117–122. [22] B. R. Duffy, “Anthropomorphism and the social robot,” Robotics and Autonomous Systems , vol. 42, no. 3, pp. 177–190, Mar. 2003. [23] M. M. Reimann, F. A. Kunneman, C. Oertel, and K. V. Hindriks, “A Survey on Dialogue Management in Human-Robot Interaction,” ACM Transactions on Human-Robot Interaction , vol. 13, no. 2, pp. 1–22, Jun. 2024. [24] K. M. Lee, Y. Jung, J. Kim, and S. R. Kim, “Are physically embodied social agents better than disembodied social agents?: The effects of physical embodiment, tactile interaction, and people’s loneliness in human-robot interaction,” International Journal of Human-Computer Studies , vol. 64, no. 10, pp. 962–973, 2006. [25] M. Heisler and C. Becker-Asano, “An android robot head as embodied conversational agent,” in ISR Europe 2023; 56th International Symposium on Robotics . VDE, pp. 93–99. [Online]. Available: https://ieeexplore.ieee.org/abstract/document/10363058/ [26] E. Casanova, K. Davis, E. G ¨olge, G. G ¨oknar, I. Gulea, L. Hart, A. Aljafari, J. Meyer, R. Morais, S. Olayemi, and J. Weber, “XTTS: A Massively Multilingual Zero-Shot Text-to-Speech Model,” pp. 4978–4982. [Online]. Available: https://www.isca-archive.org/interspee ch 2024/casanova24 interspeech.html# [27] M. Heisler, S. Kopp, and C. Becker-Asano, “Making an Android Robot Head Talk,” in 2023 32nd IEEE International Conference on Robot and Human Interactive Communication (RO-MAN) , Aug. 2023, pp. 1837–1842. [28] J. A. Russell, “A circumplex model of affect,” Journal of Personality and Social Psychology , vol. 39, no. 6, pp. 1161–1178, 1980. [29] C. Bartneck, D. Kuli ´c, E. Croft, and S. Zoghbi, “Measurement Instruments for the Anthropomorphism, Animacy, Likeability, Perceived Intelligence, and Perceived Safety of Robots,” International Journal of Social Robotics , vol. 1, no. 1, pp. 71–81, Jan. 2009. [30] J. Cohen, Statistical Power Analysis for the Behavioral Sciences , 2nd ed. New York: Routledge, May 2013. [31] H. H. Clark and S. E. Brennan, “Grounding in communication,” in 
+
+Perspectives on Socially Shared Cognition . Washington, DC, US: American Psychological Association, 1991, pp. 127–149. [32] E. V. Clark, “Common Ground,” in The Handbook of Language Emergence . John Wiley & Sons, Ltd, 2015, ch. 15, pp. 328–353. [33] I. Altman and D. A. Taylor, Social Penetration: The Development of Interpersonal Relationships , ser. Social Penetration: The Development of Interpersonal Relationships. Oxford, England: Holt, Rinehart & Winston, 1973. [34] H. P. Grice, “Logic and Conversation,” in Speech Acts . Brill, Dec. 1975, ch. Speech Acts, pp. 41–58. [35] D. P. McAdams, “Narrative Identity,” in Handbook of Identity Theory and Research , S. J. Schwartz, K. Luyckx, and V. L. Vignoles, Eds. New York, NY: Springer, 2011, pp. 99–115. [36] D. Dennett, “Intentional Systems Theory,” in The Oxford Handbook of Philosophy of Mind , 1st ed., A. Beckermann, B. P. McLaughlin, and S. Walter, Eds. Oxford University Press, Sep. 2009, pp. 339–350.
