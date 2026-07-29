@@ -1,0 +1,686 @@
+Title: RecoReward: Recommender-Guided Multimodal Description Generation for Recommendation
+
+URL Source: https://arxiv.org/pdf/2607.25901v1
+
+Published Time: Wed, 29 Jul 2026 01:12:52 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# RecoReward: Recommender-Guided Multimodal Description Generation for Recommendation 
+
+Guohong Mu 1, Yueyang Liu 2, Jiangxia Cao 2,∗, Changxin Lao 2, Zijie Zhuang 2, Yuhui Zhang 2, Jiaqi Feng 2, Ruochen Yang 3,4, Shuang Yang 2, Zhaojie Liu 2, Qibin Hou 1,∗
+
+> 1
+
+VCIP, School of Computer Science, Nankai University 
+
+> 2
+
+Kuaishou Technology, Beijing, China 
+
+> 3
+
+Institute of Information Engineering, Chinese Academy of Sciences, Beijing, China 
+
+> 4
+
+School of Cyber Security, University of Chinese Academy of Sciences, Beijing, China 
+
+HVision@Nankai 
+
+Abstract: Multimodal large language models (MLLMs) can convert multimodal item content into structured descriptions used as semantic features for recommendation. Conventional content-only generation, however, cannot use downstream user signals to determine which semantics should be emphasized. Recent user-conditioned methods incorporate these signals through user histories or profiles, but they require user information at inference and make generation user-dependent. In this paper, we introduce RecoReward, which instead uses behavior-derived rewards during training and preserves content-only inference. To instantiate this idea in live-stream recommendation, we treat historically engaged users as a proxy for future target users and use observational non-target users to estimate affinity shared broadly across users. The Recommender Affinity Score (RAS) contrasts these signals to provide user-selective feedback for reinforcement learning, allowing the learned policy to generate a single shared description without user inputs. In our offline benchmark, RecoReward-9B outperforms its Qwen3.5-9B baseline and all other evaluated models across seven recall metrics. Online A/B testing also shows performance gains. These results show that RecoReward trains the MLLM to produce item features that benefit downstream recommendation while retaining content-only serving. 
+
+Contact: muguohong@mail.nankai.edu.cn, andrewhoux@gmail.com, caojiangxia@kuaishou.com 
+
+# 1 Introduction 
+
+Modern recommender systems [ 9, 32 , 35 ] increasingly use multimodal content to complement item identifiers, meta-data, and historical interactions. Images, video, speech, and text provide item semantics that conventional signals do not fully capture. These semantics are important for content-aware matching, generalization, and cold-start recommenda-tion. MLLMs provide a flexible way to convert heterogeneous item content into structured descriptions in natural language. Recommender systems can use these descriptions as item-side semantic features that complement conventional identifiers and pre-extracted content features [ 4, 24 , 34 ]. The resulting item interface is interpretable and compatible with existing two-tower architectures for candidate recall. However, most content-oriented MLLM approaches gener-ate descriptions from the observed item content alone and treat recommendation as a later consumer, rather than using recall-stage utility to guide what the description should em-phasize [ 4, 34 ]. This omission matters in that a shared descrip-tion is encoded once and reused when the item is compared with many users. Content fidelity alone does not determine recommendation utility. Descriptions that follow the same 
+
+> *Corresponding author.
+
+structured schema can still focus on different people, events, scenes, attributes, or user-relevant cues. A fluent and com-plete description can therefore emphasize broadly relevant semantics while providing a weak signal for distinguishing the users most likely to engage with the item. Recent recommender-guided methods show that user-side information can steer generated outputs toward downstream recommendation objectives. Rec-R1 [ 17 ] conditions gener-ation on user queries or behavioral histories and optimizes the output with recommender feedback. CURec [ 19 ] uses interaction sequences to infer user interest patterns and gener-ate personalized recommendation reasons, while VRAgent-R1 [ 3 ] simulates user decisions from historical interactions. These studies connect generation to user intent or behavior and report improvements in downstream recommendation. However, making user information part of every MLLM request changes a reusable item representation into a user-dependent computation. The serving system must access and serialize user histories or profiles, rebuild the prompt as in-teractions change, and repeat generation for different users instead of caching one item description. Long and hetero-geneous behavior sequences are also difficult for LLMs to interpret reliably. ReLLa reports that performance can decline as histories grow even before the context limit is reached [ 16 ]. 1arXiv:2607.25901v1 [cs.IR] 28 Jul 2026 (a) Content-only generation 
+
+> Multimodal content
+> Frames + ASR
+
+MLLM Shared description  
+
+> User information
+
+# × not used for generation    
+
+> ✗User-informed ✓Content-only inference
+
+(b) User-conditioned generation 
+
+> Multimodal content
+> Frames + ASR
+
+MLLM User-conditioned description    
+
+> User information
+> ✓User-informed ✗Content-only inference
+
+(c) Ours (RecoReward) 
+
+> Multimodal content
+> Frames + ASR
+
+MLLM Shared description     
+
+> User information Recommender scorer
+> target and non-target users
+> ✓User-informed ✓Content-only inference
+> reward
+
+Figure 1 Content-only generation omits user-side guidance, whereas user-conditioned generation requires user information at inference. RecoReward introduces this information through the training reward and preserves content-only inference. Item  Tower 
+
+> User Tower
+> MLLM (Generator)
+
+...         
+
+> Embedding Space
+> Same item, different semantic emphasis
+> … Pink polo shirt …
+> (Product Display)
+> … Casual summer wear…
+> (Soft -color styling)
+> … Clothing livestream ...
+> (Host -viewer interaction)
+> … women’s fashion …
+> (Outfit inspiration )
+> Different affinity to target users
+> Target User Embedding Non -target User Embedding Item Embedding
+> Multimodal content
+
+Figure 2 Key insight of RecoReward. Descriptions that fit the same multimodal item content can emphasize different semantics and produce different affinities for target users in the shared two-tower matching space. 
+
+Figure 1 summarizes this design trade-off. Content-only gen-eration is simple to serve but does not use user-side guidance, whereas direct user conditioning uses such guidance but re-quires user information during inference. This comparison leads to our central question: Can user supervision dur-ing training teach an MLLM to favor descriptions better suited to downstream recommendation while keeping in-ference content-only? 
+
+Our key insight is to use a behavior-trained DSSM as a training-time interface. As Figure 2 shows, users and candi-date descriptions share a matching space, allowing observed user behavior to score alternative descriptions without adding user information to the generator input. RecoReward uses this interface to train a content-only generator, and we study it in live-stream recommendation. Section 3 validates the behavioral proxy and examines how non-target users help remove affinity shared broadly across users. These findings motivate the Recommender Affinity Score (RAS), a user-selective recommender reward. RAS contrasts compatibility with historically engaged target users against affinity shared with observational non-target users. During training, user information remains confined to the frozen recommender-side scorer, and policy optimization internal-izes its preference over candidate descriptions. At serving time, the resulting policy receives only multimodal item con-tent and generates one shared item-side description that can be reused across downstream recall decisions. The formu-lation applies when a recommender can score users against generated item descriptions; our experiments evaluate this formulation in live-stream recommendation. In offline evaluation for live-stream recommendation, both RecoReward policies improve all seven reported recall met-rics over their corresponding base models. RecoReward-9B achieves the highest mean among all evaluated models and improves the seven metrics by 31 .7–40 .4% relative to Qwen3.5-9B. The reward-design results follow the predicted user-selectivity pattern, although they do not isolate this mech-anism as the sole cause of policy improvement. A system-level online A/B test further reports positive changes in key-page effective-user penetration and outflow distribution for RecoReward. Our contributions are threefold: (1) Behavioral evidence for user-selective reward design. 
+
+In a temporally separated live-stream analysis, we show that historical target users predict future target users, while their mean representation also contains affinity shared with non-target users. (2) RAS-guided policy learning. We formulate RAS to subtract this shared affinity and use it as sequence-level feedback for training a content-only MLLM policy. User features remain confined to the frozen recommender-side scorer. (3) Validation in live-stream recommendation. We eval-uate RecoReward through matched-tower recall eval-uation and reward-design ablations. RecoReward-9B achieves the highest mean among all evaluated models on all seven recall metrics, improving by 31 .7–40 .4% 
+
+over its base, and a separate system-level online A/B test reports positive changes in key-page and outflow metrics. The remainder of the paper reviews related work, presents the 2behavioral analysis, formalizes RAS and policy optimization, and reports the offline and online evaluations. 
+
+# 2 Related Work 
+
+2.1 Multimodal Content Representation for Recommendation 
+
+Multimodal recommendation uses visual, textual, acoustic, and video signals to complement discrete item identifiers, particularly in sparse-interaction and cold-start settings. Early methods incorporated pretrained modality features into collab-orative models, whereas subsequent approaches jointly mod-eled multimodal content and user-item structure or aligned general content representations with behavior-derived recom-mendation spaces [8, 9, 18, 29, 31, 32, 35, 39–41]. Recent LLM- and MLLM-based methods formulate recom-mendation as language generation or connect semantic con-tent with recommendation data, user behavior, and collabo-rative embeddings [ 2 , 6, 13 , 15 , 16 ]. RLMRec aligns LLM-generated profiles with collaborative representations [ 24 ], whereas NoteLLM-2 learns multimodal recommendation rep-resentations through vision-language adaptation [ 38 ]. Other work encodes MLLM-generated video descriptions as recom-mender features [ 4]. For live streaming, SARM generates semantic anchors and incorporates them into an industrial ranking model [ 34 ]. Most of this work improves content representations or aligns generated semantics after genera-tion. RecoReward instead uses recommendation behavior to determine which content-compatible description the model generates as the shared item-side interface. 
+
+2.2 Recommender-Guided Text Generation 
+
+Several recent methods use recommender feedback to super-vise language and multimodal generation. Rec-R1 optimizes LLM outputs with a fixed black-box recommender for prod-uct search and sequential recommendation; CURec trains an LLM to generate personalized recommendation reasons and revises them with a recommendation-inspired reward model; and VRAgent-R1 combines multimodal item perception, user simulation, and reinforcement learning for video recommen-dation [ 3, 17 , 19 ]. All three methods use recommendation objectives to guide generation, but their outputs and condi-tioning boundaries differ from those of RecoReward. CURec produces user-conditioned reasons, VRAgent-R1 focuses on agent-based user simulation, and Rec-R1 provides a gen-eral closed-loop framework. RecoReward generates a single shared item-side description from live content. It derives su-pervision from author-level user sets, subtracts broadly shared affinity measured from observational non-target users, and requires no user information in the generator input at serving time. 
+
+2.3 Reward-Guided Generation and Prefer-ence Optimization 
+
+Sequence-level optimization addresses the mismatch between token-level likelihood and downstream utility. Minimum Risk Training and Self-Critical Sequence Training optimize task-level generation metrics [ 25 , 27 ]. RLHF, DPO, and group-relative policy optimization extend reward-guided learning to open-ended language generation [21, 23, 26, 28]. Optimizing a learned or approximate reward can eventu-ally stop improving the intended objective [ 5]. The reward in RecoReward differs from rewards for human preference, safety, text quality, and verifiable answers [ 14 , 33 ]. It is de-rived from a recommender trained on observed behavior and measures the value of a description as an item-side feature for a historical-user proxy relative to a non-target population. The resulting score is a recommender-space proxy, not a uni-versal measure of description quality, factuality, or causal user preference. 
+
+# 3 Behavioral Analysis for Reward De-sign 
+
+This section instantiates the general training framework in live-stream recommendation and examines why the historical target-user center is an incomplete proxy for recommendation-aligned description selection before policy optimization. The analysis uses a frozen generator, a fixed candidate set, tem-porally separated user groups, and three frozen two-tower evaluators. 
+
+3.1 Analysis Setup 
+
+Each frozen two-tower evaluator comprises a user tower that encodes user histories and an item-side tower that encodes candidate descriptions. The inner product of the two repre-sentations measures the compatibility between a user and a description. Section 4.2 provides the full formulation and training objective. For each author, we sample four disjoint groups: historical target users, historical non-target users, future target users, and future non-target users. The historical target center de-fines the proxy direction, whereas subtracting the historical non-target center produces the corrected direction. The future groups are reserved for evaluation. The comparison holds the candidate set, user groups and tower parameters fixed. Figure 3(a) summarizes the temporally separated analysis protocol. Table 1 defines four metric groups for candidate sensitivity, removal of shared affinity, temporal user prediction, and the target-user specificity of selected descriptions. 3(a) Behavioral analysis protocol     
+
+> Historical user groups
+> Target users Non-target users
+> mutually disjoint
+> Frozen two-tower score space
+> User tower Proxy / corrected 5 fixed descriptions Item tower
+> Affinity scores
+> 3 frozen tower seeds
+> Future-user evaluation
+> Future target Future non-target
+> ROC-AUC / AP / Affinity / margin
+
+(b) Proxy-center decomposition 
+
+> Global-user component
+> Target-specific component
+> Proxy target center
+> Non-target center
+> Corrected direction
+> Proxy − non-target ≈ target-specific direction
+> Cosine to global user center
+> Proxy target
+> 0.775
+> Non-target
+> 0.925
+> Residual
+> 0.096
+
+(c) Effect on candidate selection 
+
+Generic description 
+
+> Target Non-target
+> small margin
+> Proxy center selects generic
+
+Selective description  
+
+> Target Non-target larger margin
+> Corrected center selects selective
+> Approximate background correction favors a larger user margin.
+
+Figure 3 Behavioral analysis and proxy-center hypothesis. Panel (a) shows the temporally separated two-tower protocol. Panel (b) illustrates approximate removal of the global user component, and panel (c) shows how correction can favor a larger target–non-target margin. 
+
+3.2 Behavioral Findings 
+
+Figure 3(b) presents the proxy-center hypothesis and the global-alignment measurements. The mean cosine similarity to the global user center is 0.7752 for the proxy target cen-ter and 0.9255 for the non-target center, indicating that both contain a strong global-user direction. After subtraction, the residual direction has a cosine similarity of 0.0960 with the global center. Together, these observations support the non-target center as a background estimate and are consistent with average cancellation of the shared component, but they do not establish an exact decomposition or a pure target center. On the primary evaluation surface, the proxy target direction achieves a future-user ROC-AUC of 0.7603 and an AP of 0.7518. The corrected direction increases these values to 0.8052 and 0.7904, respectively. The proxy therefore retains future target-user information, while correction improves sep-aration rather than simply removing the predictive signal. Although all five candidates follow the same schema and describe the same stream, the proxy and corrected direc-tions select different descriptions for 44.7–50.9% of authors across the three evaluator seeds; the mean disagreement rate is 47.4%. Relative to proxy-center scoring, correction reduces future target affinity from 0.3108 to 0.2969, but it produces a larger reduction in future non-target affinity, from 0.1596 to 0.1354. The future-user margin thus increases from 0.1513 to 0.1616. The correction therefore changes candidate order-ing and favors a more selective description, as illustrated in Figure 3(c); Table 2 reports the exact values. 
+
+3.3 Design Implications 
+
+The historical target center is a useful but mixed proxy: it contains future target-user information together with affinity shared across broadly active users. Scoring against this center alone can reward generic descriptions that match both target and non-target users. The non-target center supplies a back-ground term that reduces the shared affinity and yields a more target-specific proxy for candidate selection. Historical target users provide proxies for future target users, not a complete or causal definition of user preference. Un-der the sampling procedure, non-target users are active users without an observed positive interaction with the author. The corrected direction is therefore an empirical proxy with re-duced global alignment, not a true or fully purified target center. Section 4.3 formalizes this correction at the affinity level. 
+
+# 4 Method 
+
+The empirical analysis identifies a predictive historical-user signal and a shared-affinity component that should be re-moved. This section formalizes the contrastive construction as the Recommender Affinity Score (RAS) and applies the resulting scalar feedback to generator optimization. Figure 4 presents the complete training pipeline: content-only gener-ation, recommender scoring, and group-relative policy up-dates. Behavioral user features remain confined to the frozen recommender-side scorer and never enter the MLLM input. 4Table 1 Metrics used in the behavioral analysis and their corresponding interpretations. Metric What it tests Interpretation Disagreement rate Whether subtraction changes the selected de-scription Higher means more frequent candidate changes Global-center cosine Whether shared user affinity remains Near zero means shared alignment is largely removed ROC-AUC / AP Whether history separates future target and non-target users Higher is better; ROC-AUC of 0.5 is random Future-user margin Whether selection favors future target users Larger values mean stronger target-user specificity 
+
+Table 2 Future-user discrimination and selected-description affinity.                 
+
+> Future-user discrimination Selected-description affinity Direction ROC-AUC AP Target Non-target Margin Proxy target 0.7603 0.7518 0.3108 0.1596 0.1513 Corrected 0.8052 0.7904 0.2969 0.1354 0.1616
+
+4.1 Problem Formulation and Preliminaries 
+
+Let x = ( F, T ) denote a live-stream context consisting of visual frames F and transcribed speech segments T . The MLLM policy generates a structured description according to 
+
+y ∼ πθ (· | x). (1) Let Y(x) be the set of descriptions that are supported by the observed content and conform to the required output schema. For author a, the ideal description solves 
+
+y∗ ∈ arg max  
+
+> y∈Y (x)
+
+Urec (y; a), (2) where Urec denotes the recommendation utility obtained by using y as a shared item-side semantic feature. The opti-mization is restricted to the content and format constraints represented by Y(x). Because the true utility is unavailable during policy training, RAS is a behavior-derived proxy rather than an equivalent definition of Urec .Reinforcement learning is a common approach to learning from preference signals. GRPO samples G responses for each input and normalizes the rewards within the group, which enables relative optimization without a learned critic. DAPO adds an asymmetrically clipped token-level objective and averages the loss over valid response tokens [ 26 , 36 ]. These methods provide the optimization background for the RAS-guided training introduced below. 
+
+4.2 Behavior-Aligned Two-Tower Space 
+
+The frozen scorer comprises a user tower and a description tower that map behavioral context and generated text into a shared recommendation space. For user i, let hi denote the complete user-side feature record, including the identifier, attributes, and recent behavior sequence of the user. For a gen-erated description y, the description tower receives only the corresponding text tokens. Both towers produce normalized representations in the same d-dimensional space: 
+
+ui = fu(hi), vy = fi(y), s(ui, y ) = u⊤ 
+
+> i
+
+vy . (3) The inner product s(ui, y ) measures the compatibility be-tween user i and description y learned from observed behav-ior. Author identifiers and author-specific ID embeddings are excluded from vy , which prevents identity features from directly determining score differences among descriptions of the same stream. The towers are trained on positive user-stream interac-tions. Consider a mini-batch B = {(hb, y b, w b)}Nmb  
+
+> b=1
+
+, where 
+
+Nmb = |B| denotes the mini-batch size. User b is paired with the description of an interacted stream, whereas the remaining batch descriptions are contrastive items. With ub = fu(hb)
+
+and vj = fi(yj ), the matching probability is 
+
+p(yb | hb; B) = exp( u⊤ 
+
+> b
+
+vb/τ )
+
+PNmb  
+
+> j=1
+
+exp( u⊤ 
+
+> b
+
+vj /τ ) . (4) Training minimizes the behavior-weighted objective 
+
+Ltower = −
+
+> Nmb
+
+X
+
+> b=1
+
+wb log p(yb | hb; B). (5) The weight wb represents the strength of observed positive behaviors, including room entry, long viewing, following, commenting, liking, and gifting. The objective shapes the matching space according to recommendation behavior rather than generic language similarity. 
+
+4.3 Recommender Affinity Score 
+
+RAS converts the frozen user-description matching function into a user-selective scalar reward. It rewards compatibil-ity with historically engaged target users while subtracting affinity shared with non-target users. 
+
+4.3.1 Target and Non-Target User Sets 
+
+For author a, the target set comprises users who recently exhibited a specified positive behavior toward the author, whereas the non-target set comprises active users with no 5Policy Model   
+
+> ...
+> This is a livestream.
+> Based on the video and
+> audio: {{sample}}
+> ...
+> Describe the stream in
+> detail, return only a valid
+> JSON object with these
+> fields
+> ...
+> Instruction
+> “… Both hosts appear in coordinated black stage …”
+> (Fashion styling)
+> “… A male and female host compete in a live PK …”
+> (Live PK competition)
+> Rollout
+> “… The two hosts sing, dance, and perform for …”
+> (Talent performance)
+
+## ... 
+
+> Rewards
+
+## ... 
+
+> R1
+> R2
+> Rn
+
+Group 
+
+Computation 
+
+> A1
+> A2
+> An
+> Advantage
+> User Tower
+
+Author Tower    
+
+> Target  Non -Target
+> Users
+> Two -Tower Recommender Training
+> “Hello, hello,
+> can you hear
+> me? Can the
+> girl on the
+> other side hear
+> me? Yeah, I can
+> hear you .…… ”
+> ASR (speech)
+> Author
+> Retrieve
+> Update
+> 𝒖 𝒊
+> 𝒗 𝒚
+
+-
+
+-
+
+-
+
++
+
+-
+
+-- --
+
+-- -+
+
+-+ --
+
+-- +-
+
++- --   
+
+> 𝒔 (𝒖 𝒊 , 𝒚 ) = 𝒖 𝒊
+> ⊺𝒗 𝒚
+> Caption 𝒚 𝐑𝐀𝐒
+> 𝒎 𝒂
+> "𝒎 𝒂
+> #
+> Recommender Affinity Score
+> User Tower
+
+Author Tower     
+
+> 𝐑𝐀𝐒 =(𝒎 𝒂
+> %−𝝀𝒎 𝒂
+> &)⊺𝒗 𝒚
+> 𝒗 𝒚
+
+Target User Embedding Non -target User Embedding Author Embedding Figure 4 Training pipeline of RecoReward. The policy samples candidate descriptions from live-stream content. The frozen two-tower recommender assigns RAS rewards, and group-relative optimization updates the policy. 
+
+observed positive interaction with the author during the con-struction window: 
+
+U+ 
+
+> a
+
+= {u+
+
+> a,i
+
+}Mi=1 , U− 
+
+> a
+
+= {u− 
+
+> a,j
+
+}Bj=1 . (6) The target set is an empirical historical proxy for the potential future users of author a, not a complete or causal definition of user preference. Non-target users form an observational population; they are not labeled as exposed negatives, users who expressed dislike, or counterfactual user labels. The two-tower scorer and materialized user representations remain fixed throughout each policy-training run. 
+
+4.3.2 User-Selective Compatibility 
+
+Let the empirical target and non-target centers be 
+
+m+ 
+
+> a
+
+= 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+u+
+
+> a,i
+
+, m− 
+
+> a
+
+= 1
+
+B
+
+> B
+
+X
+
+> j=1
+
+u− 
+
+> a,j
+
+. (7) For description y, the corresponding affinity components are 
+
+S+(y; a) = 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+s(u+
+
+> a,i
+
+, y ) = ( m+ 
+
+> a
+
+)⊤vy , (8) 
+
+S−(y; a) = 1
+
+B
+
+> B
+
+X
+
+> j=1
+
+s(u− 
+
+> a,j
+
+, y ) = ( m− 
+
+> a
+
+)⊤vy . (9) These quantities are intermediate components, not indepen-dent method objectives. The Recommender Affinity Score is defined as 
+
+RAS λ(y; a) = S+(y; a) − λS −(y; a)= ( m+ 
+
+> a
+
+− λm − 
+
+> a
+
+)⊤vy , (10) where λ ≥ 0 controls the strength of non-target subtraction. The target and non-target terms implement the matching and shared-affinity subtraction requirements from Section 3.3, respectively. RAS thus measures user-selective compatibility in the behavior-trained recommendation space. It does not measure factuality, estimate causal preference, or represent universal recommendation utility. 
+
+4.4 Reinforcement Learning 
+
+RAS assigns a sequence-level reward to each content-compatible description. Group-relative updates use these rewards to learn which semantic choices benefit recommenda-tion. The policy stores the resulting ordering in its parameters and generates one description from content alone at serving time. 
+
+4.4.1 Reward Construction 
+
+Because the normalized tower affinities lie in [−1, 1] , RAS λ
+
+has the theoretical range [−(1+ λ), 1+ λ]. We map this range to the unit interval: 
+
+rsem (y; a) = clip [0 ,1] 
+
+ RAS λ(y; a) + (1 + λ)2(1 + λ)
+
+
+
+. (11) 6Let rfmt (y) ∈ { 0, 1} indicate whether the output is a valid JSON object that contains every required field. The final reward combines the two terms: 
+
+r(y; a) = αr sem (y; a) + (1 − α)rfmt (y). (12) The semantic term measures user-selective recommender compatibility, whereas the format term enforces syntactic parseability without establishing factual grounding. 
+
+4.4.2 Training and Serving Boundary 
+
+Only the frozen scorer accesses historical target and non-target users during training. The MLLM receives live-stream frames, transcribed speech, and the scalar reward induced by the output; it never receives user identifiers, histories, or embeddings as input. After optimization, the policy gen-erates a single shared description directly from live-stream content without accessing user information or invoking the scorer. The learned model is a content-only policy trained with behavior-derived user supervision, not a personalized generator for individual users. 
+
+# 5 Experiments 
+
+In this section, we conduct offline and online experiments to answer the following research questions: • RQ1: How does RecoReward compare with representa-tive MLLMs in downstream recall? • RQ2: How does the downstream recall performance of RecoReward change under different hyperparameter settings? • RQ3: How does RecoReward affect an online live-streaming recommendation system? 
+
+5.1 Experimental Settings 
+
+5.1.1 Dataset 
+
+The offline dataset is constructed from one week of observed user behavior on the Kuaishou live-streaming platform. We use the first six days for training and hold out the final day as the test set for offline recall evaluation, ensuring a strictly chronological split. The training data contain 69,947 live-stream items, 7,392,141 positive interactions, 1,042,130 users, and 56,443 authors. For each query, the positive item is a live stream not observed during training and is ranked against a shared candidate universe. Other known positive interactions of the same user are masked so that the evaluation does not treat them as negatives. 
+
+5.1.2 Policy Training 
+
+We train 4B and 9B policies initialized from the corre-sponding Qwen3.5 models. The vision encoder is frozen, whereas all language-model parameters are updated with Fully Sharded Data Parallel training. Policy training uses 8,000 live-stream items selected for complete multimodal in-puts and sufficient user feedback. None of these RL training items appears in the evaluation set. Under the fixed sampling procedure, non-target users are active users with no observed positive interaction with the current author. Each configura-tion processes one fixed-order epoch for 500 optimizer steps. Optimization uses a learning rate of 1 × 10 −6, an asymmetric clipping interval of [1 − 0.2, 1 + 0 .28] , a rollout temperature of 1, top-p of 1, and no top-k truncation. The semantic and format reward weights are 0.9 and 0.1, respectively. Training uses eight GPUs, each with 80 GB of memory. 
+
+5.1.3 Evaluation 
+
+For each generator, we regenerate descriptions for the same 69,947 live-stream items and train new DSSMs on the result-ing description distribution. For each generator, we train three DSSMs for 3 epochs with a different random seed, a global batch size of 8,192, a learning rate of 1 × 10 −3, a weight decay of 1 × 10 −4, and a contrastive temperature of 0.07. The random seeds measure dispersion due to evaluator ini-tialization rather than independent actor training. All models share the interactions, architecture, optimization settings, and frozen next-day recall benchmark. We report HR@K and NDCG@K for K ∈ { 10 , 64 , 128 }, to-gether with MRR; Appendix C provides the complete defini-tions. Values are the mean and population standard deviation across evaluator seeds. 
+
+5.2 RQ1: Overall Recommendation Perfor-mance 
+
+We compare RecoReward with representative non-MLLM recommendation methods and MLLMs under a common matched-tower evaluation protocol. RecoReward-9B leads all seven metrics, outperforming ev-ery non-MLLM baseline. Relative to Qwen3.5-9B, it raises NDCG@128 from 0.013166 to 0.018199 and HR@128 from 0.062489 to 0.086597, with gains of 31 .7–40 .4% across all seven metrics. RecoReward-4B also remains stronger than every evaluated unoptimized 8B and 9B model. Moreover, among the open-source baselines, recall performance does not increase monotonically with model size: Qwen3.5-9B trails Qwen3.5-4B on all seven metrics. This result shows that larger model scale does not guarantee higher downstream recommendation utility when downstream behavior is ab-sent from the generation objective. It therefore supports our motivation for incorporating downstream recommendation behavior into the training objective. Appendix B provides four qualitative comparisons that show how the five models place different emphasis on events and target users for the same multimodal input. 7Table 3 Overall recall performance on our benchmark. Entries (%) are reported as the mean ± population standard deviation across matched evaluators. Bold values indicate the highest mean in each column.                                                                                                                                                                                                                                                                                                                                    
+
+> Model HR@10 ↑HR@64 ↑HR@128 ↑NDCG@10 ↑NDCG@64 ↑NDCG@128 ↑MRR ↑
+> Non-MLLM Methods
+> DSSM [12] 0.2292 ±0.0099 1.3858 ±0.0207 2.6884 ±0.0722 0.1042 ±0.0036 0.3336 ±0.0019 0.5322 ±0.0128 0.1725 ±0.0025
+> LightGCN [10] 0.3009 ±0.0188 1.5724 ±0.0389 2.9404 ±0.0451 0.1606 ±0.0140 0.4149 ±0.0053 0.6234 ±0.0035 0.2296 ±0.0102
+> NextItNet [37] 0.5865 ±0.1091 3.2467 ±0.1196 6.2128 ±0.5687 0.2888 ±0.0722 0.8191 ±0.0374 1.2717 ±0.0347 0.4149 ±0.0540
+> GRU4Rec [11] 0.5791 ±0.1254 3.0671 ±0.0893 5.9253 ±0.2929 0.2785 ±0.0823 0.7781 ±0.0787 1.2138 ±0.0692 0.3989 ±0.0660
+> Commercial Models + DSSM
+> GPT-5 [20] 0.7790 ±0.0367 3.7555 ±0.1743 6.4385 ±0.2625 0.3445 ±0.0180 0.9477 ±0.0462 1.3577 ±0.0597 0.4307 ±0.0189
+> Gemini-3.1-Pro [7] 0.8943 ±0.0247 4.0332 ±0.0777 6.9300 ±0.1660 0.4019 ±0.0132 1.0371 ±0.0201 1.4793 ±0.0310 0.4841 ±0.0117
+> Open-Source Models + DSSM
+> Qwen3-VL-4B-Instruct [1] 0.7996 ±0.0245 4.0215 ±0.0393 7.1210 ±0.0683 0.3561 ±0.0042 1.0081 ±0.0088 1.4814 ±0.0134 0.4596 ±0.0011
+> Qwen3-VL-8B-Instruct [1] 0.8181 ±0.0415 4.1787 ±0.1350 7.1849 ±0.1888 0.3664 ±0.0245 1.0444 ±0.0435 1.5028 ±0.0470 0.4677 ±0.0219
+> Qwen3.5-4B [22] 0.7721 ±0.0927 3.6704 ±0.3507 6.4266 ±0.5331 0.3517 ±0.0401 0.9371 ±0.0928 1.3577 ±0.1205 0.4424 ±0.0367
+> Qwen3.5-9B [22] 0.7577 ±0.0238 3.6026 ±0.1168 6.2489 ±0.1832 0.3392 ±0.0076 0.9129 ±0.0265 1.3166 ±0.0359 0.4259 ±0.0079
+> InternVL3-8B [42] 0.6894 ±0.0688 3.3061 ±0.2219 5.8540 ±0.2906 0.3118 ±0.0305 0.8401 ±0.0641 1.2284 ±0.0745 0.4004 ±0.0270
+> InternVL3.5-4B [30] 0.6414 ±0.0663 3.3502 ±0.2930 5.9787 ±0.4395 0.2780 ±0.0276 0.8244 ±0.0731 1.2254 ±0.0953 0.3750 ±0.0254
+> InternVL3.5-8B [30] 0.6731 ±0.0701 3.5165 ±0.2133 6.2287 ±0.3731 0.2973 ±0.0332 0.8681 ±0.0619 1.2816 ±0.0842 0.3971 ±0.0303
+> Ours + DSSM
+> RecoReward-4B 0.9211 ±0.0864 4.8315 ±0.2684 8.4187 ±0.4224 0.4177 ±0.0461 1.2095 ±0.0844 1.7572 ±0.1074 0.5391 ±0.0436
+> RecoReward-9B 0.9978 ±0.0289 5 .0577 ±0.1379 8 .6597 ±0.1871 0 .4509 ±0.0257 1 .2701 ±0.0416 1 .8199 ±0.0483 0 .5646 ±0.0271
+
+Table 4 Recall performance for different non-target subtraction coefficients λ. Entries (%) are overall mean scores across three evaluator seeds. 
+
+λ NDCG@64 ↑ NDCG@128 ↑ HR@64 ↑ HR@128 ↑ MRR ↑
+
+0 0.9663 1.4118 3.8698 6.7874 0.4417 0.5 1.0857 1.5716 4.3333 7.5160 0.4856 1 1.0755 1.5291 4.2296 7.2027 0.4906 2 1.2095 1.7572 4.8315 8.4187 0.5391 
+
+5.3 RQ2: Hyperparameter Ablation 
+
+RQ2 examines three settings that affect reward construction and policy optimization: the non-target subtraction coeffi-cient, the rollout count, and the number of users included in reward computation. 
+
+5.3.1 Non-Target Subtraction Coefficient 
+
+We vary the non-target subtraction coefficient while holding the data, model initialization, and evaluation protocol fixed within the ablation. The target-only configuration provides the no-subtraction baseline, whereas positive coefficients in-troduce non-target subtraction. For each configuration, Ta-ble 4 reports the checkpoint retained under the fixed selection protocol. All policies with positive coefficients outperform the target-only row on the five displayed metrics, and λ = 2 yields the strongest retained policy across all measured recall metrics. Relative to λ = 0 , this configuration increases NDCG@128 from 0.014118 to 0.017572, HR@128 from 0.067874 to 0.084187, and MRR from 0.004417 to 0.005391. Relative to λ = 1 , λ = 0 .5 applies a milder non-target penalty and retains more target-affinity signal, which may explain its 
+
+Table 5 Recall performance for different rollout counts G. Entries (%) are overall mean scores across three evaluator seeds. 
+
+G NDCG@64 ↑ NDCG@128 ↑ HR@64 ↑ HR@128 ↑ MRR ↑
+
+4 1.0575 1.5099 4.1435 7.1072 0.4872 8 1.0755 1.5291 4.2296 7.2027 0.4906 12 1.1770 1.6528 4.6122 7.7258 0.5315 
+
+16 1.1516 1.6606 4.5647 7.8990 0.5182 
+
+higher NDCG@64, NDCG@128, HR@64, and HR@128. The higher MRR at λ = 1 suggests that stronger subtrac-tion sharpens the top-ranked ordering despite lower perfor-mance at deeper cutoffs. At λ = 2 , aggressive suppression of descriptions that match both user groups produces a more user-selective reward ordering and clearer relative advantages for policy learning, consistent with Section 3.2. The non-monotonic comparison between λ = 0 .5 and λ = 1 shows that increasing λ does not always improve performance. 
+
+5.3.2 Rollout Count 
+
+The rollout count G determines both the number of descrip-tions sampled for each input and the number of samples used to estimate group-relative advantages. We compare 
+
+G ∈ { 4, 8, 12 , 16 } with fixed batch size, data order, learning rate, optimizer-step budget, and evaluation protocol. Every rollout setting in Table 5 outperforms the Qwen3.5-4B baseline in Table 3 on the five displayed metrics. Performance improves on every displayed metric as G increases from 4 to 12. A plausible explanation is that a larger rollout group covers a broader set of descriptions and provides richer within-group comparisons, increasing the chance of observing useful high-reward outputs and producing more informative relative advantages. The trend does not continue uniformly at G = 16 :8Table 6 Recall performance for different reward user caps M .Entries (%) are overall mean scores across three evaluator seeds.                                  
+
+> MNDCG@64 ↑NDCG@128 ↑HR@64 ↑HR@128 ↑MRR ↑
+> 25 1.1636 1.6475 4.5281 7.6966 0.5376
+> 50 1.1230 1.6087 4.4232 7.6085 0.5110 100 1.0755 1.5291 4.2296 7.2027 0.4906 200 1.0606 1.5015 4.1670 7.0564 0.4842
+> Table 7 Results of the one-week online A/B test for RecoReward.
+> Key Pages Outflow System Effective-User Penetration Exposure Users Kuaishou +0 .265% +0 .791% +0 .740%
+
+NDCG@128 and HR@128 improve, whereas NDCG@64, HR@64, and MRR decline. With more samples, the group is also more likely to contain outputs from the high-RAS tail. These outputs can receive strong positive advantages and push the policy toward patterns favored by the proxy reward. Because RAS approximates downstream recommendation utility rather than measuring it directly, stronger optimization of such tail behavior may reduce generalization. The results suggest that G = 12 provides a better balance between output exploration and over-optimization of the reward proxy under the current setting. This interpretation remains descriptive because each configuration uses one actor run and larger G
+
+also increases the total number of sampled trajectories. 
+
+5.3.3 Reward User Count 
+
+The user cap M controls the maximum number of target users and the equal number of non-target users averaged on each side of RAS. We compare M ∈ { 25 , 50 , 100 , 200 }
+
+while holding the live-stream items, user ordering, model initialization, rollout count, optimizer settings, and matched-tower evaluation protocol fixed. The M = 25 configuration is strongest on all five displayed metrics, followed by M = 50 , M = 100 , and M = 200 .Relative to M = 100 , M = 25 increases NDCG@128 from 0.015291 to 0.016475, HR@128 from 0.072027 to 0.076966, and MRR from 0.004906 to 0.005376. The results suggest a trade-off between user selectivity and estimation stability. Although increasing M produces more stable affinity esti-mates, averaging over a broader user set may weaken the target–non-target contrast and make the reward less informa-tive for policy learning. Within the tested range, M = 25 
+
+appears to preserve a sharper user-selective signal. 
+
+5.4 RQ3: Online A/B Test 
+
+We evaluate RecoReward through a one-week, system-level A/B test on the Kuaishou live-streaming service. Effective-user penetration measures the share of users who meet the platform-defined effective-viewing criterion on key pages. Outflow exposure and users measure the number of impres-sions and unique users reached through outflow traffic, respec-tively. Table 7 reports the changes in these metrics. RecoRe-ward increases effective-user penetration on key pages by 
+
+0.265% , while improving outflow exposure and users by 
+
+0.791% and 0.740% , respectively. These results show that recommendation-aligned semantic modeling improves user engagement on key pages and expands live-stream distribu-tion in real-world deployment. 
+
+# 6 Conclusion 
+
+We present RecoReward, a training framework that uses rec-ommender feedback to improve multimodal item descriptions while retaining content-only inference. A frozen two-tower scorer evaluates candidates against historical target and non-target users, and RAS reduces broadly shared affinity to pro-vide a user-selective reward for policy learning. RecoReward-9B ranks first across all seven recall metrics, improving by 31 .7–40 .4% over Qwen3.5-9B. The ablations support non-target subtraction and reveal trade-offs in the rollout count and reward user count. In a one-week online A/B test, RecoReward improves key-page effective-user pen-etration and expands outflow reach. Together, these results show that downstream recommendation behavior can train an MLLM to generate more useful item-side features with-out user-dependent serving, although the evidence remains limited to observational user groups and live-stream recom-mendation. 
+
+# References 
+
+[1] Shuai Bai, Yuxuan Cai, Ruizhe Chen, et al. Qwen3-VL technical report. arXiv preprint arXiv:2511.21631, 2025. 8[2] Keqin Bao, Jizhi Zhang, Yang Zhang, Wenjie Wang, Fuli Feng, and Xiangnan He. TALLRec: An effective and efficient tuning framework to align large language model with recommendation. In Proceedings of the 17th ACM Conference on Recommender Systems , pages 1007–1014, New York, NY, USA, 2023. Association for Computing Machinery. 3 [3] Siran Chen, Boyu Chen, Chenyun Yu, Yuxiao Luo, Ouyang Yi, Lei Cheng, Chengxiang Zhuo, Zang Li, and Yali Wang. VRAgent-R1: Boosting video recom-mendation with MLLM-based agents via reinforcement learning. arXiv preprint arXiv:2507.02626, 2025. 1, 3 [4] Marco De Nadai, Andreas Damianou, and Mounia Lal-mas. Describe what you see with multimodal large language models to enhance video recommendations. In Proceedings of the Nineteenth ACM Conference on Recommender Systems , pages 1159–1163, New York, 9NY, USA, 2025. Association for Computing Machinery. 1, 3 [5] Leo Gao, John Schulman, and Jacob Hilton. Scaling laws for reward model overoptimization. In Proceedings of the 40th International Conference on Machine Learn-ing , volume 202 of Proceedings of Machine Learning Research , pages 10835–10866, Honolulu, Hawaii, USA, 2023. PMLR. 3 [6] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. Recommendation as language pro-cessing (RLP): A unified pretrain, personalized prompt & predict paradigm (P5). In Proceedings of the 16th ACM Conference on Recommender Systems , pages 299– 315, New York, NY, USA, 2022. Association for Com-puting Machinery. 3 [7] Google DeepMind. Gemini 3.1 pro model card. Google DeepMind model card, Feb. 2026. Published February 19, 2026. 8 [8] Zhiqiang Guo, Jianjun Li, Guohui Li, Chaoyang Wang, Si Shi, and Bin Ruan. LGMRec: Local and global graph learning for multimodal recommendation. Pro-ceedings of the AAAI Conference on Artificial Intelli-gence , 38(8):8454–8462, 2024. 3 [9] Ruining He and Julian McAuley. VBPR: Visual bayesian personalized ranking from implicit feedback. 
+
+Proceedings of the AAAI Conference on Artificial Intel-ligence , 30(1):144–150, 2016. 1, 3 [10] Xiangnan He, Kuan Deng, Xiang Wang, Yan Li, Yong-dong Zhang, and Meng Wang. LightGCN: Simplifying and powering graph convolution network for recommen-dation. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in In-formation Retrieval , pages 639–648, New York, NY, USA, 2020. Association for Computing Machinery. 8 [11] Bal ´azs Hidasi, Alexandros Karatzoglou, Linas Bal-trunas, and Domonkos Tikk. Session-based recommen-dations with recurrent neural networks. In 4th Inter-national Conference on Learning Representations , San Juan, Puerto Rico, 2016. OpenReview.net. 8 [12] Po-Sen Huang, Xiaodong He, Jianfeng Gao, Li Deng, Alex Acero, and Larry Heck. Learning deep structured semantic models for web search using clickthrough data. In Proceedings of the 22nd ACM International Con-ference on Information and Knowledge Management ,pages 2333–2338, New York, NY, USA, 2013. Associa-tion for Computing Machinery. 8 [13] Sein Kim, Hongseok Kang, Seungyoon Choi, Donghyun Kim, Minchul Yang, and Chanyoung Park. Large language models meet collaborative filtering: An efficient all-round LLM-based recommender system. In 
+
+Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , pages 1395– 1406, New York, NY, USA, 2024. Association for Com-puting Machinery. 3 [14] Yuval Kirstain, Adam Polyak, Uriel Singer, Shahbuland Matiana, Joe Penna, and Omer Levy. Pick-a-pic: An open dataset of user preferences for text-to-image gen-eration. In Advances in Neural Information Processing Systems , volume 36, pages 36652–36663, Red Hook, NY, USA, 2023. Curran Associates, Inc. 3 [15] Jiayi Liao, Sihang Li, Zhengyi Yang, Jiancan Wu, Yancheng Yuan, Xiang Wang, and Xiangnan He. LLaRA: Large language-recommendation assistant. In 
+
+Proceedings of the 47th International ACM SIGIR Con-ference on Research and Development in Information Retrieval , pages 1785–1795, New York, NY, USA, 2024. Association for Computing Machinery. 3 [16] Jianghao Lin, Rong Shan, Chenxu Zhu, Kounianhua Du, Bo Chen, Shigang Quan, Ruiming Tang, Yong Yu, and Weinan Zhang. ReLLa: Retrieval-enhanced large language models for lifelong sequential behavior com-prehension in recommendation. In Proceedings of the ACM Web Conference 2024 , pages 3497–3508, New York, NY, USA, 2024. Association for Computing Ma-chinery. 1, 3 [17] Jiacheng Lin, Tian Wang, and Kun Qian. Rec-R1: Bridg-ing generative large language models and user-centric recommendation systems via reinforcement learning. arXiv preprint arXiv:2503.24289, 2025. 1, 3 [18] Yifan Liu, Kangning Zhang, Xiangyuan Ren, Yanhua Huang, Jiarui Jin, Yingjie Qin, Ruilong Su, Ruiwen Xu, Yong Yu, and Weinan Zhang. AlignRec: Aligning and training in multimodal recommendations. In Proceed-ings of the 33rd ACM International Conference on Infor-mation and Knowledge Management , pages 1503–1512, New York, NY, USA, 2024. Association for Computing Machinery. 3 [19] Yunze Luo, Yinjie Jiang, Gaode Chen, Xinghua Zhang, Jun Zhang, Jian Liang, and Kaigui Bian. Towards com-prehensible recommendation with large language model fine-tuning. arXiv preprint arXiv:2508.07595, 2025. 1, 3[20] OpenAI. Openai GPT-5 system card. arXiv preprint arXiv:2601.03267, 2025. 8 [21] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll L. Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul Christiano, Jan Leike, and Ryan Lowe. Training lan-guage models to follow instructions with human feed-back. In Advances in Neural Information Processing Systems , volume 35, pages 27730–27744, Red Hook, NY, USA, 2022. Curran Associates, Inc. 3 [22] Qwen Team. Qwen3.5: Towards native multimodal agents. Official technical blog, Feb. 2026. Official model release. 8 [23] Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D. Manning, Stefano Ermon, and Chelsea Finn. Direct preference optimization: Your language model is secretly a reward model. In Advances in Neural Infor-mation Processing Systems , volume 36, pages 53728– 10 53741, Red Hook, NY, USA, 2023. Curran Associates, Inc. 3 [24] Xubin Ren, Wei Wei, Lianghao Xia, Lixin Su, Suqi Cheng, Junfeng Wang, Dawei Yin, and Chao Huang. Representation learning with large language models for recommendation. In Proceedings of the ACM Web Con-ference 2024 , pages 3464–3475, New York, NY, USA, 2024. Association for Computing Machinery. 1, 3 [25] Steven J. Rennie, Etienne Marcheret, Youssef Mroueh, Jerret Ross, and Vaibhava Goel. Self-critical sequence training for image captioning. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pages 7008–7024, Honolulu, HI, USA, 2017. IEEE. 3 [26] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300, 2024. 3, 5 [27] Shiqi Shen, Yong Cheng, Zhongjun He, Wei He, Hua Wu, Maosong Sun, and Yang Liu. Minimum risk train-ing for neural machine translation. In Proceedings of the 54th Annual Meeting of the Association for Com-putational Linguistics (Volume 1: Long Papers) , pages 1683–1692, Berlin, Germany, 2016. Association for Computational Linguistics. 3 [28] Nisan Stiennon, Long Ouyang, Jeffrey Wu, Daniel Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul F. Christiano. Learning to summarize with human feedback. In Advances in Neural Informa-tion Processing Systems , volume 33, pages 3008–3021, Red Hook, NY, USA, 2020. Curran Associates, Inc. 3 [29] Jinpeng Wang, Ziyun Zeng, Yunxiao Wang, Yuting Wang, Xingyu Lu, Tianxiang Li, Jun Yuan, Rui Zhang, Hai-Tao Zheng, and Shu-Tao Xia. MISSRec: Pre-training and transferring multi-modal interest-aware se-quence representation for recommendation. In Proceed-ings of the 31st ACM International Conference on Mul-timedia , pages 6548–6557, New York, NY, USA, 2023. Association for Computing Machinery. 3 [30] Weiyun Wang, Zhangwei Gao, Lixin Gu, et al. In-ternVL3.5: Advancing open-source multimodal models in versatility, reasoning, and efficiency. arXiv preprint arXiv:2508.18265, 2025. 8 [31] Yinwei Wei, Xiang Wang, Liqiang Nie, Xiangnan He, and Tat-Seng Chua. GRCN: Graph-refined convolu-tional network for multimedia recommendation with implicit feedback. In Proceedings of the 28th ACM Inter-national Conference on Multimedia , pages 3541–3549, New York, NY, USA, 2020. Association for Computing Machinery. 3 [32] Yinwei Wei, Xiang Wang, Liqiang Nie, Xiangnan He, Richang Hong, and Tat-Seng Chua. MMGCN: Multi-modal graph convolution network for personalized rec-ommendation of micro-video. In Proceedings of the 27th ACM International Conference on Multimedia ,pages 1437–1445, New York, NY, USA, 2019. Associa-tion for Computing Machinery. 1, 3 [33] Jiazheng Xu, Xiao Liu, Yuchen Wu, Yuxuan Tong, Qinkai Li, Ming Ding, Jie Tang, and Yuxiao Dong. Im-ageReward: Learning and evaluating human preferences for text-to-image generation. In Advances in Neural In-formation Processing Systems , volume 36, pages 15903– 15935, Red Hook, NY, USA, 2023. Curran Associates, Inc. 3 [34] Ruochen Yang, Yueyang Liu, Zijie Zhuang, Changxin Lao, Yuhui Zhang, Jiangxia Cao, Jia Xu, Xiang Chen, Haoke Xiao, Xiangyu Wu, Xiaoyou Zhou, Xiao Lv, Shuang Yang, Tingwen Liu, Zhaojie Liu, Han Li, and Kun Gai. SARM: LLM-augmented semantic anchor for end-to-end live-streaming ranking. arXiv preprint arXiv:2602.09401, 2026. 1, 3 [35] Penghang Yu, Zhiyi Tan, Guanming Lu, and Bing-Kun Bao. Multi-view graph convolutional network for mul-timedia recommendation. In Proceedings of the 31st ACM International Conference on Multimedia , pages 6576–6585, New York, NY, USA, 2023. Association for Computing Machinery. 1, 3 [36] Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan, Gao-hong Liu, Lingjun Liu, Xin Liu, Haibin Lin, Zhiqi Lin, Bole Ma, Guangming Sheng, Yuxuan Tong, Chi Zhang, Mofan Zhang, Wang Zhang, Hang Zhu, Jin-hua Zhu, Jiaze Chen, Jiangjie Chen, Chengyi Wang, Hongli Yu, Yuxuan Song, Xiangpeng Wei, Hao Zhou, Jingjing Liu, Wei-Ying Ma, Ya-Qin Zhang, Lin Yan, Mu Qiao, Yonghui Wu, and Mingxuan Wang. DAPO: An open-source LLM reinforcement learning system at scale. arXiv preprint arXiv:2503.14476, 2025. 5 [37] Fajie Yuan, Alexandros Karatzoglou, Ioannis Arapakis, Joemon M. Jose, and Xiangnan He. A simple convolu-tional generative network for next item recommendation. In Proceedings of the Twelfth ACM International Confer-ence on Web Search and Data Mining , pages 582–590, New York, NY, USA, 2019. Association for Computing Machinery. 8 [38] Chao Zhang, Haoxin Zhang, Shiwei Wu, Di Wu, Tong Xu, Xiangyu Zhao, Yan Gao, Yao Hu, and Enhong Chen. NoteLLM-2: Multimodal large representation models for recommendation. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.1 , pages 2815–2826, New York, NY, USA, 2025. Association for Computing Machinery. 3 [39] Jinghao Zhang, Yanqiao Zhu, Qiang Liu, Shu Wu, Shuhui Wang, and Liang Wang. Mining latent struc-tures for multimedia recommendation. In Proceedings of the 29th ACM International Conference on Multi-media , pages 3872–3880, New York, NY, USA, 2021. Association for Computing Machinery. 3 [40] Xin Zhou and Zhiqi Shen. A tale of two graphs: Freez-ing and denoising graph structures for multimodal rec-11 ommendation. In Proceedings of the 31st ACM Inter-national Conference on Multimedia , pages 935–943, New York, NY, USA, 2023. Association for Computing Machinery. [41] Xin Zhou, Hongyu Zhou, Yong Liu, Zhiwei Zeng, Chun-yan Miao, Pengwei Wang, Yuan You, and Feijun Jiang. Bootstrap latent representations for multi-modal recom-mendation. In Proceedings of the ACM Web Conference 2023 , pages 845–854, New York, NY, USA, 2023. As-sociation for Computing Machinery. 3 [42] Jinguo Zhu, Weiyun Wang, Zhe Chen, et al. In-ternVL3: Exploring advanced training and test-time recipes for open-source multimodal models. arXiv preprint arXiv:2504.10479, 2025. 8 12 A Full Generation Prompt 
+
+Table 8 presents an English translation of the complete Chi-nese prompt used for the reported base-model and policy evaluations. The bracketed placeholders indicate where the ordered screenshots and ASR segments are inserted. User identities, histories, and representations are not included in the generator prompt. The seven JSON field names are translated for readability; the implementation used the corresponding Chinese keys. 
+
+# B Qualitative Comparisons 
+
+We compare five models on four live-stream examples using the same multimodal input and structured generation prompt. Each table shows three sampled frames followed by com-plete English translations of the generated Event and Target Users fields. Business addresses and personal details are omit-ted without changing the semantic content. Green bold text marks recommendation-relevant details captured by RecoRe-ward, whereas red bold text marks incorrect, unsupported, or overly generic details in the other outputs. Uncolored text is provided for completeness and is not assigned a cor-rectness judgment. The examples were selected to illustrate differences in semantic emphasis and are not a random sam-ple; the aggregate performance claims remain based on the matched-tower evaluation in Section 5.2. 
+
+Local food sales. RecoReward retains the concrete shop-directed action, the discussion of product size and fat content, and the informal interaction style. The two commercial mod-els also recover several useful transactional details, whereas the remaining open-source models confuse braised food with roasted or barbecued meat and produce broader target-user descriptions. 
+
+Decorative-painting sales. RecoReward jointly describes the visible pointing action, the pearl-finish craft, the feng shui layout, and the adjustment of a painting to different wall layouts. GPT-5, Gemini-3.1-Pro, and Qwen3-VL-8B also retain much of the product narration, but some target-user descriptions extend to collectors, investors, or high-end consumers without direct evidence. The InternVL3.5 output retains the topic but omits much of the craft and placement information. 
+
+Daily-life conversation. RecoReward preserves the distinc-tion between teaching new learners and hiring a professional cook, while also representing the informal interaction style. Qwen3-VL-8B incorrectly merges the two activities into teaching learners to cook, and several other descriptions map the stream to broad learning or household-interest groups. GPT-5 and Gemini-3.1-Pro provide more accurate event sum-maries, but their target-user descriptions are less focused on the conversational style of the stream. 
+
+Sneaker sales. RecoReward follows the sales sequence in detail, including repositioning the shoes, comparing the black and white variants, checking inventory, and explaining the packaging and inspection policy. The other models recover the main transaction but either omit this sequence or add demographic and product details that are not supported by the input. 
+
+# C Recall Metric Definitions 
+
+Let rq denote the rank of the target live stream for query q, and let Q denote the set of evaluation queries. We compute Hit Rate, Normalized Discounted Cumulative Gain, and Mean Reciprocal Rank as 
+
+HR@K = 1
+
+|Q| 
+
+X
+
+> q∈Q
+
+I[rq ≤ K], (13) 
+
+NDCG@K = 1
+
+|Q| 
+
+X
+
+> q∈Q
+
+I[rq ≤ K]log 2(rq + 1) , (14) 
+
+MRR = 1
+
+|Q| 
+
+X
+
+> q∈Q
+
+1
+
+rq
+
+. (15) We evaluate HR and NDCG at K ∈ { 10 , 64 , 128 }.
+
+# D Limitations 
+
+First, RAS is constructed from observational user behavior. Historical target users approximate future users, whereas non-target users are active users without observed positive inter-actions rather than exposed negatives. Exposure patterns, item popularity, and prior recommender policies may there-fore affect both groups, so the resulting score should not be interpreted as causal user preference. Second, RAS evaluates user-selective compatibility in a frozen two-tower space rather than factual accuracy or gen-eral description quality. A high score can favor details that separate user groups without guaranteeing that every detail is fully supported by the multimodal input, and stronger RL op-timization may amplify patterns specific to the proxy reward. Independent factuality and grounding evaluation is needed to determine how this trade-off changes with optimization strength. Third, the empirical study is limited to live-stream recom-mendation on one platform, a fixed structured prompt, and matched two-tower recall evaluation. The three reported seeds vary evaluator initialization rather than policy training, and each ablation setting uses one actor run. The results therefore do not establish generalization to other recommen-dation domains, languages, output schemas, or recommender 13 Table 8 English translation of the complete generation prompt used in the experiments. This is a live stream. Describe it using both the visual frames and the speech content. Visual frames: [Multiple screenshots are inserted here.] Speech content: [Multiple ASR transcripts are inserted here.] Note that the person shown in the stream may not be the host; another person may be broadcasting. Describe the events and content of the stream in detail, using the following fields: Content: Detailed visual information, including visible text, the overall visual impression, and tone. People: The appearance, clothing, and state of the host and any other people participating in the stream, when applicable. Scene: The location, decorations, background audio, and other environmental details. Event: What the host is doing, including but not limited to gaming, talent performances, or conversational interaction. Atmosphere: The atmosphere of the stream, such as lively or calm. Highlights: Whether the segment captures a climax of the stream, such as a dance, a PK session, or intense viewer interaction. Target Users: Profiles of viewers who may be interested in the stream. Describe each field in one paragraph. Return only the following JSON object: 
+
+{
+
+”Content”: ”xxx”, ”People”: ”xxx”, ”Scene”: ”xxx”, ”Event”: ”xxx”, ”Atmosphere”: ”xxx”, ”Highlights”: ”xxx”, ”Target Users”: ”xxx” 
+
+}
+
+Ensure that the JSON can be parsed directly by Python or another programming language, with no missing, duplicated, or additional fields. Preserve sufficient visual details, attributes, and spatial relations, and keep the description consistent with basic common sense. Output only the JSON object, without a Markdown code block or any additional explanation. 
+
+architectures, and the ablation explanations should be inter-preted descriptively. Future work should include matched actor replications and evaluation with alternative recall and ranking models. 14 Table 9 Complete Event and Target Users outputs for a local smoked-meat stall. 
+
+Model Event Target Users GPT-5 The stream presents an on-site sales demonstration at a braised- and smoked-meat stall. The host or a clerk states that the food is prepared and replenished on site, is available immediately, and contains no added coloring or additives. The description provides the shop name and location, explains meat-selection criteria, weighs and packs orders for visiting customers, interacts with viewers, recommends several meat and side-dish combinations, and discusses taste and portion size. Local residents and market visitors who enjoy braised meat, smoked meat, and other cooked foods; consumers who prefer generous portions, rich flavors, and home-style food; households that value fresh preparation with-out additives; nearby users interested in pickup or an in-store tasting; and restaurant operators or households seeking large cooked-food platters for gatherings .Gemini-3.1-Pro The host uses a first-person view to show the cooked foods at the stall. The narration states that the smoked meat and bone-in products are cooked, prepared, and processed on site without coloring or additives, gives the specific shop location, and invites viewers to visit. The host also discusses the fat content and quality of the meat with customers or viewers. Food enthusiasts, especially users who enjoy traditional cooked foods such as braised and smoked meat, together with residents near the stall who enjoy browsing street markets and searching broadly for local snacks .Qwen3-VL-8B The stallholder cuts and sells braised pig trotters and pig-head meat while customers choose and purchase products. The stallholder cuts meat at the counter, and several trays are empty or nearly empty, showing an active sales process. Users interested in street food and braised dishes, es-pecially young and middle-aged users who enjoy pig trotters and pig-head meat, as well as tourists or resi-dents seeking a general street-market experience .InternVL3.5-8B The stallholders display and sell several roasted-pork products , describe their character-istics and freshness, and process customer orders. 
+
+General viewers interested in roasted meat and night-market or outdoor-market content .RecoReward-4B The host displays and sells braised meat at an outdoor stall, including pig trotters, pork belly, and whole chicken. She cuts the products while discussing their source and price, responds to jokes about body weight and product size, directs viewers to the specific shop ,interacts with other stallholders, helps pack purchases, and continues the discussion of product size, fat content, and viewer comments .Middle-aged and lower-tier-market users interested in re-gional food and unpolished daily-life content , together with general users who prefer authentic, minimally edited, conversational live streams .
+
+Table 10 Complete Event and Target Users outputs for a landscape-painting sales stream. 
+
+Model Event Target Users GPT-5 The host or a staff member promotes the craft and meaning of traditional paintings, focusing on a work titled “Golden Mountains.” The description states that the painting suits different wall surfaces and has no placement taboo, reports strong offline sales, explains the pearl-finish proofing process and the cost of repeated revisions, and interprets the feng shui layout of the Azure Dragon, White Tiger, Vermilion Bird, Black Tortoise, and central treasure basin. It also lists suitable settings, including living rooms, sofa walls, television walls, studies, tea rooms, and offices, and explains the associated meanings of prosperity, wealth, and blessing. Household users who value Chinese aesthetics and feng shui, homeowners decorating living rooms or feature walls, users furnishing tea rooms or studies, buyers for offices and reception spaces, consumers sensitive to craft texture and reflective finishes, art collectors , and young or middle-aged users and merchants who value auspi-cious meanings and spatial feng shui. Gemini-3.1-Pro The host conducts a sales stream for decorative paintings and promotes a work titled “Golden Mountains.” He explains suitable placements such as a central living-room wall or an office, reports more than 3,000 offline orders per day, states that proofing cost RMB 66,000 and required more than 20 revisions, and emphasizes the Azure Dragon, White Tiger, Vermilion Bird, Black Tortoise, and treasure-basin symbolism to encourage purchase. Users seeking home decoration, especially middle-aged users selected mainly from the visual style , users who favor brightly colored landscape paintings with a diamond-like finish, and business owners who need of-fice or tea-room decoration and value feng shui. Qwen3-VL-8B The host introduces several landscape paintings through narration and focuses on “Golden Mountains.” The description covers the Azure Dragon, White Tiger, Vermilion Bird, and Black Tortoise symbolism for prosperity, reports more than 3,000 offline orders per day, describes a pearl-finish proofing cost of RMB 66,000, and lists suitable placements such as living rooms, studies, and offices. Users interested in home decoration, feng shui culture, and art collecting, particularly high-end consumers and collectors seeking paintings for living rooms, studies, or offices, and users who value feng shui layouts and auspicious meanings. InternVL3.5-8B The host introduces and promotes the landscape paintings, explains their meanings and characteristics, and states that they are popular products both online and offline. Users interested in home decoration and art collect-ing, especially viewers who primarily enjoy landscape paintings and natural scenery .RecoReward-4B In a room used as both a living room and a study, the host presents several large Chinese landscape paintings mounted on the wall or placed on the floor. He uses a green pointer to explain their composition and pearl-finish craft , discusses prices and revision costs, compares works such as “Golden Mountains” and a red-maple landscape, and explains the Azure Dragon, White Tiger, Vermilion Bird, and Black Tortoise layout . The host also shows numbered details and close-up views, responds to questions about price and matching, and demonstrates how position and viewing angle can be adjusted for different wall layouts .Middle-aged and older users interested in traditional culture, feng shui meanings, and home decoration ;users seeking affordable handicrafts or folk-style decora-tion; and viewers interested in informal, conversational sales streams. 
+
+15 Table 11 Complete Event and Target Users outputs for a daily-life chat stream. 
+
+Model Event Target Users GPT-5 The stream consists mainly of casual interaction. The host says that she will end the stream, take a shower, and return the next day. She explains that new friends or learners have arrived and that teaching them can delay her arrival in the stream, promises to make up for missed time, and says that she hired a professional cook while she buys the ingredients and organizes the learners and household tasks. She counts points on her fingers, claps for emphasis, checks her phone, and gives regular viewers a status update rather than presenting products or games. Users who enjoy companion-style chat; young and middle-aged women interested in daily updates and emo-tional interaction; users interested in a learning com-munity or offline instruction ; and regular viewers who prefer daily-life content and a long-term connection with the host. Gemini-3.1-Pro The host chats with viewers, says that she has remained at home and will take a shower after the stream, and reassures viewers not to be upset. She explains that new learners can delay her replies or limit the attention she gives to the stream, says that a professional was hired to cook while she teaches, and announces that the learner will graduate on the fourth day. Fans interested in the daily life of the host, users fol-lowing the training or learning content as a general topic , and viewers who enjoy authentic daily records and casual conversation. Qwen3-VL-8B The woman explains that she is waiting at home and will take a shower after the stream. She previews the schedule for new learners, states that she teaches the new learners to cook , thanks viewers for their support, and says that the learner will graduate on the fourth day. Young women interested in daily-life sharing, emotional interaction, and learning content, particularly users inter-ested in cooking and learning practical life skills .InternVL3.5-8B The woman states that she is waiting at home and plans to take a shower. She also says that new friends or learners have arrived, that she needs to guide their study, and that a professional was hired to cook. 
+
+Young women interested in daily-life sharing, cook-ing, and learning-sharing content , together with view-ers who prefer warm and friendly live streams. RecoReward-4B Sitting on a sofa at home, the host chats with viewers about visiting friends and new learners. She checks and operates a red phone, gestures to emphasize her points, adjusts her hair, and rests her chin on one hand. She also responds to viewers who ask whether she is upset or will make up for missed time, and separately describes the professional cooking arrangement and the progress toward learner graduation while continuing the everyday conversation. Middle-aged users interested in authentic, informal daily-life conversation , together with users who prefer non-professional entertainment and unpolished, conver-sational interaction .
+
+Table 12 Complete Event and Target Users outputs for a sneaker sales stream. 
+
+Model Event Target Users GPT-5 The host sells New Balance-style sneakers and explains their sizes, inventory, warranty, breathable mesh, summer suitability, and standard fit. She reports that the front pair remains only in size 41, while the rear black pairs and the middle white pair remain in several adjacent sizes. She also promotes a price reduction from RMB 159 to RMB 78 and directs viewers to the flash-purchase link. Price-conscious sports and casual-shoe consumers; com-muters and walkers seeking breathable summer footwear; live-commerce buyers who value warranties and in-store verification; and young men and women selected mainly from the visual style who wear sizes 41–44 and prefer either black outdoor-style or white chunky sneakers. Gemini-3.1-Pro The host sells New Balance sneakers, describing their white and black color variants, sizes, inventory, original labels, boxes, and tags, eligibility for in-store verification, warranty policy, and promotional price. Consumers interested in sneakers, particularly those who prefer retro chunky designs and value brand style, com-petitive prices, quality assurance, and discounts, together with a broad male-and-female demographic .Qwen3-VL-8B The host sells New Balance sneakers and describes their sizes, colors, whether they are new or used , original labels, boxes, and tags, six-month warranty, original price of RMB 159, promotional price of RMB 78, and standard fit. Consumers seeking sneakers, especially young users inferred without supporting evidence , together with buyers who value brand, quality, standard sizing, and discounted prices. InternVL3.5-8B The host introduces and displays New Balance sneakers, emphasizing standard sizing, brand quality, and the promotional price. 
+
+General consumers interested in sneakers, especially viewers who follow the New Balance brand .RecoReward-4B The host places several New Balance sneakers on the floor and shows their labels, mesh material, and sole design. She repositions the shoes to compare the black and white variants , checks the remaining inventory, responds to questions about size and authenticity, and explains that the products include the original labels and boxes and can be inspected in a retail store . She then discusses the promotional price and encourages viewers to purchase the remaining stock. 
+
+Price-sensitive consumers seeking affordable sneak-ers , including young users interested in affordable domestic-trend or brand-alternative styles, students and budget-conscious young men seeking brand appeal, and niche viewers interested in bargain or second-hand shop-ping. 
+
+16

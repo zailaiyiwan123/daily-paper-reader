@@ -1,0 +1,402 @@
+Title: Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing
+
+URL Source: https://arxiv.org/pdf/2607.25329v1
+
+Published Time: Wed, 29 Jul 2026 00:33:59 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing 
+
+# Huanjie Wang ∗
+
+Beijing University of Posts and Telecommunications Beijing, China wanghuanjie@bupt.edu.cn 
+
+# Liwei Guan ∗
+
+Beijing University of Posts and Telecommunications Beijing, China guanliwei@bupt.edu.cn 
+
+# Zekai Sun 
+
+Beijing University of Posts and Telecommunications Beijing, China sunzekai@bupt.edu.cn 
+
+# Hongwei Zhang 
+
+Beijing University of Posts and Telecommunications Beijing, China 2232840184@bupt.edu.cn 
+
+# Honghui Bao †
+
+University of Illinois Chicago Chicago, USA hbao@uic.edu 
+
+## Abstract 
+
+Generative recommendation has recently emerged as a promising paradigm that reformulates retrieval as autoregressive generation over semantic identifiers (SIDs), achieving strong performance and drawing increasing attention as an alternative to matching. De-spite this progress, SIDs are typically frozen by a content-based tokenizer before the recommender is trained, leaving a persistent gap between what best reconstructs an item’s content and what a recommender can predict from user behavior. Recent end-to-end methods close this gap by jointly training the tokenizer and the recommender, but coupling the two destabilizes the identifier space and requires a second learnable model, alignment losses, and usu-ally a delicate alternating-optimization schedule. To address this issue, we propose Grevo , a unified G enerative r ecommendation framework with evolutionary item indexing, which treats the SID assignment itself as an evolvable discrete variable that adapts to behavioral feedback rather than as a tokenizer to be trained. Grevo builds on a single multitask recommender that unifies a behavioral SID generation task and a semantic SID grounding task, letting the recommender absorb the tokenizer’s role. Through evolutionary item indexing, Grevo then uses the trained recommender itself as a posterior evaluator to reassign a budgeted set of high-risk identifiers under a fixed vocabulary and length. Together, these components turn index construction into a stable, feedback-driven search that requires no second learnable model, no alignment losses, and no alternating-optimization schedule. Extensive experiments on multiple real-world datasets demonstrate that Grevo consistently outperforms state-of-the-art generative recommendation methods.  
+
+> ∗Both authors contributed equally to this research.
+> †Corresponding author. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+## Keywords 
+
+Generative Recommendation, Multitask Learning, End-to-End Op-timization, Semantic Identifier 
+
+## 1 Introduction 
+
+Generative Recommendation (GR) has recently emerged as a promis-ing paradigm, delivering strong empirical gains and establishing itself as a viable alternative to conventional matching-based re-trieval [ 11 , 12 , 29 ]. Rather than scoring a dense catalog, GR trains a single sequence-to-sequence [ 21 ] Transformer [ 26 ] to emit the next item identifier token by token. This paradigm rests on two compo-nents: a tokenizer that maps each item to a semantic identifier (SID) via codebook quantization [ 10 ] of its content embedding [ 17 , 36 ], and a generative Transformer trained to predict these identifiers from user behavior. The design challenge centers on how these two components are coupled, and in particular on how SIDs are produced and updated. The dominant recipe is a decoupled two-stage pipeline [ 17 , 19 ,31 , 35 ] where a quantizer first maps each item to a static SID by minimizing content reconstruction error, and the recommender is then trained to predict these frozen identifiers. This separation induces a fundamental semantic–behavioral gap [ 28 , 31 ] since an SID optimized for content reconstruction is not necessarily aligned with the behavioral patterns that govern how users consume items, systematically capping downstream recommendation accuracy. To bridge this gap, prior work falls into two broad categories. 
+
+Static methods construct SIDs before recommender training and keep them frozen throughout, whether from content alone [ 17 ,35 ] or with behavioral signals injected at construction time, as in LETTER [ 28 ] and EAGER [ 31 ]; once recommender training begins, the identifier space is fixed and no further correction is possible. 
+
+End-to-end coupled methods [ 1, 13 , 27 ] jointly optimize the tokenizer and recommender throughout training, which closes the feedback loop but requires a second learnable model, a staged alternating schedule, and careful stabilization to prevent the discrete targets from destabilizing recommender training. These methods arXiv:2607.25329v1 [cs.IR] 28 Jul 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Huanjie Wang, Liwei Guan, Zekai Sun, Hongwei Zhang, and Honghui Bao 
+
+Figure 1: Comparison of GR indexing paradigms. (a) Static methods freeze the tokenizer before recommender training, leaving no behavioral feedback path after initialization. (b) Coupled end-to-end methods jointly optimize a tokenizer and recommender through alternating updates and alignment losses. (c) Grevo keeps the initializer frozen, uses a unified BSG/SSG recommender as a posterior evaluator, and evolves a budgeted subset of SID assignments over rounds. 
+
+collectively establish that behavioral signals should reshape the index, yet none enables post-hoc correction of identifiers without a coupled tokenizer or a second model. Our approach starts from a simple observation that distinguishes GR from the language modeling it borrows its architecture from. In a language model the tokenizer is indispensable because raw strings must be segmented before the model can read them. In GR no such constraint exists because an item’s SID is an index we are free to assign, so what GR requires is a well-organized index rather than a standing tokenizer that keeps producing one. This motivates treating the tokenizer as a disposable initializer that bootstraps the SID assignment once with semantic priors and is then discarded. To absorb the tokenizer’s role, we fold both the recommendation view and the item grounding view into a single multitask recommender through two tasks distinguished only by an input prefix: Behavioral SID Generation (BSG) and Semantic SID Grounding (SSG). With the tokenizer’s role subsumed, we then treat the SID assignment itself as an evolvable discrete variable, using the trained recommender’s BSG/SSG posteriors as a surrogate signal to reassign a budgeted fraction of high-risk identifiers each round. We instantiate this idea as Grevo , a unified generative recom-mendation framework built from two components: a unified multi-task model that jointly trains BSG and SSG, and evolutionary item indexing that iteratively refines the SID assignment under a fixed vocabulary and length. Together they form a simple per-round life-cycle of pre-train, collect, enumerate, evolve and retrain, with no to-kenizer involved beyond the initial bootstrap and no second model or alternating schedule required. Experiments on three Amazon benchmarks confirm that Grevo consistently outperforms strong generative baselines. In summary, our main contributions are as follows: 
+
+• We identify that GR requires a well-organized index rather than a standing tokenizer, and reframe behavior-aware identifier con-struction as evolutionary item indexing, absorbing the item →SID role into the recommender itself via the SSG task. 
+
+• We propose Grevo, combining a unified multitask model (BSG + SSG) with a budgeted evolutionary item indexing mechanism, requiring no second learnable model and no coupled optimization loop. 
+
+• We conduct extensive experiments on three Amazon benchmarks with in-depth investigation, validating that Grevo consistently outperforms state-of-the-art generative recommendation meth-ods. 
+
+## 2 Related Work 
+
+Generative Recommendation. Generative Recommendation re-formulates retrieval from vector similarity search [ 8 , 15 ] into an autoregressive sequence-to-sequence task [11, 12, 21, 29]. This de-parts from traditional sequential recommenders [ 7 , 9, 14 , 20 , 22 , 23 ]that score a dense catalog, spanning convolutional, recurrent, and self-attentive architectures. Early generative work such as P5 [ 4]predicts the next item with text-based tokens, while TIGER [ 17 ]introduces semantic SIDs that represent items through discrete tokens quantized from content embeddings, allowing the model to capture item-level semantics and share knowledge across related items. Industrial systems such as OneRec [ 36 , 37 ] demonstrate the scalability of GR by deploying unified SIDs on large commercial in-frastructures. LC-Rec [ 35 ] and OneReason [ 24 ] integrate SIDs into a large language model as part of its native vocabulary. A persistent obstacle to such deployments is the volatility of collaborative sig-nals under real-time interaction, which drives severe distribution shifts in production streams [ 32 , 38 ]. Across these methods, recom-mendation quality remains tightly bound to the quality of the SIDs Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+used as generation targets, motivating a growing interest in how identifiers are constructed and, as we argue, continually evolved. 
+
+Item Identifiers Assignment. Strategies for constructing item identifiers can be broadly categorized into static and end-to-end coupled approaches [ 11 , 12 , 29 ]. Static methods construct SIDs before recommender training and keep them frozen throughout. Content-only variants such as TIGER [ 17 ] and LC-Rec [ 35 ] tokenize items offline via RQ-VAE [ 10 ], optimizing reconstruction rather than the recommendation objective; behaviorally distinct items can thereby receive similar identifiers—a semantic–behavioral gap that limits downstream precision [ 28 ]. Behavior-injected variants such as LETTER [ 28 ] and EAGER [ 31 ] incorporate collaborative signals during tokenizer construction, but identifiers remain frozen once recommender training begins, so no further correction is possible. 
+
+End-to-end coupled methods close the feedback loop entirely: ETEGRec [ 13 ] aligns the tokenizer and recommender via represen-tation losses and alternating optimization, but requires a second learnable model and a carefully staged training loop. PIT [ 27 ] co-evolves a tokenizer and recommender on streaming data, but incurs heavy pipeline overhead and suffers popularity bias under long-horizon streaming. BLOGER [ 1] frames tokenization as bi-level optimization, but gradient conflicts between the two tasks require surgery to avoid collapse, and its meta-gradient is myopic by design. These methods collectively establish that behavioral signals should reshape the index, yet none allows the index to be corrected after training without a coupled tokenizer or a second learnable model. Grevo addresses this gap with two components: a unified multi-task model that jointly trains BSG and SSG, letting a single recom-mender absorb both the recommendation and item grounding roles, and evolutionary item indexing that refines the SID assignment post-hoc using posterior signals from that trained model, with no tokenizer needed in the loop, as illustrated in Figure 1. 
+
+## 3 Methodology 
+
+Grevo consists of two components. Section 3.1 formulates the dis-crete SID evolution problem and introduces the unified multitask model that lets a single recommender both recommend and ground items. The remainder of the section develops the second compo-nent, evolutionary item indexing , which evolves the SID assignment under this model. 
+
+## 3.1 Problem Formulation 
+
+Let I denote the item set. Each item 𝑖 ∈ I is assigned a fixed-length SID of 𝐾 layers, 
+
+𝑠 𝑖 = (𝑧 1 
+
+> 𝑖
+
+, 𝑧 2 
+
+> 𝑖
+
+, . . . , 𝑧 𝐾 𝑖 ), (1) where 𝑧 𝑘 𝑖 is the token emitted at codebook layer 𝑘 , produced by an initial RQ-VAE [ 10 , 17 ] or RQ-Kmeans [ 36 , 37 ] quantizer. Unlike end-to-end tokenizers, Grevo never opens the quantizer’s parameters; it treats the assignment {𝑠 𝑖 }𝑖 ∈ I itself as an evolvable discrete variable and constrains its evolution to a restricted manifold. The key design principle is to preserve global index stability while allowing fine-grained local refinement. Because an evolved index respects the original length and vocabulary, it is a drop-in replacement for the initial index and requires no change to the model architecture. 
+
+Unified multitask model. The recommender 𝑝 𝜃 , instantiated as a sequence-to-sequence [ 21 ] Transformer [ 16 , 26 ], is pre-trained on two coupled tasks simultaneously over the current index. The two tasks share the same decoder but differ in their encoder input and BOS token: 
+
+Behavioral SID Generation (BSG): the generative recommen-dation task. The encoder receives a user’s historical SID sequence 𝑐 ,prefixed with a user BOS token [U], and the decoder autoregressively generates the target item’s SID 𝑠 :
+
+𝑝 BSG  
+
+> 𝜃
+
+(𝑠 | 𝑐 ) =
+
+> 𝐾
+
+Ö
+
+> 𝑘 =1
+
+𝑝 𝜃 
+
+
+
+𝑧 𝑘 | 𝑧 <𝑘 , [U], 𝑐 
+
+
+
+. (2) 
+
+Semantic SID Grounding (SSG): the item identification task. The encoder receives item 𝑖 ’s semantic representation 𝑒 𝑖 , prefixed with an item BOS token [I], and the decoder autoregressively gen-erates the item’s own SID 𝑠 𝑖 :
+
+𝑝 SSG  
+
+> 𝜃
+
+(𝑠 | 𝑒 𝑖 ) =
+
+> 𝐾
+
+Ö
+
+> 𝑘 =1
+
+𝑝 𝜃 
+
+
+
+𝑧 𝑘 | 𝑧 <𝑘 , [I], 𝑒 𝑖 
+
+
+
+. (3) The two tasks share the token embedding layer, and both are at heart the same problem—generating a codebook token path, so optimizing SSG directly improves the quality of the token representations the model generates and thereby lifts BSG recommendation accuracy, even when the index itself is held fixed. Crucially, SSG activates only the shallow layers of the model close to the token embeddings, whereas BSG engages the full model depth; this asymmetry keeps the additional cost of SSG negligible while still enriching the shared token space. The goal of Grevo is to evolve an SID assignment that is jointly favorable under both tasks: identifiers the model can generate from user behavior and recover from item semantics. 
+
+Evolutionary item indexing. The second component of Grevo pursues this goal by evolutionary item indexing: using the trained multitask model as a posterior evaluator, it repeatedly diagnoses high-risk identifiers and reassigns a budgeted fraction of them un-der a fixed vocabulary and fixed length, so that the index itself evolves toward the recommendation objective without ever reopen-ing the tokenizer. The remainder of this section develops it as four interlocking parts: the round-based lifecycle that structures each evolution step (Section 3.2), the posterior signals collected from a trained recommender (Section 3.3), the risk-based candidate gener-ator (Section 3.4), and the alignment-gain scoring with budgeted commitment (Section 3.5). 
+
+## 3.2 The Grevo Lifecycle 
+
+Grevo operates as a round-based loop shown in Figure 2 where each round trains a recommender on the current index, evolves a small fraction of identifiers based on what the model has learned, and passes the improved index to the next round [ 2]. Each round begins by pre-training the unified BSG/SSG model on the current index, then collecting posterior signals to identify high-risk items. Candi-date SIDs are enumerated and scored within the fixed-vocabulary, fixed-length manifold, and the highest-gain reassignments are com-mitted under a budget to produce the next round’s index. Con-ceptually, evolutionary item indexing is a training-after discrete refinement of the index: instead of back-propagating gradients into a tokenizer, it uses posterior diagnostics as a surrogate signal Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Huanjie Wang, Liwei Guan, Zekai Sun, Hongwei Zhang, and Honghui Bao 
+
+Figure 2: The Grevo per-round lifecycle: pre-train → collect → enumerate → evolve → retrain . The trained BSG/SSG model acts as a posterior evaluator that scores candidate SID reassignments, and the evolved index feeds the next round. Only the SID assignment on mutable layers is updated. 
+
+and takes a coordinate-descent-like step in the discrete SID space, evolving a small fraction of identifiers per round toward the recom-mendation objective. The evolve step of evolutionary item indexing consists of three stages, which collect items, enumerate them, and score and commit them, and these stages are executed between consecutive training rounds and are developed in Sections 3.3–3.5. 
+
+## 3.3 Collect: Posterior Signal Collection 
+
+After each training round, Grevo reads two families of posterior signals from the model. Diagnostic signals identify which items the recommender struggles with most, measured by how far the model’s predictions diverge from the target SIDs. Exact alignment signals then score each candidate SID 𝑠 for item 𝑖 by teacher-forcing it through both tasks: the BSG path score measures how easily the model generates the candidate from 𝐶 𝑖 , the set of user history sequences in which item 𝑖 appears as the target. Averaging over multiple contexts is inspired by ensemble learning [ 3 ] and self-consistency [ 30 ]: a single context may be noisy, but the mean log-probability over 𝐶 𝑖 provides a stable estimate of the SID’s behavioral quality, 
+
+𝑟 BSG (𝑖, 𝑠 ) = 1
+
+|𝐶 𝑖 |∑︁ 𝑐 ∈𝐶 𝑖 
+
+log 𝑝 𝜃 (𝑠 | [ U], 𝑐 ), (4) and the SSG path score measures how well the candidate can be recovered from the item’s semantic representation 𝑒 𝑖 ,
+
+𝑟 SSG (𝑖, 𝑠 ) = log 𝑝 𝜃 (𝑠 | [ I], 𝑒 𝑖 ). (5) To jointly reflect both tasks, we further define a cross-task token-path consistency score that rewards candidates on which the two tasks agree at the token level. For each codebook layer 𝑘 ∈ { 1, . . . , 𝐾 },let 𝑢 𝑘 and 𝑣 𝑘 denote the per-layer token log-probability of candidate 
+
+𝑠 under BSG and SSG respectively. The consistency score is 
+
+𝑟 cons (𝑖, 𝑠 ) = 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑢 𝑘 + 𝑣 𝑘 − | 𝑢 𝑘 − 𝑣 𝑘 |
+
+2 , (6) which is high when both tasks favor the token path ( 𝑢 𝑘 and 𝑣 𝑘 
+
+large) and the two tasks agree ( |𝑢 𝑘 − 𝑣 𝑘 | small). A strong candidate is easy for BSG to generate, easy for SSG to identify, and consistent between the two tasks at every layer. 
+
+## 3.4 Enumerate: Constrained Candidate Generation 
+
+For each high-risk item, Grevo enumerates a small set of candidate SIDs by replacing tokens only on the mutable layers. Let M ⊆ {1, . . . , 𝐾 } denote the mutable layers and let R ( 𝑖 ) be the set of items that appear as posterior confusion neighbors of item 𝑖 . For each mutable layer 𝑘 , Grevo constructs a layer-wise token pool 
+
+A𝑘 𝑖 = {𝑧 𝑘 𝑖 } ∪ { 𝑧 𝑘 𝑗 | 𝑗 ∈ R ( 𝑖 )} ∪ LowLoad 𝑘 , (7) where the three terms correspond respectively to the item’s current token as a no-change anchor, tokens borrowed from behaviorally confused neighbors, and lightly loaded tokens from the existing layer-𝑘 codebook. The candidate set is then 
+
+S𝑖 = {𝑠 ′ | 𝑠 ′𝑘 ∈ A 𝑘 𝑖 if 𝑘 ∈ M , 𝑠 ′𝑘 = 𝑧 𝑘 𝑖 otherwise }, (8) where 𝑠 ′ denotes a candidate SID and 𝑠 ′𝑘 its token at layer 𝑘 . This construction keeps every proposal on the original fixed-vocabulary, fixed-length index manifold: Grevo never creates new codebook tokens, never changes immutable layers, and caps the number of enumerated candidates per item in practice. 
+
+## 3.5 Evolve: Scoring and Budgeted Commitment 
+
+Each candidate is scored by the gain it achieves in the three align-ment scores relative to the item’s current SID, 
+
+Δ𝑟 • (𝑖, 𝑠 ′) = 𝑟 • (𝑖, 𝑠 ′) − 𝑟 • (𝑖, 𝑠 𝑖 ), • ∈ { BSG , SSG , cons }. (9) The total alignment gain is a weighted combination, 
+
+score (𝑖, 𝑠 ′) = Δ𝑟 BSG + 𝜆 1 Δ𝑟 SSG + 𝜆 2 Δ𝑟 cons , (10) where the behavioral gain Δ𝑟 BSG is the primary objective and thus carries unit weight, Δ𝑟 SSG prevents an SID from drifting away from the item’s semantics, and Δ𝑟 cons enforces per-layer consistency between the two tasks. The solver then commits reassignments greedily by alignment gain, subject to a hard budget Budget = ⌊𝜌 |I|⌋ controlled by bud-get ratio 𝜌 , which caps the total number of evolved identifiers per round and allows at most one change per item. This gradual evo-lution is by design: end-to-end tokenizer training likewise results in only a fraction of SID assignments changing between consecu-tive checkpoints, rather than reorganizing the entire index at once. Grevo mirrors this principle explicitly — keeping each round’s Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 1: Statistics of the preprocessed datasets.                     
+
+> Dataset #Users #Items #Interactions Sparsity Avg. Length
+> Beauty 22,363 12,101 198,502 99.93% 8.9
+> Sports 35,598 18,357 296,337 99.95% 8.3
+> Toys 19,412 11,924 167,597 99.93% 8.6
+
+changes small ensures the model can adapt to the updated index before the next evolution step, preventing the SID distribution from drifting too far in a single round and maintaining global index stability. 
+
+## 4 Experiments 
+
+We conduct experiments to answer the following research ques-tions: 
+
+• RQ1: How does Grevo perform against representative traditional sequential and generative recommendation baselines? 
+
+• RQ2: Do Grevo’s design components each contribute to the gain, and do the evolved identifiers remain more decodable on held-out user contexts? 
+
+• RQ3: How does Grevo behave across mutable-layer configu-rations, evolution budgets, alignment weights, and evolution rounds? 
+
+## 4.1 Experimental Setup 
+
+Datasets. We evaluate on three widely used datasets from the Ama-zon Review 2014 [ 6 ] collection: “Beauty”, “Sports and Outdoors”, and “Toys and Games”. Following established preprocessing pro-tocols [ 9, 28 ], we treat all ratings as positive implicit feedback and adopt the 5-core setting [ 9 ], filtering out users and items with fewer than five interactions. User behavior sequences are constructed chronologically with a maximum historical sequence length of 50 .We employ the widely used leave-one-out strategy [ 9], using the last interaction for testing, the second-to-last for validation, and the remainder for training. The statistics of the processed datasets are summarized in Table 1. 
+
+Baselines. We compare Grevo against a wide range of competitive baselines, grouped into traditional sequential recommenders and recent generative recommenders. 
+
+Traditional sequential models: HGN [14 ] introduces hierarchical feature and instance gating to capture both short-term and long-term user interests; GRU4Rec [7] is a pioneering session-based method that models user click behaviors with Gated Recurrent Units; BERT4Rec [ 20 ] adapts a deep bidirectional Transformer with a Cloze objective to capture bidirectional context; and SAS-Rec [9] uses unidirectional self-attention to capture long-term sequential dependencies. 
+
+Generative recommendation models: HSTU [33 ] is an optimized sequential architecture designed for large-scale industrial deploy-ment; OneRec-V2 [37 ] is a large-scale end-to-end generative recom-mender using RQ-Kmeans; TIGER [ 17 ] formulates recommenda-tion as generative retrieval, using a hierarchical RQ-VAE to produce semantic identifiers; LETTER [28 ] optimizes item tokenization by injecting semantic, collaborative, and diversity regularization into a learnable framework; ETEGRec [13 ] proposes an end-to-end training strategy with alternating optimization and auxiliary recommendation-oriented losses; LC-Rec [35 ] adapts large lan-guage models for recommendation, integrating collaborative se-mantics into generation via vector quantization; and BLOGER [1]frames tokenization as a bi-level optimization, back-propagating the recommendation loss into the tokenizer with gradient surgery. 
+
+Evaluation Metrics. We adopt two standard metrics, Recall@ 𝐾 
+
+and NDCG@ 𝐾 , reporting results for 𝐾 ∈ { 5, 10 } following [ 17 ] to analyze performance at different ranking positions. 
+
+Implementation Details. For a fair comparison, we uniformly employ a frozen LLaMA3-8B [ 5] to extract item embeddings for codebook construction in TIGER [ 17 ], LETTER [ 28 ], LC-Rec [ 35 ], and OneRec-V2 [ 37 ]. Specifically, for TIGER and LETTER, we adopt the open-source implementation provided by LETTER. For LC-Rec, while the item embeddings follow the standardized extrac-tion process, the subsequent fine-tuning stage is conducted using LLaMA-7B [ 25 ], consistent with its original architecture. TIGER, LETTER, and LC-Rec share an identical quantization configura-tion using RQ-VAE [ 10 ] with 4 codebooks, each containing 256 codes of dimension 32, whereas OneRec-V2 constructs semantic IDs using RQ-Kmeans [ 36 ] based on the same extracted embeddings. For ETEGRec [ 13 ] and BLOGER [ 1 ], we utilize their official open-source implementations. Traditional recommendation baselines are implemented using the open-source recommendation frame-work RecBole [ 34 ]. Grevo is implemented based on a T5-style [ 16 ]encoder-decoder architecture shared by BSG and SSG. By default, the model consists of 8 encoder and 8 decoder layers with a hidden size of 256, 4 attention heads, a 2048-dim feed-forward network with Swish [ 18 ] activation, and a dropout rate of 0.2. Each round is trained using seed 32 for up to 75 epochs with early stopping, SSG loss weight 0.07, and maximum sequence length of 50. For evolu-tionary indexing, the SID length and vocabulary size remain fixed where evolve round is 1. Posterior diagnostics employ constrained beam search [ 21 ] with a beam size of 50, retaining up to 32 user contexts per target item for exact alignment scoring. In the default evolutionary setup, Grevo edits the last two SID layers, enumerates up to 64 candidates per item from confusion-neighbor and low-load token sources, and sets 𝜌 = 0.05 , 𝜆 1 = 0.25 , and 𝜆 2 = 0.15 . Ablation and parameter studies vary one factor at a time on Beauty with TIGER SID. 
+
+## 4.2 Overall Performance (RQ1) 
+
+Table 2 reports Recall (R) and NDCG (N) at 𝐾 ∈ { 5, 10 }. We evaluate Grevo natively on the TIGER and LETTER backbones: each group contains the plain backbone, +Grevo (no-evo), which trains the unified BSG+SSG model on the fixed initial index, and the full +Grevo model. We additionally conduct an index-transfer test with LC-Rec: its+Grevo row is trained directly with the evolved SID produced by TIGER+Grevo, without applying Grevo’s BSG+SSG training or a tokenizer optimization to LC-Rec itself. Based on the results, we make the following observations: 
+
+• Grevo consistently achieves the strongest overall performance across datasets and metrics. Its advantage comes from treating the item index as an adaptive part of generative recommendation rather than a fixed preprocessing artifact. The unified BSG+SSG Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Huanjie Wang, Liwei Guan, Zekai Sun, Hongwei Zhang, and Honghui Bao 
+
+Table 2: Overall performance across three Amazon datasets. Grevo is instantiated on three generative backbones. For TIGER and LETTER we report the plain backbone, +Grevo (no-evo) (the unified multitask model with BSG+SSG on the initial index, no evolution), and +Grevo (with evolutionary item indexing added on top); for LC-Rec we report the plain backbone and +Grevo. Per backbone group, bold marks the best result, each compared only against the baselines above. Model Beauty Sports Toys 
+
+R@5 R@10 N@5 N@10 R@5 R@10 N@5 N@10 R@5 R@10 N@5 N@10 
+
+HGN 0.0337 0.0554 0.0207 0.0277 0.0192 0.0325 0.0117 0.0160 0.0356 0.0565 0.0216 0.0284 
+
+GRU4Rec 0.0401 0.0614 0.0260 0.0329 0.0194 0.0320 0.0124 0.0164 0.0358 0.0571 0.0234 0.0302 
+
+BERT4Rec 0.0226 0.0385 0.0140 0.0191 0.0102 0.0168 0.0063 0.0084 0.0194 0.0302 0.0120 0.0155 
+
+SASRec 0.0403 0.0592 0.0266 0.0327 0.0203 0.0320 0.0133 0.0171 0.0424 0.0609 0.0282 0.0342 
+
+HSTU 0.0423 0.0623 0.0282 0.0347 0.0236 0.0348 0.0157 0.0193 0.0405 0.0582 0.0283 0.0339 
+
+OneRec-V2 0.0413 0.0628 0.0277 0.0346 0.0240 0.0402 0.0147 0.0199 0.0361 0.0581 0.0223 0.0294 
+
+ETEGRec 0.0408 0.0657 0.0270 0.0344 0.0269 0.0435 0.0164 0.0221 0.0391 0.0602 0.0245 0.0321 
+
+BLOGER 0.0344 0.0546 0.0220 0.0285 0.0259 0.0439 0.0165 0.0223 0.0348 0.0543 0.0221 0.0285 
+
+LC-Rec 0.0433 0.0653 0.0289 0.0360 0.0271 0.0428 0.0177 0.0228 0.0466 0.0687 0.0323 0.0394 
+
++Grevo 0.0523 0.0777 0.0335 0.0428 0.0278 0.0441 0.0180 0.0233 0.0489 0.0729 0.0333 0.0410 TIGER 0.0403 0.0648 0.0256 0.0336 0.0262 0.0418 0.0165 0.0215 0.0352 0.0562 0.0220 0.0287 
+
++Grevo (no-evo) 0.0428 0.0713 0.0265 0.0356 0.0283 0.0470 0.0179 0.0239 0.0404 0.0662 0.0254 0.0337 
+
++Grevo 0.0484 0.0778 0.0318 0.0412 0.0294 0.0489 0.0188 0.0250 0.0455 0.0704 0.0294 0.0375 LETTER 0.0411 0.0654 0.0263 0.0340 0.0266 0.0439 0.0167 0.0223 0.0383 0.0599 0.0239 0.0308 
+
++Grevo (no-evo) 0.0431 0.0707 0.0275 0.0364 0.0292 0.0479 0.0185 0.0245 0.0428 0.0692 0.0269 0.0353 
+
++Grevo 0.0476 0.0751 0.0312 0.0401 0.0301 0.0483 0.0192 0.0251 0.0477 0.0720 0.0309 0.0388 
+
+model jointly aligns behavioral SID generation with semantic grounding through shared token representations, while the evo-lutionary step uses posterior feedback from both tasks to repair high-risk identifiers under a fixed vocabulary and length. This coupling yields identifiers that are simultaneously easier to gen-erate from user behavior and better grounded in item semantics, providing a more suitable target space for generative recommen-dation. 
+
+• The gains from the unified model and evolutionary indexing are complementary. On both TIGER and LETTER, +Grevo (no-evo) already improves over the corresponding backbone, showing that jointly learning behavioral generation and semantic ground-ing benefits recommendation even when the initial SID is fixed. Adding evolutionary indexing then delivers a further improve-ment, confirming that the recommender’s posterior feedback provides information that cannot be recovered from fixed-index multitask training alone. This conclusion is further supported by the LC-Rec transfer setting: LC-Rec uses only the evolved index obtained from TIGER+Grevo for training, without any LC-Rec-specific Grevo module. As the results show, its improvement isolates the effect of the index and shows that a well-evolved SID can be directly transferred to strengthen another generative rec-ommender. In other words, generative recommendation crucially needs a good item index, rather than an additional backbone-specific learnable tokenizer. 
+
+• Traditional sequential recommenders, including HGN, GRU4Rec, BERT4Rec, and SASRec, generally underperform recent genera-tive approaches. These methods predict over item-specific embed-dings or categorical identifiers, which offer limited semantic struc-ture and do not provide a hierarchical target space for generation. Recent generative recommenders alleviate this limitation by in-troducing semantic identifiers or collaborative semantic represen-tations: TIGER and LETTER use residual-quantized identifiers, LC-Rec incorporates collaborative semantics into generation, and OneRec-V2 uses quantized semantic IDs. Their stronger results demonstrate the value of structured item representations. ETE-GRec and BLOGER further advance this line of work by jointly learning the tokenizer and generative recommender, allowing identifier construction to become aware of the downstream rec-ommendation task. Building on this insight, Grevo uses budgeted, posterior-guided discrete evolution to progressively refine the index with feedback from the trained recommender. As a re-sult, It provides a direct and lightweight route to a better-aligned, recommendation-aware item index, without introducing a second learnable tokenizer. The results show that this design achieves stronger recommendation effectiveness without requiring a sep-arately learned tokenizer. 
+
+## 4.3 In-depth Analysis 
+
+4.3.1 Ablation Study (RQ2). To investigate the individual contri-bution of Grevo’s components, we conduct an ablation study on Amazon Beauty with TIGER SID. As summarized in Table 3, we compare the full model against variants that simplify the posterior Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 3: Ablation of Grevo’s design choices on Amazon Beauty with TIGER SID. All variants use one evolution round with budget ratio 𝜌 = 0.05 .Variant R@5 R@10 N@5 N@10 
+
+Grevo (full) 0.0484 0.0778 0.0318 0.0412 Posterior Signal Collection 
+
+𝑟 SSG only 0.0453 0.0714 0.0291 0.0375 
+
+𝑟 BSG only 0.0472 0.0760 0.0307 0.0401 
+
+𝑟 BSG + 𝑟 SSG 0.0477 0.0765 0.0313 0.0406 
+
+Candidate Token Sources w/o neighbor tokens 0.0440 0.0706 0.0279 0.0364 
+
+w/o low-load tokens 0.0479 0.0762 0.0308 0.0399 scorer or remove one candidate-token source; all variants use the same mutable layers and evolution budget. 
+
+• 𝑟 SSG only : Retains only the semantic SID-grounding score when selecting candidate identifiers, removing both the behavioral posterior and cross-task consistency. Its clear performance de-cline shows that semantic recoverability alone is insufficient for identifying the SIDs that best serve the recommendation task; the index must also reflect how users generate items from their behavioral histories. 
+
+• 𝑟 BSG only : Selects candidate SIDs solely according to the behav-ioral SID-generation posterior, without semantic grounding or consistency regularization. This variant performs substantially better than the SSG-only setting, validating that the behavioral posterior is the primary signal for repairing recommendation-critical identifiers. Its remaining gap to the full model further shows that behavior alone can favor identifiers that are insuffi-ciently grounded or unstable across the two tasks. 
+
+• 𝑟 BSG + 𝑟 SSG : Combines behavioral and semantic posterior signals but removes the cross-task consistency term. The performance decrease relative to Grevo (full) demonstrates that encouraging both tasks to favor the same token path is beneficial: it filters candidates that look favorable to one task but are not jointly reliable as an item identifier. 
+
+• w/o neighbor tokens : Disables tokens borrowed from posterior confusion neighbors during constrained candidate generation, leaving only the current token and low-load alternatives. The pronounced degradation indicates that confused neighbors pro-vide the most informative local repair directions, because they expose the behavioral ambiguities that the current index fails to distinguish. 
+
+• w/o low-load tokens : Removes lightly loaded codebook tokens from the candidate pool while retaining confusion-neighbor to-kens. The resulting drop confirms that low-load tokens comple-ment neighbor-derived proposals by supplying available code-book capacity for useful reassignment, rather than restricting evolution to the tokens already occupied by confusable items. Overall, the results show that Grevo requires both a behavior-aware posterior scorer and a diverse but constrained candidate pool. The behavioral signal supplies the main recommendation objective, semantic grounding and consistency make the edits jointly reliable, and the two candidate sources provide complementary directions for repairing the index. 
+
+4.3.2 Held-out Codeword Decodability (RQ2). Overall Recall and NDCG show that Grevo improves recommendation, but they do not reveal whether an evolved SID is itself easier for the recom-mender to generate. This distinction is important because Grevo selects edits using round-0 posterior diagnostics. So we perform a held-out codeword decodability test on Beauty: after retraining the recommender on the evolved index (round 1), we ask whether the new code is easier to predict in unseen user contexts. For every edited item, we collect held-out validation/test histo-ries—never used during candidate scoring—for which it is the next target. With the round-1 model and user history fixed, we score the original TIGER SID and the evolved SID as two alternative labels for that item via teacher forcing, reporting the negative log-likelihood (NLL) and the rank of each correct token. Because the model, user history, and target item are all held fixed, the SID is the only vari-able in each paired comparison; any improvement is attributable solely to the index edit and cannot reflect overfitting the round-0 posterior signal. Figure 3 reports three complementary views of the result. Panel (a) shows that all per-edit NLL points fall below the 𝑦 =𝑥 line. Panel (b) confirms that the resulting NLL gains are uniformly positive with no regressions. Panel (c) shows that evolved ranks concentrate near the top of the codebook while original ranks spread across a much wider range, motivating the logarithmic axis. Lower NLL means the model assigns higher probability to the full identifier; lower rank means fewer competing codewords during autoregressive decod-ing, reducing the risk of an early error that derails the remainder. Together, the three panels show that Grevo produces identifiers that remain genuinely more decodable after retraining. 
+
+## 4.4 Hyper-Parameter Analysis (RQ3) 
+
+We further investigate the important hyper-parameters introduced by Grevo to facilitate future applications. All studies in this part probe Grevo’s own internal knobs rather than compare against baselines, so we conduct them on the Beauty dataset with TIGER SID and vary one hyper-parameter at a time while holding the others at their default. Figure 4 reports the absolute R@10 (left axis) and N@10 (right axis) for four hyper-parameters and then tracks both metrics over successive evolution rounds. We discuss each setting in turn. 
+
+Number of mutable layers. An identifier has 𝐾 codebook layers, and Grevo can be restricted to reassign only a subset of them per round. Figure 4(a) shows that making two layers mutable gives the strongest result. Editing only the final layer leaves some local behavioral confusions unresolved, whereas opening more layers disrupts the stable higher-level structure of the identifier. So we use two mutable layers which preserves the semantic prefix while providing enough flexibility to repair the lower-level codewords that distinguish behaviorally similar items. 
+
+Budget ratio 𝜌 . The budget ratio 𝜌 caps the fraction of identifiers evolved per round through Budget = ⌊𝜌 |I|⌋ . Figure 4(b) shows a broad plateau at small-to-moderate budgets, while larger bud-gets do not improve downstream quality and eventually degrade it. We set 𝜌 = 0.05 : it lies on this plateau but changes the fewest Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Huanjie Wang, Liwei Guan, Zekai Sun, Hongwei Zhang, and Honghui Bao 0 2 4 6
+
+> NLL(old SID | history)
+> 0
+> 2
+> 4
+> 6
+> NLL(new SID | history)
+> lower NLL
+> y=x
+
+(a) Old vs. evolved NLL     
+
+> 01234
+> NLL gain = old - new
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> item/split count
+
+(b) Held-out NLL gain  
+
+> Old SID Evolved SID
+> 1
+> 3
+> 10
+> 30
+> 100
+> 300
+> Mean target-token rank
+> (log scale; lower is better)
+
+(c) Target-token rank summary 
+
+> mean=93.78
+> mean=6.93
+> 357 changed items, 1200 held-out contexts
+
+Figure 3: Held-out SID decodability on Beauty. (a) Paired NLLs of original and evolved SIDs; points below 𝑦 = 𝑥 favor evolved SIDs. (b) NLL gain (old minus evolved, the green line shows the mean NLL gain, while the yellow line shows the median NLL gain.). (c) Correct-token rank distributions (lower is better), summarized by box plots. A logarithmic axis accommodates the two-order-of-magnitude rank range; ticks and means remain in original units. 0.035                  
+
+> 0.038
+> 0.041
+> N@10 (right)
+> 1234
+> (a) mutable layers
+> 0.068
+> 0.074
+> 0.080
+> R@10 (left)
+> 0.05 0.30 1
+> (b) budget ratio ρ
+> 0.25 0.5 1
+> (c) SSG weight λ1
+> 00.15 0.6
+> (d) consistency λ2
+> 01234
+> (e) evolution round
+> R@10 (left) N@10 (right)
+
+Figure 4: Hyper-parameter sensitivity and evolution-round analysis on Beauty. All five panels report absolute R@10 on the left axis and absolute N@10 on the right axis. Panels (a)–(d) vary one setting at a time, while panel (e) tracks cumulative evolution rounds. 
+
+identifiers, reducing the cost of candidate evaluation and retraining while avoiding unnecessary edits. This pattern suggests that Grevo benefits from conservative, targeted updates rather than aggressive one-shot re-indexing. 
+
+SSG weight 𝜆 1. The weight 𝜆 1 controls how strongly the semantic-grounding gain Δ𝑟 SSG contributes to the candidate score relative to the primary behavioral gain Δ𝑟 BSG . Figure 4(c) peaks at 𝜆 1 = 0.25 . A smaller weight underuses semantic grounding, allowing behavior-driven edits that are less well supported by item semantics; larger weights increasingly suppress useful behavior-driven moves. We use 𝜆 1 = 0.25 as the default, which best balances behavioral utility with semantic validity. 
+
+Consistency weight 𝜆 2. The weight 𝜆 2 controls the cross-task consistency term Δ𝑟 cons , which favors candidates on which BSG and SSG agree at every layer. Figure 4(d) shows a clear intermediate optimum at 𝜆 2 = 0.15 : without consistency, the two tasks can fa-vor incompatible edits, while too much consistency over-penalizes behaviorally useful reassignments. We use 𝜆 2 = 0.15 , treating con-sistency as a lightweight regularizer that filters unreliable edits without overriding the main recommendation objective. 
+
+Effect of evolution rounds. Beyond these per-round knobs, Grevo repeats pretrain →collect →enumerate →evolve →retrain for several rounds, and we study how downstream quality changes as rounds accumulate. Figure 4(e) tracks test R@10 and N@10 across rounds on Beauty with TIGER SID. Both metrics improve steadily during the early rounds, showing that retraining can turn successive index refinements into better recommendation quality. The gains then become progressively smaller, indicating that the remaining identifiers offer fewer high-value corrections after the most problematic assignments have been repaired. Performance has effectively converged after round 3, with later evolution producing little additional change. 
+
+## 5 Conclusion 
+
+We presented Grevo, a unified generative recommendation frame-work built from two components: a unified multitask model whose BSG and SSG tasks let a single recommender both recommend and absorb the tokenizer’s role, and the evolutionary item indexing that improves SIDs by evolving the SID assignment rather than retrain-ing a tokenizer. Instead of keeping a standing tokenizer coupled Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+to the recommender in an unstable alternating loop, Grevo treats the tokenizer as a disposable initializer that bootstraps the SID as-signment once with semantic priors and is then discarded, treating the SID assignment as an evolvable discrete variable and evolving a small, budgeted fraction of item identifiers after each training round. It reuses a unified generative recommendation model already trained on the current index as a posterior evaluator to score con-strained candidate identifiers, then takes a coordinate-descent-like step along the direction of greatest alignment gain. The results high-light index quality as a critical factor in generative recommendation: directly optimizing the item index without a trainable tokenizer yields consistent gains across backbones and datasets, demonstrat-ing strong potential as a practical and generalizable design principle. Looking forward, natural extensions include applying evolutionary indexing to streaming settings where item catalogs shift continu-ously, scaling to larger codebooks where more efficient candidate strategies are needed, and incorporating multi-modal embeddings as richer grounding signals for the SSG objective. 
+
+## References 
+
+[1] Yimeng Bai, Chang Liu, Yang Zhang, Dingxian Wang, Frank Yang, Andrew Rabi-novich, Wenge Rong, and Fuli Feng. 2026. Bi-Level Optimization for Generative Recommendation: Bridging Tokenization and Generation. In Proceedings of the 49th International ACM SIGIR Conference on Research and Development in Infor-mation Retrieval . ACM, 53–64. doi:10.1145/3805712.3809632 [2] Yoshua Bengio, Jérôme Louradour, Ronan Collobert, and Jason Weston. 2009. Curriculum Learning. In Proceedings of the 26th Annual International Conference on Machine Learning, ICML 2009, Montreal, Quebec, Canada, June 14-18, 2009 .ACM, 41–48. doi:10.1145/1553374.1553380 [3] Thomas G. Dietterich. 2000. Ensemble Methods in Machine Learning. In Multiple Classifier Systems, First International Workshop, MCS 2000, Cagliari, Italy, June 21-23, 2000, Proceedings (Lecture Notes in Computer Science, Vol. 1857) , Josef Kittler and Fabio Roli (Eds.). Springer, 1–15. doi:10.1007/3-540-45014-9_1 [4] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as Language Processing (RLP): A Unified Pretrain, Personalized Prompt & Predict Paradigm (P5). In RecSys ’22: Sixteenth ACM Conference on Recommender Systems, Seattle, WA, USA, September 18 - 23, 2022 , Jennifer Golbeck, F. Maxwell Harper, Vanessa Murdock, Michael D. Ekstrand, Bracha Shapira, Justin Basilico, Keld T. Lundgaard, and Even Oldridge (Eds.). ACM, 299–315. doi:10.1145/3523227.3546767 [5] Aaron Grattafiori, Abhimanyu Dubey, et al . 2024. The Llama 3 Herd of Models. arXiv:2407.21783 [cs] doi:10.48550/arXiv.2407.21783 [6] Ruining He and Julian J. McAuley. 2016. Ups and Downs: Modeling the Visual Evolution of Fashion Trends with One-Class Collaborative Filtering. In Proceed-ings of the 25th International Conference on World Wide Web, WWW 2016, Montreal, Canada, April 11 - 15, 2016 , Jacqueline Bourdeau, Jim Hendler, Roger Nkambou, Ian Horrocks, and Ben Y. Zhao (Eds.). ACM, 507–517. doi:10.1145/2872427.2883037 [7] Balázs Hidasi, Alexandros Karatzoglou, Linas Baltrunas, and Domonkos Tikk. 2016. Session-based Recommendations with Recurrent Neural Networks. In 
+
+International Conference on Learning Representations . arXiv:1511.06939 [cs.LG] https://arxiv.org/abs/1511.06939 [8] Jeff Johnson, Matthijs Douze, and Hervé Jégou. 2021. Billion-Scale Similarity Search with GPUs. IEEE Trans. Big Data 7, 3 (2021), 535–547. doi:10.1109/TBDATA. 2019.2921572 [9] Wang-Cheng Kang and Julian J. McAuley. 2018. Self-Attentive Sequential Rec-ommendation. In IEEE International Conference on Data Mining, ICDM 2018, Singapore, November 17-20, 2018 . IEEE Computer Society, 197–206. doi:10.1109/ ICDM.2018.00035 [10] Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. 2022. Autoregressive Image Generation using Residual Quantization. In IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2022, New Orleans, LA, USA, June 18-24, 2022 . IEEE, 11513–11522. doi:10.1109/CVPR52688.2022.01123 [11] Lei Li, Yongfeng Zhang, Dugang Liu, and Li Chen. 2024. Large Language Mod-els for Generative Recommendation: A Survey and Visionary Discussions. In 
+
+Proceedings of the 2024 Joint International Conference on Computational Linguis-tics, Language Resources and Evaluation, LREC/COLING 2024, 20-25 May, 2024, Torino, Italy , Nicoletta Calzolari, Min-Yen Kan, Véronique Hoste, Alessandro Lenci, Sakriani Sakti, and Nianwen Xue (Eds.). ELRA and ICCL, 10146–10159. https://aclanthology.org/2024.lrec-main.886 [12] Xiaopeng Li, Bo Chen, Junda She, Shiteng Cao, You Wang, Qinlin Jia, Haiying He, Zheli Zhou, Zhao Liu, Ji Liu, Zhiyang Zhang, Yu Zhou, Guoping Tang, Yiqing Yang, Chengcheng Guo, Si Dong, Kuo Cai, Pengyue Jia, Maolin Wang, Wanyu Wang, Shiyao Wang, Xinchen Luo, Qigen Hu, Qiang Luo, Xiao Lv, Chaoyi Ma, Ruiming Tang, Kun Gai, Guorui Zhou, and Xiangyu Zhao. 2025. A Survey of Generative Recommendation from a Tri-Decoupled Perspective: Tokenization, Architecture, and Optimization. doi:10.20944/preprints202512.0203.v1 [13] Enze Liu, Bowen Zheng, Cheng Ling, Lantao Hu, Han Li, and Wayne Xin Zhao. 2025. Generative Recommender with End-to-End Learnable Item Tokenization. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval, SIGIR 2025, Padua, Italy, July 13-18, 2025 ,Nicola Ferro, Maria Maistro, Gabriella Pasi, Omar Alonso, Andrew Trotman, and Suzan Verberne (Eds.). ACM, 729–739. doi:10.1145/3726302.3729989 [14] Chen Ma, Peng Kang, and Xue Liu. 2019. Hierarchical Gating Networks for Se-quential Recommendation. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, KDD 2019, Anchorage, AK, USA, August 4-8, 2019 . ACM, 825–833. doi:10.1145/3292500.3330984 [15] Yury A. Malkov and Dmitry A. Yashunin. 2020. Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs. IEEE Trans. Pattern Anal. Mach. Intell. 42, 4 (2020), 824–836. doi:10.1109/TPAMI.2018. 2889473 [16] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. 2020. Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer. Journal of Machine Learning Research 21, 140 (2020), 1–67. https://jmlr.org/papers/v21/20-074.html [17] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Kesha-van, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Maciej Kula, Ed H. Chi, and Mahesh Sathiamoorthy. 2023. Rec-ommender Systems with Generative Retrieval. In Advances in Neural Infor-mation Processing Systems 36: Annual Conference on Neural Information Pro-cessing Systems 2023, NeurIPS 2023, New Orleans, LA, USA, December 10 - 16, 2023 , Alice Oh, Tristan Naumann, Amir Globerson, Kate Saenko, Moritz Hardt, and Sergey Levine (Eds.). http://papers.nips.cc/paper_files/paper/2023/hash/ 20dcab0f14046a5c6b02b61da9f13229-Abstract-Conference.html [18] Prajit Ramachandran, Barret Zoph, and Quoc V. Le. 2017. Searching for Activation Functions. arXiv:1710.05941 [cs.NE] https://arxiv.org/abs/1710.05941 [19] Zihua Si, Zhongxiang Sun, Jiale Chen, Guozhang Chen, Xiaoxue Zang, Kai Zheng, Yang Song, Xiao Zhang, Jun Xu, and Kun Gai. 2024. Generative Retrieval with Semantic Tree-Structured Identifiers and Contrastive Learning. In Proceedings of the 2024 Annual International ACM SIGIR Conference on Research and Development in Information Retrieval in the Asia Pacific Region, SIGIR-AP 2024, Tokyo, Japan, December 9-12, 2024 , Tetsuya Sakai, Emi Ishita, Hiroaki Ohshima, Faegheh Hasibi, Jiaxin Mao, and Joemon M. Jose (Eds.). ACM, 154–163. doi:10.1145/3673791. 3698408 [20] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential Recommendation with Bidirectional Encoder Repre-sentations from Transformer. In Proceedings of the 28th ACM International Con-ference on Information and Knowledge Management, CIKM 2019, Beijing, China, November 3-7, 2019 . ACM, 1441–1450. doi:10.1145/3357384.3357895 [21] Ilya Sutskever, Oriol Vinyals, and Quoc V. Le. 2014. Sequence to Sequence Learning with Neural Networks. In Advances in Neural Information Pro-cessing Systems 27: Annual Conference on Neural Information Processing Sys-tems 2014, December 8-13 2014, Montreal, Quebec, Canada , Zoubin Ghahra-mani, Max Welling, Corinna Cortes, Neil D. Lawrence, and Kilian Q. Wein-berger (Eds.). 3104–3112. https://proceedings.neurips.cc/paper/2014/hash/ a14ac55a4f27472c5d894ec1c3c743d2-Abstract.html [22] Jiakai Tang, Sunhao Dai, Teng Shi, Jun Xu, Xu Chen, Wen Chen, Jian Wu, and Yuning Jiang. 2025. Think Before Recommend: Unleashing the Latent Reasoning Power for Sequential Recommendation. arXiv:2503.22675 [cs] doi:10.48550/arXiv. 2503.22675 [23] Jiaxi Tang and Ke Wang. 2018. Personalized Top-N Sequential Recommendation via Convolutional Sequence Embedding. In Proceedings of the Eleventh ACM International Conference on Web Search and Data Mining, WSDM 2018, Marina Del Rey, CA, USA, February 5-9, 2018 , Yi Chang, Chengxiang Zhai, Yan Liu, and Yoelle Maarek (Eds.). ACM, 565–573. doi:10.1145/3159652.3159656 [24] OneRec Team, Biao Yang, Boyang Ding, Chenglong Chu, Dunju Zang, Fei Pan, Han Li, Hao Jiang, Honghui Bao, Huanjie Wang, Jian Liang, Jiangxia Cao, Jiao Ou, Jiaxin Deng, Jinghao Zhang, Kun Gai, Lu Ren, Peiru Du, Pengfei Zheng, Rongzhou Zhang, Ruiming Tang, Shiyao Wang, Siyang Mao, Siyuan Lou, Teng Shi, Wei Yuan, Wenlong Xu, Xingchen Liu, Xingmei Wang, Xinqi Jin, Yan Sun, Yan Wang, Yifei Hu, Yingzhi He, Yufei Ye, Yuhao Wang, Yunhao Zhou, Yuqin Dai, Zhao Liu, Zhipeng Wei, Zhixin Ling, Ziming Li, Zixing Zhang, Ziyuan Liu, An Zhang, Changxin Lao, Chaoyi Ma, Chengru Song, Defu Lian, Fan Yang, Guowang Zhang, Hao Peng, Jiayao Shen, Jie Chen, Jun Xu, Junmin Chen, Kun Zhang, Kuo Cai, Mingxing Wen, Minmao Wang, Minxuan Lv, Qi Zhang, Qiang Luo, Sheng Yu, Shijie Li, Shijie Yi, Shuang Yang, Shugui Liu, Shuni Chen, Tinghai Zhang, Tingting Gao, Xiang Wang, Xiangyu Wu, Xiangyu Zhao, Xiao Lv, Xiaoyou Zhou, Xuming Wang, Yong Du, Zejian Zhang, Zhaojie Liu, Zhiyang Zhang, Zhuang Zhuang, Ziqi Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Huanjie Wang, Liwei Guan, Zekai Sun, Hongwei Zhang, and Honghui Bao 
+
+Wang, and Ziyi Zhao. 2026. OneReason Technical Report. arXiv:2606.06260 [cs.IR] https://arxiv.org/abs/2606.06260 [25] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and Guil-laume Lample. 2023. LLaMA: Open and Efficient Foundation Language Models. arXiv:2302.13971 [cs] doi:10.48550/arXiv.2302.13971 [26] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is All you Need. In Advances in Neural Information Processing Systems 30: An-nual Conference on Neural Information Processing Systems 2017, December 4-9, 2017, Long Beach, CA, USA , Isabelle Guyon, Ulrike von Luxburg, Samy Bengio, Hanna M. Wallach, Rob Fergus, S. V. N. Vishwanathan, and Roman Garnett (Eds.). 5998–6008. https://proceedings.neurips.cc/paper/2017/hash/ 3f5ee243547dee91fbd053c1c4a845aa-Abstract.html [27] Huanjie Wang, Xinchen Luo, Honghui Bao, Zixing Zhang, Lejian Ren, Yun-fan Wu, Hongwei Zhang, Liwei Guan, and Guang Chen. 2026. PIT: A Dy-namic Personalized Item Tokenizer for End-to-End Generative Recommendation. arXiv:2602.08530 [cs.IR] https://arxiv.org/abs/2602.08530 [28] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2024. Learnable Item Tokenization for Generative Recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management, CIKM 2024, Boise, ID, USA, October 21-25, 2024 , Edoardo Serra and Francesca Spezzano (Eds.). ACM, 2400–2409. doi:10.1145/3627673.3679569 [29] Wenjie Wang, Xinyu Lin, Fuli Feng, Xiangnan He, and Tat-Seng Chua. 2023. Generative Recommendation: Towards Next-generation Recommender Paradigm. arXiv:2304.03516 [cs.IR] doi:10.48550/arXiv.2304.03516 [30] Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V. Le, Ed H. Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2023. Self-Consistency Improves Chain of Thought Reasoning in Language Models. In The Eleventh International Conference on Learning Representations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023 .OpenReview.net. https://openreview.net/forum?id=1PL1NIMMrw [31] Ye Wang, Jiahao Xun, Minjie Hong, Jieming Zhu, Tao Jin, Wang Lin, Haoyuan Li, Linjun Li, Yan Xia, Zhou Zhao, and Zhenhua Dong. 2024. EAGER: Two-Stream Generative Recommender with Behavior-Semantic Collaboration. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining, KDD 2024, Barcelona, Spain, August 25-29, 2024 , Ricardo Baeza-Yates and Francesco Bonchi (Eds.). ACM, 3245–3254. doi:10.1145/3637528.3671775 [32] Zhengyi Yang, Xiangnan He, Jizhi Zhang, Jiancan Wu, Xin Xin, Jiawei Chen, and Xiang Wang. 2023. A Generic Learning Framework for Sequential Recommenda-tion with Distribution Shifts. In Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval, SIGIR 2023, Taipei, Taiwan, July 23-27, 2023 . ACM, 331–340. doi:10.1145/3539618.3591624 [33] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Jiayuan He, Yinghai Lu, and Yu Shi. 2024. Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations. In Forty-first International Conference on Machine Learning, ICML 2024, Vienna, Austria, July 21-27, 2024 . OpenReview.net. https://openreview. net/forum?id=xye7iNsgXn [34] Wayne Xin Zhao, Shanlei Mu, Yupeng Hou, Zihan Lin, Yushuo Chen, Xingyu Pan, Kaiyuan Li, Yujie Lu, Hui Wang, Changxin Tian, Yingqian Min, Zhichao Feng, Xinyan Fan, Xu Chen, Pengfei Wang, Wendi Ji, Yaliang Li, Xiaoling Wang, and Ji-Rong Wen. 2021. RecBole: Towards a Unified, Comprehensive and Efficient Framework for Recommendation Algorithms. In CIKM ’21: The 30th ACM Inter-national Conference on Information and Knowledge Management, Virtual Event, Queensland, Australia, November 1 - 5, 2021 , Gianluca Demartini, Guido Zuccon, J. Shane Culpepper, Zi Huang, and Hanghang Tong (Eds.). ACM, 4653–4664. doi:10.1145/3459637.3482016 [35] Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming Chen, and Ji-Rong Wen. 2024. Adapting Large Language Models by Integrating Col-laborative Semantics for Recommendation. In 40th IEEE International Conference on Data Engineering, ICDE 2024, Utrecht, The Netherlands, May 13-16, 2024 . IEEE, 1435–1448. doi:10.1109/ICDE60146.2024.00118 [36] Guorui Zhou, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Qiang Luo, Qianqian Wang, Qigen Hu, Rui Huang, Shiyao Wang, Weifeng Ding, Wuchao Li, Xinchen Luo, Xingmei Wang, Zexuan Cheng, Zixing Zhang, Bin Zhang, Boxuan Wang, Chaoyi Ma, Chengru Song, Chenhui Wang, Di Wang, Dongxue Meng, Fan Yang, Fangyu Zhang, Feng Jiang, Fuxing Zhang, Gang Wang, Guowang Zhang, Han Li, Hengrui Hu, Hezheng Lin, Hongtao Cheng, Hongyang Cao, Huanjie Wang, Jiaming Huang, Jiapeng Chen, Jiaqiang Liu, Jinghui Jia, Kun Gai, Lantao Hu, Liang Zeng, Liao Yu, Qiang Wang, Qidong Zhou, Shengzhe Wang, Shihui He, Shuang Yang, Shujie Yang, Sui Huang, Tao Wu, Tiantian He, Tingting Gao, Wei Yuan, Xiao Liang, Xiaoxiao Xu, Xugang Liu, Yan Wang, Yi Wang, Yiwu Liu, Yue Song, Yufei Zhang, Yunfan Wu, Yunfeng Zhao, and Zhanyu Liu. 2025. OneRec Technical Report. arXiv:2506.13695 [cs] doi:10.48550/arXiv.2506.13695 [37] Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Lu Ren, Liao Yu, Pengfei Zheng, Qiang Luo, Qianqian Wang, Qigen Hu, Rui Huang, Ruiming Tang, Shiyao Wang, Shujie Yang, Tao Wu, Wuchao Li, Xinchen Luo, Xingmei Wang, Yi Su, Yunfan Wu, Zexuan Cheng, Zhanyu Liu, Zixing Zhang, Bin Zhang, Boxuan Wang, Chaoyi Ma, Chengru Song, Chenhui Wang, Chenglong Chu, Di Wang, Dongxue Meng, Dunju Zang, Fan Yang, Fangyu Zhang, Feng Jiang, Fuxing Zhang, Gang Wang, Guowang Zhang, Han Li, Honghui Bao, Hongyang Cao, Jiaming Huang, Jiapeng Chen, Jiaqiang Liu, Jinghui Jia, Kun Gai, Lantao Hu, Liang Zeng, Qiang Wang, Qidong Zhou, Rongzhou Zhang, Shengzhe Wang, Shihui He, Shuang Yang, Siyang Mao, Sui Huang, Tiantian He, Tingting Gao, Wei Yuan, Xiao Liang, Xiaoxiao Xu, Xugang Liu, Yan Wang, Yang Zhou, Yi Wang, Yiwu Liu, Yue Song, Yufei Zhang, Yunfeng Zhao, Zhixin Ling, and Ziming Li. 2025. OneRec-V2 Technical Report. arXiv:2508.20900 [cs] doi:10.48550/arXiv.2508.20900 [38] Kuan Zou and Aixin Sun. 2025. A Survey of Real-World Recommender Systems: Challenges, Constraints, and Industrial Perspectives. arXiv:2509.06002 [cs] doi:10. 48550/arXiv.2509.06002

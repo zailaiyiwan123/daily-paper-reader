@@ -1,0 +1,834 @@
+Title: SPARC: Sequence-aware Progressive Attribute Routing and Compression Framework for Generative Recommendation
+
+URL Source: https://arxiv.org/pdf/2607.25339v1
+
+Published Time: Wed, 29 Jul 2026 00:34:39 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# SPARC: Sequence-aware Progressive Attribute Routing and Compression Framework for Generative Recommendation 
+
+## Chang Liu ∗
+
+shimao.lc@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Changfa Wu †‡ 
+
+wuchangfa.wcf@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Hui Qian 
+
+yihui.qh@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Binbin Cao 
+
+simon.cbb@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Jian Wu 
+
+joshuawu.wujian@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Yuliang Yan 
+
+yuliang.yyl@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Han Zhu 
+
+zhuhan.zh@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Bo Zheng 
+
+bozheng@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Abstract 
+
+Generative recommendation tokenizes items as discrete Semantic IDs (SIDs) and autoregressively generates target items from users’ historical SID sequences. Although existing SIDs incorporate mul-timodal and structured information, they are typically statically assigned and independent of the current interaction context. In industrial scenarios, each behavior also contains heterogeneous attributes, such as category, brand, price, behavior type, and times-tamp. Fully expanding these features greatly increases the input length, while directly compressing them into a single representation may prematurely discard context-relevant information. We propose SPARC , Sequence-aware Progressive Attribute 
+
+Routing and Compression Framework for Generative recommenda-tion. SPARC first models the sequential dependencies of each field type to obtain context-aware field representations. It then routes the original, contextual, and identity representations of different fields into multiple slots to preserve complementary information under a fixed capacity. Finally, lightweight cross-item interaction integrates the intermediate tokens and compresses each historical item into a single token. Following the principle of contextualizing before compression, SPARC enriches user-history representations without increasing the input length of the generative backbone. Experiments on industrial Taobao and public Amazon datasets demonstrate that SPARC outperforms strong conventional and  
+
+> ∗Work done during internship at Alibaba.
+> †Corresponding author.
+> ‡Equal contribution. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+generative baselines. Further comparisons with static compression variants show that the improvement of SPARC comes from context-conditioned information retention rather than merely increasing the expressiveness of the compression module. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+## Keywords 
+
+Generative Recommendation; Sequence-aware Compression; Multi-field Behavior Modeling 
+
+ACM Reference Format: 
+
+Chang Liu, Changfa Wu, Hui Qian, Binbin Cao, Jian Wu, Yuliang Yan, Han Zhu, and Bo Zheng. 2018. SPARC: Sequence-aware Progressive Attribute Routing and Compression Framework for Generative Recommendation. In 
+
+Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 10 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Generative recommendation has recently attracted increasing at-tention from both academia and industry [ 18 , 22 , 30 , 34 ]. Unlike conventional discriminative recommenders that score items from a predefined candidate set, generative recommendation formulates recommendation as the autoregressive generation of item tokens. A typical framework first tokenizes candidate items into discrete Semantic IDs (SIDs), converts a user’s interaction history into the corresponding SID sequence, and employs a Transformer-based generative model to predict the SID of the target item [ 18 , 22 , 28 , 40 ]. By unifying item representation, user modeling, and candidate re-trieval within a sequence-generation framework, generative rec-ommendation enables end-to-end prediction over large item spaces and exhibits promising long-tail generalization and industrial ap-plicability [14, 22, 23, 34]. Within this paradigm, the quality of SIDs directly affects sub-sequent user modeling and target-item generation [ 12 , 18 , 28 , 40 ]. arXiv:2607.25339v1 [cs.IR] 28 Jul 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chang Liu et al. Nike shoes                      
+
+> $39
+> click
+> Nike pants
+> $89
+> click
+> Nike trench coat
+> $79
+> buy
+> Nike T-shirt
+> $29
+> click
+> Historical Interactions Next Item Field Importance
+> ( More valuable Less valuable )
+> Brand
+> Price
+> Behavior Type
+> Historical Interactions Next Item Field Importance
+> Rolex Watch
+> $40 00
+> buy
+> Coach Bag
+> $10 0
+> click
+> Sony Earphone
+> $500
+> collect
+> Apple Phone
+> $2300
+> buy
+> User repeatedly interacts with items from the same brand .
+> The user focuses on a specific brand, so brand information is the most informative.
+> ( More valuable Less valuable )
+> Brand
+> Price
+> Behavior Type
+> The user tends to buy higher -priced items, while only clicking or collecting cheaper
+> ones. Thus, price and behavior type become more informative than brand.
+> User recent behaviors show stronger purchase intent for higher -priced items .
+> Purchase Instent Stronger
+> Case B: Higher -priced Item Preference
+> Case A: Brand -consistent Context
+
+Figure 1: Illustration of context-dependent field importance in generative recommendation. Repeated interactions with the same brand make brand information highly predictive, whereas shifts in price range or purchase intent increase the importance of price, behavior type, and interaction time. 
+
+Early methods derived continuous semantic representations from item titles and descriptions and discretized them through clustering, vector quantization, or residual quantization [ 6, 9, 22 , 40 ]. Subse-quent studies incorporated categories, brands, structured attributes, and visual content through multimodal alignment, attribute recon-struction, and auxiliary prediction objectives [ 21 , 29 , 33 , 38 ]. More recent approaches further integrate collaborative relations, behav-ioral sequences, and temporal signals into SID learning, while some methods explicitly insert behavior- or time-specific tokens into the input sequence [10, 20, 21, 28, 30, 34]. Despite these advances, most existing methods still assign each item a globally shared SID [ 10 , 22 , 28 , 40 ]. Regardless of how much textual, visual, structured, collaborative, or sequential information is incorporated during tokenizer training, the same item typically retains an identical token across users and interaction scenarios. Such representations effectively capture stable item semantics and collaborative patterns but cannot fully characterize a specific his-torical interaction. In real-world industrial systems, an interaction may additionally contain stable attributes such as category, brand, and seller; dynamic states such as price, inventory, and promotion status; and interaction-level context such as behavior type and timestamp. In particular, dynamic states and interaction context are tied to the moment at which an interaction occurs and therefore cannot be reliably encoded into a statically assigned SID. A straightforward solution is to represent each additional field as an individual token and feed all field tokens into the generative backbone. Although this preserves rich information, it substantially expands the input context. For a history containing 𝐿 interactions, representing each interaction with multiple field tokens increases the effective sequence length in proportion to the number of fields. Since the computational and memory costs of self-attention grow approximately quadratically with sequence length [ 8 , 14 , 21 , 27 ], such expansion incurs considerable training and inference overhead and reduces the number of historical interactions that the model can process. Existing methods that append attribute, behavior, or temporal tokens face the same scalability issue as the number of information dimensions increases [10, 20, 21, 31]. Another more efficient alternative is to aggregate the SID, item at-tributes, dynamic features, and interaction context of each behavior into a single compact representation before feeding it into the gen-erative backbone. However, directly compressing heterogeneous fields before sufficient interaction creates a premature information bottleneck. Especially, field importance depends not only on the field content itself but also on the surrounding behavioral sequence. As illustrated in Figure 1, brand information becomes highly pre-dictive when a user repeatedly interacts with items from the same brand. In contrast, when a user shows stronger purchase intent for higher-priced items while only clicking or collecting cheaper ones, price and behavior type become more informative than brand. Consequently, the information retained during compression should be conditioned on the current sequential context. This creates a fundamental trade-off. Fully expanding heteroge-neous fields and delegating their interaction to a large generative backbone preserves information but incurs prohibitive context and computational costs. In contrast, directly compressing them with-out sufficient interaction is efficient but may irreversibly discard context-dependent signals. The key challenge is therefore to con-textualize multidimensional behavioral information at low cost before compression, while ensuring that each historical interaction ultimately occupies only one token in the backbone input. To address this challenge, we propose SPARC , a Sequence-aware 
+
+Progressive Attribute Routing and Compression Framework for Generative Recommendation. Rather than reconstructing the SIDs of target items, SPARC focuses on enriching the historical inputs of the generative model. It employs a lightweight front-end mod-ule to contextualize and progressively compress heterogeneous behavioral information, ensuring that each historical interaction is represented by a single backbone token. SPARC therefore preserves richer behavioral signals without increasing the input length of the generative backbone. SPARC consists of three stages. First, the Field-wise Context Mod-eling module organizes representations of the same field type along the user history and models their sequential evolution, producing a context-aware representation for each field. Second, the Context-aware Attribute Routing module jointly considers the original field representation, its contextualized representation, and its field iden-tity, and routes heterogeneous fields into a fixed number of in-termediate tokens to retain complementary information under a constrained representation budget. Finally, the Sequence-level To-ken Consolidation module reorganizes the intermediate tokens of all historical interactions into a fine-grained sequence and per-forms lightweight cross-interaction modeling before integrating the tokens of each interaction into a single compact representa-tion. Following the principle of interacting before compressing ,SPARC provides the generative backbone with more informative historical representations without increasing its input length. Our main contributions are summarized as follows: SPARC Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+• We identify a fundamental representation challenge in industrial generative recommendation: statically assigned SIDs cannot fully capture dynamic item states and interaction-specific context, whereas explicitly tokenizing such information causes substantial context expansion. 
+
+• We propose SPARC, a sequence-aware progressive attribute rout-ing and compression framework that contextualizes heteroge-neous behavioral signals before compression and preserves context-relevant information within a fixed item-level token budget. 
+
+• We conduct extensive experiments on an industrial Taobao dataset and two public Amazon datasets. The results demonstrate that SPARC consistently outperforms strong baselines, while further comparisons with static compression variants and routing anal-yses verify the advantage of context-conditioned information retention. 
+
+## 2 Preliminary 
+
+In this section, we introduce the basic formulation of SID-based generative recommendation and then formalize the multi-field his-torical compression problem studied in this work. 
+
+## 2.1 Generative Recommendation 
+
+Generative recommendation formulates item recommendation as an autoregressive generation problem over discrete item tokens [ 18 ,22 , 28 , 40 ]. Given an item set I, an item encoder first maps each item 
+
+𝑖 ∈ I into a continuous representation h𝑖 by using item content, structured attributes, multimodal features, or collaborative signals. An item tokenizer then discretizes h𝑖 into a sequence of SIDs: 
+
+s𝑖 = (𝑠 1 
+
+> 𝑖
+
+, 𝑠 2 
+
+> 𝑖
+
+, . . . , 𝑠 𝐾 𝑖 ), (1) where 𝐾 is the SID length and each 𝑠 𝑘 𝑖 is selected from a discrete codebook. Existing methods obtain such discrete tokens through clustering, vector quantization, residual quantization, or learnable tokenization objectives [6, 18, 22, 28, 40]. Given a user behavior sequence S𝑢 = (𝑖 1, 𝑖 2, . . . , 𝑖 𝐿 ), the gen-erative recommender converts each historical item into its SID sequence and feeds the resulting token sequence into a Transformer-based backbone. The model predicts the SID of the next item 𝑖 𝐿 +1
+
+in an autoregressive manner: 
+
+𝑝 𝜃 (s𝑖 𝐿 +1 | S 𝑢 ) =
+
+> 𝐾
+
+Ö
+
+> 𝑘 =1
+
+𝑝 𝜃 
+
+
+
+𝑠 𝑘 𝑖 𝐿 +1 | s𝑖 1 , . . . , s𝑖 𝐿 , 𝑠 <𝑘 𝑖 𝐿 +1
+
+
+
+, (2) where 𝜃 denotes the parameters of the generative recommender, and 𝑠 <𝑘 𝑖 𝐿 +1 denotes the previously generated target SID tokens before step 𝑘 . The model is optimized over all users by minimizing the negative log-likelihood of the target SID sequence: 
+
+Lrec = −∑︁ 
+
+> 𝑢 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+log 𝑝 𝜃 
+
+
+
+𝑠 𝑘 𝑖 𝐿 +1 | s𝑖 1 , . . . , s𝑖 𝐿 , 𝑠 <𝑘 𝑖 𝐿 +1
+
+
+
+. (3) In this paradigm, SIDs serve as discrete substitutes for conven-tional dense item ID features. Specifically, they provide the primary identity signal utilized by the generative recommender to reference historical and target items, thereby remaining crucial for preserving stable item identity during user sequence modeling. 
+
+## 2.2 Multi-field Historical Compression 
+
+In industrial recommendation scenarios, each historical interaction usually contains multiple heterogeneous fields beyond the item SID. For the 𝑡 -th interaction, we denote its field representations as 
+
+E𝑡 = [e1 
+
+> 𝑡
+
+, e2 
+
+> 𝑡
+
+, . . . , e𝐹 𝑡 ] ∈ R𝐹 ×𝑑 , (4) where 𝐹 is the number of fields, 𝑑 is the representation dimension, and e𝑓 𝑡 is the representation of the 𝑓 -th field. These fields may include SID tokens, category, brand, seller, price, behavior type, timestamp, and other side information. If a field contains multiple raw tokens, we obtain e𝑓 𝑡 through token embedding followed by mean pooling or another lightweight field encoder. A straightforward way to use all information is to feed all field tokens of all historical interactions into the generative backbone: 
+
+Hfull  
+
+> 𝑢
+
+= [E1, E2, . . . , E𝐿 ]. (5) This representation preserves fine-grained field information and allows the backbone to model field-level relations. However, it expands the input length from 𝐿 item-level representations to ap-proximately 𝐿𝐹 field-level representations, which substantially in-creases the computational and memory costs of Transformer-based generative recommenders. Therefore, we study item-level compression for heterogeneous historical interactions. Let E1: 𝐿 = {E1, E2, . . . , E𝐿 } denote the field representations of the whole user history. The goal is to compress each multi-field interaction into a compact representation before feeding it into the generative backbone: 
+
+z𝑡 = C𝜓 (E𝑡 , E1: 𝐿 ) ∈ R𝑑 , (6) where C𝜓 is the compression function parameterized by 𝜓 . The compressed user sequence is then written as 
+
+Hcomp  
+
+> 𝑢
+
+= [z1, z2, . . . , z𝐿 ], (7) which keeps the same length as a conventional item-level history while allowing each token to contain richer multi-field information. Existing item-wise compression methods (e.g., mean pooling or MLP-based compression) usually adopt a statically context-independent form: 
+
+z𝑡 = Cstatic  
+
+> 𝜓
+
+(E𝑡 ), (8) where the retained information only depends on the fields of the current interaction. In contrast, this work focuses on dynamically context-conditioned compression: 
+
+z𝑡 = Ccontext  
+
+> 𝜓
+
+(E𝑡 , E1: 𝐿 ), (9) where the compression of each interaction can be adjusted accord-ing to the surrounding behavior sequence. Under this formulation, the key problem is how to preserve stable item identity from SIDs while selectively retaining useful side information conditioned on the sequential context. 
+
+## 3 Method 
+
+In this section, we introduce the proposed SPARC framework. We first present the overall architecture, then detail its three key mod-ules, and finally describe the training procedure. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chang Liu et al. STC    
+
+> 𝐀 𝐀
+> 𝐀 2
+> …
+> 𝐀 1
+> Learnable Side Slot Emb.
+> 𝐀 1
+> 𝐀 2
+> 𝐀 𝐀 …
+> 𝐀 1𝐀 2𝐀 𝐀
+
+… Matmul and Softmax  
+
+> Fidel Slot Emb. Field 2
+> Field F
+> 𝐀 𝐀
+
+𝐀𠀀𝐀 𝐀  
+
+> Field Rep.
+> Fidel Context
+> 𝐀 2
+> Field 1
+> 𝐀 1
+> ℎ1
+> 𝐀 1Routing Rep.
+> 𝐀 𝐀
+> 𝐀 2
+> …
+> 𝐀 1
+> …
+> 𝐀 𝐀
+> 𝐀 2
+> …
+> 𝐀 1
+> Field Rep.
+
+𝐀𠀀𝐀 𝐀 
+
+> 𝐀 𝐀
+> 𝐀 2
+> …
+> 𝐀 1
+> Value Rep.
+> 𝐀 𝐀
+> 𝐀 2
+> …
+> 𝐀 1
+> Aggregation Rep.
+> agg .
+> SID Fields
+> Side Fields
+
+… …𝐀 𝐀    
+
+> 𝐀 𝐀 𝐀 1𝐀 𝐀
+> 𝐀 𝐀 𝐀 2𝐀 𝐀
+> 1𝐀 𝐀
+> 𝐀
+
+…𝐀 1 𝐀 2 𝐀 𝐀 … 𝐀 𝐀    
+
+> User Token Sequence
+> FCM
+> SID: <a101> <b256>
+> Category: T-shirt
+> Action_type: Buy
+> ……
+> Decay: 3 day
+> Interaction i
+> Database Retrieve
+> User History
+
+…  
+
+> …
+> Nike FILA VANS
+
+…Brand   
+
+> Field-wise Sequence
+> 3day 2day 2hour
+
+…Timestamp   
+
+> $32 $98 $43
+
+…Price 
+
+> …
+> Field-wise Context Representations
+
+…ℎ2  
+
+> 1ℎ𝐀
+> 1
+> ℎ1
+> 1𝐀 1
+
+…ℎ1   
+
+> 2ℎ2
+> 2ℎ𝐀
+> 2𝐀 2
+
+…ℎ1   
+
+> 𝐀 ℎ2
+> 𝐀 ℎ𝐀
+> 𝐀 𝐀 𝐀
+> Reorder
+
+Transformer-based 𝐀𞀀 𝐀 𝐀 
+
+Transformer-based 𝐀𞀀 𝐀 𝐀 
+
+……𝐀 1 𝐀 2 𝐀 t 𝐀 L  
+
+> convex combination by 𝐀
+> ……
+> 𝐀 𝐀
+> 𝐀 𝐀 𝐀 1
+> 𝐀 𝐀
+> 𝐀 𝐀 𝐀 K
+> gt
+> 1
+> gt
+> R
+> SID Field
+> Side Field
+> Mean Pool
+> Mean Pool
+> zt
+> sid
+> zt
+> side
+> 𝐀 sidLearnable
+> 𝐀 sideLearnable
+> Final Item Token
+> zt
+> Generative
+> Recommendation
+
+…𝐀 1 𝐀 2 𝐀 𝐀 … 𝐀 𝐀 Final Token Sequence 
+
+LLM 
+
+> NTP LOSS
+
+Figure 2: Overall framework of SPARC. SPARC compresses each multi-field historical interaction into a single backbone token through three progressive stages. FCM models field-wise sequential context, CAR preserves SID-based item identity and routes context-conditioned side information into intermediate tokens, and STC refines and consolidates these intermediate tokens into final historical tokens. The compressed sequence is then fed into the generative recommendation backbone for autoregressive target SID prediction without increasing the backbone input length. 
+
+## 3.1 Overall Framework 
+
+SPARC is a lightweight context-conditioned compressor placed before the generative recommendation backbone, as illustrated in Figure 2. Given the multi-field representations of a user history, SPARC first models the sequential context of each field type through Field-wise Context Modeling (FCM), then preserves SID-based item identity and routes contextual side information into intermedi-ate tokens through Context-aware Attribute Routing (CAR), and finally consolidates these intermediate tokens into one compact token for each historical interaction through Sequence-level Token Consolidation (STC). In this way, SPARC enriches historical item representations with context-dependent side information while keeping the backbone input length unchanged and leaving the target SID generation objective intact. 
+
+## 3.2 Field-wise Context Modeling (FCM) 
+
+FCM captures field-specific sequential patterns before item-level compression. Given the historical field representations E1: 𝐿 , SPARC first groups representations with the same field type along the user history. For the 𝑓 -th field, the field-wise sequence is defined as 
+
+X𝑓 = [e𝑓 
+
+1 , e𝑓 
+
+2 , . . . , e𝑓 𝐿 ]. (10) A lightweight sequence encoder Enc f is then applied to each field-wise sequence: 
+
+H𝑓 = [h𝑓 
+
+1 , h𝑓 
+
+2 , . . . , h𝑓 𝐿 ] = Enc f (X𝑓 ), (11) where X𝑓 denotes the length-𝐿 sequence formed by the 𝑓 -th field across the user history, Enc f (·) is a lightweight field-wise sequence encoder, and H𝑓 is the resulting contextualized sequence. Specif-ically, h𝑓 𝑡 denotes the contextualized representation of field 𝑓 at position 𝑡 .This design introduces sequence context before heterogeneous fields are compressed. Instead of directly mixing different fields within each interaction, FCM first models how each field type evolves along the user history, enabling subsequent routing to con-sider both the original field representation e𝑓 𝑡 and its context-aware counterpart h𝑓 𝑡 .
+
+## 3.3 Context-aware Attribute Routing (CAR) 
+
+CAR compresses the heterogeneous fields of each interaction into a small set of intermediate tokens. We divide the fields into two disjoint groups: SID fields Fsid and side fields Fside . Since SID tokens provide the primary item identity signal in generative recommen-dation, SPARC explicitly preserves them instead of mixing them with side fields during routing. For each interaction, the identity SPARC Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+tokens are constructed as 
+
+I𝑡 = [e𝑓 𝑡 ]𝑓 ∈ F sid . (12) where I𝑡 denotes the preserved SID-based identity token set of interaction 𝑡 .For side fields, CAR performs context-conditioned routing. For each side field 𝑓 ∈ F side , we build a routing representation by com-bining its original representation, contextualized representation, and field embedding: 
+
+r𝑓 𝑡 = MLP r
+
+
+
+[e𝑓 𝑡 ; h𝑓 𝑡 ; q𝑓 ]
+
+
+
+, (13) where [· ; ·] denotes concatenation, MLP r (·) is the routing network, and q𝑓 is a learnable embedding that encodes the identity of field 𝑓 .Given 𝑅 learnable side slots {u1, . . . , u𝑅 }, the routing weight from side field 𝑓 to slot 𝑟 is computed by normalizing over all side fields: 
+
+𝛼 𝑓 𝑡,𝑟 =
+
+exp 
+
+
+
+(r𝑓 𝑡 )⊤u𝑟 
+
+Í𝑔 ∈ F side exp  (r𝑔 𝑡 )⊤u𝑟 
+
+ . (14) where 𝛼 𝑓 𝑡,𝑟 measures the contribution of side field 𝑓 to the 𝑟 -th side slot at interaction position 𝑡 , and 𝑔 is the summation index over side fields. Since the normalization is performed over Fside , each side slot adaptively selects information from different side fields under the current sequence context. The 𝑟 -th side token is obtained by aggregating side-field values: 
+
+g𝑟 𝑡 =∑︁  
+
+> 𝑓 ∈ F side
+
+𝛼 𝑓 𝑡,𝑟 v𝑓 𝑡 , (15) where g𝑟 𝑡 denotes the 𝑟 -th routed side token and v𝑓 𝑡 is the value representation of side field 𝑓 . The value representation is defined by a residual value projection: 
+
+v𝑓 𝑡 = e𝑓 𝑡 + MLP v (e𝑓 𝑡 ), (16) where MLP v (·) is a lightweight value projection network. This residual design keeps the side-token values close to the original field representations, so that CAR mainly learns how to route side information rather than rewriting the field space from scratch. The output of CAR is the intermediate token set: 
+
+M𝑡 = [I𝑡 ; g1 
+
+> 𝑡
+
+, . . . , g𝑅 𝑡 ]. (17) where M𝑡 denotes the intermediate token set of interaction 𝑡 , con-sisting of the preserved SID identity tokens and 𝑅 routed side tokens. Therefore, CAR preserves stable item identity through SID tokens and uses sequence-aware routing to retain complementary side information under a limited token budget. 
+
+## 3.4 Sequence-level Token Consolidation (STC) 
+
+After CAR, each interaction is represented by multiple intermediate tokens. STC further models their cross-interaction dependency and consolidates them into a single backbone token. We first concate-nate the intermediate tokens of all historical interactions into a fine-grained token sequence: 
+
+M1: 𝐿 = [M1, M2, . . . , M𝐿 ]. (18) where M1: 𝐿 denotes the ordered sequence formed by all intermedi-ate token sets in the user history. Although these intermediate to-kens are temporarily flattened for sequence-level interaction, their interaction boundaries are preserved for the final within-interaction consolidation. A lightweight sequence encoder 𝐸𝑛𝑐 𝑠 is then applied to the flat-tened sequence: 
+
+eM1: 𝐿 = Enc s (M1: 𝐿 ), (19) where Enc s (·) is a lightweight sequence-level encoder and eM1: 𝐿 
+
+denotes the sequence-enhanced intermediate tokens. Positional embeddings and token-type embeddings are used to distinguish interaction positions and intermediate token roles. To avoid unstable changes to the compressed token space, SPARC introduces sequence-level interaction through a gated residual up-date: 
+
+bM1: 𝐿 = M1: 𝐿 + 𝜆 
+
+ eM1: 𝐿 − M1: 𝐿 
+
+
+
+, (20) where bM1: 𝐿 denotes the updated intermediate tokens and 𝜆 is a learnable residual gate. This design allows STC to gradually incor-porate cross-interaction information while preserving the original intermediate representations. Finally, STC summarizes identity tokens and side tokens sepa-rately: 
+
+zid  
+
+> 𝑡
+
+= Pool id ( bM𝑡 ), zside  
+
+> 𝑡
+
+= Pool side ( bM𝑡 ), (21) where bM𝑡 denotes the updated intermediate token set correspond-ing to interaction 𝑡 , and Pool id (·) and Pool side (·) summarize the updated identity tokens and side tokens within the same interac-tion, respectively. STC then fuses them into the final historical token: 
+
+z𝑡 = 𝜂 id zid  
+
+> 𝑡
+
++ 𝜂 side zside  
+
+> 𝑡
+
+, (22) where 𝜂 id and 𝜂 side are learnable fusion weights. We denote the final compressed historical sequence as Z1: 𝐿 = [z1, . . . , z𝐿 ], which keeps the same length as the original item-level history, while each token contains both preserved SID identity and context-conditioned side information. 
+
+## 3.5 Training Pipeline 
+
+The training procedure of SPARC is summarized in Algorithm 1. SPARC is optimized jointly with the generative recommendation backbone, while the item tokenizer and the target SID space remain unchanged. For each mini-batch, SPARC first transforms the multi-field historical inputs into context-conditioned item-level tokens, which are then used by the backbone to predict the target SID sequence. Here, 𝑦 denotes the target item, s𝑦 = (𝑠 1
+
+> 𝑦
+
+, . . . , 𝑠 𝐾 𝑦 ) is its SID sequence, s<𝑘 𝑦 denotes the previously generated target SID tokens before step 𝑘 , 𝜓 denotes the parameters of SPARC, and 𝜃 
+
+denotes the parameters of the generative backbone. Specifically, for each mini-batch, FCM first reorganizes the his-torical fields by field type and encodes each field-wise sequence to obtain contextualized field representations. CAR then preserves SID fields as identity tokens and routes side fields into intermediate tokens according to their context-aware routing weights. STC fur-ther models the intermediate-token sequence and fuses the identity and side summaries into the compressed historical sequence Z1: 𝐿 .Finally, the generative backbone predicts the target SID tokens con-ditioned on Z1: 𝐿 , and the parameters of SPARC and the backbone are jointly updated by minimizing the autoregressive recommen-dation loss. Therefore, SPARC only changes the representation of Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chang Liu et al. 
+
+Algorithm 1 Training Pipeline of SPARC 
+
+Require: Historical fields E1: 𝐿 , target SIDs s𝑦 = (𝑠 1
+
+> 𝑦
+
+, . . . , 𝑠 𝐾 𝑦 ), pa-rameters 𝜓, 𝜃 
+
+Ensure: Optimized 𝜓, 𝜃  
+
+> 1:
+
+for each mini-batch do 
+
+⊲ FCM  
+
+> 2:
+
+Build {X𝑓 }𝐹 𝑓 =1 by Eq. (10).  
+
+> 3:
+
+Encode {H𝑓 }𝐹 𝑓 =1 by Eq. (11). 
+
+⊲ CAR  
+
+> 4:
+
+Preserve I1: 𝐿 by Eq. (12).  
+
+> 5:
+
+Compute r𝑓 𝑡 and 𝛼 𝑓 𝑡,𝑟 by Eqs. (13)–(14).  
+
+> 6:
+
+Compute v𝑓 𝑡 and g𝑟 𝑡 by Eqs. (16)–(15).  
+
+> 7:
+
+Form M1: 𝐿 by Eq. (17). 
+
+⊲ STC  
+
+> 8:
+
+Flatten M1: 𝐿 by Eq. (18).  
+
+> 9:
+
+Encode eM1: 𝐿 by Eq. (19).  
+
+> 10:
+
+Update bM1: 𝐿 by Eq. (20).  
+
+> 11:
+
+Fuse Z1: 𝐿 by Eqs. (21)–(22). 
+
+⊲ Generation  
+
+> 12:
+
+Predict 𝑝 𝜃 (𝑠 𝑘 𝑦 | Z1: 𝐿 , s<𝑘 𝑦 ) for 𝑘 = 1, . . . , 𝐾 . 
+
+> 13:
+
+L ← − Í𝐾 𝑘 =1 log 𝑝 𝜃 (𝑠 𝑘 𝑦 | Z1: 𝐿 , s<𝑘 𝑦 ). 
+
+> 14:
+
+Optimize 𝜓, 𝜃 w.r.t. L. 
+
+> 15:
+
+end for 
+
+historical interactions and does not alter the target SID generation objective. 
+
+## 4 Experiment 
+
+In this section, we conduct a series of experiments to answer the following research questions: 
+
+RQ1 : How does the proposed SPARC framework perform compared to existing generative recommendation methods? 
+
+RQ2 : Is context-conditioned compression more effective than static compression strategies for multi-field historical modeling? 
+
+RQ3 : Does the slots of CIR learn division of labor? 
+
+RQ4 : Do the same item’s CIR slot weights actually differ across different contexts? 
+
+## 4.1 Experimental Setting 
+
+4.1.1 Datasets. For brevity, details of the datasets are deferred to Section A. 
+
+4.1.2 Baselines. For brevity, details of the baselines are deferred to Section B. 
+
+4.1.3 Evaluation Metrics. For the industrial TaoBao dataset, follow-ing prior work [ 4 ], we adopt Hit Rate (HR) as the main evaluation metric for retrieval performance. Given the top-𝐾 retrieved item set I𝐾 𝑢 and the ground-truth interacted item set Itruth  
+
+> 𝑢
+
+for user 𝑢 ,HR@K is defined as 
+
+HR@ 𝐾 = 1
+
+|U| ∑︁ 𝑢 ∈ U 
+
+|I 𝐾 𝑢 ∩ I truth  
+
+> 𝑢
+
+||I truth  
+
+> 𝑢
+
+| , (23) where U denotes the user set. To evaluate the model under dif-ferent behavior-level feedback signals, we report HR for click and pageview behaviors on the TaoBao dataset, denoted as HR Click @𝐾 
+
+and HR PV @𝐾 , respectively. In our experiments, we report results at 𝐾 = 20 and 𝐾 = 1000 .For the public datasets, we also adopt HR@K as evaluation met-rics. And We report HR@20, HR@50, HR@100, and HR@500 on the public datasets. 
+
+4.1.4 Implementation Details. For all baseline methods, we fol-low the implementation and experimental settings of RankGR [ 4 ]to ensure a fair comparison. For SPARC, we apply the proposed framework on top of RankGR, using RankGR as the generative recommendation backbone. For SPARC-specific hyperparameters, each historical interaction is represented by 9 fields, consisting of 2 SID fields and 7 side fields. The 2 SID fields are directly preserved as identity tokens, while the 7 side fields are routed into 𝑅 = 2 side tokens. As a result, each interaction is represented by 4 intermediate tokens before sequence-level consolidation. Both the field-wise context encoder in FCM and the sequence-level encoder in STC are implemented as 2-layer Transformer encoders. To stabilize training, the sequence-level residual gate is initialized with a logit value of −5, allowing the STC refinement to be introduced gradually at the early stage of optimization. The fusion weights for the identity and side sum-maries are initialized equally. Unless otherwise specified, the same SPARC hyperparameters are used across all datasets. 
+
+## 4.2 Overall Performance (RQ1) 
+
+We evaluate the overall performance of the compared We evaluate the overall performance of the compared approaches across all three datasets. The quantitative results are summarized in Table 1, from which several observations can be drawn: 
+
+• SPARC consistently achieves the best performance. SPARC outperforms all baselines on both the industrial TaoBao dataset and the public Amazon datasets, demonstrating the effectiveness of context-conditioned historical compression. The improvement on TaoBao is relatively moderate, likely because its massive in-teraction scale already alleviates part of the representation bot-tleneck, whereas the sparser public datasets benefit more from adaptive information retention. 
+
+• SPARC improves over the RankGR backbone. Since SPARC is built upon RankGR, the consistent gains over RankGR directly verify the value of our proposed compression framework. This shows that better historical interaction representation can further enhance generative retrieval without changing the backbone generation paradigm. 
+
+• Generative methods generally outperform conventional methods. Compared with conventional recommenders, genera-tive methods usually achieve stronger performance, especially at larger cutoffs. This is mainly because SID-based generation introduces structured item tokens that encode prior semantic or collaborative information, improving long-tail generalization and enabling more global token-level discrimination. SPARC Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 1: Overall performance comparison between baselines and our proposed SPARC. Specifically, SPARC is applied on top of RankGR. The best and second-best results are highlighted in bold and underlined, respectively. 
+
+Conventional Method Generative Method Dataset Metric YouTubeDNN SASRec BERT4Rec Caser NextItNet CORE HSTU TIGER FORGE RankGR SPARC 
+
+𝐻𝑅 𝑐𝑙𝑖𝑐𝑘 @20 0.0337 0.0496 0.0503 0.0429 0.0487 0.0557 0.0570 0.1008 0.1283 0.1568 0.1669 
+
+𝐻𝑅 𝑐𝑙𝑖𝑐𝑘 @1000 0.1164 0.1670 0.1676 0.1567 0.1644 0.2012 0.2022 0.3604 0.4666 0.5777 0.5883 
+
+𝐻𝑅 𝑃𝑉 @20 0.0149 0.0218 0.0181 0.0167 0.0172 0.0224 0.0323 0.1023 0.1335 0.1562 0.1670 
+
+TaoBao 
+
+𝐻𝑅 𝑃𝑉 @1000 0.1183 0.2160 0.2266 0.2039 0.2071 0.2309 0.2490 0.4171 0.4896 0.6228 0.6319 
+
+𝐻𝑅 @20 0.0357 0.0372 0.0370 0.0355 0.0351 0.0302 0.0374 0.0209 0.0435 0.0466 0.0794 
+
+𝐻𝑅 @50 0.0671 0.0706 0.0711 0.0664 0.0661 0.0669 0.0714 0.0496 0.0761 0.0784 0.1311 
+
+𝐻𝑅 @100 0.0919 0.0976 0.0979 0.0909 0.0902 0.0919 0.0993 0.0590 0.1088 0.1117 0.1843 
+
+Beauty 
+
+𝐻𝑅 @500 0.1967 0.2119 0.2121 0.1953 0.1956 0.2135 0.2167 0.1312 0.2250 0.2289 0.3571 
+
+𝐻𝑅 @20 0.0340 0.0353 0.0351 0.0338 0.0334 0.0287 0.0355 0.0199 0.0414 0.0443 0.0743 
+
+𝐻𝑅 @50 0.0629 0.0662 0.0667 0.0622 0.0620 0.0627 0.0669 0.0465 0.0714 0.0735 0.1279 
+
+𝐻𝑅 @100 0.0834 0.0886 0.0888 0.0826 0.0819 0.0834 0.0901 0.0535 0.0988 0.1014 0.1795 
+
+Toys 
+
+𝐻𝑅 @500 0.1886 0.2032 0.2034 0.1873 0.1875 0.2047 0.2078 0.1258 0.2158 0.2195 0.3605 Table 2: Ablation study of SPARC on the TaoBao dataset.                             
+
+> Method 𝐻𝑅 𝑐𝑙𝑖𝑐𝑘 @20 𝐻𝑅 𝑐𝑙𝑖𝑐𝑘 @1000 𝐻𝑅 𝑃𝑉 @20 𝐻𝑅 𝑃𝑉 @1000
+> SPARC 0.1669 0.5883 0.1670 0.6319
+> RankGR 0.1568 0.5777 0.1562 0.6228
+> w/ MLP 0.1576 0.5796 0.1604 0.6269
+> w/ QFormer 0.1609 0.5835 0.1633 0.6302
+> w/ Modulated 0.1560 0.5762 0.1585 0.6234
+
+## 4.3 Ablation Study (RQ2) 
+
+To validate the design rationale behind SPARC, we compare it with RankGR and several controlled variants built upon the same generative backbone. These variants introduce different static com-pression strategies for multi-field historical interactions, allowing us to examine whether a stronger static compressor is sufficient for improving historical representation learning. Specifically, we introduce the following variants: 
+
+• w/ MLP : This variant concatenates the field representations of each interaction and transforms them through an MLP-based compressor into a single historical token. 
+
+• w/ QFormer : This variant adopts a lightweight query-based Transformer compressor, where learnable query tokens interact with the field representations via cross-attention and produce the compressed token. 
+
+• w/ Modulated : This variant projects each content field into a dedicated subspace and leverages the context fields (e.g., recency and behavior type) of the interaction to modulate the concate-nated content representation via learned scaling factors before projecting it into the compressed token. Table 2 reports the results on TaoBao , from which we draw the following observations: 
+
+• Static compression provides limited improvements. Com-pared with RankGR, some static variants achieve better perfor-mance, indicating that improving the compression function can help multi-field historical modeling. However, the gains are rela-tively small and not consistent across all designs, suggesting that compressor capacity alone is not the key factor. 
+
+• More complex compression does not guarantee better re-sults. Among the static variants, QFormer performs the best, while MLP and Modulated bring only marginal gains or even slight degradation on some metrics. This shows that directly transforming multi-field representations with a stronger static compressor may introduce unnecessary distortion when the com-pression process is not guided by sequential context. 
+
+• SPARC consistently outperforms all static variants. SPARC achieves the best performance across all metrics. Since all variants are built upon the same generative backbone, the superiority of SPARC verifies the effectiveness of context-conditioned informa-tion retention, rather than merely increasing the expressiveness of the compression module. 
+
+## 4.4 In-depth Analysis (RQ3 & RQ4) 
+
+To further interpret how SPARC performs context-conditioned information retention, we analyze the routing weights learned by CAR. Since SID fields are explicitly preserved as identity tokens and are not involved in side-field routing, we focus on the routing distributions over side fields. Specifically, we conduct two analyses: a slot-level routing analysis to examine whether different side slots learn differentiated field preferences, and a same-item case study to examine whether the routing distribution changes under different user contexts. 
+
+Slot-level Routing Pattern. We analyze the average routing weights assigned by different side slots to each side field. Specif-ically, for each side slot, we average its routing weights over all Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chang Liu et al. cate_name     
+
+> brand_name
+> seller_name
+> item_price
+> tagging_v5
+> decay
+> action_type
+> 0.00
+> 0.10
+> 0.20
+> 0.30
+> 0.40
+> 0.50
+> Average Routing Weight
+> 0.092
+> 0.019 0.037 0.021
+> 0.079
+> 0.324
+> 0.428
+> 0.150 0.168
+> 0.340
+> 0.077
+> 0.179
+> 0.054 0.033
+
+Slot-level Routing Pattern 
+
+> Side Slot 1
+> Side Slot 2
+
+Figure 3: Slot-level routing patterns learned by CAR. The values denote the average routing weights assigned by each side slot to different side fields over the evaluation set. SID identity slots are omitted since they are directly preserved rather than routed. 
+
+interactions in the evaluation set, obtaining a field-level routing distribution for each slot. The result is visualized in Figure 3, from which we can draw the following observations: 
+
+• The two side slots learn clearly different routing patterns. 
+
+Side Slot 1 assigns much larger weights to action_type and de-cay , while Side Slot 2 mainly focuses on seller_name and also assigns relatively higher weights to brand_name , tagging_v5 ,and cate_name . This indicates that the two learnable side slots do not collapse into redundant copies. Instead, they develop a meaningful division of labor for retaining complementary side information. 
+
+• Context-related and seller-related fields receive dominant routing weights. Among all side fields, action_type , decay , and 
+
+seller_name receive the most prominent routing weights. This suggests that CAR tends to preserve behavior-context signals and seller-related information during compression. Such a pattern is consistent with the intuition that behavior type and recency describe the current interaction context, while seller information provides an important attribute signal for distinguishing items in industrial recommendation scenarios. 
+
+Context-dependent Routing for the Same Item. We further analyze whether CAR produces different routing distributions for the same item under different user histories. Specifically, we se-lect an item that appears in two substantially different historical contexts and visualize its side-slot routing weights in each context. The result is visualized in Figure 4, from which we draw the following observations: 
+
+• The routing distribution of the same item changes across contexts. Although the item identity is fixed, its side-slot routing weights vary substantially under different user histories. For ex-ample, Side Slot 1 mainly focuses on decay in Context A, while it shifts to action_type in Context B. This shows that CAR does not Side Slot 1 Side Slot 2 Side Slot 1 Side Slot 2                       
+
+> cate_name
+> brand_name
+> seller_name
+> item_price
+> tagging_v5
+> decay
+> action_type
+> Side Field
+> 0.105 0.102 0.072 0.053
+> 0.016 0.071 0.012 0.353
+> 0.035 0.558 0.029 0.204
+> 0.017 0.026 0.022 0.316
+> 0.088 0.222 0.068 0.073
+> 0.709 0.010 0.051 0.001
+> 0.030 0.011 0.746 0.000
+> Context A Context B
+
+Context-dependent Routing for the Same Item  
+
+> 0.00
+> 0.10
+> 0.20
+> 0.30
+> 0.40
+> 0.50
+> 0.60
+> 0.70 Routing Weight
+
+Figure 4: Context-dependent side-field routing for the same item. The two contexts correspond to different user histories of the same item, and each column shows the routing distri-bution of one side slot. 
+
+assign a static side-information representation to an item, but dy-namically adjusts the retained fields according to the surrounding behavior sequence. 
+
+• Different slots exhibit distinct field preferences within the same context. Under the same user context, the two side slots also attend to different fields. In Context A, Side Slot 1 concen-trates on decay , whereas Side Slot 2 assigns higher weights to 
+
+seller_name and tagging_v5 . A similar pattern appears in Context B, where Side Slot 1 focuses on action_type , while Side Slot 2 em-phasizes fields such as brand_name , item_price , and seller_name .This indicates that the side slots learn complementary roles rather than redundant routing patterns. 
+
+## 5 Related Work 
+
+In this section, we review related studies on generative recommen-dation and heterogeneous behavior modeling. 
+
+Generative Recommendation. Generative recommendation formulates item recommendation as the generation of discrete tar-get item tokens rather than scoring items from a predefined candi-date set [ 9, 11 , 22 , 30 ]. A typical framework first maps each item into a sequence of semantic IDs (SIDs), represents user histories as token sequences, and then trains an autoregressive model to gener-ate the target item tokens [ 18 , 22 , 28 ]. This formulation integrates item representation, user modeling, and candidate retrieval within a sequence generation framework. Existing studies have mainly investigated SID construction and generative modeling. For item tokenization, prior work adopts clustering, vector quantization, residual quantization, learnable to-kenization, or end-to-end tokenizer learning [ 6 , 18 , 22 , 28 ]. Later studies further incorporate structured attributes, multimodal con-tent, collaborative relations, or behavioral signals into token learn-ing [ 15 , 30 , 33 , 34 ]. In parallel, recent work explores token length, codebook design, decoding efficiency, scaling behavior, and LLM-based generative recommendation [8, 11, 12, 16, 31]. 
+
+Heterogeneous Behavior Modeling. User behavior sequences often contain heterogeneous information beyond item IDs or SIDs, SPARC Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+including item attributes, categorical features, behavior types, tem-poral signals, and other contextual features. In sequential recom-mendation, such information has been incorporated through fea-ture concatenation, additive fusion, attention-based fusion, feature-specific encoders, or multimodal representation learning [ 17 , 21 ,32 , 37 , 39 ]. Multi-behavior and time-aware recommendation fur-ther model feedback types, behavior dependencies, timestamps, temporal gaps, and recency effects to better characterize user in-tent [10, 20, 24, 34]. When Transformer-based architectures are used for recommen-dation, representing heterogeneous histories also raises efficiency concerns. Existing methods reduce sequence modeling costs through history truncation, interest aggregation, hierarchical modeling, sparse attention, low-rank attention, or linear attention [ 3 , 19 , 21 ]. In generative recommendation, the effective sequence length is further affected by the number of tokens used to represent each historical interaction [ 8, 14 , 31 ]. Therefore, how to compactly rep-resent multi-field historical interactions is an important practical issue for generative recommendation. 
+
+## 6 Conclusion 
+
+In this work, we studied the representation bottleneck of historical interactions in generative recommendation and proposed SPARC, a sequence-aware progressive routing and compression framework. SPARC preserves stable SID-based item identity while dynamically retaining context-dependent side information, enabling each multi-field interaction to be represented as a single compact token under a fixed input budget. By contextualizing heterogeneous fields before compression, SPARC alleviates the premature information loss caused by static item-wise aggregation. Its progressive design further incorporates field-level and cross-interaction signals without increasing the input length of the generative backbone. Experiments on both industrial and public datasets demonstrate the effectiveness of SPARC and highlight the value of context-aware historical compression for scal-able generative recommendation. Future work will explore adaptive token-budget allocation and richer behavioral feature spaces. 
+
+## Acknowledgments References 
+
+[1] Yimeng Bai, Chang Liu, Yang Zhang, Dingxian Wang, Frank Yang, Andrew Rabinovich, Wenge Rong, and Fuli Feng. 2025. Bi-Level Optimization for Gener-ative Recommendation: Bridging Tokenization and Generation. arXiv preprint arXiv:2510.21242 (2025). [2] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep neural networks for youtube recommendations. In Proceedings of the 10th ACM conference on recommender systems . 191–198. [3] Xinyan Fan, Zheng Liu, Jianxun Lian, Wayne Xin Zhao, Xing Xie, and Ji-Rong Wen. 2021. Lighter and better: low-rank decomposed self-attention networks for next-item recommendation. In Proceedings of the 44th international ACM SIGIR conference on research and development in information retrieval . 1733–1737. [4] Kairui Fu, Changfa Wu, Kun Yuan, Binbin Cao, Dunxian Huang, Yuliang Yan, Junjun Zheng, Jianning Zhang, Silu Zhou, Jian Wu, et al . 2026. RankGR: Rank-Enhanced Generative Retrieval with Listwise Direct Preference Optimization in Recommendation. arXiv preprint arXiv:2602.08575 (2026). [5] Kairui Fu, Tao Zhang, Shuwen Xiao, Ziyang Wang, Xinming Zhang, Chenchi Zhang, Yuliang Yan, Junjun Zheng, Yu Li, Zhihong Chen, et al . 2025. Forge: Forming semantic identifiers for generative retrieval in industrial datasets. arXiv preprint arXiv:2509.20904 (2025). [6] Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. 2023. Learning vector-quantized item representation for transferable sequential recommenders. In Proceedings of the ACM Web Conference 2023 . 1162–1171. [7] Yupeng Hou, Binbin Hu, Zhiqiang Zhang, and Wayne Xin Zhao. 2022. Core: simple and effective session-based recommendation within consistent represen-tation space. In Proceedings of the 45th international ACM SIGIR conference on research and development in information retrieval . 1796–1801. [8] Yupeng Hou, Jiacheng Li, Ashley Shin, Jinsung Jeon, Abhishek Santhanam, Wei Shao, Kaveh Hassani, Ning Yao, and Julian McAuley. 2025. Generating long semantic ids in parallel for recommendation. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 . 956–966. [9] Wenyue Hua, Shuyuan Xu, Yingqiang Ge, and Yongfeng Zhang. 2023. How to index item ids for recommendation foundation models. In Proceedings of the Annual International ACM SIGIR Conference on Research and Development in Information Retrieval in the Asia Pacific Region . 195–204. [10] Chengkai Huang, Tianqi Gao, Hongtao Huang, Quan Z Sheng, and Lina Yao. 2026. Beyond Item Order: Temporal Gap Tokenization for Generative Recommendation with Semantic IDs. arXiv preprint arXiv:2607.03918 (2026). [11] Jianchao Ji, Zelong Li, Shuyuan Xu, Wenyue Hua, Yingqiang Ge, Juntao Tan, and Yongfeng Zhang. 2024. Genrec: Large language model for generative recommen-dation. In European Conference on Information Retrieval . Springer, 494–502. [12] Clark Mingxuan Ju, Liam Collins, Leonardo Neves, Bhuvesh Kumar, Louis Yufeng Wang, Tong Zhao, and Neil Shah. 2025. Generative Recommendation with Seman-tic IDs: A Practitioner’s Handbook. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 6420–6425. [13] Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recom-mendation. In 2018 IEEE international conference on data mining (ICDM) . IEEE, 197–206. [14] Xinyu Lin, Haihan Shi, Wenjie Wang, Fuli Feng, Qifan Wang, See-Kiong Ng, and Tat-Seng Chua. 2025. Order-agnostic identifier for large language model-based generative recommendation. In Proceedings of the 48th international ACM SIGIR conference on research and development in information retrieval . 1923–1933. [15] Chang Liu, Yimeng Bai, Xiaoyan Zhao, Yang Zhang, Fuli Feng, and Wenge Rong. 2025. DiscRec: Disentangled Semantic-Collaborative Modeling for Generative Recommendation. arXiv:2506.15576 [cs.IR] https://arxiv.org/abs/2506.15576 [16] Chang Liu, Yimeng Bai, Xiaoyan Zhao, Yang Zhang, Qifan Wang, Fuli Feng, and Wenge Rong. 2026. Intuition-Guided Latent Reasoning for LLM-Based Recommendation. arXiv:2606.27684 [cs.IR] https://arxiv.org/abs/2606.27684 [17] Chang Liu, Xiaoguang Li, Guohao Cai, Zhenhua Dong, Hong Zhu, and Lifeng Shang. 2021. Noninvasive self-attention for side information fusion in sequential recommendation. In Proceedings of the AAAI conference on artificial intelligence ,Vol. 35. 4249–4256. [18] Enze Liu, Bowen Zheng, Cheng Ling, Lantao Hu, Han Li, and Wayne Xin Zhao. 2025. Generative recommender with end-to-end learnable item tokenization. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . 729–739. [19] Langming Liu, Liu Cai, Chi Zhang, Xiangyu Zhao, Jingtong Gao, Wanyu Wang, Yifu Lv, Wenqi Fan, Yiqi Wang, Ming He, et al . 2023. Linrec: Linear attention mechanism for long-term sequential recommender systems. In Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval . 289–299. [20] Zihan Liu, Yupeng Hou, and Julian McAuley. 2024. Multi-behavior generative recommendation. In Proceedings of the 33rd ACM international conference on information and knowledge management . 1575–1585. [21] Luyi Ma, Wanjia Zhang, Kai Zhao, Abhishek Kulkarni, Lalitesh Morishetti, Anjana Ganesh, Ashish Ranjan, Aashika Padmanabhan, Jianpeng Xu, Jason HD Cho, et al .2025. Grace: Generative recommendation via journey-aware sparse attention on chain-of-thought tokenization. In Proceedings of the Nineteenth ACM Conference on Recommender Systems . 135–144. [22] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al .2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [23] Anima Singh, Trung Vu, Nikhil Mehta, Raghunandan Keshavan, Maheswaran Sathiamoorthy, Yilin Zheng, Lichan Hong, Lukasz Heldt, Li Wei, Devansh Tandon, et al . 2024. Better generalization with semantic ids: A case study in ranking for recommendations. In Proceedings of the 18th ACM Conference on Recommender Systems . 1039–1044. [24] Jiajie Su, Chaochao Chen, Zibin Lin, Xi Li, Weiming Liu, and Xiaolin Zheng. 2023. Personalized behavior-aware transformer for multi-behavior sequential recommendation. In Proceedings of the 31st ACM international conference on multimedia . 6321–6331. [25] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential recommendation with bidirectional encoder rep-resentations from transformer. In Proceedings of the 28th ACM international conference on information and knowledge management . 1441–1450. [26] Jiaxi Tang and Ke Wang. 2018. Personalized top-n sequential recommenda-tion via convolutional sequence embedding. In Proceedings of the eleventh ACM international conference on web search and data mining . 565–573. [27] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chang Liu et al. 
+
+Table 3: Statistical details of the evaluation datasets. 
+
+Dataset #Users #Items #Interactions Sparsity 
+
+TaoBao 21 million 0.27 billion 26 billion 99.99% 
+
+Beauty 22363 12101 198502 99.93% 
+
+Toys 19412 11924 167597 99.93% 
+
+you need. Advances in neural information processing systems 30 (2017). [28] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2024. Learnable item tokenization for generative recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 2400–2409. [29] Yuhao Wang, Junwei Pan, Xinhang Li, Maolin Wang, Yuan Wang, Yue Liu, Dapeng Liu, Jie Jiang, and Xiangyu Zhao. 2025. Empowering large language model for sequential recommendation via multimodal embeddings and semantic ids. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 3209–3219. [30] Ye Wang, Jiahao Xun, Minjie Hong, Jieming Zhu, Tao Jin, Wang Lin, Haoyuan Li, Linjun Li, Yan Xia, Zhou Zhao, et al . 2024. Eager: Two-stream generative recommender with behavior-semantic collaboration. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 3245–3254. [31] Ming Xia, Zhiqin Zhou, Guoxin Ma, and Dongmin Huang. 2026. Unleash the Potential of Long Semantic IDs for Generative Recommendation. arXiv preprint arXiv:2602.13573 (2026). [32] Yueqi Xie, Peilin Zhou, and Sunghun Kim. 2022. Decoupled side information fusion for sequential recommendation. In Proceedings of the 45th international ACM SIGIR conference on research and development in information retrieval . 1611– 1621. [33] Yi Xu, Moyu Zhang, Chenxuan Li, Zhihao Liao, Haibo Xing, Hao Deng, Jinxin Hu, Yu Zhang, Xiaoyi Zeng, and Jing Zhang. 2026. Mmq: Multimodal mixture-of-quantization tokenization for semantic id generation and user behavioral adaptation. In Proceedings of the Nineteenth ACM International Conference on Web Search and Data Mining . 788–797. [34] Wencai Ye, Mingjie Sun, Shaoyun Shi, Peng Wang, Wenjin Wu, and Peng Jiang. 2025. DAS: Dual-Aligned Semantic IDs Empowered Industrial Recommender System. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 6217–6224. [35] Fajie Yuan, Alexandros Karatzoglou, Ioannis Arapakis, Joemon M Jose, and Xi-angnan He. 2019. A simple convolutional generative network for next item recommendation. In Proceedings of the twelfth ACM international conference on web search and data mining . 582–590. [36] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhao-jie Gong, Fangda Gu, Michael He, et al . 2024. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. arXiv preprint arXiv:2402.17152 (2024). [37] Tingting Zhang, Pengpeng Zhao, Yanchi Liu, Victor S Sheng, Jiajie Xu, Deqing Wang, Guanfeng Liu, Xiaofang Zhou, et al . 2019. Feature-level deeper self-attention network for sequential recommendation.. In IJCAI . 4320–4326. [38] Bowen Zheng, Hongyu Lu, Yu Chen, Wayne Xin Zhao, and Ji-Rong Wen. 2025. Universal item tokenization for transferable generative recommendation. arXiv preprint arXiv:2504.04405 (2025). [39] Kun Zhou, Hui Wang, Wayne Xin Zhao, Yutao Zhu, Sirui Wang, Fuzheng Zhang, Zhongyuan Wang, and Ji-Rong Wen. 2020. S3-rec: Self-supervised learning for se-quential recommendation with mutual information maximization. In Proceedings of the 29th ACM international conference on information & knowledge management .1893–1902. [40] Jieming Zhu, Mengqun Jin, Qijiong Liu, Zexuan Qiu, Zhenhua Dong, and Xiu Li. 2024. Cost: Contrastive quantization based semantic tokenization for generative recommendation. In Proceedings of the 18th ACM Conference on Recommender Systems . 969–974. 
+
+## A Dataset 
+
+We evaluate the effectiveness of SPARC on both industrial and public datasets. For the industrial dataset, denoted as TaoBao , we collect one day of real-world interaction data from TaoBao’s pro-duction environment on June 16. For the public datasets, we use the Beauty and Toys subsets of the Amazon Review dataset 1. Following 
+
+> 1
+
+https://nijianmo.github.io/amazon/index.html 
+
+common practice [ 1, 15 , 28 ], we apply 5-core filtering to the public datasets and adopt the leave-one-out strategy for data splitting, using the last interaction of each user for testing, the second-to-last interaction for validation, and all preceding interactions for train-ing. For sequence construction, we set the maximum history length to 50; shorter sequences are padded, while longer sequences are truncated to retain the most recent interactions. Detailed dataset statistics are summarized in Table 3. 
+
+## B Baselines 
+
+The baselines for comparison fall into two categories: conventional and generative recommendation methods. (a) Conventional Recommendation Methods 
+
+• YouTubeDNN [ 2 ] represents user preferences by averaging his-torical item embeddings, producing a compact user vector for efficient candidate retrieval. 
+
+• SASRec [13 ] adopts self-attention within the Transformer archi-tecture to model sequential user behaviors and capture complex item dependencies. 
+
+• BERT4Rec [ 25 ] adapts the BERT-style masked prediction ob-jective to sequential recommendation, learning contextualized item representations by reconstructing masked items in user sequences. 
+
+• Caser [26 ] applies convolutional filters over user interaction sequences to capture both local patterns and broader sequen-tial signals, enabling the modeling of short-term and long-term interests. 
+
+• NextItNet [ 35 ] uses dilated convolutional networks to capture long-range sequential dependencies, offering an efficient alterna-tive to recurrent architectures for next-item prediction. 
+
+• CORE [7 ] learns session representations through a linear weighted aggregation of item embeddings, aligning session and item rep-resentations within the same latent space. (a) Generative Recommendation Methods 
+
+• HSTU [ 36 ] formulates retrieval as a sequential transduction task, allowing the model to exploit feature redundancies and improve computational efficiency. 
+
+• TIGER [ 22 ] is a representative generative retrieval method that employs semantic identifiers and sequence-to-sequence modeling to generate the next item a user may interact with. 
+
+• FORGE [5] improves semantic identifier generation by consid-ering collaborative information and ID collision issues, thereby enhancing the effectiveness and utilization of SIDs. 
+
+• RankGR [4] enhances generative retrieval with listwise direct preference optimization to model hierarchical user preferences and employs a lightweight scoring module to refine top-ranked candidates through interactions with user behavior sequences. 
+
+Received 20 February 2007; revised 12 March 2009; accepted 5 June 2009

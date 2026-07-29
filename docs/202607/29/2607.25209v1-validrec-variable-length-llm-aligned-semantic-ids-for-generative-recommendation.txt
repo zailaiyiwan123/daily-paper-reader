@@ -1,0 +1,761 @@
+Title: VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation
+
+URL Source: https://arxiv.org/pdf/2607.25209v1
+
+Published Time: Wed, 29 Jul 2026 00:24:59 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation 
+
+## Shutong Qiao 
+
+University of Queensland Brisbane, Australia shutong.qiao@uq.edu.au 
+
+## Wei Yuan 
+
+University of Queensland Brisbane, Australia w.yuan@uq.edu.au 
+
+## Tong Chen 
+
+University of Queensland Brisbane, Australia tong.chen@uq.edu.au 
+
+## Hao Wang 
+
+Computer Network Information Center, Chinese Academy of Sciences Beijing, China cashenry@126.com 
+
+## Quoc Viet Hung Nguyen 
+
+Griffith University Gold Coast, Australia henry.nguyen@griffith.edu.au 
+
+## Hongzhi Yin ∗
+
+University of Queensland Brisbane, Australia h.yin1@uq.edu.au 
+
+## Abstract 
+
+Generative recommendation commonly represents items using fixed-length semantic identifiers (SIDs) constructed through clus-tering and quantization. However, these artificial codes may over-compress item semantics, remain misaligned with pretrained LLM vocabularies, and require costly autoregressive decoding. In light of this, we propose VaLiDRec, a generative recommendation frame-work based on variable-length, LLM-aligned semantic identifiers. VaLiDRec constructs SIDs directly from informative native LLM vo-cabulary tokens via token importance estimation, semantic-quality-aware pruning, and collision-aware refinement, allowing identi-fier lengths to adapt to item semantic complexity. To model user preferences, VaLiDRec incorporates graph-aware soft prompts and reformulates recommendation as token-set prediction with token-level item scoring, eliminating autoregressive SID generation and beam search. Experiments on four real-world datasets show that VaLiDRec consistently outperforms strong sequential and gener-ative recommendation baselines across all evaluation metrics. It further achieves superior zero-shot item cold-start performance and 87.49 × faster inference than LC-Rec. These results demonstrate that LLM-native variable-length semantic identifiers provide a more expressive and efficient paradigm for generative recommendation. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+## Keywords 
+
+Recommender System; Generative Recommendation; Sequential Recommendation; Large Language Model  
+
+> ∗Corresponding author. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference’17, July 2017, Washington, DC, USA
+> ©2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-x-xxxx-xxxx-x/YY/MM https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+## 1 Introduction 
+
+Generative recommendation (GR) formulates recommendation as a conditional generation problem, where the target item identi-fier or textual representation is generated directly from user in-teraction histories, contextual information, and natural language prompts [ 7 , 26 , 31 , 34 ]. Unlike conventional discriminative recom-menders that rank candidate items using matching functions, GR integrates user preference modeling, item semantic understanding, and candidate generation within a unified framework. Leveraging the strong language understanding and semantic modeling capabil-ities of large language models (LLMs) [ 1, 2, 8 ], recent GR methods can directly exploit rich item metadata and pretrained semantic knowledge, making them particularly promising for sparse, long-tail, and cold-start recommendation scenarios. Generating appropriate item representations is fundamental to generative recommendation, as the output space must be both se-mantically expressive and precisely retrievable. Directly generating raw item IDs [ 7, 14 , 23 ] preserves one-to-one item mapping but lacks semantic structure, making it difficult to capture semantic relationships among items. In contrast, generating free-form textual descriptions provides richer semantic expressiveness but results in an open-ended output space, where generated content may be am-biguous, hallucinated, or difficult to align with items in the corpus. To balance semantic expressiveness, controllability, and inference efficiency, recent GR methods commonly adopt semantic identi-fiers (SIDs) [ 11 , 19 , 26 ], which represent each item as a sequence of discrete semantic tokens and train generative models to predict the target item’s SID. These SIDs are typically constructed using clustering or quantization methods, such as RQ-KMeans [ 4], RQ-VAE [ 17 ], and FSQ [ 22 ], to encode item similarity into a structured output space. Consequently, SIDs have emerged as an effective interface between generative sequence modeling and large-scale item retrieval. However, existing SID-based methods still exhibit three ma-jor limitations. First, most SIDs are constructed by clustering or quantizing continuous item representations into artificial discrete codes [ 15 ]. Although these codes may preserve useful latent infor-mation, they are neither explicitly grounded in the original item metadata nor naturally aligned with the pretrained LLM vocabu-lary. Consequently, their semantic content is difficult to inspect or quantify, and their integration often requires vocabulary expansion, 
+
+> 1arXiv:2607.25209v1 [cs.IR] 28 Jul 2026
+
+Conference’17, July 2017, Washington, DC, USA Shutong Qiao et al. Item Metadata (Text)           
+
+> Title:
+> Description ：
+> Canon EOS R50 Mirrorless
+> Camera with RF -S 18 -45mm
+> f/4.5 -6.3 is STM Lens
+> Built with a 24.2MP APS -C
+> sensor and multiple
+> automatic shooting modes.
+> Includes Creative Assist …
+> Title:
+> Description ：
+> Black Hoodies
+> 25% Cotton, 75% Polyester
+> SID Seq
+> (Length = 4)
+> Traditional SIDs Our SIDs
+> a1
+> b2
+> c3
+> d4
+> SID Set
+> (Length = 3)
+> Token _1235
+> Token _785
+> Token_21524
+> SID Set
+> (Length = 7)
+> Latent Artificial Codes Metadata -Grounded LLM Tokens
+> SID Seq
+> (Length = 4)
+> a4
+> b7
+> c1
+> d9
+> black
+> hoodie
+> cotton
+> Decoded
+> Form
+> Token_564
+> Token_8524
+> Token_774
+> Token_12
+> Token_4564
+> Token_127
+> canon mirrorless
+> camera sensor
+> automatic shooting
+> assist
+> Decoded Form
+> Token_1660
+
+Figure 1: Comparison of traditional fixed-length SID se-quences and our variable-length SID sets. Our SIDs are stored as LLM vocabulary token IDs, denoted as Token_ID for illus-tration, while the decoded forms show their correspondence to item metadata. 
+
+newly initialized code embeddings, or additional task-specific align-ment. Second, most methods construct fixed-length SIDs [ 12 , 26 ], assigning the same representational budget to all items regardless of their semantic content. Such a uniform design cannot adapt iden-tifier capacity to item-specific needs: some items may be sufficiently represented by a few informative elements, whereas others may require richer identifiers to retain their distinguishing information. Third, existing methods typically generate SIDs autoregressively with beam search, resulting in decoding costs that increase with both identifier length and beam size. This overhead becomes par-ticularly pronounced when longer identifiers are needed to provide greater representational capacity. To address these limitations, we propose VaLiDRec, a two-stage generative recommendation framework based on variable-length, LLM-aligned semantic identifiers. Rather than compressing item representations into artificial discrete codes, VaLiDRec constructs SIDs directly from the original item text using native LLM vocabu-lary tokens. In the first stage, it identifies semantically informative and discriminative tokens and employs a semantic-quality-aware greedy pruning strategy to select a compact token set that pre-serves the core meaning of each item. Consequently, each item is represented by a concise SID whose length naturally adapts to its semantic complexity. In the second stage, VaLiDRec incorporates collaborative signals through graph-aware behavioral prompts and fine-tunes the LLM with LoRA [ 13 ] to predict the target item’s SID. Training is jointly optimized with three complementary objectives: token-set prediction, semantic alignment, and recommendation ranking, which together promote accurate SID prediction, semantic consistency, and preference-aware inference. Finally, the predicted token scores are aggregated over all item SIDs to produce item-level relevance scores, eliminating autoregressive SID generation and beam search. In summary, our main contributions are as follows: 
+
+• We propose a variable-length, LLM-aligned SID construction method that directly selects informative native LLM vocab-ulary tokens as item identifiers. Unlike quantization-based approaches, it avoids opaque latent codebooks, preserves explicit lexical semantics, and enables measurable semantic retention. 
+
+• We develop a graph-prompted token-set recommendation framework that injects collaborative signals into LLMs through graph-aware soft prompts. By predicting SID token sets in parallel and aggregating token scores over item SIDs, VaLiDRec naturally supports variable-length identifiers while eliminating autoregressive decoding and beam-search over-head. 
+
+• We conduct extensive experiments on multiple real-world recommendation datasets. The results demonstrate that VaLiDRec consistently outperforms both conventional and state-of-the-art sequential and SID-based generative recommenda-tion baselines, while achieving superior inference efficiency, stronger zero-shot cold-start performance, and higher se-mantic retention. 
+
+## 2 Related Work 2.1 Sequential Recommendation 
+
+Sequential recommendation predicts the next item from interaction histories. FPMC [ 27 ] combines matrix factorization with first-order Markov chains for personalized transition modeling. Neural meth-ods, including GRU4Rec [ 10 ], NARM [ 18 ], and Caser [ 30 ], capture temporal dependencies, user intent, and local patterns, while SR-GNN [ 36 ] models sessions as item-transition graphs. Transformer-based methods further capture long-range dependencies, such as SASRec [ 16 ] with causal self-attention and BERT4Rec [ 29 ] with masked-item prediction. More recent work enhances sequence rep-resentations through self-supervision and contrastive learning, in-cluding S 3-Rec [41], CL4SRec [37], and FEARec [5]. Despite their effectiveness, these methods primarily rely on item IDs and interaction signals within a discriminative ranking par-adigm, limiting their use of item metadata and generalization to sparse or unseen items. 
+
+## 2.2 Generative Recommendation 
+
+GR retrieves items by generating identifiers from user histories. TIGER [ 26 ] uses residual-quantized SIDs with autoregressive decod-ing, while LC-Rec [ 40 ] aligns quantized SIDs with LLM representa-tions. Later work improves identifier learning through collaborative tokenization, embedding alignment, or end-to-end optimization, in-cluding TokenRec [ 24 ], LETTER [ 33 ], ETEGRec [ 20 ], and DIGER [ 6]. HSTU [ 38 ], EAGER [ 35 ], and OneRec [ 4] further advance behavior modeling and unified retrieval-ranking generation. Limited SID capacity has been identified as a bottleneck in gener-ative recommendation [ 21 ]. RPG [ 12 ] expands capacity with fixed-length OPQ codes, CapsID [ 3] constructs variable-length latent SID sequences via soft capsule routing, and SA 2CRQ [ 32 ] adap-tively truncates RQ-VAE paths. Unlike these latent-code approaches, VaLiDRec constructs metadata-grounded SID sets directly from na-tive LLM vocabulary tokens and predicts them in parallel. 
+
+## 3 Problem Formulation 
+
+Let U and I denote the user and item sets. For each user 𝑢 ∈ U , let 
+
+H𝑢 = (𝑖 𝑢, 1, . . . , 𝑖 𝑢,𝑇 𝑢 ) denote the chronologically ordered interaction 
+
+2VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation Conference’17, July 2017, Washington, DC, USA 1)  Graph -Aware Soft 
+
+Prompt 
+
+> GraphSAGE
+> Item Transition Graph
+> Recency -Weighted Graph
+> Representation
+
+2)  LLM Fine -Tuning  
+
+> Llama + LoRA
+> Input = [Graph -Aware Soft Prompt] +
+> [Serialized History SIDs]
+> Token -Set
+> Prediction
+> Item -level
+> Contrastive Loss
+> Item Ranking Loss
+
+Item Metadata    
+
+> •Title
+> •Description
+> •…
+
+1) Token  Importance 
+
+Scoring 
+
+1) Token Importance 
+
+Scoring 
+
+> Tokenizer + LLM
+
+…
+
+> Contextual Hidden States
+> Token IDF
+> Hidden -
+> State Norm
+
+2) Greedy Pruning 
+
+…
+
+> Candidate Pool by Token Importance
+> Iteratively Remove the Least
+> Essential Token
+
+…   
+
+> Stop Before Semantic Quality Falls
+> Below the Threshold
+> min_len ≤|SID| ≤max_len
+
+3) Collision Handling     
+
+> A)Collision -Aware Expansion
+> B)Suffix Assignment
+> Item_a freq : 1200
+> Item_b freq : 430
+> Rank 0
+> Rank 1
+> Pool
+> +
+
+User History 
+
+> Item_1
+> Item_2
+> …
+> Item_T
+
+3)  Token -Level Item 
+
+Scoring  
+
+> (Semantic Tokens Items)
+> Token _1
+> Token_2
+
+… …
+
+> Item _1
+> Item _2
+> Item _3
+> Item Score Aggregation
+> <SUF _r >
+
+4) Suffix 
+
+Tie -Break 
+
+> Activated only for
+> items with identical
+> semantic SIDs
+> Compare Suffix
+> Ranks to Break Ties
+
+Recommendation 
+
+List       
+
+> 1. Item _13
+> 2. Item_134
+> 3. Item_256
+> 4. Item_25
+> …
+> Score: 0.938, r=0
+> Score: 0.884, r=0
+> Score: 0.884 , r=1
+> Score: 0.812 , r=0
+> …
+
+Stage 1: LLM -Native  SID Construction 
+
+Stage 2: Graph -Prompted LLM for Token -Set Prediction 
+
+> SID Token Scores
+
+…   
+
+> 0.92 0.81 0.64 0.04
+
+Figure 2: Overall framework of VaLiDRec. 
+
+history. Given H𝑢 , the sequential recommendation task is to predict the next item 𝑗 +
+
+𝑢 ∈ I .Each item 𝑗 ∈ I is associated with metadata 𝑥 𝑗 . From 𝑥 𝑗 , we construct a variable-length semantic token set 𝑆 𝑗 ⊆ V , where V
+
+denotes the pretrained LLM vocabulary. We formulate next-item recommendation as predicting the semantic token set of the target item: 
+
+𝑝 𝜃 
+
+
+
+𝑆 𝑗 + 
+
+> 𝑢
+
+| H 𝑢 
+
+
+
+. (1) At inference time, the predicted token scores are aggregated over the SIDs of all candidate items to obtain item-level relevance scores and rank the full item catalog. 
+
+## 4 Methodology 
+
+In this section, we present VaLiDRec, a two-stage GR framework based on variable-length, LLM-aligned SIDs. As illustrated in Fig-ure 2, Stage 1 (Section 4.1) constructs semantic SIDs directly from item metadata, while Stage 2 (Section 4.2) incorporates collaborative signals through graph-aware soft prompts and performs parallel token-set prediction for item ranking. 
+
+## 4.1 Stage 1: LLM-Native SID Construction 
+
+Existing SID methods use clustering or quantization with fixed code structures, assigning equal capacity to all items and potentially losing fine-grained semantics. Their latent codes are also misaligned with item metadata and pretrained LLM vocabularies. We instead construct variable-length SIDs from native LLM tokens, adapting their capacity to each item’s semantic complexity. 
+
+4.1.1 Token Importance Scoring. Given the metadata text 𝑥 𝑗 of item 
+
+𝑗 , the LLM tokenizer produces 
+
+𝑇 𝑗 = (𝑡 𝑗, 1, . . . , 𝑡 𝑗,𝑛 𝑗 ), (2) where 𝑛 𝑗 is the sequence length. Let P𝑗 ⊆ { 1, . . . , 𝑛 𝑗 } denote the positions of valid metadata tokens after filtering, and let h𝑗,𝑖 ∈ R𝑑 
+
+be the final-layer contextual representation at position 𝑖 ∈ P 𝑗 .To identify tokens that are both salient to the current item and discriminative across the corpus, we combine contextual activation with inverse document frequency: 
+
+IDF (𝑡 ) = log |I| + 1df (𝑡 ) + 1 , (3) where df (𝑡 ) denotes the number of items whose metadata contains token type 𝑡 .Unlike conventional TF-IDF [ 28 ], which uses term frequency as the document-specific importance signal, we use the contextual hidden-state norm as a proxy for token salience. The occurrence-level importance score is 
+
+𝑠 𝑗,𝑖 = ∥h𝑗,𝑖 ∥2
+
+ IDF (𝑡 𝑗,𝑖 ) + 1 , 𝑖 ∈ P 𝑗 . (4) This score favors token occurrences that are both contextually salient and corpus-discriminative. We construct a candidate po-sition set C𝑗 ⊆ P 𝑗 by combining high-ranking candidates under 
+
+𝑠 𝑗,𝑖 , IDF (𝑡 𝑗,𝑖 ), and ∥h𝑗,𝑖 ∥2, together with a small number of prefix positions. If multiple positions correspond to the same vocabulary token, we retain only the occurrence with the highest importance score. 
+
+4.1.2 Greedy Pruning. The candidate pool may contain redundant token occurrences, whereas retaining a fixed number of tokens assigns the same representational capacity to items with different 
+
+3Conference’17, July 2017, Washington, DC, USA Shutong Qiao et al. 
+
+semantic complexity. We therefore introduce a semantic-quality-aware greedy pruning strategy to construct compact, variable-length SIDs. We represent the metadata semantics of item 𝑗 as 
+
+e𝑗 = 1
+
+|P 𝑗 |∑︁ 𝑖 ∈ P 𝑗 
+
+h𝑗,𝑖 . (5) Let R𝑗 ⊆ C 𝑗 denote the currently retained token positions. Their semantic representation is 
+
+e(R 𝑗 ) = 1
+
+|R 𝑗 |∑︁ 𝑖 ∈ R 𝑗 
+
+h𝑗,𝑖 , (6) and the corresponding semantic quality is 
+
+𝑄 (R 𝑗 ) = cos  e(R 𝑗 ), e𝑗 
+
+ . (7) A larger 𝑄 (R 𝑗 ) indicates better preservation of the metadata se-mantics. We initialize R𝑗 ← C 𝑗 and iteratively remove the least essential token occurrence. Given a trade-off coefficient 𝜆 ≥ 0, the deletion score of position 𝑖 ∈ R 𝑗 is 
+
+𝐷 𝑗 (𝑖 ; R𝑗 ) = 𝑄  R𝑗 \ { 𝑖 } − 𝜆 [IDF (𝑡 𝑗,𝑖 )] +
+
+Í𝑖 ′ ∈ R 𝑗 [IDF (𝑡 𝑗,𝑖 ′ )] + + 𝜖 , (8) where [𝑥 ]+ = max (𝑥, 0) and 𝜖 > 0 is a small constant for numer-ical stability. The first term favors deletions that preserve item semantics, whereas the second penalizes the removal of corpus-discriminative tokens. At each iteration, we select 
+
+𝑖 ★ = arg max   
+
+> 𝑖 ∈ R 𝑗
+
+𝐷 𝑗 (𝑖 ; R𝑗 ). (9) The pruning process is controlled by a minimum length 𝐿 min ,a maximum length 𝐿 max , and a semantic-quality threshold 𝜏 . If 
+
+|R 𝑗 | > 𝐿 max , 𝑖 ★ is removed to satisfy the hard maximum-length constraint. Once |R 𝑗 | ≤ 𝐿 max , removal continues only if |R 𝑗 | > 𝐿 min 
+
+and 
+
+𝑄  R𝑗 \ { 𝑖 ★} ≥ 𝜏 . (10) The process terminates otherwise. Thus, semantically simple items receive shorter identifiers, whereas information-rich items retain more tokens. Since the candidate positions correspond to distinct token IDs, the resulting semantic SID is 
+
+S𝑗 = 𝑡 𝑗,𝑖 | 𝑖 ∈ R 𝑗 . (11) After each update to R𝑗 , the semantic SID 𝑆 𝑗 is updated accordingly. 
+
+4.1.3 Collision Handling. Greedy pruning may assign identical semantic token sets to items with similar metadata. We therefore perform collision-aware refinement while preserving token occur-rences that contribute most to semantic retention. For a retained position 𝑖 ∈ R 𝑗 , we define its functional contribu-tion as 
+
+Δ𝑗 (𝑖 ) = 𝑄 (R 𝑗 ) − 𝑄  R𝑗 \ { 𝑖 }  
+
+> +
+
+. (12) A larger Δ𝑗 (𝑖 ) indicates a greater loss of semantic quality after re-moving the corresponding token. Its normalized functional weight is 
+
+𝑤 𝑗 (𝑖 ) =
+
+
+
+Δ𝑗 (𝑖 )
+
+Í𝑖 ′ ∈ R 𝑗 Δ𝑗 (𝑖 ′) , if Í𝑖 ′ ∈ R 𝑗 Δ𝑗 (𝑖 ′) > 0,𝑠 𝑗,𝑖 
+
+Í𝑖 ′ ∈ R 𝑗 𝑠 𝑗,𝑖 ′
+
+, otherwise .
+
+(13) The second branch provides a fallback when removing any individ-ual token does not reduce semantic quality. Two items 𝑗 and 𝑗 ′ are considered collided if they share the same semantic SID: 
+
+𝑆 𝑗 = 𝑆 𝑗 ′ . (14) For each collided item, we select an unused candidate position 
+
+𝑖 new ∈ C 𝑗 \ R 𝑗 whose token 𝑡 𝑗,𝑖 new is not already contained in 
+
+S𝑗 , prioritizing larger IDF (𝑡 𝑗,𝑖 new ) and using 𝑠 𝑗,𝑖 new to break ties. If 
+
+|R 𝑗 | < 𝐿 max , the selected position is added to R𝑗 ; otherwise, it replaces the retained position with the smallest functional weight. Collision groups are recomputed after each round, and refinement continues until all collisions are resolved or the maximum number of rounds is reached. Although 𝑆 𝑗 is unordered, we deterministically serialize it as 
+
+𝜋 (𝑆 𝑗 ) by sorting tokens by decreasing stored weight and occurrence-level importance. For each residual collision group, items are ranked by training interaction frequency, with ties broken by a fixed item index, yielding ranks 𝑟 𝑗 from zero. Using ⊕ to denote concatenation, the complete identifier is 
+
+e𝑆 𝑗 = 𝜋 (𝑆 𝑗 ) ⊕ ⟨ SUF 𝑟 𝑗 ⟩. (15) Non-collided items use ⟨SUF 0⟩. As a non-semantic disambiguation key, the suffix is excluded from graph construction, LLM input, token prediction, and semantic scoring. Hereafter, 𝑆 𝑗 and e𝑆 𝑗 denote the semantic token set and complete stored identifier, respectively. 
+
+## 4.2 Stage 2: Graph-Prompted LLM for Token-Set Prediction 
+
+The semantic SIDs from Section 4.1 capture item content but not behavioral transitions. Moreover, autoregressive decoding intro-duces artificial token ordering and costly beam search for variable-length token sets. We therefore formulate recommendation as graph-conditioned token-set prediction, where a graph-aware soft prompt models transition patterns and the LLM predicts SID tokens in parallel. Token scores are then aggregated across item SIDs to obtain item-level recommendation scores. 
+
+4.2.1 Graph-Aware Soft Prompt. Let E(𝑡 ) ∈ R𝑑 denote the LLM input embedding of token 𝑡 . We initialize the representation of item 
+
+𝑗 by averaging the embeddings of its semantic SID tokens: 
+
+z𝑗 = 1
+
+|𝑆 𝑗 |∑︁ 𝑡 ∈𝑆 𝑗 
+
+E(𝑡 ). (16) For each mini-batch B, we construct a directed item-transition graph from the user histories. For each user 𝑢 , we add an edge 
+
+𝑖 𝑢,ℓ → 𝑖 𝑢,ℓ +1 between consecutive interactions in H𝑢 , together with self-loops for historical items. We initialize g(0) 
+
+> 𝑗
+
+= z𝑗 . Let N − ( 𝑗 ) denote the multiset of incom-ing neighbors of item 𝑗 . Each GraphSAGE [ 9] layer updates the node representation as 
+
+g(𝑙 +1) 
+
+> 𝑗
+
+= ReLU ©«
+
+W(𝑙 )
+
+
+
+g(𝑙 ) 
+
+> 𝑗
+
+∥ 1
+
+|N − ( 𝑗 )| ∑︁ 𝑣 ∈ N − ( 𝑗 )
+
+g(𝑙 )
+
+> 𝑣
+
+
+
++ b(𝑙 ) ª®¬
+
+, (17) where 𝑙 = 0, . . . , 𝐿 − 1, W(𝑙 ) ∈ R𝑑 ×2𝑑 , b(𝑙 ) ∈ R𝑑 , and ∥ denotes concatenation.  
+
+> 4VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation Conference’17, July 2017, Washington, DC, USA
+
+We summarize the graph-enhanced historical item representa-tions using recency-weighted pooling: 
+
+r𝑢 =
+
+> 𝑇 𝑢
+
+∑︁ 
+
+> ℓ=1
+
+𝜌 𝑢,ℓ g(𝐿 ) 
+
+> 𝑖 𝑢,ℓ
+
+, 𝜌 𝑢,ℓ = ℓ
+
+Í𝑇 𝑢  
+
+> 𝑞 =1
+
+𝑞 . (18) The pooled representation is projected into 𝑃 continuous prompt embeddings: 
+
+P𝑢 = reshape  W𝑝 r𝑢 + b𝑝 
+
+ ∈ R𝑃 ×𝑑 , (19) where W𝑝 ∈ R𝑃𝑑 ×𝑑 and b𝑝 ∈ R𝑃𝑑 . Each row of P𝑢 is a 𝑑 -dimensional prompt embedding compatible with the LLM input space. Finally, we serialize and concatenate the historical semantic SIDs as 𝜋 (𝑆 𝑖 𝑢, 1 ) ⊕ · · · ⊕ 𝜋 (𝑆 𝑖 𝑢,𝑇𝑢 ) and prepend P𝑢 to their token embeddings. Auxiliary suffix tokens are excluded from both graph construction and the LLM input. 
+
+4.2.2 LLM Fine-Tuning. We fine-tune the LLM using LoRA to-gether with the graph-prompt module. Let VSID denote the set of all semantic tokens appearing in the item SIDs, excluding auxiliary suffix tokens. During training, gradients of the input embedding matrix are restricted to tokens in VSID , while all other token em-beddings remain frozen. The training objective combines token-set prediction, item-level ranking, and contrastive alignment. Let h𝑢 ∈ R𝑑 be the final-layer hidden state at the designated prediction position following the serialized history after prepending the graph-aware soft prompt. To score SID tokens in the LLM vocabulary space, we reuse the corresponding input embeddings as output classifiers. For each 𝑡 ∈ V SID , we compute 
+
+𝑜 𝑢,𝑡 = h⊤ 
+
+> 𝑢
+
+E(𝑡 ), (20) where E(𝑡 ) is the corresponding LLM input embedding. Given a mini-batch B, we define the candidate-token set as 
+
+TB =
+
+Ø 
+
+> 𝑢 ∈ B
+
+𝑆 𝑗 + 
+
+> 𝑢
+
+. (21) For user 𝑢 , tokens in 𝑆 𝑗 + 
+
+> 𝑢
+
+are treated as positives and the remaining tokens in TB as in-batch negatives. Let 𝑦 𝑢,𝑡 = I[𝑡 ∈ 𝑆 𝑗 + 
+
+> 𝑢
+
+]. The token-set prediction loss is 
+
+Ltoken = − 1
+
+|B| |T B |∑︁ 𝑢 ∈ B ∑︁ 𝑡 ∈ T B
+
+h
+
+𝜔𝑦 𝑢,𝑡 log 𝜎 (𝑜 𝑢,𝑡 )+ ( 1 − 𝑦 𝑢,𝑡 ) log  1 − 𝜎 (𝑜 𝑢,𝑡 )i
+
+,
+
+(22) where 𝜔 > 0 is the positive-class weight. Token-level supervision captures target SID tokens but does not directly optimize item-level ranking. We therefore introduce an item-ranking objective that promotes the positive item over sampled negatives. For each user, we construct A𝑢 = { 𝑗 + 
+
+> 𝑢
+
+} ∪ A − 
+
+> 𝑢
+
+,where A− 
+
+> 𝑢
+
+contains uniformly sampled negative items. The score of candidate item 𝑗 is 
+
+𝑎 𝑢,𝑗 = 1
+
+|𝑆 𝑗 |∑︁ 𝑡 ∈𝑆 𝑗 
+
+𝜎 (𝑜 𝑢,𝑡 ), (23) and the item-ranking loss is 
+
+Lrank = − 1
+
+|B| ∑︁ 𝑢 ∈ B 
+
+log exp (𝑎 𝑢,𝑗 + 
+
+> 𝑢
+
+)
+
+Í𝑗 ∈ A 𝑢 exp (𝑎 𝑢,𝑗 ) . (24) Although the token-set and ranking objectives optimize token pre-diction and item ordering, they do not explicitly align the LLM-derived user representation with graph-enhanced item representa-tions. We therefore introduce an item-level contrastive objective that aligns each user representation with its target-item representa-tion relative to other target representations in the mini-batch. For contrastive alignment, let 
+
+¯g𝑗 =
+
+(g(𝐿 ) 
+
+> 𝑗
+
+, if 𝑗 appears in the mini-batch graph ,
+
+z𝑗 , otherwise . (25) We align the user representation with the graph-enhanced repre-sentation of its target item using 
+
+Litem = − 1
+
+|B| ∑︁ 𝑢 ∈ B 
+
+log exp 
+
+
+
+sim (h𝑢 , ¯g𝑗 + 
+
+> 𝑢
+
+)/ 𝜏 𝑐 
+
+Í𝑣 ∈ B exp 
+
+
+
+sim (h𝑢 , ¯g𝑗 + 
+
+> 𝑣
+
+)/ 𝜏 𝑐 
+
+ , (26) where sim (· , ·) denotes cosine similarity and 𝜏 𝑐 is the contrastive temperature. This objective aligns the LLM-derived user represen-tation with the content- and graph-enhanced target-item space. Finally, the overall training objective is 
+
+L = Ltoken + 𝛼 Lrank + 𝛽 Litem , (27) where 𝛼 and 𝛽 control the item-ranking and contrastive objectives, respectively. 
+
+4.2.3 Token-Level Item Scoring. The fine-tuned LLM computes all semantic SID token scores in parallel, rather than autoregressively generating complete identifiers. For each token 𝑡 ∈ V SID , we com-pute 
+
+𝑝 𝑢,𝑡 = 𝜎 (𝑜 𝑢,𝑡 ) = 𝜎  h⊤ 
+
+> 𝑢
+
+E(𝑡 ) . (28) The relevance score of item 𝑗 is obtained by averaging the prob-abilities of its semantic SID tokens: 
+
+𝑞 𝑢,𝑗 = 1
+
+|𝑆 𝑗 |∑︁ 𝑡 ∈𝑆 𝑗 
+
+𝑝 𝑢,𝑡 . (29) The final recommendation list is obtained by ranking all items 𝑗 ∈ I 
+
+according to 𝑞 𝑢,𝑗 . The length normalization prevents items with longer SIDs from systematically accumulating larger scores. Since all token probabilities are computed in a single LLM forward pass, this scoring process eliminates autoregressive SID generation and beam-search decoding. 
+
+4.2.4 Suffix Tie-Break. Collision-aware expansion resolves most SID collisions, but some items may still share identical semantic token sets. Since suffix labels carry no semantic information, they are excluded from graph construction, LLM input, token prediction, and semantic score aggregation, and are used only for deterministic disambiguation. Consider two candidate items 𝑗 𝑎 , 𝑗 𝑏 ∈ I such that 𝑆 𝑗 𝑎 = 𝑆 𝑗 𝑏 .Their semantic scores are identical under token-level aggregation, so the item with the smaller suffix rank is preferred: 
+
+𝑆 𝑗 𝑎 = 𝑆 𝑗 𝑏 =⇒ 𝑗 𝑎 ≻ 𝑗 𝑏 ⇐⇒ 𝑟 𝑗 𝑎 < 𝑟 𝑗 𝑏 . (30) Thus, suffix ranks affect only items with identical semantic token sets and do not alter any strict semantic-score ordering.  
+
+> 5Conference’17, July 2017, Washington, DC, USA Shutong Qiao et al.
+
+Table 1: Statistics of the standard and zero-shot item cold-start datasets. Dataset #Users #Items #Interactions Sparsity Standard Evaluation (5-core)                     
+
+> Luxury 1,841 842 18,667 98.80%
+> Scientific 2,843 1,549 19,099 99.57%
+> Instruments 17,112 6,250 136,226 99.87%
+> Arts 22,171 9,416 174,079 99.92%
+> Zero-Shot Item Cold-Start Evaluation
+> Luxury 19,748 8,308 47,913 99.97%
+
+## 5 Experiments 5.1 Datasets and Evaluation Metrics 
+
+We conduct standard experiments on four Amazon-2018 domains: Luxury Beauty, Industrial and Scientific, Musical Instruments, and Arts, Crafts and Sewing. We retain items with available metadata and apply iterative 5-core filtering, ensuring that each remaining user and item has at least five interactions. For item cold-start evaluation, following Zhang et al. [ 39 ], we construct an item-cold split from the raw Luxury Beauty data without 5-core filtering. For each user sequence, the first 90% of interactions are used to construct training instances, while unseen items from the remaining interactions are selected as cold targets. The resulting cold-start instances are evenly divided into validation and test sets. We report Recall@K and Normalized Discounted Cumulative Gain (NDCG@K), which measure top-𝐾 target coverage and rank-ing quality, respectively. For standard evaluation, we use 𝐾 ∈{5, 10 , 20 }; for zero-shot item cold-start evaluation, we report re-sults at 𝐾 ∈ { 50 , 100 } due to the substantially larger and sparser candidate space. 
+
+## 5.2 Implementation Details and Hyperparameter Settings 
+
+All experiments are conducted on NVIDIA H100 GPUs. We use Llama-3.1-8B for SID construction and Llama-3.2-1B for recommen-dation training [ 8 ]; the two models can be replaced by any pair with compatible tokenizers and vocabulary mappings. For SID con-struction, we set the maximum metadata length, semantic quality threshold, and candidate pool size to 2,048, 0.95, and 64, respec-tively. SIDs contain 2–16 semantic tokens, with a distinctiveness coefficient of 0.05 and up to eight collision-aware expansion rounds. For recommendation, we use a two-layer GraphSAGE encoder with eight soft prompt embeddings and the most recent 20 historical items. We apply LoRA to the query and value projections with rank 16, scaling factor 32, and dropout 0.05. We optimize using AdamW with a learning rate of 1 × 10 −4 and a batch size of 32. We set 𝛽 = 0.1 and analyze 𝛼 in Section 5.6. For efficiency evaluation, both VaLiDRec and LC-Rec use Llama-3.2-1B and are tested on the same NVIDIA H100 GPU with a batch size of 1; further details are provided in Section 5.7. All results are averaged over five indepen-dent runs with different random seeds. Statistical significance is assessed using a paired 𝑡 -test at 𝑝 < 0.05 .
+
+## 5.3 Baselines 
+
+We compare VaLiDRec with two groups of representative baselines, including traditional SR methods and recent GR methods. 
+
+• GRU4Rec [10 ] models sequential preferences with gated recurrent units. 
+
+• Caser [ 30 ] captures sequential patterns using convolution over recent interactions. 
+
+• SASRec [16 ] models long-range dependencies with self-attention. 
+
+• BERT4Rec [ 29 ] adopts a bidirectional Transformer archi-tecture and learns user sequential preferences through a masked item prediction objective. 
+
+• TIGER [ 26 ] is a GR method that constructs residual-quantized SIDs and uses T5 [ 25 ] to autoregressively generate target item identifiers. 
+
+• LC-Rec [ 40 ] is an LLM-based GR method that leverages language models to enhance item representation and recom-mendation generation. 
+
+• RPG [12 ] is a recent GR method that improves recommen-dation by incorporating semantic and preference-aware gen-eration signals. 
+
+• SA 2CRQ [32 ] is a GR method that improves long-tail recom-mendation by learning adaptive semantic codes and trans-ferring residual knowledge across items. 1
+
+## 5.4 Performance Study 
+
+We compare VaLiDRec with eight representative baselines, includ-ing four sequential recommenders and four generative SID-based methods. Table 2 shows that VaLiDRec achieves the best perfor-mance across all datasets, metrics, and cutoff values. Conventional sequential models remain competitive because 5-core filtering re-tains relatively active users and items, allowing reliable behavioral patterns to be learned. On the relatively dense Luxury dataset, VaLiDRec improves Recall@10 and Recall@20 over RPG, the strongest baseline, by 
+
+7.5% and 12 .4% , respectively. These results suggest that combining variable-length LLM-native SIDs with graph-enhanced preference modeling is more effective than the globally fixed code design used by RPG. On Scientific, VaLiDRec improves Recall@10 and NDCG@10 over GRU4Rec by 5.5% and 2.0% , respectively, demon-strating its benefit even when sequential signals are strong. The ad-vantage becomes more pronounced on the sparser datasets: VaLiDRec improves all Recall metrics on Instruments by approximately 10% ,and all NDCG metrics on Arts by more than 22% . These gains indi-cate improved candidate coverage as well as more accurate ranking of relevant items at top positions. TIGER and LC-Rec rely on quantized SIDs, whereas RPG uses globally fixed OPQ codes and SA 2CRQ adaptively truncates RQ-VAE paths. Although these methods differ in their quantization strategies, they all operate on artificial code spaces. By contrast, VaLiDRec constructs variable-length SIDs directly from the native vocabulary of a pretrained LLM. Collectively, the results highlight the importance of jointly modeling SID semantics, vocabulary align-ment, and user behavioral transitions.  
+
+> 1As the original implementation has not been publicly released, we reproduce SA 2CRQ based on the method described in the paper. 6VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation Conference’17, July 2017, Washington, DC, USA
+
+Table 2: Overall recommendation performance on four datasets. The best results are highlighted in bold, and the second-best results are underlined. Dataset Metric GRU4Rec Caser SASRec BERT4Rec TIGER LC-Rec RPG SA 2CRQ VaLiDRec                                                                                                                                                                                                                         
+
+> Luxury
+> Recall@5 0.2846 0.1879 0.2042 0.2330 0.2629 0.2622 0.2906 0.2542 0.3014
+> Recall@10 0.3128 0.2927 0.3014 0.3096 0.2826 0.2772 0.3167 0.2716 0.3405
+> Recall@20 0.3530 0.3324 0.3476 0.3531 0.3147 0.2955 0.3552 0.2944 0.3992
+> NDCG@5 0.2355 0.1127 0.1703 0.1465 0.2457 0.2421 0.2512 0.2408 0.2597
+> NDCG@10 0.2434 0.1465 0.1879 0.1719 0.2518 0.2470 0.2590 0.2462 0.2709
+> NDCG@20 0.2547 0.1565 0.1909 0.1828 0.2608 0.2516 0.2691 0.2519 0.2859
+> Scientific
+> Recall@5 0.0661 0.0422 0.0292 0.0496 0.0555 0.0300 0.0531 0.0337 0.0685
+> Recall@10 0.0893 0.0647 0.0528 0.0735 0.0755 0.0489 0.0711 0.0502 0.0942
+> Recall@20 0.1259 0.1093 0.0837 0.1136 0.1095 0.0649 0.1006 0.0731 0.1287
+> NDCG@5 0.0466 0.0256 0.0166 0.0329 0.0370 0.0181 0.0341 0.0228 0.0475
+> NDCG@10 0.0541 0.0325 0.0240 0.0405 0.0434 0.0241 0.0386 0.0285 0.0552
+> NDCG@20 0.0617 0.0432 0.0317 0.0506 0.0520 0.0283 0.0465 0.0340 0.0637
+> Instruments
+> Recall@5 0.0797 0.0570 0.0427 0.0694 0.0839 0.0559 0.0759 0.0771 0.0922
+> Recall@10 0.0906 0.0797 0.0637 0.0871 0.0946 0.0659 0.0806 0.0888 0.1042
+> Recall@20 0.1087 0.1074 0.0924 0.1107 0.1087 0.0874 0.0877 0.1055 0.1217
+> NDCG@5 0.0712 0.0348 0.0240 0.0603 0.0773 0.0446 0.0678 0.0687 0.0837
+> NDCG@10 0.0747 0.0421 0.0304 0.0660 0.0807 0.0478 0.0694 0.0726 0.0875
+> NDCG@20 0.0792 0.0490 0.0378 0.0721 0.0842 0.0533 0.0711 0.0768 0.0917
+> Arts
+> Recall@5 0.0658 0.0330 0.0607 0.0576 0.0587 0.0194 0.0538 0.0476 0.0803
+> Recall@10 0.0770 0.0472 0.0852 0.0782 0.0678 0.0258 0.0583 0.0565 0.0934
+> Recall@20 0.0912 0.0672 0.1059 0.1044 0.0806 0.0321 0.0645 0.0650 0.1110
+> NDCG@5 0.0564 0.0199 0.0320 0.0398 0.0513 0.0143 0.0453 0.0408 0.0699
+> NDCG@10 0.0600 0.0244 0.0398 0.0464 0.0541 0.0164 0.0468 0.0437 0.0739
+> NDCG@20 0.0636 0.0294 0.0475 0.0530 0.0570 0.0179 0.0483 0.0458 0.0779
+
+Table 3: Zero-shot item cold-start performance on Luxury. The best and second-best results are highlighted in bold and underlined, respectively. Method Recall@50 NDCG@50 Recall@100 NDCG@100                         
+
+> GRU4Rec 0.0000 0.0000 0.0000 0.0000 BERT4Rec 0.0000 0.0000 0.0000 0.0000 TIGER 0.0042 0.0008 0.0065 0.0012 LC-Rec 0.1335 0.0562 0.1553 0.0619 RPG 0.1899 0.0555 0.2509 0.0640 VaLiDRec 0.1975 0.0575 0.2571 0.0672
+
+5.4.1 Cold-Start Study. Table 3 reports the zero-shot item cold-start results on Luxury, where target items are absent from the training interactions. GRU4Rec and BERT4Rec obtain zero perfor-mance because they cannot learn interaction-based representations for unseen target items. Generative SID methods leverage item content but differ in identifier construction. TIGER uses RQ-VAE to construct residual-quantized SIDs and trains T5 for autoregressive generation, whereas LC-Rec aligns quantized SID tokens with an extended LLM vocab-ulary through additional fine-tuning. RPG instead adopts OPQ to construct globally fixed long SIDs from independently quan-tized subvectors and predicts them in parallel, yielding strong re-call. Nevertheless, all these methods rely on artificial quantization codes. VaLiDRec improves Recall@50, NDCG@50, Recall@100, and NDCG@100 over the corresponding strongest baselines by 4.0% ,
+
+2.3% , 2.5% , and 5.0% , respectively. By constructing variable-length SIDs directly from native LLM vocabulary tokens, VaLiDRec repre-sents unseen items from metadata in the pretrained semantic space. The gains, particularly in NDCG, demonstrate its ability to rank relevant cold items more accurately. 
+
+## 5.5 Ablation Study 
+
+To assess each component, we consider four variants: w/o SID Refinement , which removes greedy pruning and collision-aware expansion; w/o Graph Prompt , which removes the graph-aware soft prompt; w/o Ranking Loss , which removes the item-level ranking loss; and w/o Contrastive Loss , which removes the item-level InfoNCE objective. Figure 3 reports Recall@20 and NDCG@20 on four datasets. Removing the graph-aware soft prompt causes the largest perfor-mance drop, especially on Arts, confirming its central role in pref-erence modeling. While semantic SIDs capture item content, their unordered token structure lacks item-level cohesion and behavioral transition information. The graph prompt addresses this limitation by forming unified item representations, propagating transition signals, and summarizing recent interactions into a behavior-aware user prompt. Removing SID refinement also consistently degrades perfor-mance, consistent with the SID quality improvements in Table 5. Refinement removes redundant tokens, preserves semantics, and reduces collisions, yielding more compact and discriminative su-pervision. The ranking loss aligns aggregated token scores with the final recommendation objective, while the contrastive loss aligns user representations with graph-enhanced target items. Overall, the  
+
+> 7Conference’17, July 2017, Washington, DC, USA Shutong Qiao et al.
+
+Figure 3: Ablation results on four datasets. 
+
+(a) Luxury (b) Scientific 
+
+(c) Instruments (d) Arts 
+
+Figure 4: Sensitivity to the ranking-loss weight 𝛼 .
+
+components provide complementary gains, with the graph prompt contributing the largest improvement. 
+
+## 5.6 Hyperparameter Study 
+
+We investigate the sensitivity of the item-level ranking loss weight 
+
+𝛼 , which balances token-level SID prediction and direct item rank-ing. We vary 𝛼 from 0.1 to 1.0 while fixing all other hyperparame-ters. As shown in Figure 4, the preferred ranking weight varies across datasets. Luxury achieves its best result at 𝛼 = 0.8, indicating that relatively dense interactions support stronger item-level ranking supervision. Although Scientific exhibits larger fluctuations, its optimum also occurs at 𝛼 = 0.8. Recall@20 on Instruments increases steadily and peaks at 0.8, which is consistent with the ranking objective helping distinguish items with similar predicted token sets. In contrast, Arts performs best at 𝛼 = 0.2 and deteriorates at larger values, suggesting that excessive ranking supervision can 
+
+Table 4: Average online inference time per test instance on the Luxury item-cold dataset. 𝐿 and 𝐵 denote the SID length and beam size, respectively. The LLM computation column measures sequential decoding steps; offline SID construction is excluded. Method Inference Mechanism LLM Computation Beam Size Time (s) Speedup            
+
+> LC-Rec Autoregressive decoding O( 𝐵𝐿 )decoding steps 100 6.824 1.00 ×
+> VaLiDRec Parallel token scoring One LLM forward pass –0.078 87.49 ×
+
+overshadow token-level semantic learning in highly sparse and diverse item spaces. Overall, 𝛼 = 0.8 provides the best trade-off on three datasets, while Arts benefits from a greater emphasis on token-level prediction. 
+
+## 5.7 Efficiency Analysis 
+
+We compare VaLiDRec with LC-Rec because both methods fine-tune the same LLM backbone for SID-based recommendation, while adopting different inference mechanisms. LC-Rec autoregressively generates quantized SID tokens and applies beam search to obtain recommendation candidates. Let 𝐿 denote the SID length and 𝐵 the beam size. Its inference requires O( 𝐵𝐿 ) sequential LLM decoding steps, since each beam must be expanded over multiple generation steps. In contrast, VaLiDRec predicts the scores of all semantic SID tokens in parallel using a single LLM forward pass. The resulting token scores are then aggregated over item SIDs to obtain item-level relevance scores, without autoregressive generation or beam search. Therefore, the number of LLM forward passes is constant with respect to 𝐿 and 𝐵 . This does not imply constant end-to-end complexity: full-catalog item scoring requires O
+
+Í𝑗 ∈ I |𝑆 𝑗 |
+
+
+
+light-weight token-to-item aggregation operations. SID construction is performed offline and is excluded from online inference. As reported in Table 4, under the same LLM backbone, hardware, and batch-size setting, LC-Rec requires an average of 6.824 sec-onds per test instance with a beam size of 100, whereas VaLiDRec requires 0.078 seconds. This corresponds to an 87 .49 × speedup, demonstrating that replacing sequential SID generation with one-pass token scoring substantially reduces the online LLM inference overhead. 
+
+> 8
+
+VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation Conference’17, July 2017, Washington, DC, USA 
+
+Table 5: Comparison of the semantic quality, compactness, and collision rates of the initial and refined SIDs. Dataset SID Quality ≥0.95 Length Compression Collision †
+
+Luxury Initial 0.9023 13.66% 14.81 0.1493 1.90% Refined 0.9461 83.02% 8.81 0.1034 1.78% 
+
+Scientific Initial 0.9103 15.04% 15.14 0.1511 1.36% Refined 0.9495 84.12% 8.88 0.0982 0.77% 
+
+Instruments Initial 0.9214 26.86% 14.75 0.1980 0.83% Refined 0.9526 90.51% 8.27 0.1356 0.56% 
+
+Arts Initial 0.9245 26.00% 15.40 0.1890 0.97% Refined 0.9529 94.39% 7.56 0.1036 0.72%  
+
+> †
+
+Collision is measured before suffix-based disambiguation; the final collision ratio is 0 for all datasets. 
+
+## 5.8 SID Quality Analysis 
+
+To evaluate SID quality, we compare the Initial SID used in the w/o SID Refinement variant with the Refined SID produced by the com-plete Stage 1 process. The Initial SID contains importance-selected candidates before pruning and collision handling. We assess seman-tic preservation, compactness, and item-level uniqueness. As shown in Table 5, SID refinement consistently improves se-mantic quality while producing more compact identifiers. Average semantic quality increases from 0.9023–0.9245 to 0.9461–0.9529, while the proportion of SIDs above 0.95 rises from 13.66%–26.86% to 83.02%–94.39%. Meanwhile, the average SID length is reduced from about 15 tokens to 7.56–8.88, indicating that semantic-quality-aware pruning effectively removes redundant tokens while pre-serving item semantics. Collision-aware expansion further reduces semantic collisions, and suffix-based disambiguation eliminates all remaining item-level collisions. Overall, the refined SIDs are more semantically faithful, compact, and uniquely identifiable. 
+
+## 6 Conclusion 
+
+We presented VaLiDRec, a generative recommendation framework that constructs variable-length SIDs directly from the native vocab-ulary of pretrained LLMs. VaLiDRec selects informative metadata tokens through importance scoring and semantic-quality-aware pruning, resolves residual identifier collisions, and incorporates item-level structural relations and behavioral transitions through graph-aware soft prompts. By formulating recommendation as token-set prediction and token-level item scoring, it avoids au-toregressive SID generation and beam search. Experiments on four datasets demonstrate consistent improvements over strong sequen-tial and generative baselines, while the cold-start and efficiency results further show its effectiveness for unseen items and efficient online inference. In future work, we will extend VaLiDRec to multi-modal item representations and investigate its transferability across recommendation domains. 
+
+## Acknowledgments 
+
+The Australian Research Council supports this work under the streams of Future Fellowship (Grant No. FT210100624), the Dis-covery Project (Grant No. DP240101108), and the Linkage Project (Grant No. LP230200892). 
+
+## References 
+
+[1] Keqin Bao, Jizhi Zhang, Yang Zhang, Wang Wenjie, Fuli Feng, and Xiangnan He. 2023. Large language models for recommendation: Progresses and future directions. In Proceedings of the Annual International ACM SIGIR Conference on Research and Development in Information Retrieval in the Asia Pacific Region .306–309. [2] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al . 2020. Language models are few-shot learners. Advances in neural information processing systems 33 (2020), 1877–1901. [3] Wenzhuo Cheng, Menghang Gong, Qixin Guo, Hang Zheng, Zhaobin Yang, Jianguo Lou, and Zhengwei Zheng. 2026. CapsID: Soft-Routed Variable-Length Semantic IDs for Generative Recommendation. arXiv preprint arXiv:2605.05096 
+
+(2026). [4] Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. 2025. Onerec: Unifying retrieve and rank with generative recommender and iterative preference alignment. arXiv preprint arXiv:2502.18965 
+
+(2025). [5] Xinyu Du, Huanhuan Yuan, Pengpeng Zhao, Jianfeng Qu, Fuzhen Zhuang, Guan-feng Liu, Yanchi Liu, and Victor S Sheng. 2023. Frequency enhanced hybrid attention network for sequential recommendation. In Proceedings of the 46th international ACM SIGIR conference on research and development in information retrieval . 78–88. [6] Junchen Fu, Xuri Ge, Alexandros Karatzoglou, Ioannis Arapakis, Suzan Ver-berne, Joemon M Jose, and Zhaochun Ren. 2026. Differentiable Semantic ID for Generative Recommendation. arXiv preprint arXiv:2601.19711 (2026). [7] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In Proceedings of the 16th ACM conference on recommender systems . 299–315. [8] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, et al . 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 
+
+(2024). [9] Will Hamilton, Zhitao Ying, and Jure Leskovec. 2017. Inductive representation learning on large graphs. Advances in neural information processing systems 30 (2017). [10] B Hidasi. 2015. Session-based Recommendations with Recurrent Neural Networks. 
+
+arXiv preprint arXiv:1511.06939 (2015). [11] Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. 2023. Learning vector-quantized item representation for transferable sequential recommenders. In Proceedings of the ACM Web Conference 2023 . 1162–1171. [12] Yupeng Hou, Jiacheng Li, Ashley Shin, Jinsung Jeon, Abhishek Santhanam, Wei Shao, Kaveh Hassani, Ning Yao, and Julian McAuley. 2025. Generating long semantic ids in parallel for recommendation. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 . 956–966. [13] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, et al . 2022. Lora: Low-rank adaptation of large language models. Iclr 1, 2 (2022), 3. [14] Wenyue Hua, Shuyuan Xu, Yingqiang Ge, and Yongfeng Zhang. 2023. How to index item ids for recommendation foundation models. In Proceedings of the Annual International ACM SIGIR Conference on Research and Development in Information Retrieval in the Asia Pacific Region . 195–204. [15] Jian Jia, Jingtong Gao, Ben Xue, Junhao Wang, Qingpeng Cai, Quan Chen, Xi-angyu Zhao, Peng Jiang, and Kun Gai. 2025. From principles to applications: A comprehensive survey of discrete tokenizers in generation, comprehension, recommendation, and information retrieval. arXiv preprint arXiv:2502.12448 
+
+(2025). [16] Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recom-mendation. In 2018 IEEE international conference on data mining (ICDM) . IEEE, 197–206. [17] Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. 2022. Autoregressive image generation using residual quantization. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition . 11523–11532. [18] Jing Li, Pengjie Ren, Zhumin Chen, Zhaochun Ren, Tao Lian, and Jun Ma. 2017. Neural attentive session-based recommendation. In Proceedings of the 2017 ACM on Conference on Information and Knowledge Management . 1419–1428. [19] Xinyu Lin, Haihan Shi, Wenjie Wang, Fuli Feng, Qifan Wang, See-Kiong Ng, and Tat-Seng Chua. 2025. Order-agnostic identifier for large language model-based generative recommendation. In Proceedings of the 48th international ACM SIGIR conference on research and development in information retrieval . 1923–1933. [20] Enze Liu, Bowen Zheng, Cheng Ling, Lantao Hu, Han Li, and Wayne Xin Zhao. 2025. Generative recommender with end-to-end learnable item tokenization. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . 729–739. [21] Jingzhe Liu, Liam Collins, Jiliang Tang, Tong Zhao, Neil Shah, and Clark Mingx-uan Ju. 2025. Understanding generative recommendation with semantic ids from 9Conference’17, July 2017, Washington, DC, USA Shutong Qiao et al. 
+
+a model-scaling view. arXiv preprint arXiv:2509.25522 (2025). [22] Fabian Mentzer, David Minnen, Eirikur Agustsson, and Michael Tschannen. 2024. Finite scalar quantization: Vq-vae made simple. In International Conference on Learning Representations , Vol. 2024. 51772–51783. [23] Aleksandr V Petrov and Craig Macdonald. 2023. Generative sequential recom-mendation with gptrec. arXiv preprint arXiv:2306.11114 (2023). [24] Haohao Qu, Wenqi Fan, Zihuai Zhao, and Qing Li. 2025. Tokenrec: Learning to tokenize id for llm-based generative recommendations. IEEE Transactions on Knowledge and Data Engineering (2025). [25] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. 2020. Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of machine learning research 21, 140 (2020), 1–67. [26] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al .2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [27] Steffen Rendle, Christoph Freudenthaler, and Lars Schmidt-Thieme. 2010. Factor-izing personalized markov chains for next-basket recommendation. In Proceedings of the 19th international conference on World wide web . 811–820. [28] Gerard Salton and Christopher Buckley. 1988. Term-weighting approaches in automatic text retrieval. Information processing & management 24, 5 (1988), 513–523. [29] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential recommendation with bidirectional encoder rep-resentations from transformer. In Proceedings of the 28th ACM international conference on information and knowledge management . 1441–1450. [30] Jiaxi Tang and Ke Wang. 2018. Personalized top-n sequential recommenda-tion via convolutional sequence embedding. In Proceedings of the eleventh ACM international conference on web search and data mining . 565–573. [31] Hao Wang, Wei Guo, Luankang Zhang, Jin Yao Chin, Yufei Ye, Huifeng Guo, Yong Liu, Defu Lian, Ruiming Tang, and Enhong Chen. 2025. Generative large recom-mendation models: emerging trends in llms for recommendation. In Companion Proceedings of the ACM on Web Conference 2025 . 49–52. [32] Huimu Wang, Xingzhi Yao, Yiming Qiu, Qinghong Zhang, Haotian Wang, Yufan Cui, Songlin Wang, Sulong Xu, and Mingming Li. 2026. Towards Efficient and Generalizable Retrieval: Adaptive Semantic Quantization and Residual Knowl-edge Transfer. arXiv preprint arXiv:2602.23978 (2026). [33] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2024. Learnable item tokenization for generative recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 2400–2409. [34] Wenjie Wang, Xinyu Lin, Fuli Feng, Xiangnan He, and Tat-Seng Chua. 2023. Generative recommendation: Towards next-generation recommender paradigm. 
+
+arXiv preprint arXiv:2304.03516 (2023). [35] Ye Wang, Jiahao Xun, Minjie Hong, Jieming Zhu, Tao Jin, Wang Lin, Haoyuan Li, Linjun Li, Yan Xia, Zhou Zhao, et al . 2024. Eager: Two-stream generative recommender with behavior-semantic collaboration. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 3245–3254. [36] Shu Wu, Yuyuan Tang, Yanqiao Zhu, Liang Wang, Xing Xie, and Tieniu Tan. 2019. Session-based recommendation with graph neural networks. In Proceedings of the AAAI conference on artificial intelligence , Vol. 33. 346–353. [37] Xu Xie, Fei Sun, Zhaoyang Liu, Shiwen Wu, Jinyang Gao, Jiandong Zhang, Bolin Ding, and Bin Cui. 2022. Contrastive learning for sequential recommendation. In 
+
+2022 IEEE 38th international conference on data engineering (ICDE) . IEEE, 1259– 1273. [38] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhao-jie Gong, Fangda Gu, Michael He, et al . 2024. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. arXiv preprint arXiv:2402.17152 (2024). [39] Zhen Zhang, Jujia Zhao, Xinyu Ma, Xin Xin, Maarten de Rijke, and Zhaochun Ren. 2026. Cold-Starts in Generative Recommendation: A Reproducibility Study. 
+
+arXiv preprint arXiv:2603.29845 (2026). [40] Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming Chen, and Ji-Rong Wen. 2024. Adapting large language models by integrating collaborative semantics for recommendation. In 2024 IEEE 40th International Conference on Data Engineering (ICDE) . IEEE, 1435–1448. [41] Kun Zhou, Hui Wang, Wayne Xin Zhao, Yutao Zhu, Sirui Wang, Fuzheng Zhang, Zhongyuan Wang, and Ji-Rong Wen. 2020. S3-rec: Self-supervised learning for se-quential recommendation with mutual information maximization. In Proceedings of the 29th ACM international conference on information & knowledge management .1893–1902. 10

@@ -1,0 +1,342 @@
+Title: Beyond Facial Consistency: Personalized Person Image Generation with Holistic Identity Preservation
+
+URL Source: https://arxiv.org/pdf/2607.25622v1
+
+Published Time: Wed, 29 Jul 2026 00:53:18 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Beyond Facial Consistency: Personalized Person Image Generation with Holistic Identity Preservation 
+
+Yuxuan Xiao Shanshan Zhang Jian Yang Shengcai Liao 
+
+## Abstract 
+
+Personalized person image generation requires preserving subject identity across both local facial details and broader appearance cues. Existing methods typically emphasize only one level of identity information, leading to an inherent trade-off between facial fidelity and overall appearance consistency. To address this, we first propose a simple dual-branch baseline that unifies global appearance control and local facial control within a shared generation framework. This simple combination of different branches yields promising results, but suffers from instability in prac-tice due to uncoordinated branch contributions. To this end, we propose Dynamic Balancing Scaling (DBS), a fine-tuning strategy for improving face and appear-ance identity coordination. DBS consists of two components: adaptive temporal gating, which dynamically modulates branch contributions along the denoising trajectory, and region-aware optimization, which improves the coordination of facial, appearance, and global supervision. Together, these designs alleviate persis-tent face-branch over-dominance and encourage more effective appearance-aware guidance. We also introduce Pexels-100, a benchmark for evaluating holistic iden-tity consistency in personalized person generation. Experiments show that DBS achieves a better trade-off between facial fidelity and appearance consistency than existing open-source baselines, while providing a controllable basic framework for holistic identity modeling. 
+
+## 1 Introduction 
+
+Personalized person image generation aims to generate images that closely match the user’s identity features based on a user-provided reference image and text prompts. This technology has significant applications in film and television production, commercial advertising, artistic creation, and digital human generation. Existing methods typically focus only on a portion of the identity’s attributes. As shown in fig. 1, one type of method emphasizes subject consistency, such as character or object; another type focuses on preserving local identity, especially the fidelity of facial structure and details. However, in real-world applications, single-dimensional identity consistency is insufficient to meet complex needs. For example, in continuous content generation, digital human creation, and personalized business applications, models need to maintain a stable overall identity expression across different scenarios. This involves not only facial features but also multi-layered semantic information such as clothing style, body shape, and overall visual presentation. Therefore, it is necessary to research a unified generation framework that can simultaneously constrain facial and full-body appearance from the perspective of holistic identity modeling. To address this challenge, we propose modeling the person’s appearance and local facial features separately and introduce a naive dual-branch (NDB) method, which integrate a subject (appearance) consistency method [ 23 ] and a face consistency method [ 10 ]. Both methods are built upon the FLUX.1-dev [ 2] backbone. This simple combination of reference conditioning yields promising results, but suffers from instability in practice. As illustrated in fig. 2, the model tends to preserve facial identity well, while appearance consistency is comparatively less stable. In order to investigate this phenomenon, we independently remove the face branch and the appearance branch, and for 
+
+> Preprint. arXiv:2607.25622v1 [cs.CV] 28 Jul 2026
+
+InstantCharacter Ref image  InfinteYou 
+
+Text prompt: A person sitting in a modern café .
+
+UNO 
+
+Text prompt: A person points at a research poster on a hallway wall during a conference. 
+
+Subject Consistency Method  Face Consistency Method 
+
+Ours 
+
+Text prompt: A person shoots a basketball from the free -throw line in an indoor court. 
+
+PuLID -FLUX Figure 1: Comparison of our method with subject consistency and face consistency methods. Please zoom in for better visualization. Best viewed in color. Ref image  NDB  Ours  Gap Comparison  Ref image  NDB  Ours  Gap Comparison 
+
+Figure 2: Our method improves appearance consistency while maintaining facial stability by coordi-nating different branches. Please zoom in for better visualization. Best viewed in color. each setting we measure the magnitude of the resulting change in noise prediction relative to the full model during denoising. We then compare these two perturbation magnitudes and report their average difference over all denoising steps. As observed in fig. 2 (Gap Comparison), the average difference remains substantially above zero, meaning that removing the face branch perturbs the model prediction much more strongly than removing the appearance branch. This reveals a heavier reliance on facial guidance and relatively weaker appearance constraints in the generation process. This imbalance arises from the heterogeneous representation spaces and injection mechanisms of the two branches, which lead to different interaction strengths with the DiT backbone. Explicit coordination of branch contributions is therefore necessary to improve holistic identity consistency while preserving stable facial identity. To this end, we build upon the dual-branch baseline and further propose a Dynamic Balancing Scaling (DBS) fine-tuning strategy to better coordinate identity information between face and appearance throughout the generation process. Specifically, DBS consists of two complementary components: (1) Adaptive Temporal Gating: dynamically modulating the contribution strength of different identity branches over the denoising trajectory. By introducing a time-aware gating mechanism, the influences of the Appearance branch and the Face branch are adaptively adjusted at different timesteps, which improves generation stability and promotes more consistent identity preservation across global appearance and local facial details. (2) Region-Aware Optimization: explicitly regularizing branch interactions between face and appearance. We design a region-aware optimization objective to alleviate the over-dominance of face-related signals and encourage more effective contribution from 2appearance-related cues, thereby reducing branch imbalance and mitigating mutual interference between local identity cues and broader appearance information. To fairly and accurately evaluate the holistic consistency modeling of different methods, we constructed the Pexels-100 test set, the first test benchmark Pexels-100 for maintaining holistic consistency in personalized person image generation. Qualitative and quantitative experimental results show that the proposed method outperforms existing open-source methods in terms of holistic identity consistency and reaches or exceeds the performance of some closed-source models on multiple evaluation metrics. Our contributions are summarized as follows: • To maintain the holistic identity consistency of the reference person in personalized person image generation, we propose explicitly modeling the person’s appearance and local facial features separately and introduce a naive dual-branch (NDB) method. • We propose a Dynamic Balanced Scaling (DBS) fine-tuning strategy, which alleviates the problem of insufficient holistic consistency maintenance under strong signal dominance in NDB through adaptive temporal gating mechanism and region-aware optimization. • We construct the first benchmark, Pexels-100, for evaluating holistic consistency in person-alized person image generation. Extensive evaluation on this benchmark demonstrates that our approach achieves more stable and consistent identity preservation. 
+
+## 2 Related Work 
+
+2.1 Subject Consistency 
+
+Subject consistency aims to maintain the overall visual consistency of a reference subject under varying conditions during the generation process. Existing methods in this direction can be broadly categorized into two groups. One group focuses on character or human appearance references, while the other emphasizes more general subject references or conditional control. Representative character consistency methods include InstantCharacter [ 23 ], which targets open-domain character customization and achieves high-fidelity consistency across diverse appearances, poses, and styles. Visual Persona [ 17 ] further extends this line of work to full-body human customization, emphasizing the generation of fully personalized results from a single outdoor image, and leveraging region-level modeling to improve appearance transfer. In contrast, more general subject control methods include EasyControl [ 32 ], which provides efficient and flexible unified conditional control for diffusion transformers; OminiControl [ 22 ], which achieves unified modeling across multiple control tasks with minimal parameter overhead; UNO [ 27 ], which improves consistency and controllability in both single- and multi-subject settings via multi-image conditioning; and FLUX.1 Kontext [ 11 ], which supports diverse in-context tasks such as character reference, style reference, and local/global editing within a unified framework. Despite these advances, most existing methods focus on consistency at a single level or on general subject control, and do not explicitly address holistic identity consistency. In particular, they lack hierarchical modeling that jointly captures global appearance and fine-grained facial details. As a result, these approaches remain limited in personalized character generation scenarios that require simultaneous preservation of character attributes, overall appearance, and facial identity. 
+
+2.2 Face Consistency 
+
+Compared to subject consistency, which focuses on the overall appearance of the subject, face consistency methods primarily use a reference face as an identity condition, preserving the facial identity features of the person during the generation process. This direction is relatively mature and has gradually formed a technological evolution path from general image cues to dedicated face identity modeling. In early work, IP-Adapter [ 28 ] proposed a lightweight adaptation method that incorporates image cues into diffusion models, providing a foundational capability for subsequent identity preservation tasks by decoupling text and image conditions. Subsequently, a series of methods began to focus on face identity modeling. For example, InstantID [ 24 ] achieves zero-shot identity-preserving generation using a single face image, enhancing person consistency without additional training; ConsistentID [ 8 ] further improves identity fidelity in portrait generation through fine-grained facial feature modeling. Building on this foundation, methods have gradually introduced 3𝓏 
+
+> Ref image
+> Face detection
+> A person sitting in a modern café .
+> Timestep
+> 𝑔𝑎𝑡𝑒 𝑓
+> 𝑙
+> Text prompt
+
+Denoising 
+
+VAE 
+
+ℒ𝑅𝐴𝑂 
+
+DiT backbone    
+
+> Timestep
+> Text
+> Encoder
+> ATG
+> Training pipeline
+> RAO
+> ATG: Adaptive Temporal Gated RAB: Region Aware Optimization
+
+Gate 
+
+Encoder 
+
+> ControlNet
+> Face
+> Encoder
+> Appearance
+> Encoder
+> Cross Attn
+> 𝑔𝑎𝑡𝑒 𝑎
+> 𝑙
+> add noise
+> latent
+> mask
+> Ref face
+
+Figure 3: Overview of our framework. Built upon a naive dual-branch architecture, DBS introduces Adaptive Temporal Gating (ATG) to adaptively modulate branch contributions during generation, together with Region Aware Optimization (RAO) to improve cross-granularity coordination, alleviate the over-dominance of face-related signals, and encourage more effective appearance-aware guidance. stronger identity representation capabilities. PhotoMaker [ 13 ] constructs a more stable identity representation by encoding multiple reference faces, thereby improving identity consistency in text-driven generation. PuLID [ 6] proposes a tuning-free identity customization framework based on contrastive alignment, enabling high-fidelity identity preservation while maintaining the original generation behavior. InfiniteYou [ 10 ] further emphasizes maintaining identity under free-text control, achieving more flexible identity-preserving generation. Additionally, FlashFace [ 31 ] also achieves high-fidelity image generation using a small number of facial references. These methods have made significant progress in facial identity preservation, but they mainly focus on the facial region and rely primarily on facial reference images. As a result, they are more effective at maintaining facial identity, but remain limited in modeling overall appearance, clothing style, and holistic visual expression, making it difficult to directly meet the requirements of personalized person generation with holistic identity consistency. 
+
+## 3 Methodology 
+
+3.1 Overview 
+
+We aim to achieve holistic identity consistency in the context of personalized person image generation. Given a reference identity image Iref and a target text prompt P (note that our prompts do not contain any direct descriptions of the person, such as appearance or gender, to avoid providing additional information beyond the reference image.), the objective is to synthesize a high-fidelity image Igen 
+
+that simultaneously preserves global appearance (e.g., body shape and clothes) and local facial identity (e.g., fine-grained facial features). As shown in fig. 3, we first establish a naive dual-branch architecture based on [ 23 ] and [ 10 ]. However, due to the inherent heterogeneity between branches, this naive combination introduces competing signals between face and appearance, which leads to unstable generation. To address this issue, we propose a Dynamic Balancing Scaling (DBS) strategy. Specifically, DBS first introduces a temporal gating mechanism to adaptively modulate the contributions of different branches during generation. It then incorporates a region-aware optimization 4mechanism to improve cross-granularity coordination, alleviating the over-dominance of face-related signals while encouraging more effective contribution from broader appearance cues. 
+
+3.2 Naive Dual-Branch 
+
+To establish a baseline for holistic identity preservation, we extend the FLUX.1-dev [ 2] rectified flow transformer with two complementary identity-conditioning pathways. Rather than treating identity as a single homogeneous signal, our baseline explicitly separates it into two levels of granularity: a global appearance pathway for coarse identity attributes and a local facial pathway for fine-grained facial cues. Both pathways are adapted to a shared generative backbone and jointly participate in the denoising process, forming a naive yet effective starting point for studying holistic identity preservation. 
+
+Appearance Branch [23 ]. The appearance branch captures global identity cues, including hairstyle, body proportion, and clothing style, which together characterize the subject’s overall visual appear-ance. Specifically, DINOv2 [21] and SigLIP [29] features are fused via channel-wise concatenation to obtain a more comprehensive representation for open-domain character modeling. The fused representation is then projected into the denoising space through a timestep-aware Q-Former [ 12 ]projector, and injected into the backbone via cross-attention, thereby providing global guidance for overall structure and appearance generation. 
+
+Face Branch [10 ]. To complement the appearance pathway, the face branch focuses on fine-grained facial geometry and identity-sensitive texture details. Facial identity embeddings are first extracted by a pretrained face encoder and projected into a compatible feature space. These embeddings are then injected into the DiT backbone through a ControlNet [ 30 ]-style residual pathway, enabling stable facial identity guidance throughout the denoising process. 
+
+3.3 Adaptive Temporal Gating 
+
+As discussed before, although the naive dual-branch approach yields promising results, it remains unstable because branch heterogeneity gives rise to inconsistent contribution strengths and uncoordi-nated interactions during denoising. To alleviate this issue, we propose a timestep-aware adaptive gating mechanism, which improve the coordination between branches over the denoising trajectory and reduce persistent over-reliance on a single branch. In particular, we use the face branch as a stable reference for optimization, and progressively modulate the appearance branch relative to this reference, thereby stabilizing early training while preserving sufficient flexibility for branch-specific adaptation. Formally, the diffusion timestep t is first projected into a high-dimensional temporal embedding via sinusoidal encoding and then processed by a lightweight mapping network to obtain a latent representation ht:
+
+ht = ϕ(Embed( t)) , (1) where Embed( ·) denotes the timestep encoding function and ϕ(·) denotes the mapping network. For the face branch, we define a bounded residual gate centered around unity: 
+
+gate (l) 
+
+> f
+
+(t) = 1 + δ tanh( W(l) 
+
+> f
+
+ht + b(l) 
+
+> f
+
+), (2) where δ controls the modulation range and l indexes the layer. This formulation keeps the face branch close to its original operating regime, allowing it to provide stable identity guidance while still supporting moderate temporal adaptation. For the appearance branch, instead of predicting a fully independent gate from scratch, we parameter-ize its contribution relative to the face branch: 
+
+gate (l) 
+
+> a
+
+(t; τ ) = 1
+
+L
+
+> L
+
+X
+
+> l=1
+
+gate (l) 
+
+> f
+
+(t) ·
+
+
+
+1 + α(τ )γ tanh( W(l) 
+
+> a
+
+ht + b(l) 
+
+> a
+
+)
+
+
+
+, (3) where γ controls the deviation range, α(τ ) ∈ [0 , 1] is a progressive relaxation coefficient that increases with training progress τ , and L is the total number of layers. Here, the face branch serves as a reference anchor rather than a permanently dominant signal. The appearance branch is initialized around this reference to avoid unstable optimization caused by unconstrained branch competition, and 5is then gradually relaxed through α(τ ) to acquire branch-specific flexibility. In this way, the model can progressively strengthen appearance-aware guidance without introducing severe interference in early training. In practice, the temporal gates are applied to the two branches separately. For the face branch, 
+
+gate f (t) modulates the conditional residuals F(t) produced by ControlNet: 
+
+H(l) ← H(l) + gate (l) 
+
+> f
+
+(t) F(l)(t). (4) For the appearance branch, gate a(t; τ ) scales the appearance-aware attention residuals Aa(t) before fusing them into the backbone: 
+
+H(l) ← H(l) + sa · gate (l) 
+
+> a
+
+(t; τ ) A(l) 
+
+> a
+
+(t). (5) Through this anchor-guided temporal modulation, the model improves the coordination of multi-granularity identity cues across diffusion stages, stabilizes optimization under heterogeneous condi-tioning, and alleviates persistent face-branch over-dominance while preserving effective appearance-aware guidance. 
+
+3.4 Region Aware Optimization 
+
+Identity-related facial regions typically occupy only a small portion of the image, while broader appearance cues are distributed across larger body-related regions. While adaptive temporal gating modulates the relative strength of different identity branches the denoising trajectory, it cannot inherently perceive the spatial distribution of the portrait image. In this case of regional imbalance, the standard global mean squared error (MSE) objective function treats all pixels uniformly, providing spatially uniform supervision, which limits the gating function’s ability to fully optimize identity cues in specific regions. To this end, we introduce a region-aware optimization strategy that explicitly incorporates spatially structured supervision at different identity information. Specifically, we first construct a hierarchical masking system using pixel-level human segmentation and face detection to obtain a person region mask Ma and a facial region mask Mf , where Mf ⊆ Ma. Based on these masks, the denoising error map E is decomposed into three regional objectives: 
+
+Lf = Mean( Mf ⊙ E), La = Mean( Ma ⊙ E), Lg = Mean( E), (6) where ⊙ denotes the Hadamard product. Here, Lf emphasizes facial identity preservation, La
+
+supervises broader appearance-related regions, and Lg maintains global image quality. Directly combining the three loss functions can be suboptimal. The facial objective is defined over a small yet highly sensitive identity region, resulting in concentrated supervision, whereas the appearance and global objectives provide broader but relatively smoother guidance. Without explicit coordination, such heterogeneous supervision makes it difficult for the model to maintain stable facial identity cues while effectively optimizing appearance consistency. To coordinate these region-specific objectives, we further introduce a reference-guided Pareto-style loss aggregation approach. Concretely, the face and appearance objectives are treated as protected identity-related terms: they are explicitly activated when their performance falls below a running reference level, while the global objective serves only as a persistent background objective for maintaining overall image quality. Given the regional losses L(k) 
+
+> f
+
+, L(k) 
+
+> a
+
+, and L(k) 
+
+> g
+
+at training step k,we maintain an exponential moving average (EMA) reference for each objective: 
+
+¯L(k+1)  
+
+> m
+
+= (1 − μ) ¯L(k) 
+
+> m
+
++ μL (k) 
+
+> m
+
+, m ∈ { f, a, g }. (7) We then normalize each loss as 
+
+r(k) 
+
+> m
+
+= L(k)
+
+> m
+
+¯L(k) 
+
+> m
+
++ ϵ . (8) To reflect their different functional roles, we define 
+
+v(k) 
+
+> m
+
+=
+
+(
+
+max( r(k) 
+
+> m
+
+− 1, 0) , m ∈ { f, a },r(k) 
+
+> m
+
+, m = g, (9) 6so that the regional identity losses become active only when they underperform relative to their reference levels, whereas the global objective remains continuously optimized. The final objective is 
+
+L(k) 
+
+> RAO
+
+= η log X
+
+> m∈{ f,a,g }
+
+exp v(k)
+
+> m
+
+η
+
+!
+
+, (10) where η is a temperature parameter and is set to 0.1. This design continuously optimizes global coherence while explicitly protecting region-specific identity supervision, leading to more stable coordination among facial, appearance, and global objectives and alleviating optimization trajectories dominated by a single branch. 
+
+## 4 Experiment 
+
+4.1 Implementation details 
+
+We use FLUX.1-dev [ 2] as the denoising backbone, and derive the appearance and face branches from [ 23 ] and [ 10 ], respectively. All experiments are conducted on a single NVIDIA A100 GPU with 80GB VRAM using the accelerate framework. The model is optimized with 8-bit AdamW [ 16 ], using β1 = 0 .9, β2 = 0 .999 , and weight decay 0.01 . The gate parameters are trained with an initial learning rate of 5 × 10 −5. Training images are resized with aspect ratio preserved, using a maximum side length of 512 . The instantaneous batch size is set to 1, and gradient accumulation over 2 steps is used to obtain an effective batch size of 2. The model is trained for 50 K iterations. 
+
+4.2 Datasets and Evaluation Datasets . We use the real-world dataset PPR10K [ 14 ] as the training data. After filtering for single-face images and enforcing a face similarity threshold greater than 0.75, we constructed a training set of 10,444 pairs of images containing 850 identities. We further annotated these image with textual descriptions using Qwen3-VL [ 1 ]. It’s worth noting that, to avoid textual interference and leakage of reference information, the annotation process deliberately avoids including identity-related attributes such as appearance or gender. Instead, the descriptions focus solely on actions and scene context. For example, a typical annotation takes the form “ a person rests on a stone with a rose in hand, surrounded by flowers in a wooded area. ”
+
+Evaluation . Since existing identity evaluation protocols are primarily based on facial consistency, we construct a holistic identity consistency benchmark, Pexels-100, from full-body human images collected from the Pexels 1. We used ChatGPT [ 18 ] to generate 100 text prompts and paired them with these images. To evaluate holistic identity consistency, we adopt face similarity, person re-identification (ReID) score, and DINOv2 score [ 21 ] as quantitative metrics. Face similarity is computed using ArcFace model [ 3], while ReID score is measured using TransMatcher [ 15 ], a cross-domain ReID model. In addition, CLIP-T [ 7] is introduced as a complementary measure for text-image alignment. 
+
+4.3 Main Results Quantitative comparison. We compare our approach with representative subject-consistency (Note that EasyControl [ 32 ] is compared here as a subject consistency method.) and face-consistency meth-ods, as well as several strong commercial open-/closed-source image generation systems. As shown in table 1, existing controllable identity-preserving methods exhibit a clear trade-off between overall appearance consistency and facial identity fidelity. Subject-oriented methods (e.g., InstantCharac-ter [ 23 ]) achieve relatively strong ReID performance but underperform in facial similarity, whereas face-centric methods (e.g., InfiniteYou [ 10 ]) preserve facial identity more effectively while sacrificing broader appearance consistency. A similar trade-off can also be observed in several commercial models. Among the compared commercial systems, close source method GPT-Image-2 [ 20 ] delivers the strongest overall identity preservation, while the remaining models still lag behind our method in holistic identity consistency, especially facial fidelity. In contrast, our method mitigates the instability of appearance consistency caused by facial dominance within naive dual-branch framework. This 
+
+> 1https://www.pexels.com/
+
+7Table 1: Quantitative comparison. Compared to non-commercial open-source models, our method achieves the best holistic identity consistency. 
+
+Type Method Face ReID DINOv2 CLIP-T 
+
+Open-source EasyControl [32] 0.0659 0.8967 0.1710 0.2196 OminiControl [22] 0.0893 0.8999 0.1795 0.2360 
+
+UNO [27] 0.1068 0.9105 0.2561 0.2212 Kontext [11] 0.4910 0.9161 0.2964 0.2150 InstantCharacter [23] 0.1514 0.9118 0.2300 0.2119 InfiniteYou [10] 0.7522 0.8852 0.2094 0.1678 Visual Persona [17] 0.2242 0.9102 0.2242 0.2357 Qwen-Image [26] 0.4640 0.9230 0.2486 0.2279 JoyAI-Image [9] 0.3130 0.9230 0.2538 0.2219 Upcoming Ours 0.7875 0.9122 0.3202 0.2008 Closed-source Nano banana [4] 0.4948 0.9251 0.2316 0.2316 Nano banana2 [5] 0.5933 0.9187 0.2528 0.2260 GPT-Image-1.5 [19] 0.3280 0.9213 0.3305 0.2258 GPT-Image-2 [20] 0.8519 0.9291 0.3278 0.2249 Ours NDB Kontext  InstantCharacter InfiniteYou Qwen -Image     
+
+> A person checks a
+> schedule in a station
+> hall with displays.
+> A person sits resting
+> on concrete steps
+> outside a building
+> entrance.
+> A person greets
+> someone at a doorway
+> inside a building.
+> A person rests on a
+> bench in a paved area.
+> Face Score: 0.87 0.81 0.09 0.86 0.45
+> Ref image Text prompt
+> 0.51
+> Face Score: 0.77 0.75 0.33 0.83 0.29 0.53
+> Face Score: 0.85 0.80 0.01 0.85 0.56 0.46
+> Face Score: 0.80 0.76 0.04 0.79 0.60 0.65
+
+Figure 4: Qualitative comparison across different methods. “NDB” stands for Naive Dual-Branch. “Face score” represents the similarity between the generated image and the reference image. Our method achieves the best results in terms of holistic consistency (including appearance and face). Please zoom in for better visualization. Best viewed in color. results in a more balanced trade-off between facial fidelity and appearance consistency, outperforming existing open-source model while remaining competitive with commercial systems, and providing an interpretable and trainable framework for holistic identity-preserving person image generation. 
+
+Qualitative comparison. We provide qualitative comparisons with representative open-source methods in fig. 4 to visually assess identity consistency across facial and appearance cues. As shown in the figure, different methods exhibit different trade-offs between facial similarity and overall appearance preservation. InfiniteYou [ 10 ] preserves facial identity slightly better than our method in some cases, but often fails to maintain consistent clothing and broader appearance details. In contrast, several other methods preserve overall appearance more reasonably, yet their generated faces are 8Table 2: Effectiveness of components.                     
+
+> Method Face ReID DINOv2 CLIP-T
+> NDB 0.7746 0.9100 0.3024 0.1987 NDB + ATG 0.7933 0.9113 0.3143 0.2017 NDB + RAO 0.7808 0.9099 0.3031 0.2001 Ours 0.7875 0.9122 0.3202 0.2008
+
+Table 3: Comparison of optimization strategies.                     
+
+> Method Face ReID DINOv2 CLIP-T
+> MSE 0.7801 0.9096 0.2974 0.1988 LS 0.7638 0.9097 0.3080 0.2015 Fairgrad 0.7778 0.9106 0.3157 0.2003 Ours 0.7875 0.9122 0.3202 0.2008
+
+noticeably less similar to the reference identity. The naive dual-branch (NDB) partially improves this trade-off and generally maintains facial identity well, but still suffers from unstable branch coordination, with clothing details occasionally degrading or becoming inconsistent. Compared with these methods, our approach achieves a more favorable trade-off between facial fidelity and appearance preservation. While not always yielding the strongest facial similarity, it better maintains both facial identity and overall appearance consistency simultaneously, resulting in more coherent identity preservation across diverse scenarios. 
+
+4.4 Ablation Studies Effectiveness of Component. We conduct component ablations to evaluate the contributions of Adaptive Temporal Gating (ATG) and Region-Aware Optimization (RAO) on top of the naive dual-branch baseline (NDB). As shown in table 2, both ATG and RAO contribute to performance improvements to varying degrees, validating the effectiveness of the proposed components. Notably, the full model does not achieve the highest Face and CLIP-T scores, which is in line with our expected goals. Specifically, the proposed DBS (ATG + RAO) is not designed to maximize facial similarity alone, but rather to improve holistic identity consistency by coordinating facial and appearance cues. The relatively small variation in CLIP-T scores is also expected, as our method adjusts feature injection through lightweight gating, without modifying the backbone representation learning itself. Overall, these results demonstrate that ATG and RAO are complementary, and their combination leads to more comprehensive identity preservation. 
+
+Analysis of Optimization Strategy. To examine the effect of the proposed region-aware optimization, we compare it with several alternative objective formulations, including: (1) MSE, which directly uses the original regional MSE objective; (2) LS, which linearly sums the face, appearance, and global losses; and (3) FairGrad [ 25 ], which automatically adjusts regional loss weights based on gradient balancing. As shown in table 3, the compared alternatives exhibit different limitations in coordinating heterogeneous regional supervision. Direct MSE optimization lacks explicit handling of the distinct roles and scales of facial, appearance, and global regions. LS treats all objectives uniformly, which may lead to suboptimal coordination when these objectives compete during training. FairGrad introduces adaptive weighting, but it remains agnostic to the distinct semantic priorities of facial, appearance, and global supervision under cross-granularity interference. In comparison, our region-aware optimization provides a more consistent trade-off across regional objectives by maintaining global reconstruction 
+
+## 5 Conclusion 
+
+This paper addresses the problem of holistic identity consistency in personalized person image generation and introduces a naive dual-branch method (NDB) that integrates a subject (appearance) consistency branch and a face consistency branch. However, this simple combination suffers from generation instability due to heterogeneous inter-branch interactions and imbalanced signal strengths. To address this issue, we further propose Dynamic Balancing Scaling (DBS), a fine-tuning strategy that improves face and appearance identity coordination through adaptive temporal gating and region-aware optimization. DBS achieves a better balance between facial fidelity and appearance consistency by mitigating the dominance of the facial branch and promoting more effective region-aware guidance. We also introduce Pexels-100, a benchmark for evaluating holistic identity consistency. Extensive evaluation on this benchmark demonstrate that our method produces more coherent holistic identity preservation compared to existing open-source methods. It is worth mentioning that our method provides a controllable basic framework for holistic identity modeling. 96 Limitations and Societal Impact 
+
+Limitations . While the proposed method improves holistic identity consistency, it relies primarily on gating-based modulation and does not modify the underlying feature learning of the backbone model. As a result, it may still struggle in scenarios involving complex human poses or fine-grained structures, such as hands, where distortions or artifacts can occur. This limitation is largely inherited from the capacity of the underlying diffusion model and remains a common challenge in human image generation, as shown in fig. 5. Future work may explore integrating stronger structural priors or geometry-aware refinement modules to enhance feature learning and further improve the modeling of complex structures. 
+
+Societal Impact . The ability to generate identity-consistent portraits enables applications in digital content creation and virtual media. However, it also raises concerns regarding privacy, portrait rights, and potential misuse for identity impersonation or deepfake generation. These risks may be mitigated by complementary efforts in AI-generated content detection and authentication, such as forgery detection and watermarking techniques. We advocate for the responsible use of such technologies within appropriate ethical and legal frameworks. Nano Banana2 GPT -Image -2Ours 
+
+Figure 5: Modeling complex human poses or fine-grained structures remains challenging. 
+
+## References 
+
+[1] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, et al. Qwen3-vl technical report. arXiv preprint arXiv:2511.21631 , 2025. [2] Black Forest Labs. FLUX.1 Release: Announcing Black Forest Labs. https:// blackforestlabs.ai/announcing-black-forest-labs/ , 2024. Accessed: 2026-04-30. [3] Jiankang Deng, Jia Guo, Niannan Xue, and Stefanos Zafeiriou. Arcface: Additive angular margin loss for deep face recognition. In CVPR , 2019. [4] Google. Introducing nano banana pro. https://blog.google/innovation-and-ai/ products/nano-banana-pro/ , 2025. Accessed: 2026-04-30. [5] Google. Nano banana 2: Google’s latest ai image generation model, 2026. Accessed: 2026-04-30. [6] Zinan Guo, Yanze Wu, Zhuowei Chen, Lang Chen, Peng Zhang, and Qian He. Pulid: Pure and lightning id customization via contrastive alignment. NeurIPS , 2024. [7] Jack Hessel, Ari Holtzman, Maxwell Forbes, Ronan Le Bras, and Yejin Choi. Clipscore: A reference-free evaluation metric for image captioning. In EMNLP , 2021. [8] Jiehui Huang, Xiao Dong, Wenhui Song, Zheng Chong, Zhenchao Tang, Jun Zhou, Yuhao Cheng, Long Chen, Hanhui Li, Yiqiang Yan, Shengcai Liao, and Xiaodan Liang. Consistentid: Portrait generation with multimodal fine-grained identity preserving. IEEE Transactions on Pattern Analysis and Machine Intelligence , 48(5):5639–5654, 2026. 10 [9] JD OpenSource. Joyai-image: A unified framework for image generation and editing. https: //github.com/jd-opensource/JoyAI-Image , 2025. Accessed: 2026-04-30. [10] Liming Jiang, Qing Yan, Yumin Jia, Zichuan Liu, Hao Kang, and Xin Lu. Infiniteyou: Flexible photo recrafting while preserving your identity. In ICCV , 2025. [11] Black Forest Labs, Stephen Batifol, Andreas Blattmann, Frederic Boesel, Saksham Consul, Cyril Diagne, Tim Dockhorn, Jack English, Zion English, Patrick Esser, et al. Flux. 1 kontext: Flow matching for in-context image generation and editing in latent space. arXiv preprint arXiv:2506.15742 , 2025. [12] Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi. Blip-2: Bootstrapping language-image pre-training with frozen image encoders and large language models. In ICML , 2023. [13] Zhen Li, Mingdeng Cao, Xintao Wang, Zhongang Qi, Ming-Ming Cheng, and Ying Shan. Photomaker: Customizing realistic human photos via stacked id embedding. In CVPR , 2024. [14] Jie Liang, Hui Zeng, Miaomiao Cui, Xuansong Xie, and Lei Zhang. Ppr10k: A large-scale portrait photo retouching dataset with human-region mask and group-level consistency. In 
+
+CVPR , 2021. [15] Shengcai Liao and Ling Shao. Transmatcher: Deep image matching through transformers for generalizable person re-identification. NeurIPS , 2021. [16] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In ICLR , 2019. [17] Jisu Nam, Soowon Son, Zhan Xu, Jing Shi, Difan Liu, Feng Liu, Seungryong Kim, and Yang Zhou. Visual persona: Foundation model for full-body human customization. In CVPR , 2025. [18] OpenAI. Chatgpt. https://chat.openai.com/ , 2024. Accessed: 2026-04-30. [19] OpenAI. Gpt-image-1.5. https://platform.openai.com/docs/guides/images , 2024. Accessed: 2026-04-30. [20] OpenAI. Gpt-image-2. https://platform.openai.com/docs/guides/images , 2025. Accessed: 2026-04-30. [21] Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al. Dinov2: Learning robust visual features without supervision. Transactions on Machine Learning Research Journal ,2024. [22] Zhenxiong Tan, Songhua Liu, Xingyi Yang, Qiaochu Xue, and Xinchao Wang. Ominicontrol: Minimal and universal control for diffusion transformer. In ICCV , 2025. [23] Jiale Tao, Yanbing Zhang, Qixun Wang, Yiji Cheng, Haofan Wang, Xu Bai, Zhengguang Zhou, Ruihuang Li, Linqing Wang, Chunyu Wang, et al. Instantcharacter: Personalize any characters with a scalable diffusion transformer framework. arXiv preprint arXiv:2504.12395 , 2025. [24] Qixun Wang, Xu Bai, Haofan Wang, Zekui Qin, Anthony Chen, Huaxia Li, Xu Tang, and Yao Hu. Instantid: Zero-shot identity-preserving generation in seconds. arXiv preprint arXiv:2401.07519 ,2024. [25] Yuxuan Wang, Tianwei Cao, Huayu Zhang, Zhongjiang He, Kongming Liang, and Zhanyu Ma. Fairhuman: Boosting hand and face quality in human image generation with minimum potential delay fairness in diffusion models. In ICCV , 2025. [26] Chenfei Wu, Jiahao Li, Jingren Zhou, Junyang Lin, Kaiyuan Gao, Kun Yan, Sheng-ming Yin, Shuai Bai, Xiao Xu, Yilei Chen, et al. Qwen-image technical report. arXiv preprint arXiv:2508.02324 , 2025. [27] Shaojin Wu, Mengqi Huang, Wenxu Wu, Yufeng Cheng, Fei Ding, and Qian He. Less-to-more generalization: Unlocking more controllability by in-context generation. In ICCV , 2025. 11 [28] Hu Ye, Jun Zhang, Sibo Liu, Xiao Han, and Wei Yang. Ip-adapter: Text compatible image prompt adapter for text-to-image diffusion models. arXiv preprint arXiv:2308.06721 , 2023. [29] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer. Sigmoid loss for language image pre-training. In ICCV , 2023. [30] Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. Adding conditional control to text-to-image diffusion models. In ICCV , 2023. [31] Shilong Zhang, Lianghua Huang, Xi Chen, Yifei Zhang, Zhi-Fan Wu, Yutong Feng, Wei Wang, Yujun Shen, Yu Liu, and Ping Luo. Flashface: Human image personalization with high-fidelity identity preservation. arXiv preprint arXiv:2403.17008 , 2024. [32] Yuxuan Zhang, Yirui Yuan, Yiren Song, Haofan Wang, and Jiaming Liu. Easycontrol: Adding efficient and flexible control for diffusion transformer. In ICCV , 2025. 12
