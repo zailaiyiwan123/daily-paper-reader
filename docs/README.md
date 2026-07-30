@@ -6,55 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-29
-- 运行时间：2026-07-29 21:41:29 UTC
+- 最新运行日期：2026-07-30
+- 运行时间：2026-07-30 21:48:48 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：6
-- 速读区：5
+- 本次总论文数：4
+- 精读区：3
+- 速读区：1
 
 ### 今日简报（AI）
-1) 今日精选6篇精读、5篇速读，聚焦个性化语言毒性敏感性和图像身份保持两大前沿方向。  
-2) 最值得关注《Beyond a Global Norm》探索无重训练下的毒性敏感性个性化，以及《Beyond Facial Consistency》实现全身份保持的人物图像生成，均获9.0分。  
-3) 建议普通读者优先阅读两篇高分精读，了解如何在不重新训练模型的前提下实现个性化安全控制与图像生成。
-- 详情：[/202607/29/README](/202607/29/README)
+今天聚焦用户画像生成与多目标检索，精读两篇9分论文，速读一篇工业级可控生成式检索方案。最值得关注用户动态画像的迭代优化方法及基于异构数据的层级理解基准，均直接指导个性化Agent设计。普通读者可关注利用隐式反馈流实现细粒度建模，以及多目标推荐场景下的可控生成检索实践。
+- 详情：[/202607/30/README](/202607/30/README)
 
 ### 精读区论文标签
-1. [Beyond a Global Norm: Personalizing Toxicity Sensitivity in Language Models Without Retraining](/202607/29/2607.23175v1-beyond-a-global-norm-personalizing-toxicity-sensitivity-in-language-models-without-retraining)  
+1. [Learning Dynamic User Personas from Implicit Interaction Streams via Iterative Refinement](/202607/30/2607.26473v1-learning-dynamic-user-personas-from-implicit-interaction-streams-via-iterative-refinement)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：无需重训练的语言模型毒性敏感度个性化
-2. [Beyond Facial Consistency: Personalized Person Image Generation with Holistic Identity Preservation](/202607/29/2607.25622v1-beyond-facial-consistency-personalized-person-image-generation-with-holistic-identity-preservation)  
+   evidence：通过隐式交互学习动态用户画像来实现大语言模型个性化
+2. [Setoka: A Benchmark for Hierarchical User Understanding in Personalized Agents over Heterogeneous Data](/202607/30/2607.27056v1-setoka-a-benchmark-for-hierarchical-user-understanding-in-personalized-agents-over-heterogeneous-data)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：个性化人物图像生成并保持整体身份
-3. [Hypothesis-Driven Shelf Generation for Personalised Recommendation](/202607/29/2607.25823v1-hypothesis-driven-shelf-generation-for-personalised-recommendation)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：假设驱动的货架生成用于个性化推荐，直接生成个性化内容货架
-4. [Controlling Embedding Spaces with Text-Conditioned Transformations](/202607/29/2607.22919v1-controlling-embedding-spaces-with-text-conditioned-transformations)  
+   evidence：个性化智能体中的层次化用户理解
+3. [Reward Guided Decoding for Generative Recommendation](/202607/30/2607.25344v1-reward-guided-decoding-for-generative-recommendation)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：文本条件变换实现属性控制，可用于个性化多模态生成
-5. [Auditing Alignment Controllability in LLMs via Political Axes](/202607/29/2607.23519v1-auditing-alignment-controllability-in-llms-via-political-axes)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：研究LLM中个性化层（系统提示）的可控性
-6. [REPREC: Representation Driven Parameter-Efficient Recommendation System](/202607/29/2607.24845v1-reprec-representation-driven-parameter-efficient-recommendation-system)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：基于LLM的推荐中用户个性化
+   evidence：奖励引导解码用于生成式推荐
 
 ### 速读区论文标签
-1. [RecoReward: Recommender-Guided Multimodal Description Generation for Recommendation](/202607/29/2607.25901v1-recoreward-recommender-guided-multimodal-description-generation-for-recommendation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：利用用户行为奖励指导多模态描述生成
-2. [VaLiDRec: Variable-Length LLM-Aligned Semantic IDs for Generative Recommendation](/202607/29/2607.25209v1-validrec-variable-length-llm-aligned-semantic-ids-for-generative-recommendation)  
+1. [Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation](/202607/30/2607.26500v1-multi-decoder-onerec-controllable-generative-retrieval-for-multi-objective-industrial-recommendation)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：可变长LLM对齐语义标识符用于生成式推荐
-3. [Grevo: A Unified Generative Recommendation Framework with Evolutionary Item Indexing](/202607/29/2607.25329v1-grevo-a-unified-generative-recommendation-framework-with-evolutionary-item-indexing)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：演化式物品索引用于生成式推荐
-4. [Understanding Semantic IDs: From Item Representation to Item Selection in Generative Recommendation](/202607/29/2607.24995v1-understanding-semantic-ids-from-item-representation-to-item-selection-in-generative-recommendation)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：研究生成式推荐中的语义ID，对个性化内容生成至关重要
-5. [SPARC: Sequence-aware Progressive Attribute Routing and Compression Framework for Generative Recommendation](/202607/29/2607.25339v1-sparc-sequence-aware-progressive-attribute-routing-and-compression-framework-for-generative-recommendation)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：生成式推荐中的属性路由用于个性化内容
+   evidence：可控生成式检索结合用户上下文与目标自适应
 
 
 <div class="dpr-home-promo-card">

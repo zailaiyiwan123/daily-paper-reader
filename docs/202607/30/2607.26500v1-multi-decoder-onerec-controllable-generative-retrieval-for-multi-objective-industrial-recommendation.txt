@@ -1,0 +1,875 @@
+Title: Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation
+
+URL Source: https://arxiv.org/pdf/2607.26500v1
+
+Published Time: Thu, 30 Jul 2026 00:28:35 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation 
+
+# You Wang ∗
+
+Kuaishou Technology Beijing, China wangyou05@kuaishou.com 
+
+# Zhao Liu ∗
+
+Kuaishou Technology Beijing, China liuzhao09@kuaishou.com 
+
+# Guoping Tang ∗
+
+Kuaishou Technology Beijing, China tangguoping@kuaishou.com 
+
+# Yiqing Yang 
+
+Kuaishou Technology Beijing, China yangyiqing06@kuaishou.com 
+
+# Shuo Su 
+
+Kuaishou Technology Beijing, China sushuo@kuaishou.com 
+
+# Jing Liu 
+
+Kuaishou Technology Beijing, China liujing24@kuaishou.com 
+
+# Naifu Zhou 
+
+Kuaishou Technology Beijing, China zhounaifu@kuaishou.com 
+
+# Xiaoyou Zhou 
+
+Kuaishou Technology Beijing, China zhouxiaoyou@kuaishou.com 
+
+# Wei Jiang 
+
+Kuaishou Technology Beijing, China jiangwei@kuaishou.com 
+
+# Jian Liang 
+
+Kuaishou Technology Beijing, China liangjian03@kuaishou.com 
+
+# Xiao Lv †
+
+Kuaishou Technology Beijing, China lvxiao03@kuaishou.com 
+
+# Ruiming Tang †
+
+Kuaishou Technology Beijing, China tangruiming@kuaishou.com 
+
+# Liyin Hong 
+
+Kuaishou Technology Beijing, China hongliyin@kuaishou.com 
+
+# Wenwu Ou 
+
+Kuaishou Technology Beijing, China luocheng10@kuaishou.com 
+
+## Abstract 
+
+Industrial recommender systems build candidate pools by assigning explicit quotas to objective-specific retrieval routes. This design offers quota control but increasingly fragments modeling, training, and serving as the route set grows. Semantic-ID-based generative retrieval provides a unified alternative, yet a single decoder entan-gles objective policies and limits candidate complementarity. We propose Multi-Decoder OneRec , a controllable framework that combines shared representations, isolated objective adaptation, and coordinated decoding. All objectives share a user-context module and the General Decoder, while each objective adds an isolated, parameter-efficient LoRA expert. During training, exposure-sample next-token prediction (NTP) updates the shared base, target-filtered NTP updates the event-based experts, and Kullback–Leibler (KL)-regularized policy optimization updates the Watch-time expert; gradient routing isolates these updates, and the General Decoder supplies a stop-gradient reference. At inference, explicit route quo-tas allocate the fixed budget and Multi-Decoder Constrained Beam Search reduces cross-route overlap. We publicly release Kwai26 , a large-scale multi-objective benchmark with 1.31 billion raw item-level records, 31.85 million Item-ID entries, and 25.03 million items with valid Semantic IDs, together with predefined splits and an eval-uation protocol. Under the same 512-item retrieval budget, Multi-Decoder OneRec improves over the single-decoder OneRec [ 5]baseline by 1.69%–5.62% across four Recall@512 metrics. In a pro-duction A/B test, it yields relative gains of 0.37% in app usage time per device, 0.19% in Day-7 retained users, 0.19% in devices with at least one share, and 2.09% in new-content Cold-Start. These results 
+
+> ∗Equal contribution.
+> †Corresponding author.
+
+show that generative retrieval can combine shared modeling with objective-specific control and complementary candidate generation. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+## Keywords 
+
+generative recommendation, multi-objective retrieval, industrial recommender systems 
+
+ACM Reference Format: 
+
+You Wang, Zhao Liu, Guoping Tang, Yiqing Yang, Shuo Su, Jing Liu, Naifu Zhou, Xiaoyou Zhou, Wei Jiang, Jian Liang, Xiao Lv, Ruiming Tang, Liyin Hong, and Wenwu Ou. 2027. Multi-Decoder OneRec: Controllable Genera-tive Retrieval for Multi-Objective Industrial Recommendation. In Proceed-ings of The 33rd ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD ’27). ACM, New York, NY, USA, 12 pages. 
+
+## 1 Introduction 
+
+Candidate retrieval in large-scale recommender systems must allo-cate a fixed candidate budget across multiple objectives [ 4, 11 ]. In-dustrial systems combine numerous specialized retrieval routes [ 19 ,32 ] for objectives such as watch time, explicit interactions, and Cold-Start and assign each a configurable budget share [ 11 , 37 ]. This design broadens coverage and directly controls candidate composi-tion. However, scaling the route set fragments model development, training, and serving while increasing computational and mainte-nance overhead. These limitations motivate a unified retriever that shares modeling capacity without sacrificing explicit control over candidate composition.          
+
+> 1arXiv:2607.26500v1 [cs.IR] 29 Jul 2026 KDD ’27, August 2027, San Jose, CA, USA You Wang et al. (a) Traditional Multi-Route Retrieval
+> (b) Single-Decoder Generative Retrieval
+> (c) Multi-Decoder OneRec
+> User History ...
+> Watch-Time Retrieval
+> Interaction Retrieval
+> Cold-Start Retrieval
+> User History
+> User Context
+> Module Decoder
+> quota 1
+> quota 2
+> quota 3
+> User History
+> User
+> Context
+> Module
+> Watch-Time Decoder
+> Interaction Decoder
+> Cold-Start Decoder
+> Controllable , but Fragmented
+> Unified , but Coupled
+> General Decoder
+> Shared ,Isolated , and Coordinated
+> Multi-Decoder
+> Constrained Beam Search
+> ...
+
+Figure 1: Comparison of multi-objective retrieval paradigms. (a) Traditional multi-route retrieval assigns quotas to inde-pendent routes, preserving quota control but fragmenting modeling, training, and serving. (b) Single-decoder genera-tive retrieval shares modeling across objectives but couples their updates and may produce overlapping candidates. (c) Multi-Decoder OneRec shares the user-context module and General Decoder, isolates objective-specific experts, and co-ordinates quota-aware decoding with Multi-Decoder Con-strained Beam Search (MD-CBS). 
+
+Generative retrieval provides the shared modeling needed for this goal by representing each item as a discrete Semantic ID se-quence and generating candidates [ 13 , 17 , 22 , 28 ]. Many unified generators serve multiple objectives with a single decoder. Because all objectives use the same attention and feed-forward layers, joint training couples their generation policies. An update for one ob-jective changes the transformations used by the others, which can cause negative transfer when their supervision signals and pre-ferred candidate distributions diverge [ 18 , 26 ]. Existing methods inject objective information through prompts, task tokens, or be-havior tokens [ 7, 16 , 24 ]. Related approaches use register tokens or context-dependent beginning-of-sequence (BOS) queries [ 15 , 33 ]. When used for objective differentiation, these mechanisms intro-duce only a small amount of objective-specific state, mainly in the input or initial decoding state. The core transformations that de-termine token probabilities remain shared. They therefore change how a common policy is conditioned rather than give each objec-tive dedicated trainable transformations. The objective policies re-main coupled during optimization. At inference, separate objective-conditioned runs may also favor the same high-probability Semantic ID regions and produce overlapping candidate lists under the fixed budget. Panels (a) and (b) of Figure 1 summarize this central trade-off. Traditional multi-route retrieval is controllable but fragmented, whereas single-decoder generative retrieval is unified but coupled. Resolving this trade-off requires satisfying three coupled require-ments. First , shared modeling must support independent objective updates. Reusing user representations and a common Semantic ID (SID) generation prior avoids full-decoder duplication, but each objective still needs enough trainable capacity to adapt without perturbing the general policy or other objectives. Copying a com-plete decoder for every objective would restore independence only by recreating model, training, and serving fragmentation. Second ,optimization must accommodate heterogeneous feedback while preserving generation validity. Different objectives may require dif-ferent sample construction and learning signals, yet specialization must retain the valid SID distribution learned from broad expo-sure. Third , specialized policies must contribute complementary candidates. Independent policies may still produce overlapping high-probability candidates, so explicit quotas and coordinated search are needed to prevent overlap from wasting the fixed budget. A practical framework must therefore be shared in representation, isolated in objective-specific updates, and coordinated in decoding. Panel (c) of Figure 1 presents our solution, Multi-Decoder OneRec . (1) Shared yet isolated architecture. A shared user-context module provides reusable user representations, while the General Decoder supplies base weights and a common SID gener-ation prior. Each objective attaches an isolated expert containing Low-Rank Adaptation (LoRA) [ 10 ] updates, an objective-specific BOS embedding, and an additive offset to the shared SID embed-ding table. Together with the General Decoder, the expert forms an objective-specific decoder. (2) Feedback-adaptive optimization with gradient isolation. The General Decoder and objective ex-perts are trained concurrently from separate supervision streams with disjoint gradient paths. Exposure-sample NTP updates the shared base, while each objective loss updates only its correspond-ing expert state, with gradients stopped at the shared base param-eters. Event-based experts use NTP on objective-filtered samples, whereas the Watch-time expert uses policy optimization with a user-history-normalized relative reward [ 5 , 23 , 36 ]. KL regulariza-tion uses the stop-gradient distribution of the General Decoder as the reference, anchoring the Watch-time expert to the common SID prior while the General Decoder continues learning from exposure samples. (3) Quota-aware coordinated decoding. Multi-Decoder Constrained Beam Search (MD-CBS) assigns each objective-specific decoder an explicit quota and masks SID prefixes claimed by earlier routes at a configurable decoding level [ 1, 21 , 27 ]. The constraint level determines whether exact SIDs or broader semantic regions are excluded. The General Decoder runs last and backfills any resid-ual budget with legal candidates not selected earlier. We evaluate Multi-Decoder OneRec offline and in production. For reproducible offline evaluation, we publicly release Kwai26 , a large-scale benchmark for multi-objective generative retrieval with 1.31 billion raw item-level records, 31.85 million Item-ID entries, and 25.03 million items with valid Semantic IDs. Under the same 512-item retrieval budget, Multi-Decoder OneRec achieves relative gains of 1.69%–5.62% over the single-decoder OneRec [ 5] baseline across four Recall@512 metrics. In the production A/B test, it yields relative gains of 0.37% in app usage time per device, 0.19% in Day-7 retained users, 0.19% in devices with at least one share, and 2.09% in Cold-Start. Together, the offline and online results show that Multi-Decoder OneRec improves specialized objectives without sacrificing general exposure retrieval and that these gains translate into measurable production value. Our main contributions are: 
+
+• To the best of our knowledge, Multi-Decoder OneRec is the first framework to equip a shared SID retriever with objective-specific objective-specific decoders, gradient-isolated adapta-tion, explicit per-route quotas, and cross-decoder constrained search under a fixed candidate budget.  
+
+> 2Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation KDD ’27, August 2027, San Jose, CA, USA
+
+• We develop expert optimization with isolated gradient paths and Multi-Decoder Constrained Beam Search (MD-CBS). NTP on objective-filtered samples and policy optimization with rel-ative rewards address event-based and continuous feedback, respectively, while reference regularization preserves the gen-eral SID prior. MD-CBS combines explicit route quotas with prefix constraints across routes to reduce overlap and improve candidate complementarity. 
+
+• We publicly release Kwai26 , a billion-scale benchmark for multi-objective generative retrieval, together with predefined splits and an evaluation protocol. Extensive offline experiments and a production A/B test validate Multi-Decoder OneRec at industrial scale. 
+
+## 2 Related Work 2.1 Generative Recommendation 
+
+Semantic ID Modeling. Generative retrieval produces Semantic ID (SID) sequences instead of scoring a fixed catalog as in SAS-Rec [ 14 ] and BERT4Rec [ 25 ]. TIGER [ 22 ] introduced hierarchical SIDs; later work explores self-supervision [ 13 ], multi-signal learn-ing [ 28 ], contextual tokenization or representation [ 9, 15 ], and joint tokenizer–recommender optimization [ 2 ]. RPG [ 8 ] and Diff-GRM [ 17 ] improve decoding through parallel generation and dis-crete diffusion, respectively. These methods focus on one generator rather than fixed-budget, gradient-isolated objective policies. 
+
+Preference Alignment. Standard NTP does not encode graded feedback or downstream utility. OneRec [ 5, 35 ] and OneRec-V2 [ 36 ]introduce iterative alignment, duration-aware rewards, and group-based optimization. GenRec [ 38 ] combines page-wise NTP, GRPO-SR, and hybrid rewards; GFlowGR [ 30 ] optimizes generation trajec-tories; and UGR [ 6 ] models reward uncertainty. All generally align one policy, leaving isolated updates across concurrent objectives unexplored. 
+
+## 2.2 Multi-Objective Retrieval 
+
+Objective-Specific Adaptation. P5 [ 7], MBGen [ 16 ], and Gen-SAR [ 24 ] condition shared generators with prompts or behavior tokens, but do not provide objective-specific transformations or gradient isolation. PinRec [ 3] conditions a unified model on surface-specific outcomes, while EAGER [ 29 ] separates behavioral and semantic token streams. MMoE [ 18 ] and PLE [ 26 ] motivate shared– specific decomposition, and LoRA [ 10 ] enables parameter-efficient adaptation. 
+
+Quota-Aware Decoding. Multi-route retrieval studies route fu-sion and trigger selection [ 11 , 19 , 32 , 37 ], retaining quota con-trol through route-specific models or serving logic. Diverse beam search [ 27 ] diversifies one decoder, while constrained decoding [ 1,21 ] restricts tokens or prefixes; both face known limitations in generative retrieval [ 31 ]. Prior work does not coordinate quotas across objective-specific generators in one SID space. Multi-Decoder OneRec combines a shared SID prior, isolated adaptation, and quota-aware cross-route decoding. 
+
+## 3 Problem Formulation 
+
+Let U and I be the user and item sets, and ISID ⊆ I the retrievable items with valid Semantic IDs. At user 𝑢 ’s request time 𝜏 , the session is the ordered served-item list and the available history is strictly time-truncated: 𝐻 𝜏 𝑢 = (𝑥 1, . . . , 𝑥 𝑛 ). Each pre-𝜏 interaction records an Item-ID, content and author features, feedback, and a timestamp. Following generative retrieval [5, 22], item 𝑖 ∈ I SID has code 
+
+z(𝑖 ) = (𝑧 0 (𝑖 ), . . . , 𝑧 𝐿 −1 (𝑖 )) , 𝑧 ℓ (𝑖 ) ∈ V ℓ , 0 ≤ ℓ < 𝐿, (1) where Vℓ is the level-ℓ vocabulary. Routes share the canonical code-to-item mapping. Let R = {gen } ∪ T with objective routes 
+
+T = {1, . . . , 𝑀 }. Route 𝑟 adds a residual to the General Decoder’s base embedding 𝐸 gen ,ℓ :
+
+e𝑟,ℓ (𝑧 ) =  𝐸 gen ,ℓ + Δ𝐸 𝑟,ℓ 
+
+ [𝑧 ], 𝑟 ∈ R , (2) where Δ𝐸 gen ,ℓ = 0; item identity is shared, but its decoding repre-sentation is route-adaptive. Route gen performs exposure retrieval. The specialized objec-tives are Long-View, Like, and Watch-time offline, and Watch-time, Share, and Cold-Start in production; only their labels and supervi-sion differ. Each route autoregressively produces ordered list 𝑅 𝑟 (𝑢 )
+
+via 
+
+𝑝 𝑟 (z | 𝐻 𝜏 𝑢 ) =
+
+> 𝐿 −1
+
+Ö
+
+> ℓ=0
+
+𝑝 𝑟 (𝑧 ℓ | 𝑧 <ℓ , 𝐻 𝜏 𝑢 ), (3) where 𝑧 <ℓ is the generated prefix. Quotas satisfy 𝑞 gen + Í𝑡 ∈ T 𝑞 𝑡 = 𝐵 
+
+and yield candidate pool 
+
+𝐶 (𝑢 ; 𝐵 ) = Merge 𝜋 ({( 𝑅 𝑟 (𝑢 ), 𝑞 𝑟 )} 𝑟 ∈ R ) , |𝐶 (𝑢 ; 𝐵 )| ≤ 𝐵, (4) where Merge 𝜋 follows route order 𝜋 , removes items accepted ear-lier, and retains the current route’s highest-probability legal items. Before merging, constrained decoding prevents later routes from regenerating selected prefixes; the General Decoder runs last and re-trieves up to its quota of unseen legal items. Uncoordinated overlap loses capacity according to 
+
+Dup (𝑢 ) = 1 − |Ð𝑟 ∈ R 𝐶 𝑟 (𝑢 ; 𝑞 𝑟 )| 
+
+Í𝑟 ∈ R |𝐶 𝑟 (𝑢 ; 𝑞 𝑟 )| , (5) where 𝐶 𝑟 (𝑢 ; 𝑞 𝑟 ) is route 𝑟 ’s quota-truncated, pre-merge output. For discrete objective 𝑎 with held-out targets 𝑌 𝑎 (𝑢 ), item-level recall is 
+
+Recall (𝑎 ) @𝐵 =
+
+Í𝑢 |𝐶 (𝑢 ; 𝐵 ) ∩ 𝑌 𝑎 (𝑢 )| 
+
+Í𝑢 |𝑌 𝑎 (𝑢 )| . (6) For Watch-time, weighted recall is 
+
+WTRecall@ 𝐵 =
+
+Í𝑢 
+
+Í𝑖 ∈𝑌 (𝑢 ) 𝑤 𝑢,𝑖 I[𝑖 ∈ 𝐶 (𝑢 ; 𝐵 )] 
+
+Í𝑢 
+
+Í𝑖 ∈𝑌 (𝑢 ) 𝑤 𝑢,𝑖 
+
+, (7) where 𝑌 (𝑢 ) contains all held-out targets, 𝑤 𝑢,𝑖 is observed watch time, and I[·] is the indicator. We seek higher general and objective-specific recall under budget 𝐵 , bounded task parameters and de-coding cost, and low duplication. LoRA-expert-𝑡 gradients cannot enter the shared base or other experts, while base NTP continues updating shared parameters.                 
+
+> 3KDD ’27, August 2027, San Jose, CA, USA You Wang et al. User History
+> Causal
+> Self-Attention
+> MoE
+> Add & Norm
+> User Context
+> Module
+> (a) Shared Architecture:
+> Backbone with Objective-Specific Decoders
+> LoRA
+> Watch-Time Decoder
+> Long-View Decoder
+> Cold-Start Decoder
+> Reward :
+> group-normalized
+> watch-time
+> Optimization :
+> L-GBPO + KL
+> Sample Selection :
+> threshold-based
+> filtering
+> Optimization :
+> SFT
+> Optimization :
+> SFT
+> Sample Selection :
+> label-filtered
+> (b) Isolated Training:
+> Feedback-Adaptive Decoder Optimization
+> (c) Coordinated Inference :
+> Quota-Aware Multi-Decoder
+> Constrained Beam Search
+> Long-View General (last)
+> duplicate
+> prefix (2, 2)
+> level 0
+> (0, 1,0)(2,2,2)(4,3,4 )
+> level 1
+> level 2
+> Item
+> +Additional Objective-Specific Decoders
+> SID Embedding:
+> ...
+> Cross-Attention
+> stop-gradient
+> Long-View
+> Candidates
+> ... ... General
+> Backfill
+> General Decoder
+> +
+> Quota-Aware Merge
+
+Figure 2: Overview of Multi-Decoder OneRec. (a) Shared architecture: user history is encoded once by the user-context module and reused by a fully parameterized General Decoder and all objective-specific decoders. Each objective reuses the shared backbone while adding an isolated BOS embedding, SID embedding residual Δ𝐸 𝑡 , and LoRA expert; its gradients are stopped at the shared parameters. (b) Isolated training: each decoder uses objective-appropriate supervision. The Watch-time Decoder uses group-normalized watch-time rewards with L-GBPO and KL regularization, whereas Long-View, Cold-Start, and other discrete-feedback decoders use filtered samples with SFT. (c) Coordinated inference: quota-aware MD-CBS executes routes by priority, masks SID prefixes already claimed by earlier routes to prevent duplicate beam expansion, and runs the General Decoder last to backfill the fixed-budget candidate pool before quota-aware merging. 
+
+## 4 Multi-Decoder OneRec 
+
+As shown in Figure 2, Multi-Decoder OneRec builds multiple objective-specific decoders on a shared OneRec-style encoder–decoder back-bone [ 5, 35 ]. It contains a user-context module, a fully parame-terized General Decoder, and 𝑀 objective-specific decoders. The General Decoder learns general exposure retrieval and provides the common SID generation prior. Objective LoRA expert 𝑡 reuses the base weights and adds only a task BOS embedding, a SID embed-ding residual, and LoRA parameters. Shared parameters capture transferable user interests and SID syntax. Isolated task parameters support gradient-isolated objective updates. Coordinated decoding turns the policy differences into complementary candidates under a fixed budget. During concurrent optimization, the exposure loss updates the shared user-context module and General Decoder. Each objective loss stops at these shared parameters and updates only its corresponding expert, leaving every other expert unchanged. 
+
+## 4.1 User-Context Prefilling 
+
+As illustrated in Figure 2(a), on the encoder side, each request is rep-resented by two time-truncated behavior views: the 20 most recent interacted videos and 256 Long-View videos from the user’s histori-cal sequence. This design lets the model jointly capture short-term intent and long-term preference before any objective-specific decod-ing is performed. For each video, we construct a five-field feature tuple, i.e. , Item-ID, author ID, tag, time difference, and watch time. The fields are first mapped into embeddings and then processed by a four-block encoder. Each encoder block contains feature-level cross-attention and sequence-level self-attention. The cross-attention sublayer fuses heterogeneous item features, while the self-attention sublayer models dependencies inside the user’s behavior sequence. After stacked encoding, the model obtains the user-context states 
+
+H𝑢 = Enc (𝐻 𝜏 𝑢 ), which are computed once per request and reused as the keys and values of the cross-attention modules in all decoder routes. 
+
+## 4.2 Multi-Decoder 
+
+Figure 2(a) also shows the shared General Decoder and its light-weight objective-specific branches. On the decoder side, each tar-get video is represented by a sequence of discrete Semantic IDs (SIDs). Each SID token is mapped to a vector through an embedding lookup table. During training, the input to the General Decoder (Decoder 0) is formed by concatenating a learnable beginning-of-sequence (BOS) embedding with the right-shifted target SID se-quence. The resulting sequence is processed by stacked Transformer decoder blocks, each consisting of masked self-attention, cross-attention, and a feed-forward network (FFN). Masked self-attention preserves the autoregressive factorization of SID generation, cross-attention injects the encoded user-interest context H𝑢 , and the FFN further transforms the token representations nonlinearly. To adapt the shared generation backbone to different down-stream objectives without duplicating the full decoder, we intro-duce an independent set of LoRA parameters for each task on top of Decoder 0. In industrial recommender systems, maintaining a full decoder for every task would incur prohibitive computational, memory, and deployment costs as the number of tasks grows. More-over, many downstream objectives have highly sparse supervision, making it difficult to adequately train a large task-specific decoder  
+
+> 4Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation KDD ’27, August 2027, San Jose, CA, USA
+
+and leading to poorly estimated parameters and suboptimal gen-eralization. LoRA instead enables parameter-efficient task special-ization while preserving the knowledge shared through the back-bone. Specifically, LoRA updates are attached to the query, key, and value projection matrices in both masked self-attention and cross-attention. For task 𝑡 , each adapted projection is written as: 
+
+W(𝑡 ) = W0 + ΔW(𝑡 ) = W0 + B(𝑡 ) A(𝑡 ) , (8) where W0 is the shared projection matrix inherited from Decoder 0,
+
+ΔW(𝑡 ) is the task-specific low-rank update, and A(𝑡 ) ∈ R𝑟 𝑡 ×𝑑 in and 
+
+B(𝑡 ) ∈ R𝑑 out ×𝑟 𝑡 are independently learned low-rank matrices for task 𝑡 ; 𝑑 in and 𝑑 out are the projection’s input and output dimensions, with 𝑟 𝑡 ≪ min (𝑑 in , 𝑑 out ). These low-rank increments let each task learn its own representation and generation pattern while reusing the general SID-generation capability of the shared decoder. In addition, every downstream task owns an independent learn-able BOS embedding b𝑡 to explicitly inject task information at the start of generation. Its SID lookup table is also composed of the shared Decoder 0 embedding and a task-specific residual, as defined in Eq. (2). We collect the complete trainable state of task 𝑡 as: 
+
+𝜙 𝑡 = {A(𝑡 ) , B(𝑡 ) , b𝑡 , Δ𝐸 𝑡 }, (9) where A(𝑡 ) and B(𝑡 ) denote all low-rank matrices attached to the attention projections and Δ𝐸 𝑡 = {Δ𝐸 𝑡,ℓ }𝐿 −1 
+
+> ℓ=0
+
+collects the SID em-bedding residuals across levels. The state 𝜙 𝑡 is isolated from all other experts, so updating one objective does not alter the General Decoder or another LoRA expert. 
+
+## 4.3 Objective-Specific Training 
+
+As summarized in Figure 2(b), the supervision samples assigned to a decoder and its loss jointly shape decoder behavior. Sample selection defines the target behavior, while the objective determines how the decoder updates its generation policy toward that behav-ior. To prevent newly introduced objectives from interfering with Decoder 0 or with one another, gradients from every objective loss are prevented from propagating into the shared user-context mod-ule and General Decoder; the exposure loss continues to update both shared components. 
+
+Next-Token Prediction. The General Decoder is trained on ex-posed items using autoregressive next-token prediction. Given user context 𝑐 and target SID y = z(𝑖 ) = (𝑦 0, . . . , 𝑦 𝐿 −1), we write the base loss as: 
+
+Lbase = −
+
+> 𝐿 −1
+
+∑︁ 
+
+> ℓ=0
+
+log 𝑝 gen (𝑦 ℓ | 𝑐, 𝑦 <ℓ ), (10) Moreover, discrete-task LoRA experts are trained only on samples satisfying the corresponding behavior condition. The Like decoder uses liked items, and the Long-View decoder uses Long-View items. We write the task supervised fine-tuning (SFT) loss as: 
+
+L (𝑡 ) 
+
+> SFT
+
+= −∑︁ 
+
+> 𝑖 𝐿 −1
+
+∑︁ 
+
+> ℓ=0
+
+𝑚 (𝑡 ) 
+
+> 𝑖
+
+log 𝑝 𝑡 (𝑦 𝑖,ℓ | 𝑐 𝑖 , 𝑦 𝑖, <ℓ ), (11) where 𝑚 (𝑡 ) 
+
+> 𝑖
+
+indicates whether sample 𝑖 is valid for objective 𝑡 . For this objective stream, only 𝜙 𝑡 receives gradients, so its update changes neither the shared base nor another expert. 
+
+Reward-Based Policy Optimization. For the continuous Watch-time objective considered here, binarized NTP would provide only coarse supervision because thresholding collapses preference mag-nitudes among positive samples. We instead construct a person-alized relative reward that preserves the strength of continuous feedback. For sample 𝑖 , let G𝑖 contain its watch time and those of the user’s latest 𝐾 valid historical items. We write the standardized reward as: 
+
+𝑟 𝑖 = 𝑤 𝑖 − 𝜇 (G 𝑖 )
+
+𝜎 (G 𝑖 ) + 𝜖 , (12) where 𝑤 𝑖 is the current watch time (the sample-indexed form of 
+
+𝑤 𝑢,𝑖 ), 𝜇 and 𝜎 are group statistics, and 𝜖 > 0 is a numerical stabilizer. This adapts group-relative reward normalization [ 23 , 36 ] to a user’s logged history. The task decoder is the policy 𝑝 𝑡 , and a stop-gradient forward pass through the current General Decoder supplies the reference probability 𝑝 ref . For compactness, define the ground-truth token probabilities 𝑝 𝑡,𝑖,ℓ = 𝑝 𝑡 (𝑦 𝑖,ℓ | 𝑐 𝑖 , 𝑦 𝑖, <ℓ ) and 𝑝 ref ,𝑖,ℓ = 𝑝 ref (𝑦 𝑖,ℓ |
+
+𝑐 𝑖 , 𝑦 𝑖, <ℓ ). We write the stop-gradient denominator as: 
+
+𝑝 (𝑡 ) 
+
+> old ,𝑖,ℓ
+
+=
+
+(
+
+max  𝑝 ref ,𝑖,ℓ , sg (𝑝 𝑡,𝑖,ℓ ) , 𝑟 𝑖 ≥ 0,
+
+max  𝑝 ref ,𝑖,ℓ , 1 − sg (𝑝 𝑡,𝑖,ℓ ) , 𝑟 𝑖 < 0 , (13) where sg (·) stops gradients. We write the life-long gradient-bounded policy optimization (L-GBPO) objective as: 
+
+L (𝑡 ) 
+
+> L−GBPO
+
+= −E𝑖,ℓ 
+
+
+
+𝑟 𝑖 
+
+𝑝 𝑡,𝑖,ℓ 
+
+𝑝 (𝑡 ) 
+
+> old ,𝑖,ℓ
+
++ 𝜖 
+
+
+
+, (14) where the sample-level reward 𝑟 𝑖 is shared by all SID positions of item 𝑖 . Reference-policy regularization discourages preference optimization from drifting away from the general SID prior [ 20 ]. We define the token probability ratio as: 
+
+𝜌 (𝑡 ) 
+
+> 𝑖,ℓ
+
+= 𝑝 ref ,𝑖,ℓ 
+
+𝑝 𝑡,𝑖,ℓ 
+
+, (15) where 𝜌 (𝑡 ) 
+
+> 𝑖,ℓ
+
+compares the reference and task policies on the observed token. We write the non-negative observed-token KL surrogate [ 23 ]as: 
+
+L (𝑡 ) 
+
+> KL
+
+= E𝑖,ℓ 
+
+h
+
+𝜌 (𝑡 ) 
+
+> 𝑖,ℓ
+
+− log 𝜌 (𝑡 ) 
+
+> 𝑖,ℓ
+
+− 1
+
+i
+
+, (16) where the expectation averages over valid logged training positions. We write the objective for the Watch-time expert 𝑡 as: 
+
+L (𝑡 ) 
+
+> RL
+
+= 𝜆 (𝑡 ) 
+
+> L−GBPO
+
+L (𝑡 ) 
+
+> L−GBPO
+
++ 𝜆 (𝑡 ) 
+
+> KL
+
+L (𝑡 ) 
+
+> KL
+
+, (17) where 𝜆 (𝑡 ) 
+
+> L−GBPO
+
+and 𝜆 (𝑡 ) 
+
+> KL
+
+control preference learning and reference regularization. 
+
+Concurrent Optimization with Gradient Isolation. Exposure and objective supervision are optimized concurrently in one train-ing process; their batches may be interleaved or mixed. Gradient routing, rather than temporal freezing, isolates their updates. Let 
+
+𝜃 0 denote the parameters shared by the user-context module and General Decoder. We write the gradient-routed objective as: 
+
+L = Lbase (𝜃 0)+ 𝜆 SFT ∑︁  
+
+> 𝑡 ∈ T SFT
+
+L (𝑡 ) 
+
+> SFT
+
+(sg (𝜃 0), 𝜙 𝑡 )+ ∑︁  
+
+> 𝑡 ∈ T RL
+
+L (𝑡 ) 
+
+> RL
+
+(sg (𝜃 0), 𝜙 𝑡 ),
+
+(18) where sg (𝜃 0) allows the current shared base to participate in each objective-specific decoder’s forward pass without receiving its gra-dient; TSFT and TRL partition the specialized objectives by training type, and 𝜆 SFT weights the SFT losses. Consequently, base NTP is  
+
+> 5KDD ’27, August 2027, San Jose, CA, USA You Wang et al.
+
+the only source of updates to 𝜃 0, and each objective loss updates only its corresponding 𝜙 𝑡 .
+
+## 4.4 Multi-Decoder Constrained Beam Search 
+
+Figure 2(c) illustrates the coordinated inference procedure. Indepen-dent decoding followed by post-hoc de-duplication wastes beam capacity: different decoders may spend their quotas on the same item, leaving the merged candidate pool below the nominal re-trieval budget. We therefore use MD-CBS, a multi-decoder variant of constrained decoding [ 1, 21 ]. MD-CBS executes decoder routes in a predefined priority order and lets each later route avoid can-didates already claimed by earlier routes. Each route is specified as (𝑟, 𝑏 𝑟 , 𝑞 𝑟 ), where 𝑟 is the decoder route, 𝑏 𝑟 is its beam size, and 
+
+𝑞 𝑟 is its output quota. The quotas sum to the final retrieval budget 
+
+𝐵 , and the General Decoder is placed last to backfill remaining general-exposure slots. Because Item SIDs are hierarchical, the constraint can be imposed at any zero-based SID level 0 ≤ 𝑑 < 𝐿 . Let z0: 𝑑 = (𝑧 0, . . . , 𝑧 𝑑 ) be the corresponding partial hypothesis. MD-CBS uses it as the de-duplication key. For route 𝑟 , let K (𝑑 ) 
+
+> <𝑟
+
+denote all level-𝑑 keys accepted by earlier routes under order 𝜋 , and let 𝑠 𝑟 (z0: 𝑑 ) be its route score. The masked score is: 
+
+𝑠 ′ 
+
+> 𝑟
+
+(z0: 𝑑 ) =
+
+(
+
+−∞ , z0: 𝑑 ∈ K (𝑑 ) 
+
+> <𝑟
+
+,𝑠 𝑟 (z0: 𝑑 ), otherwise . , (19) Route 𝑟 skips masked candidates and continues down its beam list until either 𝑞 𝑟 unique candidates are accepted or its beam is exhausted. Accepted keys are then inserted into K (𝑑 )≤𝑟 before the next route starts. The constraint level controls a quality–efficiency trade-off. A smaller 𝑑 removes occupied prefixes before deeper expansion and can therefore reduce decoding cost, but it also narrows search breadth: once a shallow prefix is claimed, later routes cannot ex-plore other useful items under the same coarse semantic region. A larger 𝑑 delays de-duplication and preserves richer semantic explo-ration, but requires more decoding. In our default setting, each item SID has three levels, (𝑧 0, 𝑧 1, 𝑧 2), and we set 𝑑 = 2, so the complete SID tuple is used as the key. This prevents repeated complete SIDs without prematurely excluding coarse semantic regions; item-level duplicates caused by SID-to-item collisions are removed during merging. Earlier-layer constraints are evaluated as granularity vari-ants in Section 5. Finally, the General Decoder retrieves up to its quota of unseen complete SIDs. This converts independently trained objective-specific decoders into a quota-controlled, non-duplicate candidate pool under the fixed budget 𝐵 .
+
+## 4.5 Serving Workflow 
+
+All decoders share one materialized encoder representation at serv-ing time. Each active decoder applies its own BOS, SID residual, LoRA state, beam size, and quota before constrained merging. The objective set and quota allocation can therefore change without modifying the General Decoder or another expert. Each added de-coder still incurs decoder computation, which Section 5.5 reports separately from parameter count. 
+
+Table 1: Overall offline performance on Kwai26 in Re-call@512 ( ↑). Best results are in bold, second-best results are underlined , and gains over the strongest baseline are sta-tistically significant ( 𝑝 < 0.05 ). Paradigm Model Exp. Long-View Like WT 
+
+Discriminative DSSM [12] 0.0046 0.0050 0.0039 0.0050 SASRec [14] 0.0310 0.0329 0.0254 0.0329 HSTU [34] 0.0342 0.0469 0.0387 0.0506 Generative TIGER [22] 0.1380 0.1613 0.1161 0.1660 OneRec [5] 0.1539 0.1833 0.1318 0.1923 
+
+Ours 0.1565 0.1907 0.1391 0.2031 
+
+## 5 Experiments 5.1 Experimental Setup 
+
+Kwai26 Dataset 1. We construct Kwai26 from 60 consecutive days of interactions on an industrial short-video platform. Appendix Ta-ble 8 summarizes the dataset: 1.31 billion raw records yield 821.84 million positive-play interactions and 125.26 million training ses-sions, with one held-out session for each of 50,000 users. Appendix B details the source profile, labels, leakage-safe processing, split, fea-tures, and chronological training layout. We publicly release the predefined split and evaluation protocol with the dataset. 
+
+Baselines. We compare Multi-Decoder OneRec with five repre-sentative retrieval models: 
+
+• DSSM [ 12 ] encodes the user history and items with two towers and performs full-catalog approximate nearest-neighbor (ANN) retrieval. 
+
+• SASRec [14 ] uses a causal Transformer to encode the chrono-logical behavior sequence, followed by ANN retrieval. 
+
+• HSTU [ 34 ] uses pointwise aggregated attention and gated residual updates as an industrial sequential encoder, followed by full-catalog ANN retrieval. 
+
+• TIGER [22 ] encodes item histories with SIDs and autoregres-sively generates target SID sequences. 
+
+• OneRec [5] uses the same multi-field encoder as our method and a single decoder that matches our General Decoder. All baselines and our method receive the same sessions, chronologi-cal split, and time-truncated recent-20 and Long-View-256 behavior positions. They differ only in feature representation and retrieval mechanism. DSSM [ 12 ], SASRec [ 14 ], and HSTU [ 34 ] are trained on exposure targets and return the ANN Top-512 over the complete item catalog. TIGER [ 22 ], OneRec [ 5], and our method share the SID lexicon and return 512 items by beam search. Specialized feedback trains only the corresponding decoders in our method. The General Decoder uses the same exposure supervision as the baselines. 
+
+Implementation Details. For OneRec [ 5], TIGER [ 22 ], and our method, the hidden size is 256, the encoder and decoder contain four Transformer blocks with eight heads, and the SID has three levels with 8,192 codes per level. Models are trained for one chronological pass with a global batch size of 1,024. The default LoRA rank is  
+
+> 1https://github.com/liuzhao09/Kwai26-Data-Pipeline 6Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation KDD ’27, August 2027, San Jose, CA, USA
+
+32. All methods are evaluated on the same Kwai26 catalog of 25.03 million items. The default beam sizes for Long-View, Like, Watch-time, and the General Decoder are 86, 171, 256, and 512. Their quotas are 86, 85, 85, and 256 for a total budget of 512. We apply MD-CBS at the final level of SID to achieve optimal performance. 
+
+Metrics. We report item-level Recall@512 for Exposure (Exp.), Long-View, and Like, together with Watch-time (WT) Recall@512. Long-View denotes the platform-defined Long-View label. The first three metrics follow Eq. (6) . The last weights every target by its observed watch time as in Eq. (7) . All recalls are micro-averaged over target items in the 50,000 test sessions. We additionally use SID legal rate, i.e., the fraction of generated SID candidates that map to valid Item-ID–SID pairs, total valid candidate count, parameter count, and floating-point operations (FLOPs) in diagnostic studies. 
+
+## 5.2 Overall Performance 
+
+Table 1 reports the overall Recall@512 of Multi-Decoder OneRec and all baselines under the same 512-item retrieval budget. The com-parison shows two clear trends. First, SID-based generative retrieval substantially outperforms the three embedding-retrieval baselines on the large and sparse industrial catalog, confirming the benefit of generating structured item identifiers instead of relying solely on ANN retrieval in the embedding space. Second, Multi-Decoder OneRec achieves the best result on every target set, improving the single-decoder OneRec [ 5 ] baseline by 1.69%, 4.04%, 5.54%, and 5.62% on Exposure, Long-View, Like, and Watch-time Recall, respec-tively. These consistent gains indicate that the quota-controlled union of objective-specific decoders strengthens objective-specific retrieval while preserving general exposure coverage. 
+
+## 5.3 Ablation Studies 
+
+Single- and Multi-Decoder Training. Table 2 disentangles task-specific decoding from quota-controlled multi-decoder aggregation. A specialized decoder can optimize its own target: the Long-View and Watch-time decoders attain the strongest corresponding recalls. Yet each loses ground elsewhere, showing that one objective policy cannot serve as a balanced retrieval pool. Ours combines isolated updates with quota-controlled aggregation and is the only configu-ration ranked in the top two on all four metrics. Specialization alone is therefore insufficient: its value emerges when distinct candidate streams are retained and merged under a shared budget. This gives a stronger multi-objective operating point than either the shared General Decoder or any single specialized policy. Moreover, we compare the proposed method with a Multi-BOS baseline, in which each BOS token is assigned to a specific task variant under the same training protocol and quota allocation. The results show that our method consistently outperforms this variant across all metrics. This suggests that a task-specific BOS signal alone is insufficient for effective objective specialization, whereas LoRA-expert adaptation provides a more expressive mechanism for learning task-aligned generation patterns. 
+
+MD-CBS. Here, CBS denotes Constrained Beam Search. We use L2 CBS and L3 CBS for MD-CBS with the cross-route constraint applied at the second and third SID levels, respectively; No CBS de-notes independent decoding without cross-route constraints. With-out MD-CBS, independent routes repeatedly generate the same 
+
+Table 2: Comparison with single-objective decoders. All val-ues are Recall@512 ( ↑). Best results are in bold, and second-best results are underlined. Configuration Exp. Long-View Like WT 
+
+General Decoder 0.1539 0.1833 0.1318 0.1923 Long-View 0.1403 0.1956 0.1315 0.2030 Like 0.1268 0.1663 0.1336 0.1806 Watch-time 0.1219 0.1724 0.1137 0.2041 
+
+Multi-BOS 0.1340 0.1728 0.1243 0.1822 
+
+Ours 0.1565 0.1907 0.1391 0.2031 
+
+Table 3: Effect of MD-CBS granularity. L2 CBS and L3 CBS apply CBS at the second and third SID levels, respectively; #Cand. is the number of candidates. Best results are in bold, and second-best results are underlined. Method Exp. Long-View Like WT #Cand. 
+
+L3 CBS 0.1565 0.1907 0.1391 0.2031 512 
+
+L2 CBS 0.1522 0.1827 0.1350 0.1942 512 
+
+No CBS 0.1258 0.1544 0.1122 0.1647 207.67 items; only 207.67 unique candidates remain on average after de-duplication, and recall is lowest on all four objectives. Both L2 CBS and L3 CBS restore the full 512-item budget (Table 3), confirming that coordinated constraints recover capacity otherwise spent on overlap. L2 blocks every continuation under an occupied second-level prefix, so later routes cannot explore distinct items within that coarse semantic region. L3 masks only complete SIDs. It preserves more search breadth while removing exact duplicates, achieves the best recall on every objective, and is therefore the default operating point. Because L2 CBS and L3 CBS return the same number of can-didates, the higher recalls of L3 CBS cannot be explained by pool size; they show that delaying de-duplication until complete SIDs avoids prematurely pruning semantically related but distinct items. 
+
+## 5.4 A/B Test 
+
+We conduct a seven-day A/B test on the generative recommenda-tion pipeline of Kwai Brazil. This production pipeline is centered on generative retrieval, whose retrieved candidates contribute 57% of total impressions, followed by ranking and re-ranking stages. Exper-imental traffic is assigned by device identifier (DID), which serves as the randomization unit. The control group contains 14.64% of DIDs and uses single-decoder OneRec [ 5]. The treatment group con-tains 7.32% of DIDs, retains the same shared encoder and General Decoder, and adds Watch-time, Share, and Cold-Start decoders with explicit route quotas. Apart from the generative retrieval module, both groups use the same ranking stages. Under the same downstream stack, the core product metric— usage time per device—improves by +0.37%, alongside Day-1/7 retention (+0.12%/+0.19%), interactions (+0.19%–+0.52%), and Cold-Start (+2.09%) (Table 4). The ten outcomes span retention, consump-tion, engagement, and ecosystem coverage; Appendix D records  
+
+> 7KDD ’27, August 2027, San Jose, CA, USA You Wang et al.
+
+Table 4: Online A/B test performance in short-videos services of Kwai Brazil. (all 𝑝 < 0.05 ). Metric Change Usage time per device +0.37% 
+
+Day-1 retained users +0.12% Day-3 retained users +0.15% Day-7 retained users +0.19% Share devices +0.19% Like devices +0.35% Comment devices +0.52% Follow devices +0.51% Download devices +0.50% Cold-Start +2.09% Exposure WT Recall Legal Rate            
+
+> Recall@512
+> 00.10 0.20
+> best WT
+> SID Legal Rate (%)
+> 050 100 90.48%
+> 00.01 0.5 1.0 2.0 00.01 0.5 1.0 2.0
+> KL Loss Weight KL Loss Weight
+
+Figure 3: KL-weight sensitivity. Removing KL collapses recall and the SID legal rate, while weight 1.0 gives the best Watch-time Recall. 
+
+the shared reporting scope and the remaining profile-visit outcome. 
+
+## 5.5 Further Analysis 
+
+Source-Level Online Posterior Analysis. Appendix Table 11 shows that the Share, Cold-Start, and Watch-time decoders lead in FTR, Cold-Start rate, and average watch time, respectively. This alignment confirms decoder specialization after downstream serv-ing. 
+
+Effect of KL Weight. Figure 3 studies the sensitivity of the Watch-time RL expert to the KL weight. A moderate constraint works best: weight 1.0 achieves the highest Watch-time Recall while preserv-ing the strongest exposure recall and SID legal rate. Reducing the weight weakens the reference prior and causes a gradual drop in both the SID legal rate and retrieval quality; removing KL entirely leads to a severe collapse. These results suggest that the General De-coder should continue to provide a reference distribution during RL adaptation, rather than serving only as the initial parameterization. 
+
+Reward-History Size. Using the latest 500 historical items for reward normalization improves WT Recall from 0.2003 to 0.2031 relative to 𝐾 = 8, consistent with more stable user-relative reward estimation; the complete ablation is reported in Appendix E.1. 
+
+Loss Function Selection for Continuous Targets. Table 5 com-pares two training objectives for the Watch-time expert. For con-tinuous signals such as watch time, threshold-based SFT reduces graded feedback to binary labels, thereby discarding magnitude differences among positive samples. In contrast, continuous-reward 
+
+Table 5: Effect of learning objective on Watch-time Re-call@512. Best result is in bold. Objective WT Recall 
+
+SFT with 12s threshold 0.1999 Continuous-reward RL 0.2031 Table 6: Parameter and computation overhead. FLOPs are measured per session. 
+
+Configuration Params. (rel.) FLOPs (rel.) Train: General Decoder 7.93M (1.00 ×) 14.93G (1.00 ×)Train: +3 LoRAs 9.50M (1.20 ×) 22.97G (1.54 ×)Infer: General Decoder 7.93M (1.00 ×) 325.02G (1.00 ×)Infer: 4 routes 9.50M (1.20 ×) 725.38G (2.23 ×)RL preserves the relative strength of user preferences and improves WT Recall from 0.1999 to 0.2031. These results demonstrate the advantage of reward-based optimization for modeling fine-grained continuous feedback. 
+
+Quota Allocation and Beam Scaling. Figure 4 shows Recall@512 deltas from the default setting. Colors denote Exposure, Long-View, Like, and WT Recall, while x-axis groups denote retrieval interven-tions. The first three groups shift quota toward one target. They steer recall in the intended direction without uniformly improving all metrics: More Long-View raises Long-View Recall by +0.10% but slightly lowers Exposure and Like; More Like gives a small Like gain (+0.02%); and More WT yields the largest targeted change, +0.31% on WT Recall. Because the output budget is fixed, assign-ing more quota to one route can remove candidates from others. The rightmost group, All-512 beams, instead increases beam width and makes every bar positive, especially on Long-View and WT. Thus, quota allocation controls the retrieval direction, whereas beam scaling improves candidate quality when extra compute is available. 
+
+LoRA Rank. We use rank 32, which yields the best result on all four Recall@512 metrics; the complete ablation and analysis are reported in Appendix E.1. 
+
+Efficiency. Table 6 shows that three LoRA experts add only 20% parameters, while training and four-route inference require 1.54 ×
+
+and 2.23 × FLOPs. Route-specific beams and quotas control this quality–cost trade-off. 
+
+## 6 Conclusion 
+
+We presented Multi-Decoder OneRec for controllable multi-objective generative retrieval. First, it combines a shared user-context module and General Decoder with objective-specific decoders. Second, its feedback-adaptive optimization uses target-filtered SFT for event-based feedback and KL-regularized relative-reward policy optimiza-tion for the Watch-time decoder, while MD-CBS coordinates explicit route quotas to produce complementary candidates under a fixed budget. Third, we release Kwai26 with predefined splits and an evaluation protocol, and validate the framework both offline and in production. Under the same 512-item budget, Multi-Decoder 
+
+> 8
+
+Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation KDD ’27, August 2027, San Jose, CA, USA Exposure Long-View Like WT    
+
+> -0.10 0+0.15 +0.30
+> Delta Recall@512 (%)
+> More Long-View More Like More WT All-512 beams
+> Intervention
+> +0.31%
+
+Figure 4: Recall@512 deltas from the default configuration. Colors denote target metrics, and x-axis groups denote re-trieval interventions. 
+
+OneRec improves four Recall@512 metrics by 1.69%–5.62% over single-decoder OneRec [ 5]; the production A/B test further im-proves usage time per device by 0.37% and new-content Cold-Start by 2.09%. These results demonstrate that shared generative retrieval can retain explicit objective control while producing complemen-tary candidates at industrial scale. 
+
+## References 
+
+[1] Peter Anderson, Basura Fernando, Mark Johnson, and Stephen Gould. 2017. Guided Open Vocabulary Image Captioning with Constrained Beam Search. In 
+
+Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing . 936–945. doi:10.18653/v1/D17-1098 [2] Yimeng Bai, Chang Liu, Yang Zhang, Dingxian Wang, Frank Yang, Andrew Rabi-novich, Wenge Rong, and Fuli Feng. 2026. Bi-Level Optimization for Generative Recommendation: Bridging Tokenization and Generation. In Proceedings of the 49th International ACM SIGIR Conference on Research and Development in Infor-mation Retrieval . ACM, 53–64. doi:10.1145/3805712.3809632 [3] Edoardo Botta, Jaewon Yang, Yi-Ping Hsu, Laksh Bhasin, Yilin Chen, Prabhat Agarwal, Anirudhan Badrinath, Jiajing Xu, and Charles Rosenberg. 2026. PinRec: Unified Generative Retrieval for Pinterest Recommender Systems. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining .ACM. doi:10.1145/3770855.3818462 [4] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep Neural Networks for YouTube Recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems . 191–198. doi:10.1145/2959100.2959190 [5] Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. 2025. OneRec: Unifying Retrieve and Rank with Generative Recommender and Iterative Preference Alignment. CoRR abs/2502.18965 (2025). arXiv:2502.18965 [cs.IR] doi:10.48550/arXiv.2502.18965 [6] Chenxiao Fan, Chongming Gao, Yaxin Gong, Haoyan Liu, Fuli Feng, and Xiangnan He. 2026. Uncertainty-aware Generative Recommendation. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 .12 pages. doi:10.1145/3770855.3817975 [7] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as Language Processing (RLP): A Unified Pretrain, Personalized Prompt & Predict Paradigm (P5). In Proceedings of the 16th ACM Conference on Recommender Systems . 299–315. doi:10.1145/3523227.3546767 [8] Yupeng Hou, Jiacheng Li, Ashley Shin, Jinsung Jeon, Abhishek Santhanam, Wei Shao, Kaveh Hassani, Ning Yao, and Julian McAuley. 2025. Generating Long Semantic IDs in Parallel for Recommendation. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 . 956–966. doi:10. 1145/3711896.3736979 [9] Yupeng Hou, Jianmo Ni, Zhankui He, Noveen Sachdeva, Wang-Cheng Kang, Ed H. Chi, Julian McAuley, and Derek Zhiyuan Cheng. 2025. ActionPiece: Contextually Tokenizing Action Sequences for Generative Recommendation. In Proceedings of the 42nd International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 267) . PMLR, 24004–24024. https://proceedings.mlr.press/ v267/hou25f.html [10] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations . https: //openreview.net/forum?id=nZeVKeeFYf9 [11] Junjie Huang, Jiarui Qin, Jianghao Lin, Ziming Feng, Weinan Zhang, and Yong Yu. 2025. Unleashing the Potential of Multi-Channel Fusion in Retrieval for Personalized Recommendations. In Proceedings of the ACM Web Conference 2025 .483–494. doi:10.1145/3696410.3714753 [12] Po-Sen Huang, Xiaodong He, Jianfeng Gao, Li Deng, Alex Acero, and Larry Heck. 2013. Learning Deep Structured Semantic Models for Web Search Using Clickthrough Data. In Proceedings of the 22nd ACM International Conference on Information and Knowledge Management . 2333–2338. doi:10.1145/2505515. 2505665 [13] Bowen Jin, Hansi Zeng, Guoyin Wang, Xiusi Chen, Tianxin Wei, Ruirui Li, Zhengyang Wang, Zheng Li, Yang Li, Hanqing Lu, Suhang Wang, Jiawei Han, and Xianfeng Tang. 2024. Language Models as Semantic Indexers. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 22244–22259. https://proceedings.mlr.press/ v235/jin24h.html [14] Wang-Cheng Kang and Julian McAuley. 2018. Self-Attentive Sequential Rec-ommendation. In Proceedings of the 2018 IEEE International Conference on Data Mining . 197–206. doi:10.1109/ICDM.2018.00035 [15] Yifan Liu, Yaokun Liu, Zelin Li, Zhenrui Yue, Gyuseok Lee, Ruichen Yao, Yang Zhang, and Dong Wang. 2026. Learning Decomposed Contextual Token Represen-tations from Pretrained and Collaborative Signals for Generative Recommenda-tion. In Proceedings of the 49th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1175–1185. doi:10.1145/3805712.3809578 [16] Zihan Liu, Yupeng Hou, and Julian McAuley. 2024. Multi-Behavior Generative Recommendation. In Proceedings of the 33rd ACM International Conference on In-formation and Knowledge Management . 1575–1585. doi:10.1145/3627673.3679730 [17] Zhao Liu, Yichen Zhu, Yiqing Yang, Xiao Lv, Guoping Tang, Rui Huang, Qiang Luo, Ruiming Tang, and Guorui Zhou. 2026. DiffGRM: Diffusion-based Generative Recommendation Model. In Proceedings of the ACM Web Conference 2026 . ACM, 5853–5864. doi:10.1145/3774904.3792156 [18] Jiaqi Ma, Zhe Zhao, Xinyang Yi, Jilin Chen, Lichan Hong, and Ed H. Chi. 2018. Modeling Task Relationships in Multi-task Learning with Multi-gate Mixture-of-Experts. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining . 1930–1939. doi:10.1145/3219819.3220007 [19] Ping Nie, Yujie Lu, Shengyu Zhang, Ming Zhao, Ruobing Xie, William Yang Wang, and Yi Ren. 2022. MIC: Model-agnostic Integrated Cross-channel Recom-mender. In Proceedings of the 31st ACM International Conference on Information and Knowledge Management . 3400–3409. doi:10.1145/3511808.3557081 [20] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul F. Christiano, Jan Leike, and Ryan Lowe. 2022. Training Language Models to Follow Instructions with Hu-man Feedback. In Advances in Neural Information Processing Systems , Vol. 35. 27730–27744. https://proceedings.neurips.cc/paper_files/paper/2022/hash/ b1efde53be364a73914f58805a001731-Abstract.html [21] Matt Post and David Vilar. 2018. Fast Lexically Constrained Decoding with Dynamic Beam Allocation for Neural Machine Translation. In Proceedings of the 2018 Conference of the North American Chapter of the Association for Computa-tional Linguistics: Human Language Technologies . Association for Computational Linguistics, 1314–1324. doi:10.18653/v1/N18-1119 [22] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Maciej Kula, Ed H. Chi, and Maheswaran Sathiamoorthy. 2023. Recommender Systems with Generative Retrieval. In Advances in Neural Information Processing Systems , Vol. 36. https://proceedings.neurips.cc/paper_files/paper/2023/hash/ 20dcab0f14046a5c6b02b61da9f13229-Abstract-Conference.html [23] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024. DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models. CoRR 
+
+abs/2402.03300 (2024). arXiv:2402.03300 [cs.CL] doi:10.48550/arXiv.2402.03300 [24] Teng Shi, Jun Xu, Xiao Zhang, Xiaoxue Zang, Kai Zheng, Yang Song, and Enyun Yu. 2025. GenSAR: Unifying Balanced Search and Recommendation with Gen-erative Retrieval. In Proceedings of the 19th ACM Conference on Recommender Systems . 124–134. doi:10.1145/3705328.3748071 [25] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential Recommendation with Bidirectional En-coder Representations from Transformer. In Proceedings of the 28th ACM In-ternational Conference on Information and Knowledge Management . 1441–1450. doi:10.1145/3357384.3357895 [26] Hongyan Tang, Junning Liu, Ming Zhao, and Xudong Gong. 2020. Progres-sive Layered Extraction (PLE): A Novel Multi-Task Learning (MTL) Model for Personalized Recommendations. In Proceedings of the 14th ACM Conference on Recommender Systems . 269–278. doi:10.1145/3383313.3412236 [27] Ashwin K. Vijayakumar, Michael Cogswell, Ramprasaath R. Selvaraju, Qing Sun, Stefan Lee, David Crandall, and Dhruv Batra. 2018. Diverse Beam Search for Improved Description of Complex Scenes. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 32. 7371–7379. doi:10.1609/aaai.v32i1.12340 9KDD ’27, August 2027, San Jose, CA, USA You Wang et al. 
+
+[28] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2024. Learnable Item Tokenization for Generative Recommendation. In Proceedings of the 33rd ACM International Conference on In-formation and Knowledge Management . 2400–2409. doi:10.1145/3627673.3679569 [29] Ye Wang, Jiahao Xun, Minjie Hong, Jieming Zhu, Tao Jin, Wang Lin, Haoyuan Li, Linjun Li, Yan Xia, Zhou Zhao, and Zhenhua Dong. 2024. EAGER: Two-Stream Generative Recommender with Behavior-Semantic Collaboration. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining, KDD 2024 . ACM, 3245–3254. doi:10.1145/3637528.3671775 [30] Yejing Wang, Shengyu Zhou, Jinyu Lu, Qidong Liu, Xinhang Li, Wenlin Zhang, Feng Li, Pengjie Wang, Chuan Yu, Jian Xu, Bo Zheng, and Xiangyu Zhao. 2026. GFlowGR: Fine-tuning Generative Recommendation Frameworks with Gener-ative Flow Networks. In Proceedings of the 49th International ACM SIGIR Con-ference on Research and Development in Information Retrieval . ACM, 1925–1936. doi:10.1145/3805712.3809663 [31] Shiguang Wu, Zhaochun Ren, Xin Xin, Jiyuan Yang, Mengqi Zhang, Zhumin Chen, Maarten de Rijke, and Pengjie Ren. 2025. Constrained Auto-Regressive Decoding Constrains Generative Retrieval. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . ACM, 2429–2440. doi:10.1145/3726302.3729934 [32] Ruobing Xie, Zhijie Qiu, Jun Rao, Yi Liu, Bo Zhang, and Leyu Lin. 2020. Internal and Contextual Attention Network for Cold-start Multi-channel Matching in Rec-ommendation. In Proceedings of the Twenty-Ninth International Joint Conference on Artificial Intelligence . 2732–2738. doi:10.24963/ijcai.2020/379 [33] Chaoqun Yang, Xinyu Lin, Wenjie Wang, Yongqi Li, Teng Sun, Xianjing Han, and Tat-Seng Chua. 2025. EARN: Efficient Inference Acceleration for LLM-based Generative Recommendation by Register Tokens. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 . 3483–3494. doi:10.1145/3711896.3736919 [34] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Jiayuan He, Yinghai Lu, and Yu Shi. 2024. Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 58484–58509. https://proceedings.mlr.press/v235/zhai24a.html [35] Guorui Zhou, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Qiang Luo, Qianqian Wang, Qigen Hu, Rui Huang, Shiyao Wang, Weifeng Ding, Wuchao Li, Xinchen Luo, Xingmei Wang, Zexuan Cheng, Zixing Zhang, Bin Zhang, Boxuan Wang, Chaoyi Ma, Chengru Song, Chenhui Wang, Di Wang, Dongxue Meng, Fan Yang, Fangyu Zhang, Feng Jiang, Fuxing Zhang, Gang Wang, Guowang Zhang, Han Li, Hengrui Hu, Hezheng Lin, Hongtao Cheng, Hongyang Cao, Huanjie Wang, Jiaming Huang, Jiapeng Chen, Jiaqiang Liu, Jinghui Jia, Kun Gai, Lantao Hu, Liang Zeng, Liao Yu, Qiang Wang, Qidong Zhou, Shengzhe Wang, Shihui He, Shuang Yang, Shujie Yang, Sui Huang, Tao Wu, Tiantian He, Tingting Gao, Wei Yuan, Xiao Liang, Xiaoxiao Xu, Xugang Liu, Yan Wang, Yi Wang, Yiwu Liu, Yue Song, Yufei Zhang, Yunfan Wu, Yunfeng Zhao, and Zhanyu Liu. 2025. OneRec Technical Report. CoRR abs/2506.13695 (2025). arXiv:2506.13695 [cs.IR] doi:10.48550/arXiv.2506.13695 [36] Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Lu Ren, Liao Yu, Pengfei Zheng, Qiang Luo, Qianqian Wang, Qigen Hu, Rui Huang, Ruiming Tang, Shiyao Wang, Shujie Yang, Tao Wu, Wuchao Li, Xinchen Luo, Xingmei Wang, Yi Su, Yunfan Wu, Zexuan Cheng, Zhanyu Liu, Zixing Zhang, Bin Zhang, Boxuan Wang, Chaoyi Ma, Chengru Song, Chenhui Wang, Chenglong Chu, Di Wang, Dongxue Meng, Dunju Zang, Fan Yang, Fangyu Zhang, Feng Jiang, Fuxing Zhang, Gang Wang, Guowang Zhang, Han Li, Honghui Bao, Hongyang Cao, Jiaming Huang, Jiapeng Chen, Jiaqiang Liu, Jinghui Jia, Kun Gai, Lantao Hu, Liang Zeng, Qiang Wang, Qidong Zhou, Rongzhou Zhang, Shengzhe Wang, Shihui He, Shuang Yang, Siyang Mao, Sui Huang, Tiantian He, Tingting Gao, Wei Yuan, Xiao Liang, Xiaoxiao Xu, Xugang Liu, Yan Wang, Yang Zhou, Yi Wang, Yiwu Liu, Yue Song, Yufei Zhang, Yunfeng Zhao, Zhixin Ling, and Ziming Li. 2025. OneRec-V2 Technical Report. CoRR 
+
+abs/2508.20900 (2025). arXiv:2508.20900 [cs.IR] doi:10.48550/arXiv.2508.20900 [37] Xiaoyou Zhou, Yuqi Liu, Zhao Liu, Xiao Lv, Bo Chen, Ruiming Tang, and Guorui Zhou. 2026. CAPTS: Channel-Aware, Preference-Aligned Trigger Selection for Multi-Channel Item-to-Item Retrieval. In Proceedings of the 20th ACM Conference on Recommender Systems . arXiv:2602.12564 [cs.IR] https://arxiv.org/abs/2602. 12564 To appear. [38] Yanyan Zou, Junbo Qi, Lunsong Huang, Yu Li, Kewei Xu, Jiahao Gao, Binglei Zhao, Xuanhua Yang, Sulong Xu, and Shengjie Li. 2026. GenRec: A Preference-Oriented Generative Framework for Large-Scale Recommendation. In Proceedings of the 49th International ACM SIGIR Conference on Research and Development in Information Retrieval . ACM, 6 pages. doi:10.1145/3805712.3808437 
+
+## A Notation 
+
+Table 7 summarizes the symbols used in the formulation and method. 
+
+Table 7: Summary of the main notation. 
+
+Symbol Description 
+
+U, I, ISID User, item, and valid-SID item sets 
+
+𝑢, 𝜏, 𝐻 𝜏 𝑢 User, request time, and truncated history 
+
+𝐿, Vℓ , z(𝑖 ) SID level count, level-ℓ vocabulary, and item SID 
+
+𝐸 gen ,ℓ , Δ𝐸 𝑟,ℓ General SID embedding and route-𝑟 residual 
+
+𝑀, T, R, 𝑟, 𝑝 𝑟 LoRA expert count, objective/route sets, route index, and policy 
+
+𝑅 𝑟 (𝑢 ), 𝐶 𝑟 (𝑢 ; 𝑞 𝑟 ), 𝑞 𝑟 Route-𝑟 output, truncated output, and quota 
+
+𝑏 𝑟 Beam size of route 𝑟 𝐵, 𝜋, 𝐶 (𝑢 ; 𝐵 ) Budget, route order, and candidate pool 
+
+Dup (𝑢 ) Cross-route duplication ratio 
+
+𝑌 𝑎 (𝑢 ), 𝑌 (𝑢 ), 𝑤 𝑢,𝑖 Objective-𝑎 /all target sets and watch time 
+
+𝜃 0 Shared context and General Decoder weights 
+
+𝜙 𝑡 , 𝑟 𝑡 Expert-𝑡 state and LoRA rank 
+
+G𝑖 , 𝐾, 𝑟 𝑖 Reward group, history size, and relative reward 
+
+𝜖 Positive numerical stabilizer 
+
+𝑝 𝑡,𝑖,ℓ , 𝑝 ref ,𝑖,ℓ , 𝑝 (𝑡 ) 
+
+> old ,𝑖,ℓ
+
+Task-decoder, reference, and denominator token probabilities 
+
+𝜌 (𝑡 ) 
+
+> 𝑖,ℓ
+
+Reference-to-task-decoder token-probability ratio 
+
+𝑑, K (𝑑 ) 
+
+> <𝑟
+
+Zero-based constraint level and earlier-route SID keys 
+
+## B Kwai26 Dataset Construction 
+
+Table 8: Statistics of the Kwai26 offline dataset. Statistic Value 
+
+Users 50,000 Raw item-level records 1,311,923,604 Positive-play interactions 821,842,758 Training sessions 125,261,311 Test sessions 50,000 Item-ID vocabulary entries 31,854,181 Items with valid SIDs 25,028,687 SID levels / codes per level 3 / 8,192 Recent / Long-View history 20 / 256 Maximum targets per session 8
+
+Scope and source profile. Kwai26 covers 60 consecutive days of short-video traffic from May 2 to June 30, 2026. Each event records user and request identifiers, event time and display position, Item-IDs and author IDs, content tags, video and watch times, behavior flags, and two SID strings. Table 9 reports source-distribution diag-nostics not included in Table 8. All are measured before positive-play filtering; the exposure-rank ranges are disjoint. 
+
+Labels and task views. Watch-time is a continuous utility signal; Effective View and Long-View are platform-defined consumption labels; Like and Forward are explicit feedback signals; and the Cold-Start flag marks new content. Evaluation uses General, Long-View, Like, and Watch-time views, with the last weighting targets by raw watch time. Effective View and Cold-Start flags are retained for analysis. 
+
+10 Multi-Decoder OneRec: Controllable Generative Retrieval for Multi-Objective Industrial Recommendation KDD ’27, August 2027, San Jose, CA, USA 
+
+Table 9: Kwai26 source-distribution diagnostics before positive-play filtering. 
+
+Diagnostic Value 
+
+Cold-Start prevalence 23.79% Effective-view prevalence 18.66% Long-View prevalence 11.13% Like / Share prevalence 3.22% / 0.353% Single-exposure items 9,500,929 (29.83%) Event share, ranks 1–100 0.35% Event share, ranks 101–1,000 1.07% Event share, ranks 1,001–10,000 4.62% Within-request duplicate rate 0.0012% Events in the first five positions 69.70% 
+
+Session definition and canonical order. A session groups events with the same user and request identifier. Events are stably ordered by time, display position, and Item-ID without de-duplication; the same order defines targets and user histories. 
+
+Algorithm 1 Stage 1: event filtering and materialization 
+
+Require: Raw event table D
+
+Ensure: Session table B and user histories {𝐻 𝑢 } 
+
+> 1:
+
+E ← ∅  
+
+> 2:
+
+for all 𝑒 ∈ D do  
+
+> 3:
+
+𝑒 ← NormalizeMissing (𝑒 ) 
+
+> 4:
+
+if 𝑒. playing _time > 0 then  
+
+> 5:
+
+𝑒. reject ← InvalidTargetFields (𝑒 ) 
+
+> 6:
+
+append 𝑒 to E 
+
+> 7:
+
+end if  
+
+> 8:
+
+end for  
+
+> 9:
+
+B ← StableGroup ( E , (user , time , position , item ) )  
+
+> 10:
+
+{𝐻 𝑢 } ← StableGroup ( E , (user , time , position , item ) )  
+
+> 11:
+
+return B, {𝐻 𝑢 }
+
+Stage 1 details. Algorithm 1 maps missing integer, binary, and string fields to −1, 0, and the empty string. It removes 490,080,846 non-positive watch-time events before aggregation; the retained total is reported in Table 8. A remaining event is ineligible as a target when its main SID is missing or an item, duration, timestamp, or request field is invalid, but it remains available as history. Missing main SIDs account for 58,324,134 of 58,324,137 such events. Stage 1 materializes 126,246,047 sessions and a chronological history for each user. 
+
+Stage 2 details. The left-bound LowerBound ensures that every history event precedes 𝜏 ; 𝐻 recent , 𝐻 LV , and 𝐻 WT denote recent, Long-View-positive, and raw watch-time histories. History positions contain item, author, tag, bucketed watch time and time gap, mask, and three-level SID features, and are left-padded. FirstEligible 
+
+keeps non-rejected items with a valid three-level SID; targets store an Item-ID and its SID, raw watch time, and five behavior flags, and are right-padded. Stage 2 removes 49,749 sessions without history and 884,987 without an eligible target. 
+
+Split and strict training layout. After both checks, each user’s last valid session is test data and all earlier sessions are training data; no validation split or date/percentage alternative is used. Stage 
+
+Algorithm 2 Stage 2: leakage-safe histories, targets, and split 
+
+Require: Sessions B and chronological histories {𝐻 𝑢 }
+
+Ensure: Training set Str and test set Ste  
+
+> 1:
+
+Str , Ste ← ∅  
+
+> 2:
+
+for all users 𝑢 do  
+
+> 3:
+
+Svalid  
+
+> 𝑢
+
+← ∅  
+
+> 4:
+
+for all 𝑠 ∈ Sort ( B 𝑢 , (time ) ) do  
+
+> 5:
+
+𝜏 ← 𝑠. start; 𝑗 ← LowerBound (𝐻 𝑢 .time , 𝜏 ) 
+
+> 6:
+
+𝐻 <𝜏 ← 𝐻 𝑢 [0: 𝑗 ] 
+
+> 7:
+
+𝐻 recent ← Tail (𝐻 <𝜏 , 20 ) 
+
+> 8:
+
+𝐻 LV ← Tail (FilterLongView (𝐻 <𝜏 ), 256 ) 
+
+> 9:
+
+𝐻 WT ← Tail (PositivePlay (𝐻 <𝜏 ), 500 ) 
+
+> 10:
+
+𝑌 𝑠 ← FirstEligible (𝑠, 8) 
+
+> 11:
+
+if (𝐻 recent ≠ ∅ ∨ 𝐻 LV ≠ ∅) ∧ 𝑌 𝑠 ≠ ∅ then  
+
+> 12:
+
+append Encode (𝐻 recent , 𝐻 LV , 𝐻 WT , 𝑌 𝑠 ) to Svalid  
+
+> 𝑢
+> 13:
+
+end if  
+
+> 14:
+
+end for  
+
+> 15:
+
+Str ← S tr ∪ S valid  
+
+> 𝑢
+
+[:−1] 
+
+> 16:
+
+Ste ← S te ∪ { S valid  
+
+> 𝑢
+
+[− 1] }  
+
+> 17:
+
+end for  
+
+> 18:
+
+return Str , Ste 
+
+2.5 stably merges training rows by request time, user ID, request identifier, and sample key without filtering or re-sampling. Each 2,048-row physical block in 32 lanes yields two 1,024-row optimizer steps (122,324 total); the final 1,535-row tail is not optimized. 
+
+Feature vocabularies and SID catalog. OneRec [ 5 ] uses item, author, tag, watch-time, time-gap, and mask features; TIGER [ 22 ]uses SIDs at these positions. The three-level SIDs are generated by residual-quantization K-Means (RQ-KMeans). The author/tag vocabularies contain 1,829,583/36 entries; the catalog preserves 27,139,853 valid Item-ID–SID pairs and 23,909,817 codes. Of these, 1,983,033 items have multiple SIDs (at most eight each). 
+
+## C Reproducibility Details 
+
+Table 10: Additional training hyperparameters. 
+
+Hyperparameter Value 
+
+FFN size 1,024 Chronological optimizer steps 122,324 Learning rate 5 × 10 −4
+
+Warm-up steps 1,000 Weight decay 0.15 
+
+## D Online Reporting Scope 
+
+The A/B test reports 11 outcomes. Table 4 lists ten core outcomes; profile-visit devices improve by +0.49% ( 𝑝 < 0.05 ). Share, Like, comment, follow, download, and profile-page outcomes are device counts, and every reported change is significant at 𝑝 < 0.05 .The evaluation covers 1-, 3-, and 7-day retention, app usage time per device, and key interaction-device counts. Every outcome im-proves, indicating that complementary retrieved candidates survive downstream ranking and translate into consumption, engagement, and ecosystem gains.  
+
+> 11 KDD ’27, August 2027, San Jose, CA, USA You Wang et al.
+
+Table 11: Source-level post-serving online diagnostics. FTR denotes the share rate, and Avg. Watch-time is measured per video. Best results are in bold. Source Cold-Start Rate FTR Avg. Watch-time 
+
+General Decoder 0.2079 0.0046 22.5378 Share Decoder 0.0105 0.0077 11.9434 Cold-Start Decoder 0.9548 0.0026 10.4500 Watch-time Decoder 0.1960 0.0031 26.3564 
+
+## E Extended Experimental Results E.1 Hyperparameter Sensitivity 
+
+LoRA Rank. Table 12 varies the dimensionality of task-specific updates. The results are not monotonic in rank: rank 4 and rank 64 provide the second-best results on different metrics, while rank 16 trails both on all four. Rank 32 is best on every metric, and increas-ing the rank to 64 adds parameters without improving recall. We therefore use rank 32 as the default adaptation-capacity/parameter-efficiency trade-off. 
+
+Table 12: Recall@512 for different LoRA ranks. Best results are in bold, and second-best results are underlined.                     
+
+> Rank Exp. Long-View Like WT
+> 40.1562 0.1865 0.1365 0.2016 16 0.1543 0.1864 0.1355 0.1978 32 0.1565 0.1907 0.1391 0.2031
+> 64 0.1559 0.1892 0.1363 0.2010
+
+Reward-History Size. Table 13 varies the recent-history length used for watch-time reward normalization. Increasing 𝐾 from 8 to 500 raises WT Recall from 0.2003 to 0.2031 (+1.40%) by stabilizing user-relative watch-time preference estimates. 
+
+Table 13: Effect of reward-history size on Watch-time Re-call@512. Best result is in bold.
