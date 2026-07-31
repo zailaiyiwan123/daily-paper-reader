@@ -1,0 +1,671 @@
+Title: LoopMemGR: From Behavior Logs to Evolving Memory for Generative Recommendation
+
+URL Source: https://arxiv.org/pdf/2607.27647v1
+
+Published Time: Fri, 31 Jul 2026 00:27:40 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# LoopMemGR: From Behavior Logs to Evolving Memory for Generative Recommendation 
+
+## Hui Qian ∗
+
+yihui.qh@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Changfa Wu †‡ 
+
+wuchangfa.wcf@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Chang Liu 
+
+shimao.lc@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Binbin Cao 
+
+simon.cbb@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Jian Wu 
+
+joshuawu.wujian@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Yuliang Yan 
+
+yuliang.yyl@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Han Zhu 
+
+zhuhan.zh@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Bo Zheng 
+
+bozheng@alibaba-inc.com Alibaba Group Beijing, China 
+
+## Abstract 
+
+Generative recommendation formulates next-item prediction as conditional autoregressive generation over discrete Semantic IDs, enabling end-to-end recommendation over large-scale item spaces. However, most existing methods follow a history-as-context par-adigm that repeatedly reconstructs user preference from behav-ior history while discarding system-side recommendation deci-sions after each request. This creates an asymmetric memory : the system remembers what the user has done, but not what it has previously recommended or learned from the resulting feedback. Consequently, useful preference-validation signals, potential neg-ative evidence, and historical exploration information cannot be directly reused across requests. To address these limitations, we propose LoopMemGR , a closed-loop recommendation experience memory framework for generative recommendation. In addition to the conventional behavior log, LoopMemGR maintains a rec-ommendation experience log that records past recommendation– feedback trajectories. It extracts request-relevant evidence through three complementary views: the recency view captures short-term interaction dynamics, the frequency view summarizes recurring recommendation patterns, and the global view distills transferable regularities shared across users. These signals are compressed into a fixed number of experience tokens to condition the generative backbone under a bounded input budget. Extensive experiments on an industrial Taobao dataset demonstrate the effectiveness of  
+
+> ∗Work done during internship at Alibaba.
+> †Corresponding author.
+> ‡Equal contribution. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+closed-loop experience accumulation and multi-view experience extraction. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+## Keywords 
+
+Generative Recommendation; Memory-Augmented Recommender Systems; Sequential Recommendation 
+
+ACM Reference Format: 
+
+Hui Qian, Changfa Wu, Chang Liu, Binbin Cao, Jian Wu, Yuliang Yan, Han Zhu, and Bo Zheng. 2018. LoopMemGR: From Behavior Logs to Evolv-ing Memory for Generative Recommendation. In Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 11 pages. https: //doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Generative recommendation has attracted increasing attention from both academia and industry [ 29 , 37 , 38 , 42 ]. Unlike discriminative approaches that score items over a predefined candidate set, gener-ative recommenders encode items as discrete Semantic IDs (SIDs) and formulate next-item prediction as conditional autoregressive generation [ 29 , 37 , 38 ]. This paradigm unifies item representation, user modeling, and candidate generation within a single sequence model, enabling end-to-end recommendation over large-scale item spaces [ 29 , 37 , 38 , 42 ]. By directly generating item identifiers, it also provides a flexible interface for integrating heterogeneous user contexts and extending the recommendation vocabulary. Despite these advances, most existing generative recommenders follow a history-as-context paradigm [ 3 , 16 , 19 , 42 ]. At each request, they reconstruct the user’s current preference from historical clicks, purchases, or other behaviors, treating the request as an isolated pre-diction task. However, real-world recommendation is a continuous interaction process rather than a sequence of independent predic-tions [ 22 , 31 , 44 ]. Within each interaction round, the system makes recommendation decisions, the user responds to the presented arXiv:2607.27647v1 [cs.IR] 30 Jul 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Hui Qian et al. …               
+
+> User behavior history
+> Add to log (user side only)
+> Recommendation User behavior
+> (a) History -as -context paradigm
+> Generative recommender
+> each item unfolds into multiple
+> semantic IDs ➡context inflation
+> system's decisions for this user: never
+> persisted —folded into shared
+> weights →recommendation experience:
+> discarded after each request, never
+> reused
+> …
+> User behavior history
+> Add to log
+> Recommendation User behavior
+> (b) LoopMemGR ：reusable experience memory
+> Generative recommender
+> each item unfolds into multiple
+> semantic IDs ➡context inflation
+> Recommendation experience log
+
+Figure 1: Comparison between (a) the prevailing history-as-context paradigm and (b) LoopMemGR . In (a), user behav-iors are continuously appended to the behavior log, while system-side recommendation decisions are discarded after each request, resulting in an asymmetric memory . In (b), 
+
+LoopMemGR additionally maintains a recommendation ex-perience log, allowing past recommendation–feedback tra-jectories to be reused in subsequent requests. 
+
+items, and the interaction state evolves accordingly. Although ex-posure information is sometimes used as auxiliary supervision, the system’s previous recommendation decisions are generally not maintained as directly accessible per-user state [ 23 , 24 , 44 ]. This creates an asymmetric memory : the system remembers what the user has done, but not what it has previously tried. Beyond behavior history, recommendations made across previ-ous requests form a system-side record of what the recommender has already attempted, which we term recommendation experi-ence .Behavior history records realized user actions, whereas rec-ommendation experience records the system-side decision trajec-tory. The two provide complementary accounts of the interaction process. When considered together, they reveal whether a rec-ommended item subsequently triggered an interaction, whether similar items were repeatedly recommended without response, and which categories or interest regions have already been ex-plored [ 17 , 18 , 23 , 24 , 44 ]. Without access to such experience, the model must repeatedly reconstruct user preferences from behavior history alone and may unnecessarily repeat previous recommenda-tions or exploration. A direct solution is to append all historical recommendation results to the generative context. However, recommendation ex-perience grows continuously with the number of requests, while each item may itself consist of multiple SID tokens. Retaining the complete trajectory therefore leads to an unbounded input length and increasing self-attention cost. The key challenge is therefore to summarize the growing recommendation experience and extract request-relevant information under a fixed context budget. To address this challenge, we propose LoopMemGR , a closed-loop recommendation experience memory framework for genera-tive recommendation. LoopMemGR maintains a recommendation experience log alongside the conventional behavior log: the for-mer stores the system’s historical recommendation decisions, while the latter stores realized user interactions. After each request, the newly generated recommendation results are summarized and writ-ten into the experience log, and subsequent user responses update the behavior log. The updated information is available only to later requests, preserving causal order and forming a closed loop of rec-ommendation, memory update, and subsequent recommendation. For each request, LoopMemGR extracts experience memory through three complementary views. The recency view retains fine-grained information from recent recommendations to capture the current interaction state. The frequency view aggregates recurring recommendation patterns to summarize persistent system judg-ments and previously explored interests. The global view employs learnable queries shared across users to extract transferable regu-larities when user-specific experience is sparse. The three views are fused into a fixed number of experience tokens, which jointly condition the generative backbone with the behavior history. The main contributions of this work are summarized as follows: 
+
+• We identify the asymmetric-memory problem in generative rec-ommendation and define the system’s historical recommendation-decision trajectory as recommendation experience , providing a system-side complement to conventional behavior history. 
+
+• We propose LoopMemGR , which maintains a closed-loop rec-ommendation experience memory and extracts request-relevant information through recency, frequency, and global views under a fixed token budget. 
+
+• We conduct extensive experiments on an industrial Taobao dataset. The results, together with comprehensive ablation and analytical studies, validate the effectiveness of closed-loop experience ac-cumulation, multi-view experience extraction, and fixed-budget experience compression. 
+
+## 2 Method 
+
+In this section, we present LoopMemGR in detail. We first formulate closed-loop generative recommendation with a reusable recommen-dation experience log, and then describe the overall framework, the unified experience reading operator, the tri-view memory reader and its fusion mechanism, followed by the optimization, causal replay, and complexity analysis. 
+
+## 2.1 Problem Formulation 
+
+Let U and V denote the user and item sets. For the 𝑡 -th request from user 𝑢 , the behavior history available before the request is 
+
+H <𝑡 𝑢 = (𝑏 1, 𝑏 2, . . . , 𝑏 𝐿 𝑡 ), (1) where the behaviors are arranged in chronological order. Follow-ing the generative backbone [ 5 ], each item 𝑣 ∈ V is encoded by a two-level Semantic ID from a shared SID codebook, Tok (𝑣 ) = 𝑐 (1) (𝑣 ), 𝑐 (2) (𝑣 ), where the category-level token 𝑐 (1) (SID1) is shared by semantically similar items and the item-level token 𝑐 (2) (SID2) LoopMemGR Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+distinguishes items within the same category. Given the generation context Z𝑡 , the generative recommender 𝐺 𝜃 predicts the next item 
+
+𝑦 𝑡 through two autoregressive steps: 
+
+𝑝 𝜃 (𝑦 𝑡 | Z𝑡 ) = 𝑝 𝜃 
+
+ 𝑐 (1) (𝑦 𝑡 ) | Z𝑡 
+
+ 𝑝 𝜃 
+
+ 𝑐 (2) (𝑦 𝑡 ) | 𝑐 (1) (𝑦 𝑡 ), Z𝑡 
+
+. (2) In addition to the conventional behavior log, LoopMemGR main-tains a per-user recommendation experience log 
+
+E<𝑡 𝑢 = ⟨𝑒 1, 𝑒 2, . . . , 𝑒 𝑁 𝑡 ⟩, (3) which stores the recommendation experience accumulated before request 𝑡 in exposure order. Each entry corresponds to an item recommended to 𝑢 in an earlier request and is embedded as e𝑗 ∈ R𝑑 
+
+using its item representation and log-side features, yielding E𝑡 ∈
+
+R𝑁 𝑡 ×𝑑 . Because the experience log grows after every completed request, directly serializing it into the generative backbone would lead to an unbounded context. LoopMemGR therefore employs a Tri-View Memory Reader (TVMR) 𝑓 𝜓 to compress the log into 
+
+𝑀 continuous experience tokens, T𝑡 = 𝑓 𝜓 (E𝑡 ) ∈ R𝑀 ×𝑑 , where 
+
+𝑀 ≪ 𝑁 𝑡 . These tokens complement the behavior history in the generation context, allowing the accumulated recommendation experience to condition Eq. (2) under a fixed token budget. 
+
+## 2.2 Framework Overview 
+
+As shown in Figure 2, LoopMemGR processes request 𝑡 in three stages. In read , TVMR summarizes the recommendation experi-ence log E<𝑡 𝑢 into 𝑀 experience tokens T𝑡 through the recency, frequency, and global views. In recommend , the behavior history and experience tokens are serialized into Z𝑡 , from which 𝐺 𝜃 gen-erates and ranks a candidate set C𝑡 . In memory update , a frozen summarization module 𝑆 𝜙 converts the current recommendation decisions into an ordered item summary 𝑠 𝑡 , which is appended to 
+
+E𝑢 , while the user’s subsequent feedback is incorporated into H𝑢 
+
+through the standard pipeline. Both logs are updated only after request 𝑡 ; consequently, the resulting recommendation–feedback trajectory becomes available from request 𝑡 + 1 onward and cannot leak into the request that produced it. 
+
+## 2.3 Unified Experience Reading Operator 
+
+All three views instantiate a shared reading operator that extracts evidence from a potentially long recommendation experience log. The operator combines cosine cross-attention with a gated, magnitude-bounded residual update. Let B = [b1; . . . ; b𝑞 ] ∈ R𝑞 ×𝑑 denote a set of base queries and let H = [h1; . . . ; h𝑛 ] ∈ R𝑛 ×𝑑 denote the log entries to be read. For each query and key, we first apply RMS normalization and learned projections, followed by row-wise ℓ2
+
+normalization: 
+
+bq𝑖 = 𝑊 𝑄 RMSNorm (b𝑖 )∥𝑊 𝑄 RMSNorm (b𝑖 )∥ 2
+
+, bk𝑗 = 𝑊 𝐾 RMSNorm (h𝑗 )∥𝑊 𝐾 RMSNorm (h𝑗 )∥ 2
+
+.
+
+(4) The attention scores and normalized weights are 
+
+𝑠 𝑖 𝑗 = bq⊤ 
+
+> 𝑖
+
+bk𝑗 
+
+𝜏 + 𝑝 𝑖 𝑗 + 𝑚 𝑗 , 𝑎 𝑖 𝑗 = exp (𝑠 𝑖 𝑗 )
+
+Í𝑛 𝑘 =1 exp (𝑠 𝑖𝑘 ) , (5) where 𝜏 is a constrained learnable temperature, 𝑝 𝑖 𝑗 is an optional view-specific attention prior, and 𝑚 𝑗 is zero for a valid log position and −∞ for padding. The content update for query 𝑖 is 
+
+𝜹 𝑖 = 𝑊 𝑂 𝑛 ∑︁ 
+
+> 𝑗 =1
+
+𝑎 𝑖 𝑗 𝑊 𝑉 h𝑗 , Δ(B, H; P) = [𝜹 1; . . . ; 𝜹 𝑞 ]. (6) The normalized queries and keys bound the similarity scale, while the value projections preserve the content carried by the original experience representations. Because the length and quality of an experience log may vary substantially, an unrestricted residual update can overwhelm the base queries. We therefore define the matrix RMS and a magnitude cap as 
+
+RMS (Y) =√︄ ∥Y∥2
+
+> 𝐹
+
+|Y| , Cap (Δ; B, 𝜌 ) = Δ min 
+
+
+
+1, 𝜌 RMS (B)
+
+RMS (Δ) + 𝜖 
+
+
+
+,
+
+(7) where |Y| is the number of scalar elements in Y, 𝜌 bounds the update magnitude relative to the base, and 𝜖 > 0 is a numerical stabilizer. We further use 
+
+NormMatch (Y; B) = Y RMS (B)
+
+RMS (Y) + 𝜖 (8) to restore the RMS scale of the base without altering the direc-tion of the updated representation. The shared reading operator is therefore 
+
+Read (B, H; P) = NormMatch (B + 𝜎 (𝑔 ) Cap (Δ(B, H; P); B, 𝜌 ) ; B) ,
+
+(9) where 𝑔 is a learnable gate logit. The gate controls whether the retrieved content should be incorporated, while the cap limits its maximum influence. Both operations can attenuate an update but do not amplify an already small one. We omit P when no view-specific prior is used. 
+
+## 2.4 Tri-View Memory Reader 
+
+Recommendation experience contains complementary evidence at different levels. Recent recommendations reflect short-term inter-ests and the current interaction context; patterns recurring across requests summarize more persistent system judgments; and regu-larities shared across users provide transferable population-level priors. TVMR accordingly reads the experience log through recency, frequency, and global views. Each view produces at most 𝑀 tokens, which are subsequently fused into the same fixed 𝑀 -token budget. 
+
+Recency view. The recency view preserves fine-grained infor-mation from the most recent recommendations. Because repeated exposures of the same item are common, using the raw tail of the log may allocate multiple memory positions to the same item. We therefore deduplicate the log while retaining the latest occurrence of each distinct item. Let Uniq (E𝑡 ) denote the resulting sequence. For | Uniq (E𝑡 )| > 𝑀 , we split it into the latest 𝑀 unique entries and the earlier remainder: 
+
+R0 = Tail 𝑀 
+
+ Uniq (E𝑡 ), Eold = Uniq (E𝑡 ) \ R0. (10) The recent entries preserve their exposure order and serve as the memory anchor. Using them as queries, the recency view reads the earlier experience: 
+
+R = Read (R0, Eold ), (11) Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Hui Qian et al. A. Tri -View Memory Reader B. Prompt Template 
+
+D. Recommend E. Reflect And Write 
+
+> Top -K
+> freq sid1
+> embed_tokens
+
+Recent View             
+
+> Most
+> recent
+> unique items Memory
+> Use the user history and your
+> experience to predict the user's next
+> behavior semantic codes.
+> C12345C54321 ~ C09821C33102 ~ C05512C28890 ~...
+> [ C12345 ][ C54321 ]
+> SID Codebook
+> SID1 SID2 Product
+> C12344 C54320 item_8841336
+> C12345 C54321 item_8841337
+> C12346 C54322 item_8841338
+> Experience log
+
+Frequent View 
+
+> Frequent
+> category
+> preferences
+
+Global View      
+
+> Shared
+> across all users
+> recent dedup
+> Linen Wrap Midi Dress -> Sage Green
+> Studio Loom Official
+> ¥580 ¥880
+> Recommended
+> You are a recommendation system.
+> Predict the user ’snext e -commerce
+> action. Each action is encoded as two
+> semantic tokens.
+
+SYSTEM 
+
+USER 
+
+ASSISTANT 
+
+C. RankGR For Recall 
+
+Qwen2.5 -0.5B                    
+
+> conditioned
+> on SID1
+> LM Head
+> Coarse Ranking
+> Linear(hidden -> vocab)
+> Softma x-> Top -K
+> Top -KCandidates
+> Rank Head
+> Precision Reranking
+> MLP Scorer
+> [ C12345 ][ C54321 ]
+> Predicted (SID1, SID2)
+> Decoder Layer 2
+> Decoder Layer 3
+> Decoder Layer 1
+> Decoder Layer 24
+> …
+> RoPE -> RMSNorm -> SwiGLU -> Session -Wise Mask
+> Step 1: Predict
+> SID1 Category Token
+> Step 2:Predict
+> SID 2 Item Token
+> K, V -> Prompt Hidden
+> Q-> Top -K
+> Cross Attention ⊗
+> Query
+> Q1 Q2 ..
+> .. Q2 Q1
+> Q1 Q2 ..
+> Cross Attention
+
+Q
+
+K V From experience  
+
+> logs
+> recency
+> anchored
+> gated fusion
+> Memory Reader
+> NormMatch
+
+⟨EXP ⟩
+
+⟨HIS ⟩ ⟨HIS ⟩
+
+⟨EXP ⟩
+
+User feedback 
+
+> {{user_history}}
+> {{experience_memory }}
+
+…
+
+User behavior history 
+
+Add to log 
+
+Recommend 
+
+Generative 
+
+recommender 
+
+Recommend experience log 
+
+Tri -view memory reader 
+
+Experience memory 
+
+Figure 2: Overview of LoopMemGR. (A) The Tri-View Memory Reader extracts complementary evidence from the accumulated recommendation experience log. The recency view preserves fine-grained information from recent recommendations, the frequency view captures recurring category-level recommendation patterns, and the global view uses learnable queries shared across users to extract transferable regularities. Recent-anchored gated fusion compresses the three views into a fixed number of experience tokens. (B) The prompt jointly incorporates the user behavior history and the experience tokens, with each item represented by two tokens from the SID codebook. (C) The generative backbone predicts the category-level SID1 followed by the item-level SID2. The LM head retrieves a coarse top-𝐾 candidate set, which is reranked by the Rank head through cross-attention to the prompt hidden states. (D) The top-ranked items are presented to the user. (E) After the request, the recommendation results are summarized and written into the recommendation experience log, while the subsequent user response updates the behavior log, closing the recommendation–feedback– memory–recommendation loop. 
+
+which prevents a query from directly retrieving its identical occur-rence from the key–value sequence. When the deduplicated log contains at most 𝑀 entries, TVMR retains all of them directly rather than introducing additional memory tokens. 
+
+Frequency view. The frequency view captures category-level recommendation patterns that recur across requests. Let 𝑐 (𝑒 𝑗 ) =
+
+𝑐 (1) (𝑒 𝑗 ) be the category-level identifier (SID1) of the recommended item in entry 𝑒 𝑗 . For every category 𝑐 in the log, let 𝑛 𝑐 denote its occurrence count and 𝑝 𝑐 its latest occurrence position. Categories are ordered lexicographically by 
+
+𝜋 (𝑐 ) =  I[𝑛 𝑐 > 1], 𝑛 𝑐 , 𝑝 𝑐 
+
+, (12) which prioritizes categories recommended repeatedly across re-quests and breaks ties by frequency and recency. The top 𝑀 cate-gories form the query set C𝐹 . For the 𝑖 -th selected category 𝑐 𝑖 , the initial query is 
+
+f (0)
+
+𝑖 = esid (𝑐 𝑖 ) + efreq (bucket (𝑛 𝑐 𝑖 )) + 𝜂 etype (𝐹 ). (13) Here 𝐹 identifies the frequency view, 𝜂 controls the contribution of its source embedding, and I[·] denotes the indicator function. A nonnegative learnable bias encourages each query to retrieve experience entries from the corresponding category: 
+
+𝑝 𝐹 𝑖 𝑗 = 𝛽 I[𝑐 𝑖 = 𝑐 (𝑒 𝑗 )] , 𝛽 = softplus ( e𝛽 ), (14) and the frequency representation is 
+
+F = Read (F(0) , E𝑡 ; P𝐹 ). (15) Because Eq. (14) introduces a soft prior rather than a hard mask, a query may still attend to other categories when supported by the task objective. The resulting representation summarizes recur-ring category-level evidence associated with the system’s more persistent judgments about the user. 
+
+Global view. User-specific recommendation experience can be sparse, particularly during the early stages of interaction. The global view therefore introduces 𝑀 learnable queries shared across all users, 
+
+G(0) = [g(0)
+
+1 ; . . . ; g(0)
+
+𝑀 ], (16) which are initialized with separated query directions and optimized over the experience logs of the entire user population. Two consec-utive reads allow the shared queries to extract transferable recom-mendation regularities from the full user-specific log: 
+
+G(1) = Read (G(0) , E𝑡 ), G = Read (G(1) , E𝑡 ). (17) LoopMemGR Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+The resulting tokens are latent, task-oriented representations and are not assumed to have a one-to-one correspondence with human-interpretable patterns. 
+
+## 2.5 Recent-Anchored Gated Fusion 
+
+The three views jointly produce 3𝑀 candidate tokens, whereas the generative backbone accepts only 𝑀 experience tokens. To preserve a bounded working memory, we use the recent entries R0 as the output anchors and integrate complementary evidence from all three views. After adding a source embedding to each view, R0
+
+reads the three branches separately: 
+
+Δ𝑅 = Attn (R0, eR), Δ𝐹 = Attn (R0,eF), Δ𝐺 = Attn (R0, eG). (18) Here Attn denotes Eqs. (4) – (6) without the residual update. For the recency view, diagonal query–key pairs are masked so that the 𝑖 -th output position cannot directly copy the 𝑖 -th recent candidate. Each view has an independent gate, and its update is capped before the three sources are combined: 
+
+Δmix =∑︁   
+
+> 𝑣 ∈ { 𝑅,𝐹,𝐺 }
+
+𝛼 𝑣 Cap (Δ𝑣 ; R0, 𝜌 𝑠 ), 𝛼 𝑣 = 𝜎 (𝑔 𝑣 ). (19) The combined correction is capped again at the output level: 
+
+T𝑡 = NormMatch (R0 + Cap (Δmix ; R0, 𝜌 𝑚 ); R0) . (20) Accordingly, TVMR represents the frequency and global evidence as bounded corrections to a recent-experience anchor, rather than reconstructing the working memory entirely from unconstrained learned queries. When either view provides little request-relevant evidence, its gate can suppress the corresponding update, keeping Eq. (20) close to R0.
+
+## 2.6 Training Protocol and Complexity Analysis 
+
+TVMR and the generative backbone are optimized jointly. Following the backbone training setting [ 5], the task objective consists of the generation loss over the two SID steps and the ranking loss of the Rank head: 
+
+Ltask = Lgen + L rank . (21) The experience summarization module remains frozen, and writing the resulting summary to the recommendation experience log is a discrete state update through which no gradient is propagated. To discourage collapse among the global queries and their cor-responding attention distributions, let g𝑖 denote the 𝑖 -th global query and a𝑖 its attention distribution over the recommendation experience log. We introduce 
+
+L𝑄 = 1
+
+𝑀 (𝑀 − 1)∑︁ 𝑖 ≠𝑗 
+
+ g⊤ 
+
+> 𝑖
+
+g𝑗 
+
+∥g𝑖 ∥2 ∥g𝑗 ∥2
+
+2
+
+, (22) 
+
+L𝐴 = 1
+
+𝑀 (𝑀 − 1)∑︁ 𝑖 ≠𝑗 
+
+ a⊤ 
+
+> 𝑖
+
+a𝑗 
+
+∥a𝑖 ∥2 ∥a𝑗 ∥2
+
+2
+
+. (23) The final objective is 
+
+L = Ltask + 𝜆 𝑄 𝑤 (𝑠 )L 𝑄 + 𝜆 𝐴 𝑤 (𝑠 )L 𝐴 , (24) where 𝑤 (𝑠 ) gradually introduces the diversity regularizers during training, and 𝜆 𝑄 and 𝜆 𝐴 control their respective strengths. Training and offline replay follow the same request chronology as online serving. For request 𝑡 , the model can access only H <𝑡 𝑢 and 
+
+E<𝑡 𝑢 . The current user feedback and recommendation summary are written only after candidate generation. This causal ordering pre-vents future behaviors or recommendation decisions from entering the context of an earlier request. For an experience log of length 𝑁 𝑡 , one cross-attention read costs 𝑂 (( 𝑁 𝑡 + 𝑀 )𝑑 2 + 𝑀𝑁 𝑡 𝑑 ). TVMR invokes a fixed number of such reads and does not perform quadratic self-attention over the full experience log. The experience component of the backbone context always occupies 𝑀 tokens plus 𝑂 (1) markers, independent of the number of completed requests, while the behavior history follows the backbone’s standard truncation strategy. Appending one recommendation summary costs 𝑂 (𝑚 ). Although the reader still scans the full log linearly, the fixed experience-token budget bounds the context processed by the deep generative backbone. 
+
+## 3 Experiment 
+
+In this section, we conduct a series of experiments to answer the following research questions: 
+
+RQ1: Overall effectiveness. How does LoopMemGR perform compared with representative conventional and generative retrieval methods? 
+
+RQ2: Closed-loop experience memory. Does persisting recom-mendation experience across requests improve subsequent rec-ommendation, and can TVMR retain this benefit within a fixed 16-token budget? 
+
+RQ3: Query division in the global view. Do the diversity regu-larizers prevent the global queries from collapsing onto the same evidence? 
+
+RQ4: View-level reading patterns. Do the three views extract complementary evidence from the experience log, as designed? 
+
+## 3.1 Experimental Setup 
+
+3.1.1 Datasets. For brevity, details of the datasets are deferred to Section A. 
+
+3.1.2 Baselines. For brevity, details of the baselines are deferred to Section B. 
+
+3.1.3 Evaluation Metrics. Following RankGR [ 5], we use Hit Rate at cutoff 𝐾 (HR@ 𝐾 ) as the primary retrieval metric. Given the top-
+
+𝐾 retrieved item set I𝐾 𝑢 and the ground-truth interaction set Igt 
+
+> 𝑢
+
+for user 𝑢 , HR@ 𝐾 is defined as 
+
+HR@ 𝐾 = 1
+
+|U| ∑︁ 𝑢 ∈ U 
+
+I𝐾 𝑢 ∩ I gt 
+
+> 𝑢
+
+Igt 
+
+> 𝑢
+
+, (25) where U denotes the evaluated user set. Higher HR indicates that a larger proportion of ground-truth items is covered by the retrieved candidate set. On the Taobao dataset, the overall comparison evaluates two behavior-level targets: click and page view (PV). We report HR Click @𝐾 
+
+and HR PV @𝐾 at 𝐾 ∈ { 20 , 100 , 500 , 1000 , 2000 }. In the experience-memory analysis, we report the same click and PV targets at 𝐾 ∈{20 , 1000 } using the same HR definition. All HR values are pre-sented as percentages. Methods appearing in the same table are evaluated with the same target definitions, candidate corpus, and retrieval cutoffs. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Hui Qian et al. 
+
+3.1.4 Implementation Details. For all baseline methods, we follow the implementations, data partitions, and hyperparameter settings used by RankGR [ 5]. LoopMemGR uses RankGR as its generative recommendation backbone. In particular, semantic identifiers are constructed following FORGE [ 6], and the generative model is ini-tialized from Qwen2.5-0.5B-Instruct [ 28 ]. Each item is represented by a two-level semantic identifier. Following RankGR, the raw behavioral input contains at most 2,000 SID tokens, corresponding to a maximum of 1,000 historical items. The maximum training sequence length is 4,352 tokens, with the source and target budgets set to 4,096 and 256 tokens, respec-tively. LoopMemGR keeps this behavioral input unchanged and additionally reads the experience log through TVMR, which outputs 
+
+𝑀 = 16 experience tokens. The hidden dimension of all memory representations is aligned with that of the RankGR backbone. The experience log is append-only. After request 𝑡 is completed, the reflected item sequence is appended to the log in its emitted order, and repeated items are retained as separate entries. The write operation uses no learned importance score, temporal decay, or memory-side re-ranking. At reading time, TVMR considers up to the most recent 1,000 experience entries and always returns 16 experience tokens. Moreover, the experience written at request 𝑡 is visible only to requests from 𝑡 + 1 onward. We train the models for one epoch on Taobao . The per-device batch size is set to 40. We use a linear learning-rate schedule with an initial learning rate of 5 × 10 −5 and conduct training in bfloat16 precision. During inference, dynamic beam search is applied to the two SID levels, with beam sizes of 500 and 1,400, respectively. The candidate-retention sizes in the refined scoring phase of RankGR are set to {1400 , 1400 }. Unless otherwise stated, the same LoopMemGR configuration is used in all experiments. 
+
+## 3.2 Overall Performance (RQ1) 
+
+We compare LoopMemGR with conventional and generative re-trieval methods on the industrial Taobao dataset. Table 1 reports the results, with the best and second-best results in each column marked in bold and underlined, respectively. We make the following observations: 
+
+• LoopMemGR achieves the best performance across all eval-uation settings. It consistently ranks first for both click and PV prediction at every cutoff. Compared with RankGR, Loop-MemGR improves Click HR by 11.57–15.30 percentage points at 
+
+𝐾 ≥ 100 and improves PV HR by 11.87–17.65 percentage points over the same range. These results show that the proposed mem-ory framework benefits different feedback targets and retrieval depths. 
+
+• LoopMemGR consistently improves upon its backbone. 
+
+RankGR is the strongest baseline and shares the semantic iden-tifiers, generative backbone, training objective, and decoding pipeline with LoopMemGR. The consistent improvements over RankGR therefore support attributing the performance gains to the added behavioral intent and cross-request experience memo-ries, rather than to a stronger generative backbone. 
+
+• Generative retrieval methods generally outperform con-ventional recommenders. TIGER, FORGE, RankGR, and Loop-MemGR achieve substantially higher HR than conventional se-quential models, particularly at larger cutoffs. This pattern is consistent with the advantage of generating structured semantic identifiers, which incorporate item-level semantic or collabora-tive information into the retrieval process. 
+
+## 3.3 Closed-Loop Experience Memory (RQ2) 
+
+We examined whether the recommendation experience accumu-lated from previous requests benefits subsequent recommendation, and whether TVMR retains this benefit under a fixed 16-token budget. Behavior only removes the experience log and keeps the be-havior sequence unchanged. Raw Experience serializes up to 1,000 experience entries into the context without any summarization. The remaining variants read the same experience log and output 16 experience tokens. They include two generic fixed-budget read-ers (BlockMean-16 and AttnPool-16), the long-sequence reader LONGER-16 [ 2], and view-specific variants of TVMR. All variants share the same behavior input, RankGR backbone, and evaluation protocol. Table 2 supports four observations: 
+
+• Experience memory consistently improves recommenda-tion performance. Every experience-augmented variant out-performs Behavior only , and even simple mean pooling brings clear gains. This result confirms that the experience log carries evidence absent from the behavior log, which is exactly the one-sided memory gap that motivates LoopMemGR. 
+
+• TVMR preserves most of the benefit of raw experience within a compact token budget. Raw Experience performs best but spends up to 2,000 additional SID tokens on the serialized log. TVMR retains at least 74.3% of its gain over Behavior only 
+
+across the four metrics while using only 16 tokens. A compact experience memory therefore preserves most of the reusable decision evidence. 
+
+• TVMR is more effective than generic fixed-budget read-ers. TVMR-16 outperforms all alternative readers under the same 16-token budget, including the strong long-sequence reader LONGER-16.This result suggests that organizing experience through task-specific views is more effective than applying generic com-pression under the same token budget. 
+
+• The three memory views provide complementary evidence. 
+
+Anchoring on recent experience yields the largest single improve-ment over the global view alone, and adding the frequency view provides further consistent gains on all four metrics. 
+
+## 3.4 In-depth Analysis (RQ3 & RQ4) 
+
+To further interpret how TVMR retrieves and summarizes request-relevant evidence from the experience log, we analyze its attention distributions on evaluated requests. We conduct two analyses. The first examines whether the global queries learn a division of labor under the diversity regularizers. The second examines whether the three views read the same log in complementary patterns. 
+
+Query Division in the Global View (RQ3). We visualize the attention of the 16 global queries over the experience sequence of a LoopMemGR Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 1: Overall performance on the industrial Taobao dataset. Baseline results are quoted from [ 5 ] under the same evaluation protocol. All values are reported as percentages. 
+
+Click HR@ 𝐾 PV HR@ 𝐾 
+
+Method 𝐾 =20 𝐾 =100 𝐾 =500 𝐾 =1000 𝐾 =2000 𝐾 =20 𝐾 =100 𝐾 =500 𝐾 =1000 𝐾 =2000 
+
+YouTubeDNN 2.33 5.06 9.05 10.80 11.86 0.29 2.01 5.61 7.17 7.43 SASRec 3.53 7.88 12.68 15.42 17.08 0.42 2.13 7.87 13.12 16.27 BERT4Rec 3.54 7.91 12.79 15.50 17.24 0.32 2.25 8.43 13.72 16.62 Caser 3.00 7.52 11.50 14.39 15.86 0.30 1.99 7.40 12.42 15.30 NextItNet 3.39 7.71 12.32 15.15 16.74 0.33 2.08 7.53 12.59 15.67 CORE 3.98 8.67 15.50 18.50 20.29 0.41 2.47 8.59 13.97 17.26 HSTU 4.06 8.74 15.70 18.64 20.48 0.59 2.78 9.58 15.08 19.51 TIGER 7.17 15.59 27.89 33.27 36.53 1.89 6.75 18.92 25.29 31.06 FORGE 9.04 19.44 36.05 43.09 47.15 2.47 8.39 21.90 29.74 35.37 RankGR 11.64 25.30 45.25 54.00 59.28 2.99 10.66 28.13 38.18 45.46 
+
+LoopMemGR 20.43 39.24 60.55 68.41 70.85 7.16 22.53 45.78 53.56 62.18 
+
+Table 2: Effect of closed-loop experience memory on the 
+
+Taobao dataset. Raw Experience serializes up to 1,000 experi-ence entries, whereas all other experience readers output 16 tokens. All values are percentages, and the best fixed-budget result is boldfaced. 
+
+Click HR@ 𝐾 PV HR@ 𝐾 
+
+Variant 𝐾 =20 𝐾 =1000 𝐾 =20 𝐾 =1000 
+
+Behavior only 11.64 54.00 2.99 38.18 BlockMean-16 12.88 57.56 3.58 41.99 AttnPool-16 16.26 63.92 5.19 48.77 LONGER-16 20.01 67.94 6.96 53.06 Global-16 17.29 65.51 5.68 50.47 Recency+Global-16 20.07 68.22 6.99 53.37 
+
+TVMR-16 20.43 68.41 7.16 53.56 
+
+Raw Experience (1,000 entries) 21.31 71.20 7.72 58.89 
+
+request. Rows are sorted by their peak positions. We also report the mean pairwise cosine between the 16 attention distributions, where a lower value indicates less overlapping reading. Table 3 further compares the retrieval quality of the Global-16 variant trained with and without the regularizers. The result is shown in Figure 3, from which we draw two obser-vations: 
+
+• With the regularizers, the global queries partition the log into distinct territories. The sorted rows form a clear staircase, and the mean pairwise cosine is 0.09. This pattern is stable: across all evaluated requests, the mean pairwise cosine is 0.13 and never exceeds 0.45. The 16 experience tokens therefore summarize different parts of the accumulated experience. Position in the experience sequence (old → new) 
+
+> q1
+> q16
+> Global queries
+> (sorted by peak)
+> cos 0.09
+
+w/ loss  
+
+> attention peak of each query query
+> similarity
+> Position in the experience sequence (old → new)
+> q1
+> q16
+> Global queries
+> (sorted by peak)
+> cos 0.25
+
+w/o loss 
+
+> all peaks collapse to the tail
+> query
+> similarity
+
+Figure 3: Attention of the 16 global queries over the same experience sequence, trained with (top) and without (bottom) the diversity regularizers L𝑄 and L𝐴 . Rows are sorted by their peak positions and normalized per row. 
+
+• Without the regularizers, the queries lose their territorial structure. The pairwise cosine rises to 0.25, and all rows read the sequence in a highly overlapping manner. The resulting tokens carry redundant evidence, which explains the performance drop in Table 3: Click HR@20 decreases from 17.29 to 14.31, and PV HR@20 from 5.68 to 4.26, with consistent drops at 𝐾 =1000 .
+
+View-Level Reading Patterns (RQ4). We further analyze how the three views distribute attention over the same experience se-quence. Figure 4 visualizes a request whose experience covers sev-eral recurring categories. The three frequency-query tracks are ordered by the era of their categories, from the oldest to the newest. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Hui Qian et al. 
+
+Table 3: Effect of the diversity regularizers on the Global-16 variant. All values are percentages. 
+
+Click HR@ 𝐾 PV HR@ 𝐾 
+
+Variant 𝐾 =20 𝐾 =1000 𝐾 =20 𝐾 =1000 
+
+Global-16 w/o L𝑄 , L𝐴 14.31 60.18 4.26 44.78 
+
+Global-16 17.29 65.51 5.68 50.47 Recency    
+
+> Frequency
+> Global
+> C09489 36% of mass on own category
+> Frequency queries
+> C20463 53% of mass on own category
+> C19258 30% of mass on own category
+> Position in the experience sequence (old → new)
+> SID1 category of each log position (top-3 colored)
+> Anchor region (16 most recent entries)
+
+Figure 4: How the three views read one experience sequence. Top: the recency, frequency, and global views exhibit comple-mentary attention patterns; the shaded region marks the an-chor, i.e., the 16 most recent entries that are retained directly. Middle: the three largest frequency queries, each annotated with the share of attention mass placed on its own category. Bottom: the SID1 category of each log position, with the three query categories colored. 
+
+The visualization supports three observations: 
+
+• The three views read the log in complementary patterns. 
+
+The recency view covers the whole sequence and assigns greater weight to recent entries, while the latest entries are retained di-rectly as anchors. The frequency view concentrates on recurring categories, whereas the global view selectively attends to a small set of entries. Thus, the three views capture different aspects of the same experience log. 
+
+• The category prior guides but does not constrain frequency retrieval. The three frequency queries place 36%, 53%, and 30% of their attention mass on their respective categories, although these categories account for only 3%–8% of the log. Each query nevertheless assigns non-trivial attention outside its own cat-egory. In particular, the earliest query revisits an old interest burst that is no longer emphasized by the recency view. The soft category bias therefore supports category-specific retrieval while retaining a channel for cross-category evidence, consistent with its design. 
+
+• The global view favors recent experience while retaining access to informative historical evidence. The global queries assign more attention to recent experience overall, but their dis-tributions also exhibit distinct peaks at earlier positions in the log. Because these queries are shared model-wide rather than constructed for individual requests, this pattern suggests that broadly reusable experience is more often found in recent inter-actions, while selected historical entries can remain sufficiently informative to attract focused global attention. 
+
+## 4 Related Work 
+
+We review two lines of research most relevant to this work: gener-ative recommendation and memory-augmented recommendation. 
+
+## 4.1 Generative Recommendation 
+
+Generative recommendation formulates item recommendation as the autoregressive generation of discrete item tokens rather than candidate-wise scoring [ 8, 29 , 38 , 42 ]. A typical framework first maps items into Semantic IDs (SIDs), represents user histories as token sequences, and then generates the target SID with a sequence model [ 29 , 37 ]. This formulation integrates item representation, user modeling, and candidate retrieval within a unified generative process. Existing studies have mainly investigated item tokenization and generative modeling. Prior work constructs item tokens through vector quantization, hierarchical indexing, contrastive quantiza-tion, textual identifiers, or end-to-end tokenizer learning [ 10 , 13 ,20 , 35 , 37 , 45 ]. Recent methods further incorporate contextual ac-tion patterns, heterogeneous behaviors, and large-scale sequence modeling [ 12 , 21 , 42 ]. These methods improve how historical be-haviors are encoded and generated, but they still reconstruct user state primarily from behavior history at each request. LoopMemGR 
+
+instead retains recommendation–feedback experience as persistent evidence for subsequent generation. 
+
+## 4.2 Memory-Augmented Recommendation 
+
+Memory-augmented recommenders preserve long-term user in-terests through hierarchical storage, recurrent memory, behavior retrieval, or compact interest representations [ 3, 25 , 26 , 30 ]. Recent industrial systems extend this line with retrieval-enhanced com-prehension, hierarchical compression, and scalable long-sequence modeling [ 2, 19 , 33 ]. Their memory modules mainly summarize or retrieve user-side behavioral evidence, reducing the cost of repeat-edly processing an ever-growing history. LLM-based agents provide a complementary direction by storing explicit memories and using reflection to convert feedback into reusable experience [ 32 , 43 ]. In recommendation, conversational and agentic methods maintain user profiles, reflect on recommenda-tion errors, coordinate specialized reflectors, or model iterative user LoopMemGR Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+feedback [ 1, 9, 14 , 27 , 39 , 40 ]. Interactive recommenders also opti-mize multi-step trajectories or exploit exposure feedback [ 7 , 15 , 44 ]. However, these approaches either rely on additional LLM reason-ing or treat recommendation outcomes as transient signals. Loop-MemGR directly maintains system-side recommendation experi-ence across requests and compresses it into bounded recency, fre-quency, and global memories for an SID-based generative back-bone. 
+
+## 5 Conclusion 
+
+In this paper, we present LoopMemGR , a closed-loop memory framework for generative recommendation that jointly models com-pact behavioral intent and reusable recommendation experience. Through a read–recommend–reflect–write loop, LoopMemGR pre-serves system-side recommendation decisions and their observed outcomes, enabling subsequent requests to reuse previously accu-mulated experience under a bounded memory budget. Its multi-view memory reader further captures complementary evidence from recent interactions, recurring recommendation patterns, and transferable regularities shared across users. Extensive experiments on industrial demonstrate the effectiveness of the proposed frame-work, while ablation studies verify the complementary contribu-tions of intent memory and experience memory. These findings highlight the value of transforming transient recommendation deci-sions into persistent user-specific experience and provide a promis-ing direction for more stateful generative recommender systems. 
+
+## Acknowledgments References 
+
+[1] Shihao Cai, Jizhi Zhang, Keqin Bao, Chongming Gao, Qifan Wang, Fuli Feng, and Xiangnan He. 2025. Agentic Feedback Loop Modeling Improves Recommendation and User Simulation. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . Association for Computing Machinery, 2235–2244. doi:10.1145/3726302.3729893 [2] Zheng Chai, Qin Ren, Xijun Xiao, Huizhi Yang, Bo Han, Sijun Zhang, Di Chen, Hui Lu, Wenlin Zhao, Lele Yu, Xionghang Xie, Shiru Ren, Xiang Sun, Yaocheng Tan, Peng Xu, Yuchao Zheng, and Di Wu. 2025. LONGER: Scaling Up Long Sequence Modeling in Industrial Recommenders. In Proceedings of the Nineteenth ACM Conference on Recommender Systems . Association for Computing Machinery, 247–256. doi:10.1145/3705328.3748065 [3] Jianxin Chang, Chenbin Zhang, Zhiyi Fu, Xiaoxue Zang, Lin Guan, Jing Lu, Yiqun Hui, Dewei Leng, Yanan Niu, Yang Song, and Kun Gai. 2023. TWIN: TWo-Stage Interest Network for Lifelong User Behavior Modeling in CTR Prediction at Kuaishou. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 3785–3794. doi:10.1145/3580305.3599922 [4] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep neural networks for youtube recommendations. In Proceedings of the 10th ACM conference on recommender systems . 191–198. [5] Kairui Fu, Changfa Wu, Kun Yuan, Binbin Cao, Dunxian Huang, Yuliang Yan, Junjun Zheng, Jianning Zhang, Silu Zhou, Jian Wu, and Kun Kuang. 2026. RankGR: Rank-Enhanced Generative Retrieval with Listwise Direct Prefer-ence Optimization in Recommendation. arXiv preprint arXiv:2602.08575 (2026). arXiv:2602.08575 [cs.IR] doi:10.48550/arXiv.2602.08575 [6] Kairui Fu, Tao Zhang, Shuwen Xiao, Ziyang Wang, Xinming Zhang, Chenchi Zhang, Yuliang Yan, Junjun Zheng, Yu Li, Zhihong Chen, et al . 2025. Forge: Forming semantic identifiers for generative retrieval in industrial datasets. arXiv preprint arXiv:2509.20904 (2025). [7] Chongming Gao, Shiqi Wang, Shijun Li, Jiawei Chen, Xiangnan He, Wenqiang Lei, Biao Li, Yuan Zhang, and Peng Jiang. 2023. CIRS: Bursting Filter Bubbles by Coun-terfactual Interactive Recommender System. ACM Transactions on Information Systems 42, 1 (2023), 1–27. doi:10.1145/3594871 [8] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as Language Processing (RLP): A Unified Pretrain, Personalized Prompt & Predict Paradigm (P5). In Proceedings of the 16th ACM Conference on Recommender Systems (RecSys ’22) . Association for Computing Machinery, 299– 315. doi:10.1145/3523227.3546767 [9] Hao Gu, Rui Zhong, Yu Xia, Wei Yang, Chi Lu, Peng Jiang, and Kun Gai. 2025. 𝑅 4ec: A Reasoning, Reflection, and Refinement Framework for Recommendation Sys-tems. In Proceedings of the Nineteenth ACM Conference on Recommender Systems .Association for Computing Machinery, 411–421. doi:10.1145/3705328.3748068 [10] Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. 2023. Learn-ing Vector-Quantized Item Representation for Transferable Sequential Recom-menders. In Proceedings of the ACM Web Conference 2023 . Association for Com-puting Machinery, 1162–1171. doi:10.1145/3543507.3583434 [11] Yupeng Hou, Binbin Hu, Zhiqiang Zhang, and Wayne Xin Zhao. 2022. Core: simple and effective session-based recommendation within consistent represen-tation space. In Proceedings of the 45th international ACM SIGIR conference on research and development in information retrieval . 1796–1801. [12] Yupeng Hou, Jianmo Ni, Zhankui He, Noveen Sachdeva, Wang-Cheng Kang, Ed H. Chi, Julian McAuley, and Derek Zhiyuan Cheng. 2025. ActionPiece: Contextually Tokenizing Action Sequences for Generative Recommendation. In Proceedings of the 42nd International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 267) . PMLR, 24004–24024. https://proceedings.mlr.press/ v267/hou25f.html [13] Wenyue Hua, Shuyuan Xu, Yingqiang Ge, and Yongfeng Zhang. 2023. How to Index Item IDs for Recommendation Foundation Models. In Proceedings of the Annual International ACM SIGIR Conference on Research and Development in Information Retrieval in the Asia Pacific Region . Association for Computing Machinery, 195–204. doi:10.1145/3624918.3625339 [14] Xu Huang, Jianxun Lian, Yuxuan Lei, Jing Yao, Defu Lian, and Xing Xie. 2025. Recommender AI Agent: Integrating Large Language Models for Interactive Recommendations. ACM Transactions on Information Systems 43, 4, Article 96 (2025), 33 pages. doi:10.1145/3731446 [15] Eugene Ie, Vihan Jain, Jing Wang, Sanmit Narvekar, Ritesh Agarwal, Rui Wu, Heng-Tze Cheng, Tushar Chandra, and Craig Boutilier. 2019. SlateQ: A Tractable Decomposition for Reinforcement Learning with Recommendation Sets. In Pro-ceedings of the 28th International Joint Conference on Artificial Intelligence . 2592– 2599. doi:10.24963/ijcai.2019/360 [16] Wang-Cheng Kang and Julian J. McAuley. 2018. Self-Attentive Sequential Rec-ommendation. In 2018 IEEE International Conference on Data Mining . 197–206. doi:10.1109/ICDM.2018.00035 [17] Jiayu Li, Aixin Sun, Weizhi Ma, Peijie Sun, and Min Zhang. 2024. Right Tool, Right Job: Recommendation for Repeat and Exploration Consumption in Food Delivery. In Proceedings of the 18th ACM Conference on Recommender Systems .643–653. doi:10.1145/3640457.3688119 [18] Ming Li, Ali Vardasbi, Andrew Yates, and Maarten de Rijke. 2023. Repetition and Exploration in Sequential Recommendation. In Proceedings of the 46th In-ternational ACM SIGIR Conference on Research and Development in Information Retrieval . 2532–2541. doi:10.1145/3539618.3591914 [19] Jianghao Lin, Rong Shan, Chenxu Zhu, Kounianhua Du, Bo Chen, Shigang Quan, Ruiming Tang, Yong Yu, and Weinan Zhang. 2024. ReLLa: Retrieval-Enhanced Large Language Models for Lifelong Sequential Behavior Comprehension in Recommendation. In Proceedings of the ACM Web Conference 2024 . 3497–3508. doi:10.1145/3589334.3645467 [20] Enze Liu, Bowen Zheng, Cheng Ling, Lantao Hu, Han Li, and Wayne Xin Zhao. 2025. Generative Recommender with End-to-End Learnable Item Tokenization. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . Association for Computing Machinery, 729–739. doi:10.1145/3726302.3729989 [21] Zihan Liu, Yupeng Hou, and Julian McAuley. 2024. Multi-Behavior Generative Recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . Association for Computing Machinery, 1575–1585. doi:10.1145/3627673.3679730 [22] Ziru Liu, Shuchang Liu, Zijian Zhang, Qingpeng Cai, Xiangyu Zhao, Kesen Zhao, Lantao Hu, Peng Jiang, and Kun Gai. 2024. Sequential Recommendation for Optimizing Both Immediate Feedback and Long-Term Retention. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1872–1882. doi:10.1145/3626772.3657829 [23] Fuyu Lv, Mengxue Li, Tonglei Guo, Changlong Yu, Fei Sun, Taiwei Jin, and Wilfred Ng. 2022. XDM: Improving Sequential Deep Matching with Unclicked User Behaviors for Recommender System. In Database Systems for Advanced Applications (Lecture Notes in Computer Science, Vol. 13247) . Springer, 364–376. doi:10.1007/978-3-031-00129-1_31 [24] Yunzhu Pan, Chen Gao, Jianxin Chang, Yanan Niu, Yang Song, Kun Gai, Depeng Jin, and Yong Li. 2023. Understanding and Modeling Passive-Negative Feedback for Short-Video Sequential Recommendation. In Proceedings of the 17th ACM Conference on Recommender Systems . 540–550. doi:10.1145/3604915.3608814 [25] Qi Pi, Weijie Bian, Guorui Zhou, Xiaoqiang Zhu, and Kun Gai. 2019. Practice on Long Sequential User Behavior Modeling for Click-Through Rate Prediction. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining . 2671–2679. doi:10.1145/3292500.3330666 [26] Qi Pi, Guorui Zhou, Yujing Zhang, Zhe Wang, Lejian Ren, Ying Fan, Xiaoqiang Zhu, and Kun Gai. 2020. Search-Based User Interest Modeling with Lifelong Sequential Behavior Data for Click-Through Rate Prediction. In Proceedings of Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Hui Qian et al. 
+
+the 29th ACM International Conference on Information & Knowledge Management .2685–2692. doi:10.1145/3340531.3412744 [27] Weicong Qin, Yi Xu, Weijie Yu, Chenglei Shen, Xiao Zhang, Ming He, Jianping Fan, and Jun Xu. 2025. MoRE: A Mixture of Reflectors Framework for Large Language Model-Based Sequential Recommendation. In Proceedings of the Nineteenth ACM Conference on Recommender Systems (RecSys ’25) . Association for Computing Machinery, 299–308. doi:10.1145/3705328.3748055 [28] Qwen Team, An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, et al . 2024. Qwen2.5 Tech-nical Report. arXiv preprint arXiv:2412.15115 (2024). arXiv:2412.15115 [cs.CL] doi:10.48550/arXiv.2412.15115 [29] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, Maciej Kula, Ed Chi, and Maheswaran Sathiamoorthy. 2023. Recommender Systems with Generative Retrieval. In Advances in Neural Information Processing Systems ,Vol. 36. 10299–10315. doi:10.52202/075280-0452 [30] Kan Ren, Jiarui Qin, Yuchen Fang, Weinan Zhang, Lei Zheng, Weijie Bian, Guorui Zhou, Jian Xu, Yong Yu, Xiaoqiang Zhu, and Kun Gai. 2019. Lifelong Sequential Modeling with Personalized Memorization for User Response Prediction. In 
+
+Proceedings of the 42nd International ACM SIGIR Conference on Research and Development in Information Retrieval . 565–574. doi:10.1145/3331184.3331230 [31] Wentao Shi, Xiangnan He, Yang Zhang, Chongming Gao, Xinyue Li, Jizhi Zhang, Qifan Wang, and Fuli Feng. 2024. Large Language Models Are Learnable Planners for Long-Term Recommendation. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1893–1903. doi:10.1145/3626772.3657683 [32] Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Reflexion: Language Agents with Verbal Reinforcement Learning. In Advances in Neural Information Processing Systems , Vol. 36. Curran Associates, Inc., 8634–8652. doi:10.52202/075280-0377 [33] Zihua Si, Lin Guan, Zhongxiang Sun, Xiaoxue Zang, Jing Lu, Yiqun Hui, Xingchao Cao, Zeyu Yang, Yichen Zheng, Dewei Leng, Kai Zheng, Chenbin Zhang, Yanan Niu, Yang Song, and Kun Gai. 2024. TWIN V2: Scaling Ultra-Long User Behavior Sequence Modeling for Enhanced CTR Prediction at Kuaishou. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management .Association for Computing Machinery, 4890–4897. doi:10.1145/3627673.3680030 [34] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential recommendation with bidirectional encoder rep-resentations from transformer. In Proceedings of the 28th ACM international conference on information and knowledge management . 1441–1450. [35] Juntao Tan, Shuyuan Xu, Wenyue Hua, Yingqiang Ge, Zelong Li, and Yongfeng Zhang. 2024. IDGenRec: LLM-RecSys Alignment with Textual ID Learning. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . Association for Computing Machinery, 355–364. doi:10.1145/3626772.3657821 [36] Jiaxi Tang and Ke Wang. 2018. Personalized top-n sequential recommenda-tion via convolutional sequence embedding. In Proceedings of the eleventh ACM international conference on web search and data mining . 565–573. [37] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2024. Learnable Item Tokenization for Generative Recommendation. In Proceedings of the 33rd ACM International Conference on In-formation and Knowledge Management . 2400–2409. doi:10.1145/3627673.3679569 [38] Ye Wang, Jiahao Xun, Minjie Hong, Jieming Zhu, Tao Jin, Wang Lin, Haoyuan Li, Linjun Li, Yan Xia, Zhou Zhao, and Zhenhua Dong. 2024. EAGER: Two-Stream Generative Recommender with Behavior-Semantic Collaboration. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining .3245–3254. doi:10.1145/3637528.3671775 [39] Ziyan Wang, Yingpeng Du, Zhu Sun, Haoyan Chua, Kaidong Feng, Wenya Wang, and Jie Zhang. 2025. Re2LLM: Reflective Reinforcement Large Language Model for Session-Based Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 39. AAAI Press, 12827–12835. doi:10.1609/aaai.v39i12. 33399 [40] Yunjia Xi, Weiwen Liu, Jianghao Lin, Bo Chen, Ruiming Tang, Weinan Zhang, and Yong Yu. 2024. MemoCRS: Memory-Enhanced Sequential Conversational Recommender Systems with Large Language Models. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 2585– 2595. doi:10.1145/3627673.3679599 [41] Fajie Yuan, Alexandros Karatzoglou, Ioannis Arapakis, Joemon M Jose, and Xi-angnan He. 2019. A simple convolutional generative network for next item recommendation. In Proceedings of the twelfth ACM international conference on web search and data mining . 582–590. [42] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Jiayuan He, Yinghai Lu, and Yu Shi. 2024. Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 58484– 58509. 
+
+Table 4: Statistics of the industrial Taobao dataset. 
+
+Dataset #Users #Items #Interactions Sparsity 
+
+Taobao 21 million 270 million 26 billion 99.99% 
+
+[43] Zeyu Zhang, Quanyu Dai, Xiaohe Bo, Chen Ma, Rui Li, Xu Chen, Jieming Zhu, Zhenhua Dong, and Ji-Rong Wen. 2025. A Survey on the Memory Mechanism of Large Language Model-Based Agents. ACM Transactions on Information Systems 
+
+43, 6, Article 155 (2025), 47 pages. doi:10.1145/3748302 [44] Ziqi Zhao, Zhaochun Ren, Jiyuan Yang, Zuming Yan, Zihan Wang, Liu Yang, Pengjie Ren, Zhumin Chen, Maarten de Rijke, and Xin Xin. 2025. Improving Sequential Recommenders through Counterfactual Augmentation of System Exposure. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1508–1518. doi:10.1145/ 3726302.3730005 [45] Jieming Zhu, Mengqun Jin, Qijiong Liu, Zexuan Qiu, Zhenhua Dong, and Xiu Li. 2024. CoST: Contrastive Quantization Based Semantic Tokenization for Generative Recommendation. In Proceedings of the 18th ACM Conference on Recommender Systems . Association for Computing Machinery, 969–974. doi:10. 1145/3640457.3688178 
+
+## A Datasets. 
+
+We evaluate LoopMemGR on an industrial dataset, denoted as 
+
+Taobao , constructed from real-world traffic logs collected from Taobao’s production recommendation system. It contains large-scale user interactions under multiple feedback signals, including page view, click, and purchase. We follow the data construction and partition protocol of RankGR [ 5], without introducing additional filtering or resampling. All interactions are processed in chronological order. For a re-quest at step 𝑡 , the model can access only the behavioral interactions and experience entries produced before that request. The target interaction and the experience generated from the current request are excluded from its input. The newly written experience becomes available only from step 𝑡 + 1. This chronological protocol prevents future information from leaking into either the behavioral intent memory or the experience memory. Detailed dataset statistics are reported in Table 4. 
+
+## B Baselines 
+
+We compare LoopMemGR with two categories of recommendation methods: conventional retrieval methods and generative retrieval methods. 
+
+(a) Conventional Recommendation Methods. 
+
+• YouTubeDNN [ 4] represents a user’s preference by aggregating historical item embeddings into a dense user vector for efficient large-scale candidate retrieval. 
+
+• SASRec [ 16 ] employs causal self-attention to model sequential dependencies among historical user interactions. 
+
+• BERT4Rec [ 34 ] introduces bidirectional sequence modeling and a masked-item prediction objective for sequential recom-mendation. 
+
+• Caser [36 ] applies horizontal and vertical convolutional filters over an interaction sequence to capture local transitions and user-level preference patterns. 
+
+• NextItNet [ 41 ] uses dilated convolutional networks to effi-ciently model long-range dependencies in sequential behaviors. LoopMemGR Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+• CORE [ 11 ] constructs session representations through weighted aggregation and aligns user and item representations in a con-sistent latent space. 
+
+(b) Generative Recommendation Methods. 
+
+• HSTU [ 42 ] formulates recommendation as sequential trans-duction and employs hierarchical units to model large-scale behavioral sequences. 
+
+• TIGER [29] represents each item with a multi-token semantic identifier and autoregressively generates the identifier of the next item. 
+
+• FORGE [6 ] improves semantic identifier construction by incor-porating collaborative signals and mitigating identifier collisions in industrial item corpora. 
+
+• RankGR [ 5 ] strengthens generative retrieval through listwise preference optimization and a lightweight candidate-aware scor-ing module that refines the initially generated candidates. LoopMemGR is instantiated on top of RankGR. RankGR therefore serves as the principal backbone-matched baseline: both methods use the same semantic identifiers, generative backbone, training objective, and decoding pipeline, while LoopMemGR additionally maintains behavioral intent memory and cross-request experience memory.

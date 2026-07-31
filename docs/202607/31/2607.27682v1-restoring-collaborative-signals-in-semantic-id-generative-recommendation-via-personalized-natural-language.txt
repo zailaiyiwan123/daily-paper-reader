@@ -1,0 +1,467 @@
+Title: Restoring Collaborative Signals in Semantic-ID Generative Recommendation via Personalized Natural Language
+
+URL Source: https://arxiv.org/pdf/2607.27682v1
+
+Published Time: Fri, 31 Jul 2026 00:35:04 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Restoring Collaborative Signals in Semantic-ID Generative Recommendation via Personalized Natural Language 
+
+# Changjiang Han 1,2 , Qingyang Li 2, Yaqiang Zang 2, Jikun Kang 3,Pinghua Gong 2, Xue Liu 1,4,5 , Bowei He 1,4 ∗
+
+> 1
+
+Mohamed bin Zayed University of Artificial Intelligence (MBZUAI) 
+
+> 2
+
+JD.com 3Salesforce 4McGill University 5Mila – Quebec AI Institute 
+
+Abstract 
+
+Making LLM-based generative recommendation models stronger and more personalized through natural language and explicit reasoning is a widely anticipated yet still unsolved goal. Such models cast recommendation as autoregressively generating an item’s semantic-ID (SID), a short tuple of dis-crete codes, so that recommending well reduces to emitting the right SID. In this setting the model verbalizes its knowl-edge poorly, and text and SID tokens live in misaligned em-bedding spaces. Deep reasoning therefore rarely turns into a correct SID, and enabling explicit “thinking” often gives no gain or even hurts. The deeper cause is that a compact SID cannot hold content and collaborative signal at once: the two compete, and collaboration loses. Because a mis-predicted SID is a wrong recommendation, this caps accuracy directly. Costly multi-round training barely helps, and few methods try to supply the missing signal at inference time. What is miss-ing is a reliable channel that carries collaborative signal into SID generation. We therefore propose a framework, guided by personalized natural language, that adds hierarchical collabo-rative cues as the model generates, without altering the back-bone or retraining the SIDs. Rather than mapping language onto SIDs directly, it uses language to attach analyzable links between collaborative patterns and their audiences, restoring the collaborative signal that SIDs miss. The result is consis-tent gains in recommendation accuracy, grounding generation in collaborative structure at inference time rather than relying on explicit reasoning or retraining. 
+
+# Introduction 
+
+Generative recommendation has emerged as a compelling al-ternative to the traditional retrieve-and-rank pipeline. Instead of scoring a fixed catalogue of atomic item identifiers, mod-els such as TIGER (Rajput et al. 2023) and OneRec (Deng et al. 2025) represent each item as a short sequence of dis-crete codes, a semantic ID (SID), and cast recommendation as autoregressive generation over these codes. Because SIDs are derived from item content, they promise better gener-alization to cold and long-tail items, along with a shared vocabulary between recommendation and natural language. This shared vocabulary has fuelled an optimistic expectation: that natural language (NL) and explicit reasoning can make an SID generator stronger, more controllable, and more per-
+
+> ∗
+
+Corresponding author: bowei.he@mbzuai.ac.ae. 
+
+Figure 1: Full-SID hit@ K on OneRec-1.7B/8B for direct decoding ( no_think ), native reasoning ( think ), and our reranking ( Ours ); all share the frozen backbone and de-coding budget. A hit requires generating the target’s exact three-level ID (sa, s b, s c) within top K. Enabling reasoning lowers accuracy while Ours raises it. sonalized, much as chain-of-thought has advanced language tasks (Wei et al. 2022). That expectation remains largely unmet. In practice, in-formation produced by deep reasoning rarely converts into a correct SID, and simply enabling an explicit “thinking” mode often yields no gain or even hurts (OneRec Team 2026; He et al. 2026) (Figure 1). This mirrors the broader finding that reasoning traces need not be faithful to the computation that determines the answer (Turpin et al. 2023). A basic reason is representational: the model verbalizes its knowledge poorly, and text and SID tokens live in misaligned embedding spaces (Figure 2). The real obstacle, we argue, is the lack of a re-liable channel through which natural-language preferences can reach the SID generation decision. Why does a reliable channel not already exist? The answer comes down to what an SID can carry. Mainstream SIDs are built by residual quantization of content embeddings (Rajput et al. 2023; Deng et al. 2025), with collaborative signals folded in, if at all, only as an optional auxiliary (Zheng et al. 2024; Wang et al. 2024). Encoding semantic content and encoding collaborative structure then compete for the same small code, and recent work shows the two impose conflicting optimization objectives that a single SID cannot satisfy at once (Liu et al. 2025). Collaboration loses this competition: co-occurrence structure that a classical collaborative filter captures easily (Koren, Bell, and Volinsky 2009; He et al. arXiv:2607.27682v1 [cs.IR] 30 Jul 2026 Figure 2: PCA of text-token vs. three-level SID-token em-beddings in the frozen OneRec-pro backbone (1.7B, 8B). About 75 –79% of SID tokens fall outside the 90% -density region of text tokens. Top two components shown; separation is quantified in full embedding dimension. 2017) is left under-expressed in the code. Reasoning in NL cannot recover it, because the missing quantity was never a linguistic fact but a statistical regularity over behaviour. Two escape routes have been explored, and both are unsat-isfying. The first is to train harder : multi-round, reasoning-augmented post-training that tries to internalize collaborative competence (Liu et al. 2026; OneRec Team 2026). This is expensive and, on open backbones, still struggles to make the generator use collaborative information. The second is to inject signals at inference time; but existing training-free approaches largely re-rank with LLM-derived semantic sim-ilarity (Han, Song, and Yi 2025), which does not target the collaborative gap, and such attempts stay scarce. We take the second route but target the collaborative gap directly. Instead of describing the preference in language and hoping the model uses it, we turn it into a signal that acts on the SID decision. Since the missing co-consumption structure is not something natural language can address on its own, our idea is to make it addressable: we recover it offline as a collaborative factor space, learn a bridge P (f | t) that maps a user’s natural-language audience tags (summarized from history by an LLM) into that space, and, over a frozen 
+
+backbone, let the resulting query rerank the model’s own candidates level by level under a fixed beam. This gives natural-language preferences a path into SID generation that prior text-interface routes lack. Our contributions are: 
+
+• Diagnosis. We trace the failure of natural language and reasoning on SID recommendation to a representational cause: the content–collaborative exclusivity of compact SIDs (Liu et al. 2025), under which visually similar but audience-opposed items collide at the coarse SID level. We also show that enabling the backbone’s own reasoning consistently lowers accuracy. 
+
+• Method. We give a training-free channel that supplies the missing collaborative signal in four steps. (i) We recover the collaborative structure the SID drops by factorizing a second-order item–item co-view matrix into per-item col-laborative factors. (ii) An LLM reads a user’s history and summarizes it into natural-language audience tags. (iii) A learned semantic bridge maps these tags into the same collaborative factor space, turning the language descrip-tion into a query the generator can act on. (iv) At infer-ence, over a frozen backbone, this query is injected level by level into SID generation: it expands the coarse-code candidates at sa, reranks the audience-level candidates at sb, and constrains sc to valid inventory. The bridge is faithful (the language-reconstructed query matches the behavioural one) and leakage-free. 
+
+• Results. On two open backbones the channel yields consistent hit-rate gains (OneRec-8B hit@10 11 .14 →
+
+15 .50 ); per-level attribution shows the gain is carried at the mid-level sb decision, and it depends on the spe-cific collaborative representation rather than an arbitrary low-dimensional one. The language-reconstructed query differentiates users’ audiences at the ranking level ( +8 .3
+
+percentile points over a different-user query, p < 10 −4); this differentiation is real but modest in effect size, which we attribute to the current profile’s granularity rather than to the channel. 
+
+# Related Work 
+
+Semantic-ID recommendation and collaborative tok-enization. TIGER (Rajput et al. 2023) established the stan-dard recipe, encoding item content, quantizing it into discrete codes with an RQ-VAE (Lee et al. 2022), and generating the codes autoregressively, building on earlier work casting recommendation as language-style generation (Geng et al. 2022); semantic IDs improve generalization to cold and long-tail items (Singh et al. 2024), and OneRec (Deng et al. 2025) scales the paradigm to industry with a residual K-means quantizer. Because SIDs are content-derived, several works inject collaborative signal into the tokenizer: LC-Rec (Zheng et al. 2024) aligns an LLM’s semantic space with collab-orative semantics and LETTER (Wang et al. 2024) adds contrastive collaborative regularization, while DiscRec (Liu et al. 2025) argues the two signals impose conflicting objec-tives and disentangles them. We share DiscRec’s diagnosis but draw the opposite conclusion: rather than retrain the to-kenizer, we leave the SID untouched and supply the missing signal externally at inference. That signal is co-consumption structure, which classical collaborative filtering captures eas-ily (Koren, Bell, and Volinsky 2009; Rendle et al. 2009; He et al. 2017) but a content code under-expresses (cf. evidence that such structure is linearly recoverable from language rep-resentations (Sheng et al. 2025)). 
+
+LLM- and reasoning-based recommendation. A broad line adapts LLMs to recommendation through fine-tuning: TALLRec (Bao et al. 2023) and LLaRA (Liao et al. 2024) instruction-tune, CoLLM (Zhang et al. 2025) injects collabo-rative embeddings, and RecFormer (Li et al. 2023) learns lan-guage representations for sequential recommendation (Wu et al. 2024). A parallel line adds explicit reasoning, mir-roring chain-of-thought prompting (Wei et al. 2022; Wang et al. 2023): OneReason (OneRec Team 2026) and OneRec-Think (Liu et al. 2026) add reasoning scaffolding through extra training, yet naive “thinking” brings little gain for SID prediction, which PauseRec (He et al. 2026) attributes to a poor interface between free-form rationales and SID gen-eration, consistent with rationales being unfaithful to the model’s computation (Turpin et al. 2023). All of these update model parameters; we take the ineffectiveness of inference-time reasoning as motivation and keep the generator frozen. 
+
+Inference-time and training-free injection. A few ap-proaches add signal without updating the recommendation model. QueRec (Han, Song, and Yi 2025) is training-free: it prompts an LLM to generate personalized queries and fuses LLM semantic scores with collaborative-filter scores by re-ranking. Such methods, however, largely exploit semantic 
+
+similarity and do not target the collaborative deficit inside SIDs, and inference-time injection of specifically collabora-tive structure into a generative SID recommendation model remains little explored. We fill this gap: our guidance de-rives from second-order co-view structure via hierarchical Poisson factorization (Gopalan, Hofman, and Blei 2015), is attached to items through natural language, and re-ranks the backbone’s own in-pool candidates. 
+
+# Methodology 
+
+Setting. Each item i is mapped to a semantic ID s(i) = (sa, s b, s c), a three-level tuple of discrete codes produced by residual quantization (Lee et al. 2022) of the item’s content embedding (Rajput et al. 2023; Deng et al. 2025); the levels are hierarchical, so items sharing a prefix are content-similar. A frozen backbone pθ models the next item from history 
+
+Hu autoregressively, pθ (s | H u) = pθ (sa | H u) pθ (sb |
+
+sa, Hu) pθ (sc | sa, s b, Hu), and recommends by constrained beam search; we write ℓa, ℓ b, ℓ c for the code log-probabilities. We keep θ and the SIDs fixed and act only on the scoring of candidates the backbone already proposes, using no ground-truth item information. Our framework has three parts (Figure 3): (i) a behaviour-derived collaborative structure over items, obtained by second-order hierarchical Poisson factorization; (ii) anatural-language bridge that maps a user’s LLM-summarized audience tags into this collaborative factor space; and (iii) a level-differentiated, inference-time reranking rule that re-orders the frozen backbone’s own candidate codes under a fixed beam budget, adding a collaborative residual at each SID level. Parts (i)–(ii) are precomputed offline; part (iii) runs during decoding and never touches the backbone weights or the SID codebooks. 
+
+Second-Order Collaborative Semantic Bridge 
+
+The central move of our method is to build a second-order 
+
+collaborative structure that bypasses the content signal baked into SIDs. Content-built SIDs place two items close when their content embeddings are close; they under-represent the orthogonal fact that two items are co-consumed by the same audience. We recover this fact and attach it back to the SID space as a per-prefix collaborative signature. 
+
+From first-order to second-order co-occurrence. Let U
+
+be the users and I the items. A first-order (user–item) fac-torization tends to absorb popularity rather than audience structure, so we build a second-order item–item co-view 
+
+Algorithm 1 Offline second-order collaborative bridge 
+
+Input : interaction histories {H u}; SID map s(·); rank d
+
+Output : prefix signatures {sig( sa, s b)} 
+
+> 1:
+
+C ← 0 
+
+> 2:
+
+for all u ∈ U do  
+
+> 3:
+
+for all unordered pairs {i, j } ⊆ H u do  
+
+> 4:
+
+Cij += 1 ; Cji += 1  
+
+> 5:
+
+end for  
+
+> 6:
+
+end for  
+
+> 7:
+
+{ϕi} ← HPF-CAVI (C, d ) {Gamma–Poisson fit}  
+
+> 8:
+
+for all occupied prefixes (sa, s b) do  
+
+> 9:
+
+sig( sa, s b) ← mean {ϕi : s(i) = ( sa, s b, ·)} 
+
+> 10:
+
+end for  
+
+> 11:
+
+return {sig( sa, s b)}
+
+matrix C ∈ Z|I|×|I| ≥0 ,
+
+Cij = { u ∈ U : i, j ∈ H u, i ̸ = j } , (1) the number of users who consumed both i and j. C is sparse and count-valued, which makes a Gamma–Poisson model a natural fit. 
+
+Factorization and prefix signatures. We factorize C with hierarchical Poisson factorization (HPF) (Gopalan, Hofman, and Blei 2015), a Gamma–Poisson model that gives each item i a nonnegative latent signature ϕi ∈ Rd 
+
+> ≥0
+
+(d=64 ) fit by coordinate-ascent variational inference. Since the backbone emits codes rather than item ids, we aggregate item signatures onto SID prefixes: for each occupied prefix (sa, s b) with item set Iab = { i : s(i)=( sa, s b, ·) },
+
+sig( sa, s b) = 1
+
+|I ab |
+
+X
+
+> i∈I ab
+
+ϕi, (2) and analogously a coarse signature sig( sa) over all items under code sa. This makes the collaborative structure ad-dressable by exactly the codes the generator produces: a content-agnostic, behaviour-derived vector indexed by the content-derived SID prefix. We stop at the (sa, s b) level and build no signature at sc: deeper prefixes hold far fewer items, so their co-view statistics are too sparse to estimate reliably, and the items that remain under a fixed (sa, s b) are already so similar that their collaborative factors barely differ, leav-ing no audience distinction for a signature to capture. The mid-level prefix is thus the finest granularity at which collab-orative structure is both well-estimated and discriminative. Algorithm 1 summarizes this offline construction. 
+
+Natural-Language Bridge to the Factor Space 
+
+The query qu can be read directly from behaviour, as the mean factor of a user’s history items, but this couples it to raw history and offers no language handle. We instead learn a bridge that reconstructs qu from a user’s natural-language tags, so the same factor query can be addressed, inspected, and edited in language. 
+
+Tags. An LLM summarizes each user’s history into a small set of canonical tags of two types, audience intent (e.g. Offline : build the collaborative -semantic bridge 
+
+1 Co -view → item factors   
+
+> item ×item
+> HPF
+
+𝐶 𝜙 !
+
+> user history
+> LLM
+> summarize
+
+2 History → user tags 3 Bridge 𝑷 𝒇 𝒕    
+
+> tag ×factor tags
+> …
+
+𝒒 𝒖 …  
+
+> 𝑃 𝑓 𝑡
+
+∑
+
+Inference: level -differentiated injection (frozen backbone)  
+
+> user history
+
+𝒔 𝒂 𝒔 𝒃 𝒔 𝒄 CANDIDATE EXPANSION RERANK INVENTORY MASK           
+
+> before after
+> in -catalogue
+> only
+> frozen backbone
+> rerank
+> +λ
+> (q!·sig s",s#)
+> +λ
+> (q!·sig s")
+> candidate pool
+> backbone
+> top -𝑀 !
+> backbone drops
+> full SID
+> intent: …
+> style: …
+
+Figure 3: Overview. Offline (top) : co-view counts C are factorized with HPF into item factors ϕi; an LLM turns each history into audience/behaviour tags; a bridge P (f | t) maps tags into the factor space and sums them into a user vector qu. Inference (bottom) : over a frozen backbone, qu enters each level differently without widening the beam, expanding sa candidates, reranking 
+
+sb, and inventory-masking sc. Coral marks the collaborative residual. hardcore-competitive, female-oriented) and behaviour style 
+
+(e.g. single-IP-focused, broad-interest); raw tags are mapped to a fixed ontology by an exact/synonym table. 
+
+Learning the bridge P (f | t). On the training users we learn, for each tag t, a distribution over the collaborative factors. Writing qFu for a training user’s behavioural factor query (the row-normalized mean of their history-item factors 
+
+ϕi) and Tu for their tags, we accumulate each user’s factors, split evenly across their tags, and smooth toward the global factor prior π:
+
+P (f | t) = 
+
+P  
+
+> u:t∈Tu
+> 1
+> |Tu|
+
+qFu + μ π 
+
+· 1
+
+, π = 1
+
+> |U tr |
+
+X
+
+> u
+
+qFu ,
+
+(3) with a single smoothing constant μ. Intuitively, a tag is placed at the average collaborative location of the users who carry it. 
+
+Serving. At inference we never read the target user’s his-tory items. Given their tags Tu, the natural-language query is the normalized sum of the corresponding tag distributions, 
+
+qu = normalize 
+
+ P 
+
+> t∈Tu
+
+P (f | t)
+
+
+
+, (4) which lies in the same factor space as the behavioural query and is used identically by §. We compare the two queries, natural-language ( qu above) versus the raw-history factor mean, as a control in the experiments. 
+
+Level-Differentiated Inference-Time Reranking 
+
+We do not widen the beam: at each level we only re-order the candidates the backbone already proposes, adding a collab-orative residual controlled by one scalar λ (we use λ=0 .1,fixed). Let qu ∈ Rd 
+
+> ≥0
+
+be the user’s factor query (§) and 
+
+r(·) = λ log(max( q⊤ 
+
+> u
+
+sig( ·), 0) + ϵ) the collaborative affin-ity of a code. At the coarse level we add the (softmax-normalized) affinity to the sa log-probabilities and keep the top Ma:
+
+Sa(sa) = ℓa(sa) + λ log  softmax sa max( q⊤ 
+
+> u
+
+sig( sa), 0) + ϵ,
+
+A = top - Ma Sa. (5) For each retained sa ∈ A we run the backbone’s sb forward pass and rerank its sb candidates with r(sa, s b), carrying the coarse score forward: 
+
+Sab (sa, s b) = Sa(sa) + ℓb(sb | sa) + r(sa, s b), (6) 
+
+B = [
+
+> sa∈A
+
+top - Mb Sab (sa, ·). (7) Finally sc is decoded with no collaborative term, under an in-ventory constraint restricting sc to in-catalogue completions 
+
+Inv( sa, s b); the cumulative score ranks the full SIDs: 
+
+Sabc (sa, s b, s c) = Sab (sa, s b) + ℓc(sc | sa, s b). (8) The residual thus enters only at sa and sb; scores propagate into Sabc without renormalization, and the pool stays at most 
+
+Ma × Mb regardless of λ.
+
+Why each level differs. The three levels play distinct roles. At sa the residual acts as candidate expansion : reordering by Sa pulls coarse codes the beam would have dropped into the top-Ma set, which on its own does not improve accuracy (§) but supplies the candidates the next level reranks. At sb it is load-bearing residual reranking : content-built codes can place audience-opposed but look-alike items under the same Algorithm 2 Level-differentiated collaborative reranking (frozen backbone, fixed beam) 
+
+Input : user factor query qu; backbone log-probs ℓa, ℓ b, ℓ c;signatures sig( ·); budgets Ma, M b; weight λ
+
+Output : ranked SIDs  
+
+> 1:
+
+Sa ← ℓa + λ log(softmax max( q⊤ 
+
+> u
+
+sig( sa), 0) + ϵ) 
+
+> 2:
+
+A ← top - Ma Sa {sa candidate expansion}  
+
+> 3:
+
+B ← ∅ 
+
+> 4:
+
+for all sa ∈ A do  
+
+> 5:
+
+Sab (sa, ·) ← Sa(sa) + ℓb(· | sa) + r(sa, ·) 
+
+> 6:
+
+B ← B ∪ top - Mb Sab (sa, ·) {sb residual reranking}  
+
+> 7:
+
+end for  
+
+> 8:
+
+S ← { (sa, s b, s c) : ( sa, s b) ∈ B , s c ∈ Inv( sa, s b)}
+
+{inventory}  
+
+> 9:
+
+rank S by Sabc = Sab + ℓc {cumulative, Eq. 8}  
+
+> 10:
+
+return top-K of S
+
+coarse code, and the second-order co-view structure sepa-rates them, promoting the sb whose audience matches the user within the fixed budget. At sc we add no collaborative term, since items under a fixed (sa, s b) share nearly identi-cal factors, and instead apply the inventory mask. Reranking adds only an O(d) dot product per candidate and no extra forward pass over the frozen backbone: per case the back-bone runs one sa forward, a fresh sb forward for each of the retained coarse codes (median 22 on 1.7B, 27 on 8B), and an sc forward over the carried prefixes (median 56 –58 ), the same passes its own cascaded decoding performs. Because it reranks in-pool candidates under a fixed budget, the method’s ceiling is how often the target’s (sa, s b) prefix already lies in 
+
+B. Algorithm 2 summarizes the procedure; the offline bridge construction is given in the supplement. 
+
+# Experiments 
+
+We ask whether natural-language preferences can be com-piled into the hierarchical decision process of a frozen SID generator, where the resulting gains arise, and whether the language-reconstructed query differentiates users’ au-diences. Our findings are: factor-space guidance improves frozen SID decoding; the gain is concentrated at the mid-level 
+
+sb decision and depends on the collaborative representation; and the natural-language bridge yields a user-conditioned query that both preserves the downstream utility of a history-derived one and carries a real, if currently modest, user-specific audience signal. 
+
+Experimental Setup 
+
+Data and evaluation. We evaluate on RecIF, the instruction-following recommendation benchmark released with OpenOneRec (OneRec Team 2025), whose test split contains 1,000 next-item prediction cases spanning five recommendation subtasks (interactive, video, ad, label-conditioned, and product recommendation); each case gives a user’s interaction history and asks the model to generate the target item’s semantic ID. To measure genuine general-ization rather than memorized training targets, we hold out every case whose target item also appears as a training predic-tion target, leaving a GT-disjoint evaluation set of 826 cases. Statistics for the collaborative bridge come only from train-ing interactions, and the test target is never revealed to the query builder. Unless stated we report full-SID hit@ K and NDCG@10 as percentages, with paired-bootstrap 95% con-fidence intervals ( 2000 resamples). Natural-language queries cover most cases; uncovered ones fall back to the backbone. 
+
+Backbones. We evaluate two frozen scales from the OneRec family, OneRec-1.7B and 8B; this probes robust-ness to scale, not cross-architecture generality. 
+
+Inference protocol. All methods share one harness and candidate budget: the backbone’s top-Ma=20 coarse codes, up to Mb=20 mid codes per retained sa, top-40 prefixes carried to sc, and an inventory-constrained sc decode; the collaborative residual uses a single fixed weight λ=0 .1 (not tuned on test). Ours denotes the full method including the 
+
+sc inventory constraint (§); all reranking variants operate on the same in-pool candidates from a single forward pass per case, so they add no GPU cost over Base beyond an O(d)
+
+dot product. Bold marks the best per column. 
+
+Baselines. All baselines share the frozen backbone and differ only in the inference-time signal used to rerank its candidates: Base (no external guidance); Sem (caption/text semantic-similarity reranking, a QueRec-style route (Han, Song, and Yi 2025)); Hist (a collaborative factor query read from the raw interaction history); and Ours (the same query reconstructed from natural-language tags, §). We also run a popularity-reranking control ( Pop ) under the identical pro-tocol; it stays within a point of Base (1.7B hit@10 5.08 , 8B 
+
+10 .90 ), so the gains below are not a popularity artifact. 
+
+Factor-Space Guidance Improves Frozen SID Decoding 
+
+Collaborative factor-space guidance consistently improves both OneRec scales (Table 1). On the 8B model, Ours 
+
+raises hit@10 from 11 .14 to 15 .50 , whereas direct semantic reranking ( Sem ) stays close to the frozen backbone. The fun-nel columns locate the effect: the coarse-code reachability 
+
+sa@20 is essentially unchanged across arms (all within a point), while the coarse–mid reachability (sa, s b)@20 rises markedly under Hist and Ours (18 .2 → 22 .0 on 8B), and this is what carries into full-SID accuracy. The improvement thus comes from reranking in the collaborative factor space at the mid level, not from surface content similarity. Hist 
+
+and Ours achieve closely matched performance through-out, indicating that the natural-language bridge preserves the predictive utility of the history-derived query. We next exam-ine where this improvement arises and whether the injected query differentiates users. 
+
+The Gain Arises at the Mid-Level SID Decision 
+
+Level-wise attribution. Adding the components one at a time localizes the gain to the mid-level sb decision (Table 2). Expanding the sa candidates alone moves accuracy within noise, since it changes which coarse codes are considered but not how they are ordered. The jump appears exactly when the Funnel reachability Full-SID accuracy Method sa@20 (sa, s b)@10 (sa, s b)@20 hit@5 hit@10 hit@20 hit@50 NDCG@10 
+
+OneRec-1.7B 
+
+Base 43.70 9.32 12.35 2.66 4.60 7.26 8.84 2.33 
+
+Sem 44.19 9.20 12.83 3.03 5.08 7.75 9.93 2.53 
+
+Hist 43.95 11.86 15.74 4.60 6.66 8.72 11.62 3.49 
+
+Ours 43.46 11.74 15.74 4.60 6.78 8.84 11.86 3.60 
+
+OneRec-8B 
+
+Base 45.28 13.92 18.16 7.38 11.14 13.92 18.40 6.30 
+
+Sem 45.40 14.65 18.89 7.51 11.86 14.89 19.73 6.96 
+
+Hist 45.04 19.01 21.91 10.65 15.38 18.28 22.52 9.38 
+
+Ours 45.40 18.89 22.03 10.65 15.50 18.40 22.40 9.59 
+
+Table 1: Main results (%). All arms share one harness and candidate pool, differing only in the inference-time reranking signal. 
+
+sa@20 and (sa, s b)@{10 , 20 } are prefix reachability within top K; hit@ K/NDCG@10 are full-SID accuracy. Ours includes the sc inventory constraint. Best per column bold .Configuration full@5 full@10 full@50 
+
+OneRec-1.7B 
+
+Base 2.66 4.60 8.84 
+
++ sa expansion 2.54 4.60 8.72 
+
++ sb reranking 4.36 6.17 10.41 
+
++ sc inventory 4.60 6.66 11.62 
+
+OneRec-8B 
+
+Base 7.38 11.14 18.40 
+
++ sa expansion 7.26 11.38 18.28 
+
++ sb reranking 10.29 14.65 21.91 
+
++ sc inventory 10.65 15.50 22.52 
+
+Table 2: Cumulative ablation (full-SID hit@ K, %). Each row adds one component to the row above; the last row is Ours .
+
+sb residual is switched on: hit@10 rises from 4.60 to 6.17 on 1.7B and from 11 .38 to 14 .65 on 8B, a step that is significant under a paired bootstrap. The sc inventory constraint adds a smaller consistent gain on top. Full-SID accuracy improves at every cutoff, and the effect grows with model scale, placing the effective intervention at the mid-level behavioural-affinity decision rather than spreading it uniformly across levels. 
+
+Dependence on the collaborative representation. The gain also depends on how the collaborative structure is repre-sented (Table 3). Under the same reranking interface, hierar-chical Poisson factorization of co-watch counts consistently outperforms two alternative co-watch representations, a TF-IDF-normalized co-watch matrix reduced by TruncatedSVD and K-means clusters of normalized co-watch rows, both of which fall below the frozen backbone (8B: HPF +3 .51 pp vs. base, the two alternatives −2.30 and −1.94 pp; HPF ex-ceeds them by +5 .81 and +5 .45 pp, CIs excluding 0). The observed gain is therefore not produced by an arbitrary low-dimensional partition of the interaction structure, but by this particular collaborative representation. Representation 1.7B hit@10 8B hit@10 
+
+Base (no rerank) 4.60 11.14 TF-IDF co-watch + SVD 3.39 8.84 
+
+K-means co-watch rows 3.75 9.20 HPF co-watch 6.17 14.65 
+
+Table 3: sb reranking under different co-watch representa-tions (%), inventory constraint off to isolate the representa-tion. Only HPF improves over Base .
+
+Natural Language Differentiates User Audiences 
+
+Downstream preservation. The natural-language query, reconstructed from tags through the bridge P (f | t) without reading history items, achieves closely matched downstream performance with the history-derived query: the paired dif-ference is not statistically distinguishable under the evaluated sample and cutoffs on either scale ( Ours vs. Hist ∆hit@10 
+
++0 .12 pp, CI including 0 on both scales). The match holds when we split cases into short, medium, and long history tertiles: on 1.7B the two queries track each other at hit@10 across the three bins ( 7.6, 5.9, 5.0), and on 8B Ours is if anything slightly ahead on the longest-history bin, where a compact factor query has the most history to summarize. The bridge thus preserves the predictive utility of the behavioural query while making the same collaborative structure address-able in language. 
+
+User-specific audience differentiation. The recon-structed queries retain meaningful user-specific variation rather than collapsing to a shared vector, and this variation is directionally aligned with the target audience. In the fac-tor space, the true user’s query ranks the target prefix at the 
+
+56 .2nd percentile among competing prefixes, versus 47 .9 un-der a query drawn from a different user, a paired gap of +8 .3
+
+percentile points (bootstrap 95% CI [+5 .7, +10 .8] , permu-tation p < 10 −4, Cohen’s d ≈ 0.25 ). The induced audience ordering is orthogonal across users (residual cosine ≈ 0) and uncorrelated with item popularity (Spearman −0.06 ), so the query separates whose audience a candidate belongs to rather than reflecting a global frequency effect. This differentiation is real and statistically significant, but its effect size is small: the bridge tells audiences apart at the ranking level without yet being sharp enough to move the discrete top-K decision. We read this as a resolution limit of the current profile rather than of the channel, and trace it to how the profile is built; we take up this analysis, and the need-conditioned retrieval it points to, in the limitations. 
+
+Where the language signal lands. Figure 4 shows the mechanism behind this differentiation. In the collaborative factor space, the target’s prefix concentrates on a few audi-ence factors (top), while the population-mean query is nearly flat, a shared prior that dominates the raw query (middle). The informative part is the natural-language increment over that mean (bottom): it adds positive mass on the target’s dom-inant factors. Aggregated over the 693 cases with a resolved target prefix, this increment projects positively onto the tar-get’s factor direction in 62 .9% of cases (mean 9 × 10 −5,
+
+95% CI excluding 0, z=6 .8), versus 53 .2% (≈ chance) for a different-user query. The projection is thus directionally cor-rect and leakage-free (the query never sees the target triple, and the target signature is a train-side quantity) but small in magnitude ( ∼1/20 of the raw signature under λ=0 .1), which is consistent with the modest ranking-level effect above and with the codec fidelity of the bridge rather than a claim of improved per-user accuracy. 
+
+Additional Diagnostics and Scope 
+
+Text-interface controls. Neither text-interface route sup-plies the collaborative signal: injecting the preference as prompt text leaves accuracy unchanged (1.7B hit@10 ∆=0 ), and enabling native reasoning lowers it at every cutoff on both scales (8B hit@10 10 .90 → 7.26 , 1.7B 5.45 → 3.39 ;Figure 1), a drop that survives on the subset where the model emits a well-formed SID after reasoning, so it is not a trun-cation artifact. The preference must be reconstructed into the factor space to reach the SID decision. A collision check con-firms the coarse-level mixing this repairs: audience-opposed but look-alike items collide at sa (prefix-collision probability 
+
+∼ 10 −3) far more than same-audience pairs, and the collision essentially vanishes once the (sa, s b) prefix is fixed ( ∼ 10 −6). 
+
+Limitations. Our evaluation uses a single benchmark and two scales of one backbone family, so cross-architecture and cross-dataset generality is not established. The method reranks in-pool candidates, so its ceiling is bounded by how often the target prefix is already reachable. The user-specific audience signal the query carries, though real and target-directed (§), is modest in effect size: tags summarized from a whole history and aggregated into one query average a user toward the population and compress the distinguishing signal, so two users with overlapping histories look alike. A natural remedy, which we leave to future work, is a per-user memory from which audience descriptors are retrieved con-ditioned on the current need, yielding a sharper query while leaving the channel and backbone unchanged. 
+
+Figure 4: Natural-language increment in the HPF factor space for a representative user. Top : target prefix signature (domi-nant factors in red). Middle : near-flat population-mean query. 
+
+Bottom : increment qnl − ¯q, positive on the target’s dominant factors, matching the target in direction with small magni-tude at λ=0 .1.
+
+# Conclusion 
+
+We presented a training-free channel that lets natural-language preferences reach the decision of a frozen semantic-ID generative recommendation model. Natural-language au-dience tags, summarized from history by an LLM, are mapped through a learned bridge into a second-order collab-orative factor space; the resulting query then acts on the back-bone’s own candidates level by level, with coarse-code expan-sion at sa, residual reranking at sb, and inventory-constrained decoding at sc, without widening the beam or retraining. On two open backbones this yields consistent hit-rate gains, with per-level attribution placing the gain at the mid-level sb de-cision and controls showing that this particular collaborative representation, not an arbitrary low-dimensional one, is what carries it. The mapping is faithful and leakage-free, and the language-reconstructed query differentiates users’ audiences at the ranking level, a real but currently modest effect. We trace this to the profile rather than the channel: tags summa-rized from a whole history and aggregated into one query average the user toward the population and compress the distinguishing signal. A per-user memory that retrieves au-dience descriptors conditioned on the current need, rather than aggregating once, is a natural next step. Because the query acts only on the collaborative factor space, never on the backbone’s SID embeddings, the channel in principle needs no natural-language–SID alignment and could extend to other semantic-ID generators, including encoder-decoder ones. Testing this and validating on further backbones and benchmarks are left for future work. 
+
+# References 
+
+Bao, K.; Zhang, J.; Zhang, Y.; Wang, W.; Feng, F.; and He, X. 2023. TALLRec: An Effective and Efficient Tuning Frame-work to Align Large Language Model with Recommenda-tion. In ACM Conference on Recommender Systems (RecSys) ,1007–1014. Deng, J.; Wang, S.; Cai, K.; Ren, L.; Hu, Q.; Ding, W.; Luo, Q.; and Zhou, G. 2025. OneRec: Unifying Retrieve and Rank with Generative Recommender and Iterative Preference Alignment. arXiv:2502.18965. Geng, S.; Liu, S.; Fu, Z.; Ge, Y.; and Zhang, Y. 2022. Rec-ommendation as Language Processing (RLP): A Unified Pre-train, Personalized Prompt & Predict Paradigm (P5). In ACM Conference on Recommender Systems (RecSys) , 299–315. Gopalan, P.; Hofman, J. M.; and Blei, D. M. 2015. Scalable Recommendation with Hierarchical Poisson Factorization. In Proceedings of the 31st Conference on Uncertainty in Artificial Intelligence (UAI) , 326–335. Han, D.; Song, H.; and Yi, M. Y. 2025. Rethinking LLM-Based Recommendations: A Personalized Query-Driven Par-allel Integration. In Findings of the Association for Compu-tational Linguistics: EMNLP 2025 , 8395–8419. He, X.; Liao, L.; Zhang, H.; Nie, L.; Hu, X.; and Chua, T.-S. 2017. Neural Collaborative Filtering. In International Conference on World Wide Web (WWW) , 173–182. He, Y.; Collins, L.; Kumar, B.; Li, J.; Shah, N.; and Loveland, D. 2026. Implicit Reasoning for Large Language Model-based Generative Recommendation. arXiv:2606.14142. Koren, Y.; Bell, R. M.; and Volinsky, C. 2009. Matrix Factor-ization Techniques for Recommender Systems. Computer ,42(8): 30–37. Lee, D.; Kim, C.; Kim, S.; Cho, M.; and Han, W.-S. 2022. Autoregressive Image Generation using Residual Quantiza-tion. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 11513–11522. Li, J.; Wang, M.; Li, J.; Fu, J.; Shen, X.; Shang, J.; and McAuley, J. J. 2023. Text Is All You Need: Learning Lan-guage Representations for Sequential Recommendation. In 
+
+ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD) , 1258–1267. Liao, J.; Li, S.; Yang, Z.; Wu, J.; Yuan, Y.; Wang, X.; and He, X. 2024. LLaRA: Large Language-Recommendation Assistant. In International ACM SIGIR Conference on Re-search and Development in Information Retrieval (SIGIR) ,1785–1795. Liu, C.; Bai, Y.; Zhao, X.; Zhang, Y.; Feng, F.; and Rong, W. 2025. DiscRec: Disentangled Semantic-Collaborative Mod-eling for Generative Recommendation. arXiv:2506.15576. Liu, Z.; Wang, S.; Wang, X.; Zhang, R.; Deng, J.; Bao, H.; Zhang, J.; Li, W.; Zheng, P.; Wu, X.; Hu, Y.; Hu, Q.; Luo, X.; Ren, L.; Zhang, Z.; Wang, Q.; Cai, K.; Wu, Y.; Cheng, H.; Cheng, Z.; Ren, L.; Wang, H.; Su, Y.; Tang, R.; Gai, K.; and Zhou, G. 2026. OneRec-Think: In-Text Reasoning for Gen-erative Recommendation. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 2664–2681. OneRec Team. 2025. OpenOneRec Technical Report. arXiv:2512.24762. OneRec Team. 2026. OneReason Technical Report. arXiv:2606.06260. Rajput, S.; Mehta, N.; Singh, A.; Keshavan, R. H.; Vu, T.; Heldt, L.; Hong, L.; Tay, Y.; Tran, V. Q.; Samost, J.; Kula, M.; Chi, E. H.; and Sathiamoorthy, M. 2023. Recommender Systems with Generative Retrieval. In Advances in Neural Information Processing Systems (NeurIPS) .Rendle, S.; Freudenthaler, C.; Gantner, Z.; and Schmidt-Thieme, L. 2009. BPR: Bayesian Personalized Ranking from Implicit Feedback. In Conference on Uncertainty in Artificial Intelligence (UAI) , 452–461. Sheng, L.; Zhang, A.; Zhang, Y.; Chen, Y.; Wang, X.; and Chua, T.-S. 2025. Language Representations Can be What Recommenders Need: Findings and Potentials. In Interna-tional Conference on Learning Representations (ICLR) .Singh, A.; Vu, T.; Mehta, N.; Keshavan, R. H.; Sathiamoor-thy, M.; Zheng, Y.; Hong, L.; Heldt, L.; Wei, L.; Tandon, D.; Chi, E. H.; and Yi, X. 2024. Better Generalization with Semantic IDs: A Case Study in Ranking for Recommenda-tions. In ACM Conference on Recommender Systems (Rec-Sys) , 1039–1044. Turpin, M.; Michael, J.; Perez, E.; and Bowman, S. R. 2023. Language Models Don’t Always Say What They Think: Un-faithful Explanations in Chain-of-Thought Prompting. In Ad-vances in Neural Information Processing Systems (NeurIPS) .Wang, W.; Bao, H.; Lin, X.; Zhang, J.; Li, Y.; Feng, F.; Ng, S.-K.; and Chua, T.-S. 2024. Learnable Item Tokenization for Generative Recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowl-edge Management (CIKM) , 2400–2409. Wang, X.; Wei, J.; Schuurmans, D.; Le, Q. V.; Chi, E. H.; Narang, S.; Chowdhery, A.; and Zhou, D. 2023. Self-Consistency Improves Chain of Thought Reasoning in Lan-guage Models. In International Conference on Learning Representations (ICLR) .Wei, J.; Wang, X.; Schuurmans, D.; Bosma, M.; Ichter, B.; Xia, F.; Chi, E. H.; Le, Q. V.; and Zhou, D. 2022. Chain-of-Thought Prompting Elicits Reasoning in Large Language Models. In Advances in Neural Information Processing Sys-tems (NeurIPS) .Wu, L.; Zheng, Z.; Qiu, Z.; Wang, H.; Gu, H.; Shen, T.; Qin, C.; Zhu, C.; Zhu, H.; Liu, Q.; Xiong, H.; and Chen, E. 2024. A Survey on Large Language Models for Recommendation. 
+
+World Wide Web , 27(5): 60. Zhang, Y.; Feng, F.; Zhang, J.; Bao, K.; Wang, Q.; and He, X. 2025. CoLLM: Integrating Collaborative Embeddings Into Large Language Models for Recommendation. IEEE Transactions on Knowledge and Data Engineering , 37(5): 2329–2340. Zheng, B.; Hou, Y.; Lu, H.; Chen, Y.; Zhao, W. X.; Chen, M.; and Wen, J.-R. 2024. Adapting Large Language Models by Integrating Collaborative Semantics for Recommendation. In IEEE 40th International Conference on Data Engineering (ICDE) , 1435–1448.
