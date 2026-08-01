@@ -1,0 +1,1106 @@
+Title: BridgeAlign: Bridging Preference Alignment for Humanities and Social Sciences
+
+URL Source: https://arxiv.org/pdf/2607.27366v1
+
+Published Time: Fri, 31 Jul 2026 00:10:41 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# BridgeAlign: Bridging Preference Alignment for Humanities and Social Sciences 
+
+## Ru Peng 1∗, Haokai Xu 1, Xijun Gu 1, Tianyu Zhao 3, Zhiting Fan 1,Yawen Zeng 1, Yihong Zhuang 3, Jinyang Zhang 2,4 , Kexin Yang 2, Jian Wu 5,Hao Chen 1,2 , Junyang Lin 2, Dayiheng Liu 2†, Junbo Zhao 1†
+
+> 1
+
+Zhejiang University 2Qwen Team, Alibaba Group 3Inclusion AI, Ant Group 
+
+> 4
+
+Peking University 5Westlake University {rupeng, j.zhao}@zju.edu.cn liudayiheng.ldyh@alibaba-inc.com 
+
+Abstract 
+
+While data synthesis for large language models (LLMs) is prevalent, it primarily targets domains with verifiable an-swers, overlooking open-ended humanities and social sci-ences (HSS), where nuanced quality judgments matter more than objective correctness. This makes preference align-ment a natural paradigm for broad HSS tasks. Yet exist-ing methods are either costly or not tailored to broad HSS disciplines. We thus propose BridgeAlign , among the first preference-alignment pipelines for broad HSS disciplines, with three phases: i) Seed Curation : curating HSS seed doc-uments from web corpora via heuristic/LLM-based filtering and text refinement; ii) Preference Data Synthesis : generat-ing preference triplets via persona-based instruction inver-sion with Q&A consistency checks; iii) Preference Optimiza-tion : moving beyond naive human-vs-model heuristics by first grounding preferences in HSS quality rubric, then gener-ating transitional responses via controlled quality degrada-tion to form near-boundary preference pairs for finer-grained quality discrimination. Aligning over 210k synthetic pref-erence samples, BridgeAlign enables Qwen3-8B to achieve the best average across 17 benchmarks against 11 strong baselines—importantly, leading on both human-preference and knowledge-based capabilities at once, with no trade-off between them, as supported by extensive experiments and contextualized by existing theories 1.
+
+## 1 Introduction 
+
+Data quality and diversity are crucial for large language mod-els (LLMs). However, the prohibitive cost of human anno-tation (Liu et al. 2024a) has rendered data synthesis a com-pelling alternative. Existing efforts primarily focus on veri-fiable tasks with standard answers, such as mathematics (Yu et al. 2024), code (Austin et al. 2021), tool-use (Cai et al. 2023), and tabular data (Zhao, Birke, and Chen 2025). In contrast, open-ended humanities and social sciences (HSS) 
+
+> 1
+
+We will release all data, code, and models to foster community research. 
+
+> ∗
+
+This work was done during internships at Qwen Team, Alibaba Group and Inclusion AI, Ant Group. 
+
+> †
+
+Corresponding author. 
+
+tasks have long been overlooked. HSS data lacks standard answers, requiring nuanced human judgment for quality as-sessment rather than objective correctness. Consequently, the preference alignment paradigm (Ouyang et al. 2022; Rafailov et al. 2024) is naturally suited to HSS tasks, motivating the need for preference data. However, existing preference datasets rely on human annotation (Fan, Lewis, and Dauphin 2018) or costly proprietary models (Cui et al. 2023), leaving data scarcity unresolved. Although methods such as Self-rewarding (Yuan et al. 2024) use LLMs to self-evaluate their responses for iterative direct preference optimization (DPO) training, and Magpie (Xu et al. 2024) induces instruction generation via chat templates to build preference pairs from scored responses, they overlook HSS scenarios and fail to model the fine-grained, human-like judgments they require. Meanwhile, HSS-related works like Weaver (Wang et al. 2024a) and PersonaHub (Ge et al. 2024) focus on narrower creative writing or role-playing, rather than broader HSS domains. To our knowledge, little work has explored syn-thetic preference alignment across broad HSS disciplines. 
+
+To address this gap, we follow official subject taxonomies 2
+
+to focus on 14 HSS domains and propose BridgeAlign (see Figure 1), among the first preference alignment pipeline for broad HSS disciplines. BridgeAlign aims to construct a sufficient-scale dataset (over 210K samples) with broad domain and content diversity, high multidimensional qual-ity, and nuanced preference distinctions, so it requires mul-tiple stages: 1) We curate clean seed documents from web resources via heuristic filtering, HSS classification, expert-crafted quality rubrics, and text refinement equipped with evaluation. 2) We then apply persona-based instruction in-version to generate diverse instructions and corresponding inverted documents, followed by Q&A consistency checks to ensure instruction fidelity, forming preference triplets 
+
+⟨instruction, seed document, inverted document ⟩. However, naively treating human-written as preferred and model-generated as rejected on these triplets—namely H-MPO —easily causes models to exploit superficial source 
+
+> 2
+
+We identify all HSS disciplines from the Arts & Humanities and Social Sciences categories in the widely recognized QS subject taxonomies: https://www.topuniversities.com/subject-rankings arXiv:2607.27366v1 [cs.CL] 29 Jul 2026 cues rather than true quality. 3) To overcome this empiri-cal heuristic, we introduce rubric-based preference optimiza-tion ( RubricPO ), which grounds preferences in HSS quality rubric scores. However, RubricPO reveals a notable quality gap: seed documents often contain web noise, while inverted documents can be overrated due to model affinity effects (Li et al. 2025). Such easily separable pairs (“easy” negatives) provide a limited signal for learning fine-grained quality features. We therefore introduce the bridge preference op-timization ( BridgePO ), the core of BridgeAlign, which con-trollably degrades the higher-scoring one between seed and inverted documents along the human-touch dimension to cre-ate transitional documents , yielding harder-to-distinguish, near-boundary “hard” negatives that encourage the model to capture nuanced quality differences. Experimentally, we train BridgeAlign on Qwen3-8B, Llama3.1-8B-Instruct, and Qwen2.5-14B-Instruct, and eval-uate on 17 mainstream benchmarks covering nine core LLM capabilities. On Qwen3-8B, BridgeAlign variants achieve the best average performance against 11 strong baselines, lead-ing on both human-preference and knowledge-based tasks at the same time. To verify robustness, we conduct compre-hensive ablations on preference optimization variants, model architectures and scales, and data scaling effects. At the data level, BridgeAlign synthetic data outperforms the baselines in text length, lexical richness, and semantic diversity; on HSS tasks, the preference alignment paradigm also consis-tently outperforms the instruction-tuning paradigm. The Ap-pendix further reports controlled tests on token budget and HSS specificity, and draws on existing theories of LLM data synthesis and DPO to help explain the observed experimental patterns. Finally, using our HSS quality rubrics, we observe that the aligned models capture fine-grained quality features, achieving consistent but modest gains in the human-touch dimension. Overall, our contributions are as follows: 
+
+• To our knowledge, we present among the first preference data synthesis and optimization work for broad HSS disciplines , filling a critical void in LLM alignment. 
+
+• We propose the novel BridgePO paradigm, which ap-plies rubric-guided controlled quality degradation to high-quality samples to construct near-boundary 
+
+hard negatives for fine-grained HSS alignment , with RubricPO as an intermediate product. 
+
+• BridgeAlign achieves the best average across 17 bench-marks covering 9 LLM capabilities , with its efficacy validated by extensive empirical analysis and interpreted by existing theories. 
+
+## 2 Related Work 
+
+Open-domain tasks for LLM unlike verifiable ones, lack standard answers and require nuanced human judgment, making data collection and synthesis challenging. Existing work is limited and focuses on narrow aspects: 1)-Writing :simple story generation (Eldan and Li 2023), creative writ-ing (Wang et al. 2024a); 2)-Dialogue systems : task-oriented dialogue for e-commerce (Qian et al. 2025), few-shot dia-logue summarization (Lu et al. 2025), multi-turn multi-topic dialogues (Lee et al. 2025); 3)-Role playing : 1 billion persona construction (Ge et al. 2024); and 4)-Long context : ultra long-context generation (Bai et al. 2024). Overall, open-domain research remains underexplored and fragmented. 
+
+Preference Alignment guides LLMs toward human-preferred outputs, and mainly involves preference-data gener-ation and preference optimization. For data generation, repre-sentative works include human-crafted datasets such as Writ-ingPrompts (Fan, Lewis, and Dauphin 2018), which pairs Reddit prompts with human-written stories; mixed datasets such as Ultrafeedback (Cui et al. 2023), which aggregate open-source prompts and multi-model responses evaluated by GPT-4; and synthetic approaches such as Constitutional AI (Bai et al. 2022) and RLAIF (Lee et al. 2023), which generate preference signals without direct human labels. Re-cent methods such as SynthQuestions (Zhu et al. 2025) and 
+
+Magpie (Xu et al. 2024), synthesize data via few-shot prompt-ing or chat-template prompting, while Self-Rewarding (Yuan et al. 2024) and FollowSoftConstraint (Ren et al. 2025) im-prove alignment data quality via self-iteration or progressive soft constraints. For preference optimization, DPO optimizes pairwise preference loss, LiPO (Liu et al. 2024b) uses listwise rankings for finer alignment, and Zephyr (Tunstall et al. 2023) applies distilled DPO with AI feedback. Selective DPO (Gao et al. 2025) filters overly difficult samples based on validation loss, Beta-DPO (Wu et al. 2024) tunes the β parameter to accommodate different preference gaps, and IPO (Azar et al. 2024) penalizes log probabilities to avoid premature conver-gence. Building on these efforts, BridgeAlign integrates data synthesis with tailored preference optimization algorithms to improve LLM performance on HSS tasks. 
+
+## 3 BridgeAlign 
+
+We introduce BridgeAlign in Figure 1, a three-phase pipeline for synthesizing preference alignment data for the humanities and social sciences. The framework comprises: seed cura-tion , preference data synthesis , and preference optimization ,as described below. 
+
+3.1 Seed Curation 
+
+Following prior works that leverage vast web data (Yue et al. 2024; Li et al. 2024b), we select the 627B-token SlimPajama corpus (Soboleva et al. 2023) to curate seed data. We first tokenize and segment the documents into 200 to 4k tokens to match real-world length distributions. To mitigate prevalent web noise and the scarcity of high-quality HSS content, we filter out non-HSS sources (e.g., StackExchange, GitHub), retain all documents from Books, ArXiv, and Wikipedia, and sample 10% from C4 and CommonCrawl, yielding an initial pool of 30M documents. We then apply the datatrove 
+
+toolkit 3 with multiple heuristic filters such as fastText (Joulin et al. 2016), Gopher (Rae et al. 2021), C4 (Raffel et al. 2020), Fineweb (Penedo et al. 2024), and MinHash (Broder 1997) to remove noise and redundancy. Next, we employ an LLM to categorize the filtered texts into 14 HSS domains defined by the official subject taxonomy. We further introduce 12 expert-crafted quality rubrics to prompt the LLM to filter documents  
+
+> 3https://github.com/huggingface/datatrove Web Doc
+
+1.  Seed  Curation  2.  Preference Alignment Data Synthesis  3.  Preference Optimization 
+
+> Inverted
+> Instruction
+
++ 
+
+> Persona Genre Domain
+
++  
+
+> Heuristic
+> Filters
+> Domain
+> Classifier
+> Quality
+> Filter
+> Text
+> Refinement Seed Doc
+> Q&A Consistency Check
+
++ + +      
+
+> Max
+> Rubric Preference Optimization
+> Bridge Preference Optimization
+> Transitional Doc
+> Inverted Doc
+> Controlled
+> Quality Degradation
+
++   
+
+> Refinement
+> Evaluation
+> Seed Doc Inverted Doc Transitional
+> Doc
+
+，
+
+， ，                      
+
+> Seed Doc Inverted Doc
+> 12 Quality Rubric by Human Expert
+> Readability: Grammar ,Coherence, Content Accuracy, Domain Relevance
+> Applicability: Tone &Expression, Knowledge Depth, Vocabulary Richness
+> Human -touch: Thematic Depth, Emotionality, Literary Diversity,
+> Humanities Creativity
+> Max
+
+Figure 1: Overview of BridgeAlign: (1) Seed Curation : filter and refine web texts to curate HSS seed documents; (2) Preference Alignment Data Synthesis : generate inverted instruction and document from the seeds, use a Q&A consistency check to filter out low-fidelity instructions, and controllably degrade the higher-scoring document (from either seed or inverted) to produce transitional documents; (3) Preference Optimization : build pairwise preference data, then optimize model alignment via RubricPO and BridgePO. meeting specific thresholds: readability ( = 5 ), applicability (≥ 4), and human-touch ( ≥ 3) (details in Appendix A). Even after several processes, the resulting documents still contain noise or poor expressions. We thus employ an LLM-based refinement to cleanse content and optimize expression while preserving fidelity. A final rigorous refinement evaluation ensures all refined texts satisfy the above three requirements to serve as clean seed documents. 
+
+3.2 Preference Alignment Data Synthesis 
+
+Instruction Inversion Inspired by previous methods (Kök-sal et al. 2023; Li et al. 2024b), we reverse-generate instruc-tions from seed documents by setting explicit and actionable constraints, guiding LLMs to faithfully reproduce the origi-nal seed documents. Each inverted instruction specifies the domain, genre, and length of the seed document, summarizes core content, and outlines text structure and narrative per-spective, while remaining concise, non-redundant, and avoid-ing direct references such as “source document” . To enhance diversity, we incorporate persona settings (stance, mind-set, tone) and uniformly adopt second-person expressions. Unlike previous approaches that require predefined persona hubs, knowledge bases, or numerous task templates (Ge et al. 2024; Li et al. 2024a; Nayak et al. 2024), our method is more flexible and robust. This instruction inversion yields diverse inverted instructions, taking prompt diversity into account when constructing preference data (Li and Zhang 2025). 
+
+Q&A Consistency Check Next, to ensure the fidelity of instructions reverse-generated from seed documents, we in-troduce a Q&A Consistency Check. The LLM first answers each inverted instruction to output the corresponding in-verted document, and then performs a rationale-backed bi-nary judgment based on its “textual consistency” (alignment of core content and key points) and “instruction effective-ness” (coverage of core information without explicit citation) between the seed and inverted documents, assessing whether the instruction faithfully reproduces the seed document. Only when both criteria are met can the high fidelity of the inverted instruction be ensured, retaining the triplet of ⟨inverted in-struction, seed document, and inverted document ⟩.
+
+3.3 Preference Optimization 
+
+Rubric-based Preference Optimization Given the triplet 
+
+⟨inverted instruction I, seed document, inverted document ⟩,we start from the empirical prior that human-written texts usually outperform model-generated outputs. Accordingly, the seed document is labeled chosen Ow and the inverted document rejected Ol, forming the human–model preference pair (I, O w, O l) ∈ DHM . However, the distinct distribution gap between these sources causes the loss in human–model preference optimization (H-MPO) to converge rapidly, leading the model to exploit superficial source cues rather than truth quality signals. To curb this bias, we reuse an expert-crafted HSS quality rubric to score document pairs. By assigning the higher-scoring text as chosen Ow while the lower-scoring one as rejected Ol, we construct rubric prefer-ence pairs (I, O w, O l) ∈ DRubric . RubricPO adopts the same DPO loss with inverse-temperature hyper-parameter β and logistic sigmoid σ(·), which is defined as LRubricPO (πθ ; πref ):
+
+−E(I,O w ,O l)∼D 
+
+h
+
+log σ
+
+
+
+β log πθ (Ow|I)
+
+πref (Ow|I)
+
+| {z }
+
+> Implicit reward (pref.) ↑
+
+− β log πθ (Ol|I)
+
+πref (Ol|I)
+
+| {z }
+
+> Implicit reward (rej.) ↓
+
+i 
+
+,
+
+(1) where πθ denotes the current policy model and πref is the frozen reference model, and π(O|I) ∈ [0 , 1] is the condi-tional probability of generating completion O given prompt 
+
+I. By aligning directly with textual HSS quality, RubricPO better satisfies human preferences and knowledge under-standing compared with H-MPO (see Sec. 4.3 for details). 
+
+Validation of HSS Quality Rubric Before use, we vali-dated the HSS quality rubric on 400+ inverted documents that varied in length, source, domain, and quality levels. These documents were shuffled and assigned to 20 human annota-tors, who independently rated each rubric on a 1–5 scale. Fol-lowing the LLM-as-a-judge framework (Zheng et al. 2023), we then evaluated the documents using Qwen3-30B-A3B (our data synthesis model) and GPT-4.1 (a strong judge model), yielding 86% and 91% agreement with majority human ratings. Combined with high inter-annotator reliabil-ity measured by Kappa scores (McHugh 2012), these dual human and LLM assessments confirm the effectiveness of our HSS quality rubric. 
+
+Bridge Preference Optimization Although RubricPO performs well, a clear quality gap remains between seed and inverted documents, with seeds typically scoring lower (Fig-ure 2). This gap arises from: (i) inherent web noise in seeds, and (ii) overrating of inverted documents due to “model affin-ity,” since they are generated by the same model as the evalu-ator (Li et al. 2025). As a result, the chosen–rejected pairs are often easily separable, yielding “easy” negatives. This limi-tation is also common in prior degradation-based synthesis methods, which derive negatives from clearly separated good and bad responses, making it difficult to learn subtle quality differences (Stiennon et al. 2020). To construct preference samples near the decision bound-ary, we use rubric scores to select the higher-scoring one between the seed and inverted documents as the degrada-tion source, and apply controlled degradation : prompting the LLM to lower its four human-touch sub-scores (liter-ary diversity, emotionality, thematic depth, and humanities creativity) toward lower targets while keeping readability and applicability unchanged. The resulting transitional doc-uments serve as a “bridge” that narrows the quality gap. We then apply CodecLM-style filtering (Wang et al. 2024b) to retain transitional documents whose scores fall within a predefined margin of the chosen ones. We train BridgePO on these chosen–transitional pairs to align all three qual-ity dimensions and enable finer-grained, more human-like alignment. BridgePO’s key is thus not degradation itself, but rubric-guided construction of near-boundary hard negatives. 
+
+## 4 Experiment 
+
+4.1 Experimental Setup 
+
+Baselines For robust evaluation, we compare the BridgeAlign synthetic dataset with 10 leading baselines, each containing 210k samples 4. These encompass: (1) Human-written datasets like WritingPrompts (Fan, Lewis, and Dauphin 2018); (2) Mixed-source datasets like Ultrafeed-back (Cui et al. 2023); (3) Synthetic datasets including 
+
+SynthQuestions (Zhu et al. 2025) and Magpie (Xu et al. 2024) air, pro, mixed version. Furthermore, we reproduced representative methods under the same setup of seed data and synthesis model, including Self-Rewarding (Yuan et al. 2024) (+M 2 and +M 3 for the stages-1 and stages-2 DPO) and 
+
+FollowSoftConstraint (Ren et al. 2025) (with and without curriculum learning). 
+
+Data Synthesis and Training Settings We synthesize data at the scale of 30M web documents (41B tokens) using the default generation settings of Qwen3-30B-A3B (Yang et al. 2025), balancing representation capacity and compu-tational cost (single-GPU deployable). After filtering JSON parsing failures and removing <thinking> content, we obtain 210k preference samples and construct standard pairwise formats for alignment training. Following stan-dard practices (Qwen Team 2024; Dubey et al. 2024), 
+
+> 4Use all data if the dataset has under 210k samples.
+
+we apply 13-gram exact matching to detect test-set leak-age, ensuring that no test instances or their paraphrases are used. The synthesis process costs 2.4k GPU hours, with a per-document cost of 0.28 seconds. For prefer-ence optimization, we train Qwen3-8B (non-thinking mode), Qwen2.5-14B-instruct (Qwen Team 2024), and LLaMA3.1-8B-instruct (Dubey et al. 2024) on multiple datasets using identical hyperparameters for fair comparison. 
+
+Evaluation Benchmarks We adopt 17 benchmarks span-ning 9 task categories: emotion perception (BuzzBench and EQ-Bench3 (Paech 2025)), role-playing (RoleBench (Wang et al. 2023), assessing both instruction and role general-ization), writing skill (WritingBench (Wu et al. 2025), CreativeWriting-v3 and Judgemark-v2 (Paech 2023)), social interactions (Social-IQa (Sap et al. 2019), IQuiz_EQ (Chen et al. 2024)), instruction following (IFEval (Zhou et al. 2023), Collie (Yao et al. 2023)), world knowledge 
+
+(MMLU (Hendrycks et al. 2020), including HSS sub-sets), commonsense reasoning (HellaSwag (Zellers et al. 2019), StoryCloze (Mostafazadeh et al. 2016)), long context 
+
+(CoQA (Reddy, Chen, and Manning 2019), GovernmentRe-port_CRS (Shaham et al. 2022)), and reading comprehen-sion (NarrativeQA (Kočisk` y et al. 2018), Xsum (Narayan, Cohen, and Lapata 2018)). We further use AlpacaEval 2 (Dubois et al. 2024) (GPT-4.1 judge) to measure win rate against Qwen3-8B, and build a blind pairwise human evalu-ation benchmark to validate the gains beyond LLM judges. To reduce variance, judge-based benchmarks are averaged over multiple runs (see Appendix D for details). 
+
+4.2 Main Results 
+
+Table 1 shows the results of all methods after training on Qwen3-8B across 17 benchmarks. Full results are reported in Appendix Table 9. Further analysis offers interesting in-sights: 
+
+• Fine-grained preference alignment is crucial. The BridgePO variant achieves the best performance on aver-age among the 11 strong baselines compared (ours ranks first on the most benchmarks), benefiting from its con-trollable quality degradation that enables finer-grained alignment. 
+
+• Leading performance on both human-preference and knowledge-based tasks. On the four human-preference tasks, BridgePO consistently outperforms the strongest baseline, with gains of +0.20 to +1.28 points and a +0.71 gain on Avg HP. On the five knowledge-based tasks, it ranks first on Avg KB, with the largest gain on instruction following. More importantly, BridgePO offers a reusable pipeline for subjective long-form alignment, with consis-tent gains that are meaningful under strong baselines. 
+
+• Data diversity and distillation are effective. Among baselines, web-driven SynthQuestions and instruction-distilled Magpie perform well, indicating that both diverse data sources and well-constructed closed-source instruc-tion tuning data are useful. 
+
+• Hard rewards outperform soft constraints. Under the same setting, Self-Rewarding outperforms FollowSoft-Constraint. Selected Method Data Synthesis Model Human Preference Knowledge based Avg AlpacaEval 2 Emotion Role Writing Social Avg HP Instruct World Common Long Read Avg KB                                                                                                                                                                                                                                
+
+> Qwen3-8B -49.20 66.56 64.52 66.63 62.04 56.13 74.90 76.49 47.65 35.22 59.61 60.70 50.00 Ultrafeedback GPT-4 49.50 68.90 64.23 64.96 62.15 57.09 75.15 77.03 51.49 35.71 60.73 61.37 51.55 WritingPrompts Human 48.48 67.35 65.00 69.67 62.89 57.43 74.83 76.92 51.52 35.55 60.67 61.67 52.30 SynthQuestions Llama3-70B-Instruct 51.01 70.92 66.06 69.86 64.64 56.57 75.04 77.20 51.22 35.51 60.55 62.39 50.92 Magpie_Air Llama3-8B-Instruct 49.43 69.49 65.67 66.44 63.08 56.52 75.07 77.01 51.65 35.67 60.63 61.73 50.85 Magpie_Pro Llama3.1-70B-Instruct 50.10 69.57 65.63 67.90 63.56 56.76 75.13 77.13 51.24 35.84 60.66 61.97 51.12 Magpie_Mixed Llama3.1-70B-Instruct 49.56 70.76 65.41 66.39 63.29 57.74 75.13 77.00 51.76 35.95 60.94 62.00 52.78 Self-Rewarding+M 2Qwen3-30B-A3B 49.81 66.07 65.22 66.32 62.23 57.39 74.79 76.68 51.65 36.24 60.75 61.42 52.15 Self-Rewarding+M 3Qwen3-30B-A3B 51.13 69.25 66.27 67.23 63.78 58.08 75.09 76.73 51.68 35.28 60.80 62.14 53.15 FollowSoftConstraint w/ CL Qwen3-30B-A3B 49.02 65.92 63.98 69.25 62.26 56.30 75.06 76.61 51.63 35.18 60.42 61.25 50.65 FollowSoftConstraint w/o CL Qwen3-30B-A3B 49.00 66.00 63.77 68.17 61.96 57.30 75.10 76.56 51.58 34.96 60.55 61.19 51.95
+> BridgeAlign (Ours)
+> +RubricPO Qwen3-30B-A3B 49.93 68.44 65.81 68.84 63.54 57.22 75.07 76.94 51.32 35.30 60.61 61.93 51.80 +BridgePO Qwen3-30B-A3B 51.45 72.20 66.90 70.06 65.35 58.96 74.93 77.33 51.55 36.24 61.17 63.05 53.80 BridgeAlign (Ablation Study)
+> +H-MPO Qwen3-30B-A3B 44.56 64.84 62.04 69.94 60.53 55.27 75.06 76.88 51.57 35.29 60.29 60.40 50.18 +BridgePO v1 Qwen3-30B-A3B 50.25 68.90 65.16 67.10 63.11 57.05 74.94 76.72 51.05 35.54 60.50 61.67 51.48 +BridgePO v2 Qwen3-30B-A3B 49.64 67.37 65.13 64.84 62.12 57.37 75.07 76.83 51.31 35.34 60.63 61.30 52.08 +BridgePO v1+v2+RubricPO Qwen3-30B-A3B 49.89 69.69 64.82 67.75 63.23 57.68 74.97 76.92 51.44 35.38 60.70 61.84 52.62
+
+Table 1: Results of different methods across 17 benchmarks spanning nine core abilities, including the adopted data synthesis models and separate AlpacaEval 2 win rates. “Avg HP” and “Avg KB” denote the averages on human-preference and knowledge benchmarks, respectively, while “Avg” denotes the average over all 17 benchmarks. 
+
+Figure 2: Distribution of HSS quality rubric scores for in-verted and seed documents: 77.6% of inverted documents scored higher, 6.6% equal, and 15.7% lower than seed doc-uments. 
+
+• Alpaca Eval Results. BridgePO achieves the highest Al-pacaEval 2 win rate among all methods, followed by Self-Rewarding+M 3, while H-MPO performs the worst, sug-gesting that alignment optimization based on controlled document-quality degradation better supports instruction following. This is consistent with its leading Instruct score in Table 1, indicating that a richer instruction-following behavior translates into a higher win rate. 
+
+4.3 Ablation Studies 
+
+RubricPO Outperforms H-MPO Table 1 shows that RubricPO outperforms H-MPO, indicating that aligning with 
+
+Figure 3: Convergence curves of training loss: H-MPO (left) vs. RubricPO (right) text HSS quality better satisfies human preferences and im-proves performance on standard instruction-following tasks, rather than on tasks like AlpacaEval 2 that favor concise, di-rect answers. Moreover, H-MPO relies solely on data source, treating web-sourced seed documents as chosen and LLM-generated inverted documents as rejected, which may easily mislabel quality: i) in fact, seed documents often have lower quality scores than inverted documents, as shown in Figure 2; ii) human-model preferences may encourage the model to rely on superficial source cues rather than truth quality fea-tures, as evidenced by the faster training loss convergence of H-MPO compared to RubricPO in Figure 3. 
+
+Ablation on BridgePO Variants and Mixture with RubricPO Ablation study in Table 1 also presents the results of two BridgePO variants and their mix-ture with RubricPO. Among them, BridgePO-v1 only ap-plies controllable quality simplification to inverted docu-ments to generate transitional documents, and optimizes over the ⟨inverted , transitional ⟩ preference pairs. BridgePO-v2 performs the same operation only on seed docu-Human-Preference Knowledge-Based        
+
+> 63
+> 64
+> 65
+> 66
+> 67
+> 68
+> 69
+> 70
+> 71
+> Average Performance (%)
+> 65.40
+> 64.73
+> 65.09 64.74
+> 66.42
+> 65.23
+> 70.01
+> 65.36
+> (a) Qwen2.5-14B-Instruct
+> Human-Preference Knowledge-Based
+> 58
+> 59
+> 60
+> 61
+> 62
+> 63
+> 64
+> 65
+> 66
+> 59.65
+> 61.25
+> 60.92 60.87
+> 59.58
+> 61.34
+> 65.12
+> 61.75
+> (b) Llama3.1-8B-Instruct
+> Human-Preference Knowledge-Based
+> 66
+> 67
+> 68
+> 69
+> 70
+> 71
+> 72
+> 73
+> 74
+> 75
+> 68.84
+> 66.95
+> 69.07
+> 67.12
+> 69.75
+> 67.70
+> 73.45
+> 67.99
+> (c) Mistral-Small-3.1-24B-Instruct
+> Base + FollowSoftConstraint w/ CL + Self-Rewarding M2 + BridgePO
+
+Figure 4: Performance comparison among the BridgeAlign BridgePO variant, the official instruction-tuned model, and two strong baselines across different model architectures and scales. 0 200 400 600 800 1000 1200 1400 1647   
+
+> Training Steps
+> 59
+> 60
+> 61
+> 62
+> 63
+> 64
+> 65
+> 66
+> Average Performance
+> 61.17
+> 63.05
+> 65.35
+> Avg KB Avg Avg HP
+
+Figure 5: Model performance versus data scale: the over-all score rises rapidly before slowing after about 300 steps (≈38.2k samples), with more pronounced gains in human-preference than knowledge-based abilities. Per-capability trends are shown in Appendix Figure 8. ments, optimizing over ⟨seed , transitional ⟩ pairs. BridgePO v1+v2+RubricPO mixes these two sets of pairs with the rubric-based preference ⟨inverted , seed ⟩ and downsamples proportionally, covering all binary preferences among the three documents, i.e., full pairwise preference. Ablation results show that all variants are inferior to the original BridgePO. This is because, although inverted documents usually score higher (77.6%), seed documents surpass them in 15.7% of cases, so selecting the higher-scoring document before degradation is more robust (see Figure 2). 
+
+Performance Across Model Architectures and Sizes 
+
+Figure 4 compares the official instruction-tuned models, our BridgeAlign variant BridgePO, and two strong base-lines, Self-Rewarding-M2 and FollowSoftConstraint with curriculum learning, across Llama-3.1-8B, Qwen2.5-14B, and Mistral-Small-3.1-24B, representing variation in model architecture, scale, and both factors, respectively. The re-sults show that BridgePO consistently improves human-preference performance across all three models while main-taining slightly better results on knowledge-based bench-marks. This trend also shows that BridgeAlign generalizes well across model architectures and scales, making it a 
+
+Select Method Avg. Input Len Avg. Output Len Lex-Div 
+
+Ultrafeedback 159 281 63.10 WritingPrompts 53 666 88.49 SynthQuestions 121 717 70.00 Magpie_Air 34 524 63.36 Magpie_Pro 134 500 62.16 Magpie_Mixed 83 491 71.19 Self-Rewarding+M 2 263 1,547 93.87 Self-Rewarding+M 3 153 1,145 87.19 FollowSoftConstraint 121 307 78.68 
+
+BridgeAlign (ours) 
+
++RubricPO 255 2,223 118.84 +BridgePO 254 2,193 118.59 Table 2: Average input/output token lengths and lexical di-versity across datasets of different methods. broadly applicable alignment framework for HSS domains. 
+
+Data Scaling Effect Figure 5 shows the data scaling effect of BridgeAlign variant BridgePO, over one training epoch (210k preference samples, 1647 steps). The three average-score curves indicate that performance improves rapidly within the first 300 steps as more preference data are used, and then grows more slowly with diminishing marginal gains. Notably, the improvement in the human-preference average is more pronounced than that in the knowledge-based aver-age. Appendix Figure 8 further presents fine-grained trends across nine LLM capabilities. Emotion perception, writing skill, and long context peak early and then decline slightly, suggesting mild overfitting; role-playing shows only slight fluctuations after the initial gain; reading comprehension and social interaction rise early, dip in the middle, and rebound toward the end; instruction following and commonsense rea-soning continue to benefit from later training, rising steadily toward the end, whereas world knowledge stays largely flat with only minor fluctuations throughout. 
+
+## 5 In-Depth Analysis 
+
+Basic Dataset Statistics Table 2 reports the basic statistics of datasets generated by different methods, including average input/output token lengths and lexical diversity (computed via the MTLD algorithm (McCarthy and Jarvis 2010)). Com-Figure 6: t-SNE plot (left) and grid coverage rate (right) of sentence embeddings for BridgePO, FollowSoftConstraint, and Self-Rewarding.                        
+
+> Avg HP Avg KB Avg Alpaca Eval
+> Qwen3-8B 62.04 59.61 60.70 50.00 Intruct-Tuning 61.67 58.68 60.02 48.02
+> BridgeAlign (Ours)
+> +H-MPO 60.53 60.29 60.40 50.18 +RubricPO 63.54 60.61 61.93 51.80 +BridgePO 65.35 61.17 63.05 53.80
+
+Table 3: Performance comparison of preference alignment vs. instruction tuning. pared with non-HSS preference-data baselines, BridgeAlign has longer input and output sequences and higher lexical di-versity, reaching 1.3 to 1.9 times that of other datasets. Con-trolled analyses related to token budget and HSS specificity are provided in Appendix G. 
+
+Data Semantic Diversity We visualize the semantic diver-sity of the data (i.e., instructions+preferred answers) gener-ated by BridgeAlign (BridgePO) versus other baselines. We randomly sample 10k preference pairs from each dataset, compute their sentence embeddings using gte-Qwen2-7B-instruct (Li et al. 2023), and project them into a 2D space via t-SNE. Figure 6 shows that the sample dispersity of BridgePO is comparable to that of the two baselines. Quantitative anal-ysis further confirms that BridgePO ranks second in grid coverage, indicating broad semantic coverage that provides rich training signals and enhances generalization. 
+
+Preference Alignment better suits HSS tasks than In-struction Tuning We built instruction–response pairs from inverted instructions and documents, fine-tuned Qwen3-8B on this dataset, and compared it against our preference align-ment methods H-MPO, RubricPO, and BridgePO across all 17 human-preference and knowledge benchmarks in Table 3. Even the simplest PO method, H-MPO, still outperforms the instruction-tuned model on average, while other PO meth-ods yield larger gains. These findings suggest that for open-domain HSS tasks, preference alignment is more effective than instruction tuning on fixed Q&A pairs, as answers are rarely unique and differences lie mainly nuanced quality rather than objective correctness. 
+
+Method Human-touch Rubric Score 
+
+Qwen3-8B 17.56 56.21 Self-Rewarding+M 2 17.53 56.17 FollowSoftConstraint w/ CL 17.55 56.19 
+
+BridgeAlign (Ours) 
+
++RubricPO 17.63 56.32 +BridgePO 17.82 56.63 Table 4: Average human-touch metrics and rubric scores. Writing   
+
+> Role-Playing
+> Emotion
+> Social
+> Overall
+> 44%
+> 20%
+> 36%
+> 60%
+> 18%
+> 22%
+> 42%
+> 20%
+> 38%
+> 59%
+> 18%
+> 23%
+> 50%
+> 19%
+> 31%
+> Win Tie Loss
+
+Figure 7: Human win/tie/loss rates of BridgeAlign (+BridgePO) against Self-Rewarding+M 3 across tasks. 
+
+Alignment on Textual HSS Quality We generate re-sponses to 10k i.i.d. non-HSS queries using models trained by different methods, and use an LLM judge to evaluate their average human-touch metrics and HSS quality rubric scores. Table 4 shows that, even under this OOD setting, BridgeAlign outperforms the official Qwen3-8B and two non-HSS base-lines on both scores, indicating that the preference-optimized model effectively learns HSS textual quality. 
+
+Human Evaluation To verify that our gains reflect real hu-man preference rather than LLM-judge biases (e.g., length bias or model affinity), we conduct a blind pairwise hu-man study on 120 prompts sampled from the human-preference benchmarks. For each prompt, three annota-tors compare the anonymized, randomly ordered responses of BridgeAlign (+BridgePO) against the strongest baseline (Self-Rewarding+M 3). As shown in Figure 7, BridgePO at-tains a 50% win rate (19% tie, 31% loss), with the largest margins on role-playing (60%) and social interaction (59%). This human ranking is consistent with the LLM-judge results in Table 1, confirming that the gains are real. 
+
+## 6 Conclusion 
+
+In this paper, we propose BridgeAlign, a systematic HSS-tailored framework for preference data synthesis and align-ment. Our three-stage pipeline—seed curation, preference data synthesis, and preference optimization—generates over 210k preference samples, applies multiple optimization al-gorithms on them, and achieves the best average performance on 17 benchmarks covering nine core LLM capabilities, lead-ing on both human-preference and knowledge-based abilities simultaneously. Extensive experiments validate its effective-ness, while existing theory interprets its improvements. References 
+
+Austin, J.; Odena, A.; Nye, M.; Bosma, M.; Michalewski, H.; Dohan, D.; Jiang, E.; Cai, C.; Terry, M.; Le, Q.; et al. 2021. Program synthesis with large language models. arXiv preprint arXiv:2108.07732 .Azar, M. G.; Guo, Z. D.; Piot, B.; Munos, R.; Rowland, M.; Valko, M.; and Calandriello, D. 2024. A general theoretical paradigm to understand learning from human preferences. In International Con-ference on Artificial Intelligence and Statistics , 4447–4455. PMLR. Bai, Y.; Kadavath, S.; Kundu, S.; Askell, A.; Kernion, J.; Jones, A.; Chen, A.; Goldie, A.; Mirhoseini, A.; McKinnon, C.; et al. 2022. Constitutional ai: Harmlessness from ai feedback. arXiv preprint arXiv:2212.08073 .Bai, Y.; Zhang, J.; Lv, X.; Zheng, L.; Zhu, S.; Hou, L.; Dong, Y.; Tang, J.; and Li, J. 2024. Longwriter: Unleashing 10,000+ word gen-eration from long context llms. arXiv preprint arXiv:2408.07055 .Broder, A. Z. 1997. On the resemblance and containment of documents. In Proceedings. Compression and Complexity of SE-QUENCES 1997 (Cat. No. 97TB100171) , 21–29. IEEE. Cai, T.; Wang, X.; Ma, T.; Chen, X.; and Zhou, D. 2023. Large language models as tool makers. arXiv preprint arXiv:2305.17126 .Chen, Z.; Wu, J.; Zhou, J.; Wen, B.; Bi, G.; Jiang, G.; Cao, Y.; Hu, M.; Lai, Y.; Xiong, Z.; et al. 2024. Tombench: Benchmarking theory of mind in large language models. arXiv preprint arXiv:2402.15052 .Cui, G.; Yuan, L.; Ding, N.; Yao, G.; Zhu, W.; Ni, Y.; Xie, G.; Liu, Z.; and Sun, M. 2023. Ultrafeedback: Boosting language mod-els with high-quality feedback.(2023). In URL https://openreview. net/forum .Dubey, A.; Jauhri, A.; Pandey, A.; Kadian, A.; Al-Dahle, A.; Let-man, A.; Mathur, A.; Schelten, A.; Yang, A.; Fan, A.; et al. 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 .Dubois, Y.; Galambosi, B.; Liang, P.; and Hashimoto, T. B. 2024. Length-controlled alpacaeval: A simple way to debias automatic evaluators. arXiv preprint arXiv:2404.04475 .Eldan, R.; and Li, Y. 2023. Tinystories: How small can lan-guage models be and still speak coherent english? arXiv preprint arXiv:2305.07759 .Fan, A.; Lewis, M.; and Dauphin, Y. 2018. Hierarchical neural story generation. arXiv preprint arXiv:1805.04833 .Gan, Z.; and Liu, Y. 2025. Towards a theoretical understanding of synthetic data in llm post-training: A reverse-bottleneck perspec-tive. In International Conference on Learning Representations ,volume 2025, 11212–11235. Gao, C.; Li, H.; Liu, L.; Xie, Z.; Zhao, P.; and Xu, Z. 2025. Prin-cipled data selection for alignment: The hidden risks of difficult examples. arXiv preprint arXiv:2502.09650 .Ge, T.; Chan, X.; Wang, X.; Yu, D.; Mi, H.; and Yu, D. 2024. Scaling synthetic data creation with 1,000,000,000 personas. arXiv preprint arXiv:2406.20094 .Hendrycks, D.; Burns, C.; Basart, S.; Zou, A.; Mazeika, M.; Song, D.; and Steinhardt, J. 2020. Measuring massive multitask language understanding. arXiv preprint arXiv:2009.03300 .Joulin, A.; Grave, E.; Bojanowski, P.; Douze, M.; Jégou, H.; and Mikolov, T. 2016. Fasttext. zip: Compressing text classification models. arXiv preprint arXiv:1612.03651 .Kočisk` y, T.; Schwarz, J.; Blunsom, P.; Dyer, C.; Hermann, K. M.; Melis, G.; and Grefenstette, E. 2018. The narrativeqa reading com-prehension challenge. Transactions of the Association for Compu-tational Linguistics , 6: 317–328. Köksal, A.; Schick, T.; Korhonen, A.; and Schütze, H. 2023. Long-form: Effective instruction tuning with reverse instructions. arXiv preprint arXiv:2304.08460 .Lee, H.; Phatale, S.; Mansoor, H.; Mesnard, T.; Ferret, J.; Lu, K.; Bishop, C.; Hall, E.; Carbune, V.; Rastogi, A.; et al. 2023. Rlaif vs. rlhf: Scaling reinforcement learning from human feedback with ai feedback. arXiv preprint arXiv:2309.00267 .Lee, J. Y.; Bonab, H.; Zalmout, N.; Zeng, M.; Lokegaonkar, S.; Lockard, C.; Huang, B.; Sarkhel, R.; and Wang, H. 2025. DocTalk: Scalable Graph-based Dialogue Synthesis for Enhancing LLM Con-versational Capabilities. arXiv preprint arXiv:2507.05750 .Li, D.; Sun, R.; Huang, Y.; Zhong, M.; Jiang, B.; Han, J.; Zhang, X.; Wang, W.; and Liu, H. 2025. Preference leakage: A contamination problem in llm-as-a-judge. arXiv preprint arXiv:2502.01534 .Li, H.; Dong, Q.; Tang, Z.; Wang, C.; Zhang, X.; Huang, H.; Huang, S.; Huang, X.; Huang, Z.; Zhang, D.; et al. 2024a. Synthetic data (almost) from scratch: Generalized instruction tuning for language models. arXiv preprint arXiv:2402.13064 .Li, M.; and Zhang, Z. 2025. 2D-Curri-DPO: Two-Dimensional Curriculum Learning for Direct Preference Optimization. arXiv preprint arXiv:2504.07856 .Li, X.; Yu, P.; Zhou, C.; Schick, T.; Levy, O.; Zettlemoyer, L.; Weston, J. E.; and Lewis, M. 2024b. Self-Alignment with Instruc-tion Backtranslation. In The Twelfth International Conference on Learning Representations .Li, Z.; Zhang, X.; Zhang, Y.; Long, D.; Xie, P.; and Zhang, M. 2023. Towards general text embeddings with multi-stage contrastive learning. arXiv preprint arXiv:2308.03281 .Liu, R.; Wei, J.; Liu, F.; Si, C.; Zhang, Y.; Rao, J.; Zheng, S.; Peng, D.; Yang, D.; Zhou, D.; and Dai, A. M. 2024a. Best Practices and Lessons Learned on Synthetic Data. In First Conference on Language Modeling .Liu, T.; Qin, Z.; Wu, J.; Shen, J.; Khalman, M.; Joshi, R.; Zhao, Y.; Saleh, M.; Baumgartner, S.; Liu, J.; et al. 2024b. Lipo: Listwise preference optimization through learning-to-rank. arXiv preprint arXiv:2402.01878 .Lu, Y.-J.; Hu, T.-Y.; Koppula, H. S.; Pouransari, H.; Chang, J.-H. R.; Xia, Y.; Kong, X.; Zhu, Q.; Wang, S.; Tuzel, O.; et al. 2025. Mutual Reinforcement of LLM Dialogue Synthesis and Summarization Capabilities for Few-Shot Dialogue Summarization. arXiv preprint arXiv:2502.17328 .McCarthy, P. M.; and Jarvis, S. 2010. MTLD, vocd-D, and HD-D: A validation study of sophisticated approaches to lexical diversity assessment. Behavior research methods , 42(2): 381–392. McHugh, M. L. 2012. Interrater reliability: the kappa statistic. 
+
+Biochemia medica , 22(3): 276–282. Mostafazadeh, N.; Chambers, N.; He, X.; Parikh, D.; Batra, D.; Vanderwende, L.; Kohli, P.; and Allen, J. 2016. A corpus and evaluation framework for deeper understanding of commonsense stories. arXiv preprint arXiv:1604.01696 .Narayan, S.; Cohen, S. B.; and Lapata, M. 2018. Don’t give me the details, just the summary! topic-aware convolutional neural networks for extreme summarization. arXiv preprint arXiv:1808.08745 .Nayak, N. V.; Nan, Y.; Trost, A.; and Bach, S. H. 2024. Learning to generate instruction tuning datasets for zero-shot task adaptation. 
+
+arXiv preprint arXiv:2402.18334 .Ouyang, L.; Wu, J.; Jiang, X.; Almeida, D.; Wainwright, C.; Mishkin, P.; Zhang, C.; Agarwal, S.; Slama, K.; Ray, A.; et al. 2022. Training language models to follow instructions with human feedback. Advances in neural information processing systems , 35: 27730–27744. Paech, S. J. 2023. Eq-bench: An emotional intelligence benchmark for large language models. arXiv preprint arXiv:2312.06281 .Paech, S. J. 2025. EQ-Bench 3: Emotional Intelligence Benchmark. https://github.com/EQ-bench/eqbench3. Commit <hash> or release <tag> .Penedo, G.; Kydlíček, H.; Lozhkov, A.; Mitchell, M.; Raffel, C. A.; Von Werra, L.; Wolf, T.; et al. 2024. The fineweb datasets: Decant-ing the web for the finest text data at scale. Advances in Neural Information Processing Systems , 37: 30811–30849. Peng, R.; Chen, Z.; Hao, T.; and Fang, Y. 2019. Neural machine translation with attention based on a new syntactic branch distance. In China Conference on Machine Translation , 47–57. Springer. Qian, K.; Chen, M.; Li, S.; Sharma, A.; and Yu, Z. 2025. Bottom-Up Synthesis of Knowledge-Grounded Task-Oriented Dialogues with Iteratively Self-Refined Prompts. arXiv preprint arXiv:2504.14375 .Qwen Team. 2024. Qwen2.5: A Party of Foundation Models. Rae, J. W.; Borgeaud, S.; Cai, T.; Millican, K.; Hoffmann, J.; Song, F.; Aslanides, J.; Henderson, S.; Ring, R.; Young, S.; et al. 2021. Scaling language models: Methods, analysis & insights from train-ing gopher. arXiv preprint arXiv:2112.11446 .Rafailov, R.; Sharma, A.; Mitchell, E.; Manning, C. D.; Ermon, S.; and Finn, C. 2024. Direct preference optimization: Your language model is secretly a reward model. Advances in Neural Information Processing Systems , 36. Raffel, C.; Shazeer, N.; Roberts, A.; Lee, K.; Narang, S.; Matena, M.; Zhou, Y.; Li, W.; and Liu, P. J. 2020. Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of machine learning research , 21(140): 1–67. Reddy, S.; Chen, D.; and Manning, C. D. 2019. Coqa: A conversa-tional question answering challenge. Transactions of the Associa-tion for Computational Linguistics , 7: 249–266. Ren, Q.; Zeng, J.; He, Q.; Liang, J.; Xiao, Y.; Zhou, W.; Sun, Z.; and Yu, F. 2025. Step-by-step mastery: Enhancing soft con-straint following ability of large language models. arXiv preprint arXiv:2501.04945 .Sap, M.; Rashkin, H.; Chen, D.; LeBras, R.; and Choi, Y. 2019. Socialiqa: Commonsense reasoning about social interactions. arXiv preprint arXiv:1904.09728 .Shaham, U.; Segal, E.; Ivgi, M.; Efrat, A.; Yoran, O.; Haviv, A.; Gupta, A.; Xiong, W.; Geva, M.; Berant, J.; et al. 2022. Scrolls: Standardized comparison over long language sequences. arXiv preprint arXiv:2201.03533 .Soboleva, D.; Al-Khateeb, F.; Myers, R.; Steeves, J. R.; Hestness, J.; and Dey, N. 2023. SlimPajama: A 627B token cleaned and deduplicated version of RedPajama. https://cerebras.ai/blog/sli mpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama. Stiennon, N.; Ouyang, L.; Wu, J.; Ziegler, D.; Lowe, R.; Voss, C.; Radford, A.; Amodei, D.; and Christiano, P. F. 2020. Learning to summarize with human feedback. Advances in neural information processing systems , 33: 3008–3021. Tunstall, L.; Beeching, E.; Lambert, N.; Rajani, N.; Rasul, K.; Belkada, Y.; Huang, S.; Von Werra, L.; Fourrier, C.; Habib, N.; et al. 2023. Zephyr: Direct distillation of lm alignment. arXiv preprint arXiv:2310.16944 .von Werra, L.; Belkada, Y.; Tunstall, L.; Beeching, E.; Thrush, T.; Lambert, N.; Huang, S.; Rasul, K.; and Gallouédec, Q. 2020. TRL: Transformer Reinforcement Learning. https://github.com/hugging face/trl. Wang, T.; Chen, J.; Jia, Q.; Wang, S.; Fang, R.; Wang, H.; Gao, Z.; Xie, C.; Xu, C.; Dai, J.; et al. 2024a. Weaver: Foundation models for creative writing. arXiv preprint arXiv:2401.17268 .Wang, Z.; Li, C.-L.; Perot, V.; Le, L.; Miao, J.; Zhang, Z.; Lee, C.-Y.; and Pfister, T. 2024b. Codeclm: Aligning language models with tailored synthetic data. In Findings of the Association for Computational Linguistics: NAACL 2024 , 3712–3729. Wang, Z. M.; Peng, Z.; Que, H.; Liu, J.; Zhou, W.; Wu, Y.; Guo, H.; Gan, R.; Ni, Z.; Yang, J.; et al. 2023. Rolellm: Benchmarking, eliciting, and enhancing role-playing abilities of large language models. arXiv preprint arXiv:2310.00746 .Wu, J.; Xie, Y.; Yang, Z.; Wu, J.; Gao, J.; Ding, B.; Wang, X.; and He, X. 2024. β-DPO: Direct Preference Optimization with Dynamic β. Advances in Neural Information Processing Systems ,37: 129944–129966. Wu, Y.; Mei, J.; Yan, M.; Li, C.; Lai, S.; Ren, Y.; Wang, Z.; Zhang, J.; Wu, M.; Jin, Q.; et al. 2025. Writingbench: A comprehensive bench-mark for generative writing. arXiv preprint arXiv:2503.05244 .Xu, Z.; Jiang, F.; Niu, L.; Deng, Y.; Poovendran, R.; Choi, Y.; and Lin, B. Y. 2024. Magpie: Alignment Data Synthesis from Scratch by Prompting Aligned LLMs with Nothing. arXiv preprint arXiv:2406.08464 .Yang, A.; Li, A.; Yang, B.; Zhang, B.; Hui, B.; Zheng, B.; Yu, B.; Gao, C.; Huang, C.; Lv, C.; et al. 2025. Qwen3 technical report. 
+
+arXiv preprint arXiv:2505.09388 .Yao, S.; Chen, H.; Hanjie, A. W.; Yang, R.; and Narasimhan, K. 2023. Collie: Systematic construction of constrained text generation tasks. arXiv preprint arXiv:2307.08689 .Yu, L.; Jiang, W.; Shi, H.; YU, J.; Liu, Z.; Zhang, Y.; Kwok, J.; Li, Z.; Weller, A.; and Liu, W. 2024. MetaMath: Bootstrap Your Own Mathematical Questions for Large Language Models. In The Twelfth International Conference on Learning Representations .Yuan, W.; Pang, R. Y.; Cho, K.; Sukhbaatar, S.; Xu, J.; and We-ston, J. 2024. Self-rewarding language models. arXiv preprint arXiv:2401.10020 , 3. Yue, X.; Zheng, T.; Zhang, G.; and Chen, W. 2024. MAmmoTH2: Scaling Instructions from the Web. Advances in Neural Information Processing Systems .Zellers, R.; Holtzman, A.; Bisk, Y.; Farhadi, A.; and Choi, Y. 2019. Hellaswag: Can a machine really finish your sentence? arXiv preprint arXiv:1905.07830 .Zhao, Z.; Birke, R.; and Chen, L. Y. 2025. Tabula: Harnessing lan-guage models for tabular data synthesis. In Pacific-Asia Conference on Knowledge Discovery and Data Mining , 247–259. Springer. Zheng, L.; Chiang, W.-L.; Sheng, Y.; Zhuang, S.; Wu, Z.; Zhuang, Y.; Lin, Z.; Li, Z.; Li, D.; Xing, E.; et al. 2023. Judging llm-as-a-judge with mt-bench and chatbot arena. Advances in Neural Information Processing Systems , 36: 46595–46623. Zhou, J.; Lu, T.; Mishra, S.; Brahma, S.; Basu, S.; Luan, Y.; Zhou, D.; and Hou, L. 2023. Instruction-following evaluation for large language models. arXiv preprint arXiv:2311.07911 .Zhu, C.; Xu, B.; Wang, X.; and Mao, Z. 2025. From Real to Synthetic: Synthesizing Millions of Diversified and Compli-cated User Instructions with Attributed Grounding. arXiv preprint arXiv:2506.03968 .A Details of HSS Quality Rubrics 
+
+Under expert guidance, we design 12 quality rubrics for eval-uating HSS texts. Each rubric is scored on a 1–5 scale and organized into three hierarchically weighted dimensions: A. Readability: Content Accuracy, Coherence, Grammar, Domain Relevance (weight 0.5 × 4, max 10); B. Applicability: Vocabulary Richness, Knowledge Depth, Tone& Expression, Gene Focus (weight 1.0 × 4, max 20); C. Human-touch: Literary Diversity, Emotionality, The-matic Depth, Humanities Creativity (weight 1.5 × 4, max 30). The total score ranges from 0 to 60. Based on the total score and minimum per-dimension requirements, we group the cor-pus into four quality bands (Table 5). Setting the seed thresh-old to 45 ensures perfect readability (A ≥5), solid applica-bility (B ≥4), and moderate human-touch (C ≥3), striking an optimal balance between data quality and scale. Raising the threshold further yields only marginal per-document gains while sharply reducing corpus size and long-tail coverage, thereby harming downstream instruction synthesis. 
+
+## B Domain Distribution 
+
+Table 6 shows the domain distribution of the 210k-sample BridgeAlign preference alignment dataset. The dataset cov-ers 14 target HSS domains, providing broad disciplinary coverage but also showing a clear imbalance. We believe this pattern mainly reflects how much web text is available in different HSS fields, rather than a bias in data collection: text-heavy domains such as History and Literature naturally provide more text data (Peng et al. 2019), while Geogra-phy and Arts depend more on non-text materials such as maps and images, and Healthcare is more limited by privacy regulations. Since manually balancing the data may cause overfitting in low-resource domains, we preserve the natural domain distribution and instead rely on high-quality synthe-sis to mitigate data quantity disparities. 
+
+## C Training Details 
+
+Our training is conducted on the Huggingface TRL 5 (von Werra et al. 2020) using 8 × 8 NVIDIA H800 GPUs. One epoch for training the Qwen3-8B model was approximately 5 hours. We used the last saved checkpoint as the final model. Following the Qwen3 and Llama3.1 technical reports (Yang et al. 2025; Dubey et al. 2024), the detailed training hyper-parameters for H-MPO, RubricPO, and BridgePO are listed in Table 7. 
+
+## D Benchmarks and Metrics Details 
+
+We adopt 17 mainstream benchmarks spanning nine core LLM capabilities , grouped into two principal classes: hu-man preference and knowledge-based benchmarks. For each benchmark, we report the sample size/setting (few-/zero-shot), evaluation metrics, and the judge model used when applicable; the absence of a listed judge indicates that no external judge is used. Thus, the benchmark suite covers 
+
+> 5https://github.com/huggingface/trl
+
+both judge-based and objective evaluations, and incorporates multiple repeated runs for the judge-based subjective bench-marks (the number of runs is annotated per benchmark below, and reported scores are averaged over these runs) as a prag-matic evaluation compromise under current practical con-straints. We further complement these winrate metrics with a blind pairwise human evaluation (detailed below). The 17 benchmarks yield 20 metrics in total, since RoleBench con-tributes two metrics (IG, RG) and MMLU contributes three metrics (MMLU-Full, MMLU-Humanities, MMLU-Social-Sciences). Accordingly, the Avg column is computed over these 20 metrics, while AlpacaEval 2 is reported separately. 1. Human Preference Benchmarks 
+
+• Emotion Perception: BuzzBench (Paech 2025) (zero-shot, rubric score, Claude-3.5-Sonnet-v2, avg. of 10 runs), EQ-Bench3 (Paech 2025) (zero-shot, rubric Score, Claude-3.7-Sonnet, avg. of 10 runs). 
+
+• Role-Playing: RoleBench_IG_En, RoleBench_RG_En (Wang et al. 2023) (zero-shot, win rate; Llama-3.3-70B-Instruct, avg. of 3runs). Since the built-in ROUGE-L metric is skewed by hallucinated ground truths, we adopt the Alpaca-Eval setup 6, letting Llama-3.3-70B-Instruct pairwise compare answers with the ground truth and report the win rate. 
+
+• Writing Skill: CreativeWriting-v3 (Paech 2023) (zero-shot, rubric score, Claude-3.7-Sonnet, avg. of 3 runs), WritingBench (Wu et al. 2025) (zero-shot, rubric score, Claude-3.7-Sonnet, avg. of 3 runs), Judgemark-v2 (Paech 2023) (zero-shot, judgemark Score, avg. of 20 runs). 
+
+• Social Interactions: Social-IQA (Sap et al. 2019) (zero-shot, accuracy), IQuiz_EQ (Chen et al. 2024) (zero-shot, accuracy). 2. Knowledge-Based Benchmarks 
+
+• Instruction Following: IFEval (Zhou et al. 2023) (zero-shot, prompt-level strict accuracy), Collie (Yao et al. 2023) (zero-shot, aggregated accuracy). 
+
+• World Knowledge: MMLU, MMLU_Humanities, MMLU_Social_Sciences (Hendrycks et al. 2020) (5-shot, accuracy). 
+
+• Commonsense Reasoning: HellaSwag (Zellers et al. 2019) (6-shot, normalized accuracy), Sto-ryCloze (Mostafazadeh et al. 2016) (zero-shot, accuracy). 
+
+• Long Context: CoQA (Reddy, Chen, and Manning 2019) (zero-shot, F1), GovernmentReport_CRS (Sha-ham et al. 2022) (zero-shot, ROUGE-L). 
+
+• Reading Comprehension: NarrativeQA summa-rizeOnly (Kočisk` y et al. 2018) (zero-shot, ac-curacy, Llama-3.3-70B-Instruct, avg. of 3 runs), XSum (Narayan, Cohen, and Lapata 2018) (zero-shot, ROUGE-L). 3. Human Evaluation Benchmark 
+
+> 6https://github.com/tatsu-lab/alpaca_eval
+
+Score Range Min. Sub-scores (A/B/C) Quality Level #Docs #Tokens Avg. Len 55–60 A≥5, B ≥5, C ≥4 Near-perfect 294,493 1,103,904,718 3,748 
+
+45–54 A≥5, B ≥4, C ≥3 Seed quality bar 1,073,755 3,153,687,402 2,939 
+
+31–44 A≥3, B ≥3, C ≥2 Barely acceptable 12,137,698 12,526,930,657 1,032 
+
+≤30 or any A ≤2 – Fails readability/applicability 1,495,491 1,621,533,520 1,084 
+
+Table 5: Corpus statistics grouped by HSS quality score. Score Range denotes the total-score interval. Min. Sub-scores specifies the minimum required scores for each quality rubric within tiers A (Readability), B (Applicability), and C (Human-touch). #Docs and #Tokens indicate corpus size, measured using the Qwen3 tokenizer. Avg. Len is the average document length in tokens.                                 
+
+> Domain Documents Proportion (%)
+> History 49,680 23.66 Arts 31,370 14.94 Politics 25,588 12.18 Literature 24,546 11.69 Philosophy 13,425 6.39 Sociology 11,706 5.57 Economics 11,589 5.52 Law 8,173 3.89 Sports 7,548 3.59 Psychology 7,266 3.46 Education 6,773 3.23 Management 6,763 3.22 Healthcare 4,529 2.16 Geography 1,044 0.50 Total 210,000 100.00
+
+Table 6: Domain distribution of the BridgeAlign dataset. Documents and proportions denote the number of samples and the proportion within each domain, respectively. We construct a blind pairwise winrate benchmark to val-idate the performance gains beyond LLM-based judges. Specifically, we sample 120 prompts from the human-preference benchmarks (40 writing, 30 role-playing, 30 emotion, and 20 social interaction), and compare BridgeAlign (+BridgePO) against the strongest baseline (Self-Rewarding+M 3) in a pairwise manner. For each prompt, the two responses are presented side by side with their order shuffled and sources hidden, so that annota-tors cannot identify which model produced each response. Three annotators independently label each pair as a win ,
+
+tie , or loss for BridgePO based on the overall response quality, following the same evaluation metric used for the LLM judge. We report the majority-voted win/tie/loss rates per category and overall in Figure 7. 
+
+## E Data Leakage Analysis 
+
+To avoid evaluation leakage, we conduct a strict data decon-tamination analysis by selecting one representative bench-mark from each of the nine core LLM capabilities. Follow-ing standard practices in recent technical reports (Qwen Team 2024; Dubey et al. 2024), we use both 13-gram exact match-
+
+Hyper-parameter Value Epochs 1Learning rate 7 × 10 −7
+
+Batch size 128 Max length 5120 Scheduler Cosine Warm-up ratio 0.03 Weight decay 0.0 Adam β2 0.999 
+
+β 0.1 Gradient accumulation 1Gradient checkpointing True Precision BF16 Table 7: Training hyper-parameters of H-MPO, RubricPO, BridgePO. 
+
+ing and MinHash LSH , with a Jaccard threshold of 0.7 and 
+
+128 hash functions, to detect overlap between the queries in our synthesized BridgeAlign dataset and the queries in the evaluation benchmarks. As shown in Table 8, both the exact-overlap ratio and the near-duplicate rate are zero (0.00% ) for all benchmarks, indicating that BridgeAlign does not over-lap with the evaluation sets and thus preserves evaluation fairness and integrity. 
+
+## F Full results 
+
+Table 9 presents the full results across 17 mainstream bench-marks covering nine core capabilities (20 metrics in total), with AlpacaEval 2 reported separately. Qwen3-8B aligned on BridgeAlign synthetic data achieves a balance between human preference and knowledge-base tasks, with the best average across all compared methods. On AlpacaEval 2, BridgePO attains the highest win rate among all methods. 
+
+## G Controlled Ablations 
+
+We conduct two additional controlled ablations to study HSS-specific supervision and token-budget effects. Let’s first clarify: BridgeAlign naturally produces longer and more di-verse outputs because its instructions are reverse-generated from HSS seed documents while preserving domain, genre, length, and persona constraints. We regard these properties as intended features of the pipeline rather than simple con-founders, and explicitly examine them below. LLM Capability Benchmark Dataset Unique 13-gram Number 13-gram Overlap Ratio MinHash Near-duplicates Emotion BuzzBench 5,382 0.00% 0.00% 
+
+Role RoleBench_IG_En 12,851 0.00% 0.00% 
+
+Writing Creative Writing 5,819 0.00% 0.00% 
+
+Social SIQA 279,091 0.00% 0.00% 
+
+Instruction IFEval 13,299 0.00% 0.00% 
+
+Knowledge MMLU 398,281 0.00% 0.00% 
+
+Common HellaSwag 1,262,209 0.00% 0.00% 
+
+Long CoQA 2,325,293 0.00% 0.00% 
+
+Read NarrativeQA 4,468,262 0.00% 0.00% 
+
+Table 8: Detailed decontamination analyses over nine LLM capabilities demonstrate that BridgeAlign has zero overlap with the evaluation benchmarks. 
+
+Token-Budget Controlled Comparison Under the same 210k-sample setting, BridgeAlign +BridgePO contains 910.6M training tokens, whereas Self-Rewarding+M 3 and FollowSoftConstraint w/ CL contain 648.1M and 458.6M tokens, respectively, indicating that matching sample counts alone is insufficient. To control for token-budget differences, in Table 10, we compare two intermediate BridgePO check-points with the same-setup baselines at nearby token bud-gets: the 800-step checkpoint (442.3M tokens) against Fol-lowSoftConstraint w/ CL, and the 1200-step checkpoint (663.5M tokens) against Self-Rewarding+M 3. BridgePO achieves stronger human-preference performance in both comparisons, with Avg HP of 64.38 vs. 62.26 and 64.75 vs. 63.78, respectively. Meanwhile, knowledge-side perfor-mance remains nearly unchanged, with Avg KB of 60.60 vs. 60.42 and 60.79 vs. 60.80. These results show that the gains are not driven by a larger token budget. 
+
+HSS-Specificity Ablation To separate HSS-specific ef-fects from generic text-quality effects, we remove HSS-domain seeds and replace HSS-specific scoring with generic rubrics, constructing data constrained only by general text-quality criteria. Since BridgePO relies on controlled degrada-tion along the human-touch dimension, this ablation cannot be directly applied to BridgePO and is therefore conducted in Table 11 under the RubricPO setting. Removing HSS seeds and HSS-oriented scoring reduces Avg HP from 63.54 to 61.63 and overall Avg from 61.93 to 61.35. The main drops occur on HSS-oriented evaluations: Emotion, Role, Writing, and Social decrease by 0.98, 2.31, 1.78, and 2.64, respec-tively. In contrast, knowledge-side metrics improve slightly, raising Avg KB from 60.61 to 61.13. This pattern suggests that HSS seed construction and HSS-specific rubrics provide targeted gains for HSS-related capabilities rather than merely improving generic text quality. 
+
+## H Theoretical Interpretation 
+
+This section draws on existing theoretical analyses of LLM data synthesis and preference optimization (Gan and Liu 2025; Rafailov et al. 2024) to interpret the empirical patterns observed in BridgeAlign experiments. 
+
+Reverse-Bottleneck in Data Synthesis. Following the 
+
+Reverse-Bottleneck perspective in (Gan and Liu 2025), the data synthesis process of BridgeAlign can be interpreted as introducing an information gain ∆I through the synthesis model M :
+
+∆I = H(M (p)) − I(h(ep), M (p)) . (2) Here, H(M (p)) is the entropy of the generated responses, 
+
+I(h(ep), M (p)) is the mutual information between the re-sponses and the prompt p. Thus, ∆I measures the incremen-tal information injected by M from p to the synthetic data 
+
+Sgen . According to Theorem 4.7 in (Gan and Liu 2025), the generalization error of the model π trained on synthetic data is bounded by:                   
+
+> EErr( πSgen )≤C
+> 
+> DTV (D,DM) + DTV (DM,Dgen )
+> 
+> + exp
+> 
+> −L
+> 2 log 1
+> η
+>  s
+> 2σ2−∆I+Bsyn +H(eM) + δϵ,p
+> 
+> n.
+
+(3) The generalization error is constrained by the interaction be-tween the ∆I and the compression bottleneck Bsyn . While 
+
+Bsyn represents the inherent limit of information compres-sion during the learning process, the term −∆I implies that maximizing information gain through high-quality synthe-sis directly reduces the generalization error upper bound. Furthermore, the Generalized Generalization Model In-ference (GGMI) analysis (Theorem 4.10 in (Gan and Liu 2025)) quantifies the generalization gain benefit from syn-thetic data: 
+
+GGMI ≤ ∆I − (α + 1) H(Sanchor | W )+ 2∆ H + H(Sgen | W ) + ϵW,p . (4) In this interpretation, ∆I captures the diversity introduced by the synthesis model, while ∆H = H(Sanchor ) − H(Sgen )
+
+captures the reduction in uncertainty brought by filtering and refinement. From this perspective, BridgeAlign may benefit from combining broader coverage with cleaner training sig-nals. 
+
+Implicit Reward Alignment via DPO. Our preference op-timization stage uses the standard DPO formulation, which can be viewed as a KL-constrained reward maximization objective (Rafailov et al. 2024): 
+
+max 
+
+> πθ
+
+Ex∼D , y ∼πθ (·| x)
+
+rϕ(x, y )
+
+− β DKL (πθ (y | x) ∥ πref (y | x)) . (5) Selection Method Human Preference Knowledge Based Avg AlpacaEval2 Emotion Role Writing Social Instruct World Common Long Read                                                                                                             
+
+> Buzz EQ3 IG RG CW WB JM SIQA IQuiz IF Collie MMLU Hum Soc HS SC CoQA CRS NQA XSum Qwen3-8B 34.30 64.10 58.71 74.40 58.65 70.30 64.61 75.44 57.81 82.62 29.64 74.73 65.87 84.11 75.69 77.28 73.58 21.71 52.43 18.00 60.70 50.00 Ultrafeedback 34.79 64.20 61.07 76.72 59.49 69.91 63.28 74.92 55.00 83.73 30.45 75.02 66.55 83.88 76.20 77.85 81.49 21.49 53.56 17.86 61.37 51.55 WritingPrompts 33.71 63.25 58.98 75.71 61.47 70.17 63.35 75.59 63.75 83.92 30.93 74.83 66.08 83.59 76.12 77.72 81.53 21.51 53.01 18.08 61.67 52.30 SynthQuestions 35.22 66.80 63.92 77.91 62.99 70.30 64.88 74.72 65.00 83.36 29.77 74.90 66.40 83.82 76.41 77.98 81.23 21.21 53.32 17.69 62.39 50.92 Magpie_Air 33.71 65.15 61.88 77.09 61.18 70.34 65.48 75.38 57.50 83.36 29.68 74.94 66.38 83.88 76.48 77.53 81.92 21.38 53.56 17.77 61.73 50.85 Magpie_Pro 34.35 65.85 62.00 77.13 62.96 70.14 63.80 75.79 60.00 83.18 30.33 74.93 66.52 83.95 76.34 77.91 81.39 21.09 53.76 17.91 61.97 51.12 Magpie_Mixed 33.61 65.50 63.60 77.91 61.48 70.48 64.26 75.28 57.50 84.05 31.43 74.99 66.32 84.08 76.17 77.83 81.86 21.66 53.88 18.02 62.00 52.78 Self-Rewarding+M2 35.06 64.55 58.37 73.77 60.39 70.24 65.04 75.13 57.50 84.29 30.49 74.67 65.97 83.72 75.82 77.53 81.50 21.79 54.75 17.72 61.42 52.15 Self-Rewarding+M3 36.60 65.65 61.95 76.55 63.18 70.96 64.68 74.46 60.00 85.40 30.75 74.98 66.50 83.78 75.93 77.53 81.89 21.47 52.77 17.78 62.14 53.15 FSC-wCL 33.99 64.05 57.86 73.97 58.61 69.99 63.35 76.00 62.50 81.89 30.71 74.93 66.42 83.82 75.69 77.53 81.68 21.57 52.39 17.97 61.25 50.65 FSC-woCL 33.54 64.45 58.10 73.89 58.30 70.10 62.90 75.08 61.25 83.92 30.68 74.97 66.42 83.91 75.65 77.47 81.53 21.63 52.12 17.80 61.19 51.95
+> BridgeAlign (Ours)
+> +RubricPO 34.05 65.80 60.78 76.10 62.76 70.60 64.07 75.18 62.50 82.99 31.44 74.95 66.42 83.85 75.83 78.04 80.99 21.65 52.70 17.90 61.93 51.80 +BridgePO 35.75 67.15 66.10 78.30 64.00 71.05 65.65 75.20 64.92 85.03 32.88 74.79 66.12 83.88 76.48 78.17 81.63 21.46 54.62 17.86 63.05 53.80 BridgeAlign (Ablation Study)
+> +H-MPO 32.61 56.50 57.00 72.68 55.13 68.25 62.75 74.87 65.00 81.89 28.65 74.93 66.31 83.95 75.97 77.78 81.03 22.11 52.70 17.88 60.40 50.18 +BridgePO v1 35.75 64.75 61.25 76.55 61.17 70.49 63.81 75.44 58.75 83.92 30.18 74.88 66.25 83.69 75.91 77.53 80.55 21.55 53.15 17.92 61.67 51.48 +BridgePO v2 34.02 65.25 59.76 74.98 60.91 70.56 63.93 74.67 55.00 83.73 31.01 74.92 66.33 83.95 75.94 77.72 81.15 21.46 52.74 17.93 61.30 52.08 +BridgePO-Combo 34.13 65.65 62.55 76.83 59.60 70.29 64.57 75.49 60.00 82.44 32.91 74.88 66.16 83.88 75.92 77.91 81.12 21.76 53.08 17.67 61.84 52.62
+
+Table 9: Full results on 17 mainstream benchmarks spanning nine core abilities (20 metrics in total), with AlpacaEval 2 listed separately. Avg is computed over the 20 benchmark metrics and excludes AlpacaEval 2. Higher values are bet-ter. Abbreviations: Buzz = BuzzBench, EQ3 = EQ-Bench3, IG / RG = RoleBench_IG_En / RoleBench_RG_En, CW = CreativeWriting-v3, WB = WritingBench, JM = Judgemark-v2, SIQA = Social-IQA, IQuiz = IQuiz_EQ, IF = IFEval, Hum / Soc = MMLU_Humanities / MMLU_Social_Sciences, HS = HellaSwag, SC = StoryCloze, CRS = GovernmentReport_CRS, NQA = NarrativeQA_summarizeOnly, FSC-wCL / FSC-woCL = FollowSoftConstraint with / without curriculum learning, and BridgePO-Combo = BridgePO v1 + v2 + RubricPO. By applying the Bradley-Terry model and reparameteriza-tion, the ground-truth reward r and the optimal policy πr
+
+satisfy: 
+
+r(x, y ) = β log πr (y|x)
+
+πref (y|x) + β log Z(x) (6) This allows us to fit an implicit reward by minimizing the DPO loss on our synthetic triplets ⟨x, y w, y l⟩ like Eq.1. Un-der this view, preference optimization improves the policy by enlarging the implicit reward gap between preferred and dispreferred responses. BridgeAlign, especially BridgePO, promotes fine-grained quality discrimination by construct-ing more challenging near-boundary comparisons. 
+
+## I Case Study 
+
+Tables 12 and 13 present an arts-domain case from the BridgeAlign synthesis pipeline, including the seed docu-ment, inverted instruction, inverted document, and transi-tional document. Its metadata include the genre Essay , the persona “a discerning classical music critic with a focus on performance analysis,” and context lengths of 424, 252, 593, and 466 tokens for the four components, respectively. 
+
+## J Limitations 
+
+BridgeAlign constructs preference data from web corpora through a three-phase pipeline. Despite heuristic filtering, LLM-signal filtering, and LLM-based rewriting, the web data may still contain crawler noise and low-quality expressions. Future work should improve seed data quality by adopting stronger cleaning techniques, using cleaner web datasets such as FineWeb, or purchasing high-quality human-written cor-pora. Data-scaling studies further show that the model largely converges after about 51k preference samples, with sharply diminishing marginal gains. This early saturation may reflect potential redundancy, but it remains unclear whether it is spe-cific to Qwen3-8B, persists across model scales, or indicates the need for diversity beyond semantic and domain cover-age. Future work will reduce potential redundancy through stricter semantic deduplication, such as embedding-based similarity filtering or clustering-based sampling. Finally, although Appendix Table 6 shows BridgeAlign’s coverage of 14 domains, its domain distribution remains im-balanced. This long-tail pattern likely reflects differences in web-text availability across HSS fields rather than inten-tional sampling bias, but it complicates per-domain train-Selected Method Human Preference Knowledge based Avg Emotion Role Writing Social Avg HP Instruct World Common Long Read Avg KB 
+
+BridgePO (800-step) 51.73 71.99 66.31 66.53 64.38 56.91 75.01 76.74 51.98 35.13 60.60 62.30 FollowSoftConstraint w/ CL 49.02 65.92 63.98 69.25 62.26 56.30 75.06 76.61 51.63 35.18 60.42 61.25 BridgePO (1200-step) 52.36 72.19 66.87 66.54 64.75 57.30 75.07 76.86 52.01 35.59 60.79 62.57 Self-Rewarding+M 3 51.13 69.25 66.27 67.23 63.78 58.08 75.09 76.73 51.68 35.28 60.80 62.14 
+
+Table 10: Near-matched token-budget controlled comparison. We compare BridgePO at 800 steps (442.3M tokens) against FollowSoftConstraint w/ CL (458.6M), and BridgePO at 1200 steps (663.5M) against Self-Rewarding+M 3 (648.1M).                            
+
+> Selected Method Human Preference Knowledge based Avg Emotion Role Writing Social Avg HP Instruct World Common Long Read Avg KB
+> RubricPO 49.93 68.44 65.81 68.84 63.54 57.22 75.07 76.94 51.32 35.30 60.61 61.93 w/o HSS Seeds+Generic Rubrics 48.95 66.13 64.03 66.20 61.63 57.29 75.41 77.39 51.61 36.81 61.13 61.35
+
+Table 11: HSS-specificity ablation under RubricPO. We compare RubricPO against an ablated variant that removes HSS-domain seeds and replaces HSS-specific scoring with generic rubrics. ing and evaluation, especially for low-resource domains. We therefore report domain statistics for transparency and leave systematic per-domain evaluation to future work. 
+
+## K Ethical Considerations 
+
+All authors confirm that this work complies with the AAAI Code of Ethics and outline the ethical safeguards adopted in this HSS preference data synthesis work. The authors declare no conflicts of interest throughout the research process. We mitigated data bias and avoided hallucinations by rigorously constructing seed data. All code, models, and source datasets used in this study are open source (e.g., under the Apache-2.0 license), and the synthesized data have been reviewed to exclude personally identifiable information (PII) and dis-criminatory content. In addition, we disclose any remaining limitations, all prompt templates, and evaluation rubrics in the Appendix to enhance transparency and reproducibility. Finally, we used large language models solely for language refinement, including grammar, vocabulary, and sentence-structure improvements. All scientific content—including methodology, experimental design, data analysis, and con-clusions—is the authors’ original contribution. The LLMs generated no substantive content, interpretations, or insights. 
+
+## L Prompt Template 
+
+This section outlines the prompt designs adopted throughout the pipeline. Figure 9 presents the HSS domain classifica-tion prompt, which assigns each seed document to its cor-responding HSS domain. Figures 10–12 illustrate the HSS quality filtering prompts. Here, using expert-crafted rubrics to retain only clean-filtered seeds. The text refinement and refinement evaluation templates in Figures 13 and 14 are used for text refining and for evaluating the refined doc-uments, respectively. Figure 15 shows the instruction inver-sion prompt that reverse-generates an instruction from a seed document, whereas Figure 16 depicts the Q&A consistency check prompt that verifies the alignment of the inverted in-struction between its origin (i.e, seed document). Figure 17 shows the prompt template for controlled quality degrada-tion of the higher-scoring document (either seed or inverted) alongside a human-touch dimension to produce a transitional document. 0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+49 
+
+50 
+
+51 
+
+52 
+
+53 
+
+> Average Performance
+> 51.45
+
+Emotion Perception 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+66 
+
+67 
+
+68 
+
+69 
+
+70 
+
+71 
+
+72 
+
+73 
+
+> Average Performance
+> 72.20
+
+Role-Playing 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+64.0 
+
+64.5 
+
+65.0 
+
+65.5 
+
+66.0 
+
+66.5 
+
+67.0 
+
+> Average Performance
+> 66.90
+
+Writing skill 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+66 
+
+67 
+
+68 
+
+69 
+
+70 
+
+> Average Performance
+> 70.06
+
+Social Interactions 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+56.0 
+
+56.5 
+
+57.0 
+
+57.5 
+
+58.0 
+
+58.5 
+
+59.0 
+
+59.5 
+
+> Average Performance
+> 58.96
+
+Instruct Following 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+74.8 
+
+74.9 
+
+75.0 
+
+75.1 
+
+75.2 
+
+> Average Performance
+> 74.93
+
+World Knowledge 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+76.4 
+
+76.6 
+
+76.8 
+
+77.0 
+
+77.2 
+
+77.4 
+
+> Average Performance
+> 77.33
+
+Commonsense Reasoning 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+47 
+
+48 
+
+49 
+
+50 
+
+51 
+
+52 
+
+53 
+
+> Average Performance
+> 51.55
+
+Long Context 
+
+0 200 400 600 800 1000 1200 1400 1647 
+
+Training Steps 
+
+35.0 
+
+35.2 
+
+35.4 
+
+35.6 
+
+35.8 
+
+36.0 
+
+36.2 
+
+36.4 
+
+> Average Performance
+> 36.24
+
+Reading Comprehension Figure 8: Per-capability data scaling curves for BridgePO over one epoch. Emotion perception, writing skill, and long context peak early and then decline slightly, suggesting mild overfitting; role-playing shows only slight fluctuations after the initial gain; reading comprehension and social interaction rise early, dip in the middle, and rebound toward the end; instruction following and commonsense reasoning keep improving, rising steadily toward the end; and world knowledge stays largely flat throughout. Text Type Text 
+
+Seed Document This was a typically imaginative programme from Nicolas Hodges, and one that cast a spellbinding sound world over proceedings. If the Lachenmann’s sonata’ had been programmed for its undoubted hypnotic strengths, then Hodges generated equal hypnotism in his playing of Schumann - particularly the Fantasie op.17 which was given a masterful performance.\n \nLachenmann ’s Serynade is a provocative work which marries violent clusters and distilled nervousness with apparent equilibrium. However, there is little that is eclectic about its post-modernist harmony and it by no means exhausts the possibilities of either the instrument or the pianist’s technique. Indeed, its half-hour span can grate slightly - the work having an almost obsessive desire to hypnotise the listener with endlessly repeated chords. The sustained use of different keys and the various pedal techniques encourage the mood of hypnotism - and the piece almost works in removing the listener from the conscious world. Hodges’ playing was faultless and he brought transcendent colour to his tone.\n \nWhilst Hodges’ displayed no lack of involvement in the Lachenmann he was more persuasive in Schumann. The Arabeske op.18 is dark in colour, the pianist’s hands predominantly playing only on the lower half of the keyboard. There were some beautiful dynamic touches - for example, Hodges’ fingers caressing, like paws, the notes where Schumann had indicated p, and exploding with a tiger’s power to the bass clusters. In the longer Fantasie he worked wonders with Schumann’s imagist writing. There was much beauty of phrasing and panache to the virtuoso setting of the second movement, which momentarily broke the trance he had carefully constructed throughout its development. The poetry and lyricism given to the work were instinctive, although the playing appeared unusually direct for Schumann. If the mood gestured unmistakably towards restrained passion this seemed right for the moment. If there was one fault it is his tendency to over-pedal and this was occasionally intrusive in both Schumann works. A fine recital. Inverted Instruction You are a discerning classical music critic with a focus on performance analysis. Your stance prioritizes technical precision and emotional authenticity, valuing works that challenge conventional structures while maintaining lyrical depth. Your mindset is analytical yet reflective, balancing admiration for virtuosity with a critical eye for overused techniques. The tone remains measured and insightful, emphasizing the interplay between composer intent and performer interpretation.\nWrite an Arts essay in the Genre of Essay that analyzes a pianist’s interpretation of modern classical compositions, focusing on the interplay between technical execution and emotional expression. Summarize the central thesis that a performer’s mastery lies in balancing hypnotic repetition with dynamic nuance, using specific examples from a Lachenmann sonata and Schumann works. Include key points such as the use of clusters, pedal techniques, and contrasting dynamics, while retaining exact references to the pieces (e.g., ’Fantasie op.17’, ’Arabeske op.18’) and the performer’s stylistic choices. Structure the essay thematically, comparing the works’ structural demands and the pianist’s approach to each. The final text must be approximately 424 tokens (around 2088 characters), matching the length of the original document. 
+
+Table 12: A case from the BridgeAlign synthesis pipeline (Part 1 of 2): the seed document and the inverted instruction. Text Type Text 
+
+Inverted Document In the realm of modern classical performance, the pianist\u 2019s mastery lies in navigating the tension between hypnotic repe-tition and dynamic nuance, a balance exemplified in Nicolas Hodges\u 2019 interpretation of Lachenmann\u 2019s *Serynade* and Schumann\u 2019s *Fantasie op. 17*, *Arabeske op. 18*. These works demand not mere technical facility but a philosoph-ical engagement with structure and emotion, where the performer becomes both architect and alchemist. \n \nLachenmann \u 2019s *Serynade*, with its postmodernist dissonance, hinges on clusters and sustained pedal techniques to evoke a trance-like state. Hodges\u 2019 execution of the sonata\u 2019s repetitive chord progressions was meticulous, his hands weaving through violent, staccato bursts that juxtaposed with the piece\u 2019s eerie equilibrium. The relentless oscillation between minor and major keys, amplified by layered pedaling, created a sonic fog that both entranced and unsettled. Yet, the work\u 2019s endurance\u 2014its half-hour sprawl\u 2014rested on Hodges\u 2019 ability to infuse each repetition with subtle inflection, preventing monotony. His use of the sustaining pedal, for instance, did not merely blur sonorities but sculpted a spatial depth, as if the piano itself became a vessel for psychological tension. \n \nContrast this with Schumann\u 2019s *Fantasie op. 17*, where Hodges\u 2019 approach revealed a different kind of duality. The piece\u 2019s fluid, improvisatory structure required a delicate interplay between lyrical phrasing and abrupt dynamic shifts. In the *Arabeske op. 18*, his hands lingered in the lower register, evoking a somber, almost feral energy. The pianist\u 2019s treatment of Schumann\u 2019s *p* markings\u 2014fingers \u 201ccaressing\u 201d notes with precision\u 2014contrasted starkly with the explosive bass clusters, a chiaroscuro of restraint and power. Here, the hypnotic element emerged not through repetition but through the interplay of light and shadow, as Hodges\u 2019 phrasing danced between fragility and intensity. \n \nStructurally , both works challenged Hodges to reconcile opposing forces: Lachenmann\u 2019s obsessive formalism versus Schumann\u 2019s romantic spontaneity. Yet his stylistic choices\u 2014whether the calculated detachment in *Serynade* or the fervent directness in Schumann\u 2014revealed a performer attuned to each composer\u 2019s ethos. Even his occasional over-pedaling, which occasionally muddied the Schumann works, underscored the risks of prioritizing atmosphere over clarity, a trade-off that mirrored the composers\u 2019 own tensions between innovation and tradition. \n \nUltimately , Hodges\u 2019 performance affirmed that technical precision and emotional authenticity are not adversaries but collaborators. In balancing the hypnotic and the dynamic, he transformed these works into meditations on time, tension, and the fragile beauty of impermanence. Transitional Document In analyzing pianist Hodges\u 2019s interpretation of Lachenmann\u 2019s *Serynade* and Schumann\u 2019s *Fantasie op. 17* and *Arabeske op. 18*, the central thesis emerges: mastery lies in balancing hypnotic repetition with dynamic nuance, where technical precision and emotional authenticity coalesce. Lachenmann\u 2019s sonata, a labyrinth of dissonance and fragmentation, demands a performer who navigates clusters and extended techniques without sacrificing lyrical intent. Hodges employs a meticulous, almost surgical approach to the work\u 2019s repetitive motifs, such as the relentless ostinato in the first movement, yet infuses them with subtle gradations of touch, transforming mechanical repetition into a meditative, almost ritualistic experience. The use of the sustain pedal here is transformative\u 2014blurring harmonic boundaries to evoke a spectral, dreamlike atmosphere, a technique that aligns with Lachenmann\u 2019s intent to destabilize traditional tonality. \n \nContrastingly , Schumann\u 2019s *Fantasie op. 17* and *Arabeske op. 18* require a pianist to negotiate lyrical fluidity and structural tension. Hodges\u 2019s reading of the *Fantasie* emphasizes dynamic contrasts, particularly in the interplay between the stormy, chromatic passages and the introspective, bell-like chords of the second movement. The performer\u 2019s use of rubato is restrained yet expressive, allowing phrases to breathe without sacrificing rhythmic cohesion. In the *Arabeske*, Hodges balances the piece\u 2019s delicate ornamentation with a taut, forward-driving pulse, ensuring that the work\u 2019s elegance never succumbs to passivity. \n \nThe interplay between Lachenmann\u 2019s avant-garde structures and Schumann\u 2019s Romantic lyricism reveals Hodges\u 2019s versatility. Where Lachenmann\u 2019s clusters demand a focus on timbral exploration, Schumann\u 2019s harmonies require a sensitivity to textural layering. Hodges\u 2019s ability to oscillate between these extremes\u 2014maintaining technical rigor while infusing each note with emotional resonance\u 2014defines their interpretation. This duality underscores the performer\u 2019s mastery: not as a mere executor of notation, but as a mediator between the composer\u 2019s vision and the listener\u 2019s experience. 
+
+Table 13: A case from the BridgeAlign synthesis pipeline (Part 2 of 2): the inverted document and the transitional document. Prompt Template for HSS Domain Classification 
+
+You are an expert in text domain classification. Your task is to classify the given text into one of the fourteen predefined domain types, or determine if it falls outside these domains. Accuracy in identifying non-relevant texts is as important as correctly classifying relevant texts. [Text]: {text} 
+
+Predefined Domain Types: [Philosophy, Economics, Law, Politics, Sociology, Health and Nursing, Geography, Education, Sports, Literature, History, Management, Arts, Psychology] [Instruction] 1. Carefully analyze the main subject matter, methodology, and terminology of the text. 2. Determine if the text’s **primary focus** clearly and substantially aligns with one 
+
+of the domains listed above. 3. If a strong match is found : Select the single best-fitting domain from the list. 4. Crucially: If the text does not clearly and primarily belong to any of the 14 listed domains (e.g., it is about natural sciences, technology, engineering, mathematics, a general news report without relevant domain focus, creative writing without clear thematic analysis, a personal blog, technical documentation, etc.), you MUST output “None” in the “Domain Types” field. Do NOT force a classification into the listed domains if the fit is poor or ambiguous. 5. Rate your confidence in the assigned domain (or the “None” classification) on a scale of 1 (lowest confidence, very uncertain or weak fit) to 5 (highest confidence, very clear and strong fit/non-fit). A low confidence score (1-2) for a chosen domain might indicate it’s a borderline case. 6. Output the result strictly in the specified JSON format. Generate only the JSON object, with no additional text before or after it. [Output Format] {“Domain Types”: “<Selected Domain or None>”, “Confidence”: <1-5> }
+
+Figure 9: Prompt template for HSS domain classification. Prompt Template for HSS Quality Filtering (Part I) 
+
+You are a professional document quality reviewer; if the text warrants it, do not hesitate to use the full range of scores, including the lowest and highest scores. Evaluate the document based on the following criteria, each with a maximum score of 5 points. Please provide a brief explanation for each criterion and output the final result in JSON format directly, where the score represents the score for each item, and the reason provides a simple explanation. Besides the genre, which is given separately. 
+
+• Grammar, Punctuation, and Spelling : Assess whether there are noticeable grammatical errors, improper punctuation use, or spelling mistakes in the article. Also, check if there’s any garbled text or illogical multilingual mixing. 
+
+– 5: No errors at all. 
+
+– 4: Minor errors only. 
+
+– 3: Some noticeable errors, but understandable. 
+
+– 2: Many errors affecting the reading experience. 
+
+– 1: Errors are pervasive and severely impact text quality, or the text includes extensive meaningless repetition, gibberish, or a mix of illogical language, rendering it largely unreadable. 
+
+• Logical Coherence and Fluency : Examine whether the text has a good logical structure and if the transitions between paragraphs are smooth. 
+
+– 5: Very clear logic and fluent. 
+
+– 4: Mostly logical, some abrupt parts. 
+
+– 3: Overall acceptable but with a few noticeable gaps. 
+
+– 2: Logic is relatively disorganized, making it difficult to follow the author’s line of thought, or there is noticeable redundancy or unnecessary repetition that interferes with reading fluency. 
+
+– 1: Completely lacks organization, or due to extreme, meaningless repetition, internal contradictions, or a complete structural breakdown, the text’s logic completely fails, rendering it incomprehensible. 
+
+• Content Accuracy : Ensure information is accurate and tightly centered around the topic. 
+
+– 5: All information is very accurate and closely centered on the main idea. 
+
+– 4: Mostly correct with only a few details needing correction. 
+
+– 3: Some content deviates from the topic or contains small errors. 
+
+– 2: Many important factual errors. 
+
+– 1: Grossly inaccurate. 
+
+• Domain Relevance : Assess whether the text’s content, terminology, concepts, and focus are closely related to the specific academic field it claims or implies (e.g., history, sociology, literature, philosophy, etc.). Predefined Domain Types: [Philosophy, Economics, Law, Politics, Sociology, Health and Nursing, Geography, Education, Sports, Literature, History, Management, Arts, Psychology] The domain of the document is {Domain} .
+
+– 5: Highly relevant. The text fully focuses on the core issues, concepts, and terminology of the specified field, clearly belonging to that field. 
+
+– 4: Good relevance. The main focus is appropriate, but it may contain some marginal content or slight deviations. 
+
+– 3: Moderately relevant. The text touches on the field but may include more unrelated content, or the focus is too broad, lacking specific connections to the field. 
+
+– 2: Weak relevance. The connection to the field is weak or tenuous, with most content seeming unrelated to the topic. 
+
+– 1: Almost non-relevant. The text content has little or no connection to the specified field. 
+
+• Literary Diversity : Evaluate the diversity and innovation in rhetorical devices (metaphors, personification, exaggeration, etc.), expression methods (narrative, exposition, argumentation, etc.), article structure (transition, flashback, etc.), narrative perspective, and person. 
+
+– 5: The work shows high diversity and innovation in various aspects, making the text rich and vivid. 
+
+– 4: Good diversity in most areas with some slight monotony or traditionalism. 
+
+– 3: Some diversity but overall rather plain, lacking enough innovation. 
+
+– 2: Poor diversity, and both rhetorical devices and expression methods are monotonous, with traditional structure and perspective. 
+
+– 1: Almost no diversity, rhetorical devices and expression methods are very monotonous, and the structure and perspective are dull. 
+
+(Continue in the next page) 
+
+Figure 10: Prompt Template for HSS Quality Filtering (Part I). Prompt Template for HSS Quality Filtering (Part II) 
+
+• Vocabulary Richness : Check if the article uses varied vocabulary instead of repeatedly using the same words. 
+
+– 5: Extremely diverse vocabulary. 
+
+– 4: Mostly rich vocabulary. 
+
+– 3: Basically sufficient but somewhat monotonous. 
+
+– 2: Quite limited. 
+
+– 1: Extremely limited vocabulary; heavy reliance on a very restricted set of words, or features extreme, meaningless repetition of words/phrases, completely sacrificing expressive richness. 
+
+• Knowledge Depth and Breadth : Measure the degree of expertise and detail in the background information provided. 
+
+– 5: Provides a wealth of in-depth and detailed related knowledge. 
+
+– 4: Quite comprehensive information but lacks depth. 
+
+– 3: Basic introduction is relatively sufficient. 
+
+– 2: Overly brief. 
+
+– 1: Almost no additional information. 
+
+• Theme Exploration Depth : Evaluate whether the work deeply explores its core issue rather than skimming the surface. 
+
+– 5: Profound insights and thought-provoking. 
+
+– 4: Some depth but could still go further. 
+
+– 3: Remains at a superficial discussion. 
+
+– 2: Very superficial treatment. 
+
+– 1: Did not touch the essence at all. 
+
+• Humanities Creativity : Different from the creativity of scientific and engineering works, the creativity of humanities works is about observing the world from a unique perspective, designing plots and themes innovatively, and using creative expression techniques to convey thoughts and emotions, thereby inspiring readers or audiences to think and feel, bringing new value to human culture and the spiritual world. 
+
+– 5: Highly creative. The work exhibits unprecedented novelty in view, plot, and achieves a high level of innovation in artistic style and expression, having aprofound impact on the cultural field; 
+
+– 4: Quite creative. Exhibits a high degree of originality and uniqueness in content or form, effectively capturing readers’ attention and provoking deeper thoughts; 
+
+– 3: Basic creativity. Can propose interesting view or relatively novel forms from more common perspectives but has not reached the level of being refreshingly new; 
+
+– 2: Some attempts but not very successful. Though there have been some innovative attempts, the overall impression remains quite ordinary, leaving no deep impression; 
+
+– 1: Almost no creativity. Content is outdated, lacks novelty, and the expression technique is mediocre, unable to arouse readers’ interest or thought. 
+
+• Genre Recognition : Identify the genre of the document, such as poetry, fiction, essay, advertisement, news report, public document, official document, literature, academic paper, report, etc. 
+
+Note : The scores for “Tone and Expression”, “Emotional Expression”, and “Genre Focus” must relate to the genre. 
+
+• Tone and Expression :
+
+– 5: Perfectly matches the required style for the genre. For advertisements, essays, novels, plays, and screenplays, speeches, etc.: Uses appropriate tone words, colloquial or humorous expressions. For news reports, official documents, literature, academic papers, reports, etc.: Uses precise wording, maintaining written expression as much as possible rational and objective. 
+
+– 4: Mostly meets the requirements with only slight deviations from the expected style. 
+
+– 3: Expression method basically meets genre needs but with some inconsistencies. 
+
+– 2: Significantly deviates from the expected style but still partially acceptable. 
+
+– 1: Almost entirely does not meet the expression style required by the genre. 
+
+(Continue in the next page) 
+
+Figure 11: Prompt Template for HSS Quality Filtering (Part II). Prompt Template for HSS Quality Filtering (Part III) 
+
+• Emotional Expression :
+
+– 5: Emotionally rich and appropriate, perfectly matching the emotional depth required by the genre. For advertisements, essays, novels, plays, and screenplays, speeches, etc.: Emotion is abundant and appropriate. For news reports, official documents, literature, academic papers, reports, etc.: Uses precise wording to minimize personal emotional expression. 
+
+– 4: Emotionally appropriate with minor shortcomings or excesses. 
+
+– 3: Medium level, neither particularly outstanding nor notably flawed. 
+
+– 2: Weak emotional expression, or overly emotional for certain genres. 
+
+– 1: Extremely lacking in appropriate emotional color, or severely improper emotional expression. 
+
+• Genre Focus :
+
+– 5: The document is highly consistent with the genre’s focus in structure, language, and overall presentation, fully meeting the requirements of its genre. Announcements, notices, contracts need to emphasize rigor and professionalism, especially in standardized format, ensuring accuracy and ease of understanding. Reports, plans, and summaries require clarity, detailed content, and some format norms to reflect their seriousness. Regulations demand clarity and explicit statement for ease of compliance. Speeches pursue language appeal and expressiveness to resonate with the audience, and language expression needs to be colloquial with a certain diversity (writing techniques, rhetorical diversity, structure diversity, vocabulary diversity, etc.), but does not require the same level of diversity as pure literary creation. Literary creations such as novels, poetry, and essays focus more on emotional expression and aesthetic beauty, attracting readers through rich plot settings and graceful language style and requiring ample diversity (writing techniques, rhetorical diversity, structure diversity, etc.). Biographies and historical novels need to ensure both story appeal and factual accuracy with necessary diversity (writing techniques, rhetorical diversity, structure diversity, etc.). Sci-fi and fantasy rely on novel and unique world settings to spark readers’ imagination, needing to abide by certain scientific laws and requiring necessary diversity (writing techniques, rhetorical diversity, structure diversity, etc.). Travelogues and essays record personal experiences or insights, reflecting personal color, and require necessary diversity (writing techniques, rhetorical diversity, structure diversity, etc.). 
+
+– 4: Generally good performance but slightly lacking in some details. 
+
+– 3: Basically meets requirements but with clear room for improvement. 
+
+– 2: Fails to meet expected standards in multiple key areas. 
+
+– 1: Severely violates the basic rules or conventions of the genre. The domain of the document is {Domain} .[Input Text]: {text} Example Output: 
+
+{"Grammar, Punctuation, and Spelling": {"score": <1-5>, "reason": "<detailed explanation>"}, "Logical Coherence and Fluency": {"score": <1-5>, "reason": "<detailed explanation>"}, "Content Accuracy": {"score": <1-5>, "reason": "<detailed explanation>"}, "Domain Relevance": {"score": <1-5>, "reason": "<detailed explanation>"}, "Literary Diversity": {"score": <1-5>, "reason": "<detailed explanation>"}, "Vocabulary Richness": {"score": <1-5>, "reason": "<detailed explanation>"}, "Knowledge Depth and Breadth": {"score": <1-5>, "reason": "<detailed explanation>"}, "Theme Exploration Depth": {"score": <1-5>, "reason": "<detailed explanation>"}, "Humanities Creativity": {"score": <1-5>, "reason": "<detailed explanation>"}, "Genre": "", "Tone and Expression": {"score": <1-5>, "reason": "<detailed explanation>"}, "Emotional Expression": {"score": <1-5>, "reason": "<detailed explanation>"}, "Genre Focus": {"score": <1-5>, "reason": "<detailed explanation>"} }
+
+Figure 12: Prompt Template for HSS Quality Filtering (Part III). Prompt Template for Text Refinement 
+
+You are an expert in text refinement and content cleansing, specializing in preparing “answer” texts for high-quality datasets. Your core task is to: thoroughly refine and clean the raw text provided below, to maximally eliminate all “crawler traces” and any redundant information unrelated to the article’s core content, while absolutely ensuring 100% completeness and accuracy of the original text’s core content, structure, meaning, author’s tone, and “human touch,” 
+
+enabling it to serve directly as a reference answer for Training. [Specific Operational Requirements] 1. Thoroughly Clear Useless Information (Crawler Traces & Redundancy): 
+
+• Must remove, including but not limited to: 
+
+– Webpage navigation bars (headers, footers, sidebars, menus, breadcrumb navigation) 
+
+– Book tables of contents (unless the content itself is part of a TOC structure and must be retained) 
+
+– Publisher information, copyright notices, disclaimers 
+
+– Advertisements, promotional material, related article recommendations, social sharing buttons/prompts 
+
+– Subscription prompts, user comment sections, donation requests 
+
+– Excessive blank lines, residual broken HTML tags, URL lists 
+
+– Repeated text blocks (e.g. duplicated paragraphs or sentences due to crawling errors) 
+
+– Any peripheral, fragmented text clearly unrelated to the article’s core subject. 
+
+• Judging Criteria: If the absence of a certain text segment does not affect the article’s logical coherence, the completeness of its core information, or the reader’s understanding of the main topic, it can be considered useless information. 2. Core Content & Structure Retention (Of Paramount Importance): 
+
+• Ensure that all key information, arguments, facts, data, explanations, examples, and logical deductions from the original text are completely intact. No form of summarization, generalization, paraphrasing, or information loss is permitted. 
+
+• Maintain the original narrative structure: Retain original paragraph divisions, heading levels (e.g. H1, H2, etc.), and list formats (if any, e.g. ordered/unordered lists) as much as possible, unless these structures themselves constitute crawler traces. 
+
+• Retain the original “human touch”: Preserve the author’s original tone, style, and textual fluidity, avoiding any machine-generated or overly rigid sound. 3. Text Coherence and Fluency: 
+
+• The refined text must be a self-contained, complete, and logically coherent whole. 
+
+• After removing useless information, transitions in the text should be natural and smooth, with no abruptness or disconnections. 
+
+• Ensure the text remains grammatically correct and clearly expressed after redundancy removal. 4. No Repetition, High Precision: 
+
+• The final text should not contain any duplicated sentences or paragraphs. 
+
+• The quality of the generated text must meet the extremely high standards of an SFT answer, meaning accuracy, completeness, and usability approaching 100%. 5. Robustness: 
+
+• If the input raw text is already very clean and does not contain any of the elements listed above for removal, please return its content directly encapsulated in the JSON format, without any modifications. [Input Text]: {text} 
+
+[Output Format] {“text”: “refined text” }
+
+Figure 13: Prompt Template for Text Refinement. Prompt Template for Refinement Evaluation 
+
+You are a text quality assessment expert specializing in evaluating answer texts. Your task is to carefully compare the original document and the refined document, evaluating whether the refinement meets the requirements for a high-quality answer. [Original Document (Seed Document)]: {text} 
+
+[Refined Document]: {refined text} 
+
+[Evaluation Task] Please evaluate the performance of the “Refined Document” relative to the “Original Document” based on the following criteria: 1. Redundant Information Removal : Has the refined text thoroughly removed all crawler traces and redundant information (e.g., web navigation, advertisements, copyright notices, excessive blank lines, duplicate content, fragmented text not central to the core topic, etc.)? 2. Core Content and Structure Integrity : Has the refined text 100% preserved all core content, key information, data, arguments, narrative structure, and the author’s tone and “human touch” from the original text, without any form of summarization, generalization, rephrasing, or information loss? 3. Text Coherence and Quality : Is the refined text natural and fluent, without abruptness or breaks, grammatically correct, and does it meet the extremely high standards of accuracy, completeness, and usability required for an SFT answer? 4. Robustness (if original text is clean) : If the “Original Document” itself was already very clean, did the refined text remain completely unchanged, without unnecessary modifications? [Scoring (1-5)] 
+
+• 1: Very poor - completely fails to meet requirements, severe issues, unusable as an SFT answer. 
+
+• 2: Poor - multiple issues, unsuitable as an SFT answer. 
+
+• 3: Fair - meets some requirements, but still has significant room for improvement. 
+
+• 4: Good - largely meets requirements, with only minor, negligible issues. 
+
+• 5: Excellent - perfectly meets all requirements, can directly serve as a high-quality SFT answer. [Output Format] {“Reason”: “<detailed explanation>”, “Score”: <1-5> }
+
+Figure 14: Prompt Template for Refinement Evaluation. Prompt Template for Instruction Inversion 
+
+You are an expert in instruction inversion. Your task is to generate a “reverse synthesis instruction” for a given text. # GUIDELINES FOR INSTRUCTION GENERATION 
+
+Part 1: The Core Instruction 
+
+This section outlines “what” to the task -- the specific, actionable requirements for generating the instruction. 1. Objective : The generated instruction should explicitly guide the writer to create a piece of writing that is highly similar to the given text. 2. Domain : The instruction must clearly specify the text’s Domain as {domain} and Genre 
+
+as {genre} .3. Core Content & Key Points :
+
+• Summarize the central topic and the main thesis/argument of the text. 
+
+• List the essential supporting points, key data, primary examples, or narrative events that must be included to preserve the original’s substance. 
+
+• Ensure all essential elements-such as key figures, significant events, central concepts, and defining terms--must be retained with exactness. 4. Structure & Narrative Voice :
+
+• Describe the text’s organizational structure (e.g., problem-solution, chronological, thematic). 
+
+• Specify the Narrative Voice (e.g., first-person reflective, third-person objective narrator). 5. Length Constraint : Strictly enforce the word count. State clearly: “The final text must be approximately {token_len} tokens (around {char_len} characters), matching the length of the original document.” 6. Concise Without Repetition : The instruction sentence itself must be concise and avoid unnecessary repetition. 7. No Source Reference : The instruction must not mention, imply, or hint to the “source document”, “original text”, etc. 
+
+Part 2: The Persona 
+
+This section defines the “how”--the persona the writer should adopt. It’s a role-playing guide to capture the original author’s spirit. Frame this entire section in the second person (“You are...”). 1. Stance : Based on the text’s content, describe the author’s likely underlying stance or values when discussing the topic. 2. Mindset & Tone : Based on the text’s overall emotional color and undertones, describe the author’s probable underlying mindset and emotional tone. # INSTRUCTION GENERATION TASK Please generate the “reverse synthesis instruction” for the following document: {text} 
+
+# FINAL OUTPUT FORMAT Provide the output in a single JSON object with two keys: “Instruction” and “Persona”. {"Instruction": "(The core task instruction generated according to Part 1 guidelines)", "Persona": "(The persona generated according to Part 2 guidelines, written in the second person.)" }
+
+Figure 15: Prompt Template for Instruction Inversion. Prompt Template for Q&A Consistency Check 
+
+You are an expert in the quality evaluation of Q&A pairs. Your task is to evaluate the quality of an inverted instruction. Evaluate whether the inverted instruction can guide a model to generate inverted text similar to the original text. According to the Instruction Effectiveness in the Evaluation Criteria, and using Textual Consistency as a supplementary reference, determine whether the inverted instruction is “qualified” or “unqualified”. Your final output is a binary conclusion: 1 means qualified , 0 means unqualified .[Input] INVERTED INSTRUCTION: The instruction to be evaluated. ORIGINAL TEXT: The human-written reference (“correct answer”). INVERTED TEXT: The actual output generated by the model based on the inverted instruction. <INVERTED INSTRUCTION> {inverted_instructions} </INVERTED INSTRUCTION> <ORIGINAL TEXT> {text} </ORIGINAL TEXT> <INVERTED TEXT> {generated_text} </INVERTED TEXT> [Evaluation Criteria] Please judge whether the inverted instruction is qualified strictly according to the following standards. 
+
+• 1 (Qualified) 
+
+– Textual Consistency : The core content of the inverted text is strictly consistent with the original text. 
+
+– Instruction Effectiveness : The inverted instruction should include the core content from the original text. The inverted instruction must NOT contain words or phrases such as “original” or “the above content” that directly refer to the original text. 
+
+• 0 (Unqualified) 
+
+– Textual Inconsistency : The core content of the inverted text is inconsistent with the original text. The key characters, key events, or key messages are inconsistent. 
+
+– Instruction Ineffectiveness : The inverted instruction lacks the core content and key characters from the original text, or contains incorrect or fabricated information. The inverted instruction contains words or phrases such as “original” or “the above content” that directly refer to the original text. [Output Format] Return a JSON object with two keys: {"reason": "An explanation of why you chose the score", "score": <1 | 0> }
+
+Figure 16: Prompt Template for Q&A Consistency Check. Prompt Template for Controlled Quality Degradation 
+
+You are an expert in text simplification. Based on previous expert reviews of the text, your task is to perform a controlled simplification of the original text. The primary goal is to reduce its performance level across four dimensions: “Literary Diversity”, “Theme Exploration Depth”, “Emotional Expression”, and “Humanities Creativity” (based on provided current and target scores), while strictly adhering to all the requirements listed below. 
+
+# Operational Guides for Quality Degradation 
+
+1. Literary Diversity 
+
+Current Situation: {Literary Diversity} Target Situation: {Literary Diversity Degrade} 
+
+Operating Guide: 
+
+• Streamline rhetorical devices, use more direct expression. 
+
+• Simplify sentence structures, avoid overly ornate forms. 
+
+• Use a single narrative perspective, avoid perspective shifts. 2. Theme Exploration Depth 
+
+Current Situation: {Theme Exploration Depth} Target Situation: {Theme Exploration Depth Degrade} 
+
+Operating Guide: 
+
+• Retain core points but reduce in-depth argumentation. 
+
+• Summarize examples, keep only necessary factual details. 3. Emotional Expression 
+
+Current Situation: {Emotional Expression} Target Situation: {Emotional Expression Degrade} 
+
+Operating Guide: 
+
+• Moderately reduce strong tones or subjective language. 
+
+• Move toward a restrained, neutral tone. 4. Humanities Creativity 
+
+Current Situation: {Humanities Creativity} Target Situation: {Humanities Creativity Degrade} 
+
+Operating Guide: 
+
+• Use conventional expressions and common argument structures. 
+
+• Reduce unique or experimental narrative structures. 
+
+# Overall Requirements 
+
+1. Ensure grammar, punctuation, and spelling are correct. 2. Maintain logical coherence and smooth transitions. 3. Ensure information accuracy and relevance to the core theme. 4. Strictly avoid repeating the same ideas or key facts. 
+
+5. Use relatively diverse vocabulary; avoid repetitive wording. 6. Preserve necessary background and domain knowledge. 7. Retain the tone and style appropriate to {Genre}. 8. Ensure the text remains highly relevant to {Domain}. 9. Keep core arguments, key information, and critical elements. 10. Simplify by refining and integrating content, not by deleting indiscriminately. 
+
+# Length Specification This is a {length} token document. The simplified text should be approximately or more than {target_length} words. 
+
+Input Format: {text} Output Format: 
+
+{"text": "simplified text"} 
+
+Figure 17: Prompt Template for Controlled Quality Degradation.

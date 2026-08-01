@@ -1,0 +1,728 @@
+Title: The Case Against Generation for Retrieval: Discriminative Language Models as Effective Retrievers
+
+URL Source: https://arxiv.org/pdf/2607.25346v1
+
+Published Time: Wed, 29 Jul 2026 00:35:10 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# The Case Against Generation for Retrieval: Discriminative Language Models as Effective Retrievers 
+
+Zhe Xu 1, Prachi Agrawal 1,∗, Kavosh Asadi 1,∗, Tianyi Chen 1,∗, Carl Hu 1,∗, Justin Johnson 1,∗, Wuwei Lan 1,∗,
+
+Mingfu Liang 1,∗, Xi Liu 1,∗, TIK ON LUI 1,∗, Oladipo Ositelu 1,∗, Sandeep Pandey 1,∗, Ankit Peshin 1,∗, Feng Qi 1,∗, Anil Ramakrishna 1,∗, Kaushik Rangadurai 1,∗, Frank Shyu 1,∗, Luke Simon 1,∗, Yang Yang 1,∗, Chiyu Zhang 1,∗
+
+> 1
+
+Meta 
+
+> ∗
+
+Listed in alphabetical order by surname. 
+
+Large Language Models (LLMs) have emerged as powerful assets for recommender systems. However, deploying them as generative recommenders or zero-shot rankers at web-scale remains bottlenecked by prohibitive computational overhead and grounding challenges. In this paper, we revitalize the classic, highly efficient two-tower retrieval architecture by adapting LLMs as semantic representation backbones rather than generative engines. We introduce an LLM-native two-tower framework engineered for high-throughput, large-scale retrieval. Our architecture introduces several key innovations: a shared LLM encoder for joint user-item modeling, End-Of-Sentence (EOS) token pooling for compact sequence embedding, cross-dataset transfer learning, knowledge distillation from powerful cross-encoder teachers, and latent reasoning within the user tower. Extensive evaluation across three public benchmarks demonstrates that cross-encoder architecture outperforms current state-of-the-art (SoTA) models, while the efficient two-tower student achieves SoTA-comparable retrieval performance. Furthermore, experiments on internal large-scale production systems yield substantial topline retrieval improvements along with high resilience to model staleness and superior data scaling. Our findings demonstrate that when augmented with modern representation learning, the traditional two-tower paradigm remains an exceptionally competitive and practical solution for industrial retrieval systems.  
+
+> Date:
+
+July 29, 2026 
+
+# 1 Introduction 
+
+Large language models (LLMs) have recently attracted increasing attention in recommender systems due to their strong semantic understanding, instruction-following ability, and broad open-world knowledge (Wu et al., 2024; Lin et al., 2025). Existing studies have explored LLMs for multiple recommendation scenarios, including sequential recommendation, conversational recommendation, zero-shot ranking, explainable recommendation, and generative retrieval. A prominent direction is to reformulate recommendation as a language modeling or generation problem, where the model predicts item titles, textual responses, ranked candidate lists, or discrete item identifiers (Geng et al., 2022; Rajput et al., 2023; Hou et al., 2024; Bao et al., 2023). For example, P5 unifies several recommendation tasks under a text-to-text language processing framework (Geng et al., 2022), TIGER formulates recommendation as generative retrieval over semantic item IDs (Rajput et al., 2023), LLMRank studies LLMs as zero-shot rankers over candidate items (Hou et al., 2024), and TALLRec aligns LLMs with recommendation data through efficient tuning (Bao et al., 2023). Despite their theoretical promise, fully generative or interaction-heavy LLM-based recommenders encounter severe operational bottlenecks in large-scale retrieval. These architectures incur prohibitive serving costs, rely on latency-inducing autoregressive decoding, and frequently suffer from grounding issues when generated tokens fail to map to valid item identifiers. Crucially, because generative retrieval models emit discrete text tokens rather than explicit item identifiers, the token-to-item translation must occur outside the model. This structural arXiv:2607.25346v1 [cs.IR] 28 Jul 2026 separation causes alignment errors and prediction losses to cascade downstream after inference. In contrast, two-tower (dual-encoder) architectures remain the cornerstone of industrial retrieval. By separately mapping user and item inputs into a shared embedding space, they allow item representations to be precomputed offline and served efficiently via approximate nearest-neighbor (ANN) search (Huang et al., 2013; Covington et al., 2016). This dichotomy motivates a compelling research question: Can we revitalize and empower classic two-tower architectures with the semantic depth of the LLM era, while preserving their production-proven efficiency and scalability? In this paper, we study LLM-native two-tower models for recommendation. Moving beyond standard generative paradigms, we adapt pretrained LLMs through supervised fine-tuning on domain-specific data, leveraging them as rich semantic representation backbones for efficient candidate retrieval. Our framework builds on the dual-encoder tradition in semantic matching and retrieval (Huang et al., 2013; Reimers and Gurevych, 2019), while incorporating recent advances in LLM-based text embedding and pooling strategies (Wang et al., 2024; Lee et al., 2025). Specifically, we improve both the cross-encoder teacher and the two-tower student. For the teacher, we use verbalized yes/no relevance scoring and a user-conditioned next-token prediction objective on item text to produce stronger ranking supervision. For the student, we use a shared LLM tower and EOS pooling to align user and item representations in a common semantic space, transfer learning across recommendation datasets, candidate-set score-distribution distillation from the teacher, and Coconut-style latent reasoning in the user tower while preserving precomputable item embeddings (Nogueira and Cho, 2019; Menon et al., 2022; Hou et al., 2022, 2023; Hao et al., 2024). We conduct experiments on three real-world recommendation datasets and provide detailed ablation studies. The results show that the proposed cross-encoder enhancements produce a stronger teacher, while the combination of shared LLM encoding, EOS-token pooling, cross-dataset transfer learning, candidate-set score-distribution distillation, and user-tower latent reasoning substantially improves the two-tower student. Our ablation studies further demonstrate the individual contribution of each component. These findings suggest that, even in the era of generative LLM recommenders, two-tower models remain a competitive and practical choice when enhanced with modern LLM-based representation learning and effective training strategies. The main contributions of this paper are summarized as follows. First, we revisit the classic two-tower recommendation architecture from the perspective of LLM-based representation learning, providing an efficient alternative to fully generative recommendation. Second, we introduce a teacher–student LLM-native retrieval framework that strengthens cross-encoder supervision through verbalized relevance scoring and user-conditioned language modeling, then transfers the teacher’s candidate-set ranking preferences to an efficient two-tower retriever. Third, we conduct comprehensive experiments on three real-world datasets with detailed ablation studies to analyze the effectiveness of each proposed component. Fourth, we validate the framework under real-world production conditions, demonstrating exceptional data efficiency (matching classic two tower performance with just 0.5% of training data), remarkable resilience to model staleness, and superior scaling - offering actionable insights for integrating LLM-native paradigms in industrial retrieval systems. The remainder of this paper is organized as follows. Section 2 reviews related work on LLM-based recom-mendation, two-tower retrieval models, transferable recommendation, and knowledge distillation for ranking. Section 4 introduces the proposed LLM-native two-tower framework and its training strategies. Section 5 shares the system architecture for serving LLM-Native Two Tower models. Section 6 presents the experimental setup, main results, and ablation studies. Section 7 shares results on internal production settings and Section 8 concludes the paper and discusses future directions. 
+
+# 2 Related Work 
+
+Large language models (LLMs) and neural retrieval models provide complementary foundations for modern recommendation. We give a fuller discussion in Appendix G. 2.1 LLM-based Recommender Systems 
+
+LLMs have been applied to recommendation through prompting, instruction tuning, textual user/item modeling, ranking, and generation (Wu et al., 2024; Lin et al., 2025). Representative generative methods cast recommendation as language modeling: P5 unifies recommendation tasks in a text-to-text framework, M6-Rec studies open-ended generative recommendation, and TIGER generates semantic item identifiers (Geng et al., 2022; Cui et al., 2022; Rajput et al., 2023). Recent work also directly generates recommended or ranked items from textual inputs (Ji et al., 2024). At industrial scale, PLUM and the OneRec line extend generative recommendation through semantic IDs, unified retrieval and ranking, feedback alignment, and explicit reasoning (He et al., 2025; Deng et al., 2025; Zhou et al., 2025; Liu et al., 2026). Other work uses LLMs as zero-shot rankers or instruction-tuned recommenders, or leverages LLM-generated textual augmentations (Hou et al., 2024; Bao et al., 2023; Dai et al., 2023; Lyu et al., 2024). Unlike generative or interaction-heavy LLM recommenders, our work retains factorized two-tower retrieval for efficient large-scale candidate generation. We use a shared LLM as a semantic encoder for separate user-history and item forward passes, then improve the resulting retriever through EOS pooling, cross-dataset transfer, cross-encoder distillation, and latent reasoning only in the user tower. 
+
+2.2 Neural Retrieval Models 
+
+Neural retrieval represents queries and candidates in a shared embedding space and scores them with a lightweight similarity function (Huang et al., 2013; Reimers and Gurevych, 2019; Karpukhin et al., 2020). In recommendation, this two-tower factorization allows item embeddings to be precomputed and indexed, making it effective for candidate generation. It builds on collaborative-filtering and representation-learning methods such as matrix factorization, BPR, and Neural Collaborative Filtering (Koren et al., 2009; Rendle et al., 2009; He et al., 2017); DSSM, Sentence-BERT, DPR, and the YouTube recommendation model further established shared encoders for retrieval and recommendation (Huang et al., 2013; Reimers and Gurevych, 2019; Karpukhin et al., 2020; Covington et al., 2016). The efficiency of dual encoders trades off fine-grained user–item interactions: cross-encoders are stronger but too costly for first-stage retrieval, while late interaction offers an intermediate alternative (Nogueira and Cho, 2019; Khattab and Zaharia, 2020). Prior work also improves dual encoders through negative sampling and distillation (Yi et al., 2019; Wang et al., 2021; Yang et al., 2020; Menon et al., 2022). Our approach follows this paradigm with a modern shared LLM backbone and precomputable item representations, while transferring cross-encoder ranking signals and restricting latent reasoning to the user tower to preserve retrieval-time factorization. 
+
+# 3 Preliminaries 
+
+We consider a recommendation setting with a user set U and an item set I. For each user u ∈ U , let xu
+
+denote the textual user input, such as historical interactions, user profile, or preference description. For each item i ∈ I , let xi denote the textual item input, such as title, description, category, or metadata. The goal is to learn a scoring function s(u, i ) such that relevant items receive higher scores and can be retrieved as 
+
+RKu = TopK i∈I s(u, i ), (1) where RKu denotes the top-K item set for user u.
+
+3.1 Two-Tower (TT) Models 
+
+Two-tower (TT) models are widely used for large-scale retrieval in recommender systems because user and item representations can be computed independently (Huang et al., 2013; Covington et al., 2016; Yi et al., 2019; Yang et al., 2020). Given user and item encoders fθu and fθi , the embeddings are computed as 
+
+zu = fθu (xu) ∈ Rd, zi = fθi (xi) ∈ Rd, (2) The matching score is usually defined by inner product: 
+
+sTT (u, i ) = z⊤ 
+
+> u
+
+zi. (3) Since item embeddings can be precomputed, two-tower models support efficient approximate nearest-neighbor retrieval. 
+
+3.2 Cross-Encoder (CE) Models 
+
+Cross-encoders (CEs) jointly encode the user and item inputs and are commonly used as strong rankers (Nogueira and Cho, 2019). Given a user-item pair, the textual input is constructed as 
+
+xu,i = [ xu; xi], (4) and encoded by a textual encoder fθ :
+
+hu,i = fθ (xu,i ). (5) The matching score is then computed by a prediction head where rich design space exists; here a single-layer linear transformation is used for illustration: 
+
+sCE (u, i ) = w⊤hu,i + b. (6) Cross-encoders are more expressive than two-tower models because user and item tokens interact through full self-attention before scoring. However, the representation depends on the specific pair (u, i ), so item embeddings cannot be precomputed independently. Therefore, cross-encoders are usually used for ranking or as teacher models for distilling stronger matching signals into efficient retrieval models (Menon et al., 2022). 
+
+3.3 Contrastive Objective 
+
+Given a user u and an item i, let s(u, i ) denote the relevance score produced by a matching model. The score function can be instantiated by different backbone models, such as a two-tower model or a cross-encoder. For implicit-feedback recommendation, models are commonly trained with a contrastive objective. Given a mini-batch of B positive user-item pairs 
+
+B = {(ub, i + 
+
+> b
+
+)}Bb=1 , (7) we treat the paired item i+ 
+
+> b
+
+as the positive item for user ub, and use the other items in the same mini-batch as in-batch negatives. The candidate set for user ub is therefore 
+
+Cub = {i+1 , i +2 , . . . , i + 
+
+> B
+
+}. (8) The model defines a softmax distribution over the candidate items: 
+
+p(i+ 
+
+> j
+
+| ub, Cub ) = exp( s(ub, i + 
+
+> j
+
+)/τ )
+
+PBk=1 exp( s(ub, i + 
+
+> k
+
+)/τ ) , (9) where τ is a temperature hyperparameter. The contrastive loss is the cross-entropy loss that encourages each user ub to assign the highest score to its positive item i+ 
+
+> b
+
+:
+
+Lcon = −
+
+> B
+
+X
+
+> b=1
+
+log exp( s(ub, i + 
+
+> b
+
+)/τ )
+
+PBk=1 exp( s(ub, i + 
+
+> k
+
+)/τ ) . (10) This objective is model-agnostic: the same loss applies as long as the backbone produces a scalar relevance score s(u, i ) for each user-item pair. To distinguish losses computed from different score functions, we write the score function as an argument when needed; for example, Lcon (sTT ) denotes the contrastive loss computed from two-tower scores. Figure 1 Overview of the proposed LLM-native recommendation framework. The cross-encoder teacher jointly encodes the user and item prompts for a high-quality relevance score, while the two-tower student encodes them separately for efficient retrieval. The dashed arrow denotes distillation, which aligns the teacher and student score distributions over the same candidate set. 
+
+# 4 Method 
+
+Our key idea is to transfer the strong ranking capability of cross-encoders into efficient two-tower models through knowledge distillation (Hinton et al., 2015). Cross-encoders jointly encode each user-item pair and therefore capture fine-grained interactions, but their pairwise inference cost makes them impractical for large-scale retrieval (Nogueira and Cho, 2019). In contrast, two-tower models independently encode users and items, enabling offline item indexing and efficient nearest-neighbor retrieval (Covington et al., 2016; Yi et al., 2019). Therefore, we use the cross-encoder as a high-capacity teacher and train the two-tower model as an efficient student. Our method follows two directions: first, we improve the cross-encoder teacher, which provides the empirical performance upper bound for distillation; second, we improve the distillation effectiveness and generalization ability of the two-tower student, so that it can better approximate the teacher’s ranking behavior while preserving retrieval efficiency. An overview of our method is illustrated in Figure 1. 
+
+4.1 Improving the Cross-Encoder Teacher 
+
+The cross-encoder teacher provides the supervision signal for the two-tower student. Therefore, improving the teacher directly improves the quality of the soft labels used in knowledge distillation. In this work, we enhance the cross-encoder teacher from three aspects: using a yes/no output head for relevance prediction, adding an auxiliary next-token prediction loss on item texts, and converting decoder-style backbones into bidirectional encoders. The techniques are introduced separately but they can be stacked together with minimal modification to show cumulative gains.  
+
+> 4.1.1 Yes/No Output Head
+
+Given a user-item pair (u, i ), we construct a textual prompt that contains both the user-side text xu and the item-side text xi: xyn  
+
+> u,i
+
+= Prompt (xu, x i), where the prompt asks the model to judge whether item i is relevant to user u and to answer with either “yes” or “no”. Following recent LLM-based ranking designs such as MixLM (Li et al., 2025), we compute the relevance score from the next-token logits of the two verbalized labels. Specifically, the cross-encoder teacher f CE  
+
+> θ
+
+takes the full prompt xyn  
+
+> u,i
+
+as input and produces next-token logits: 
+
+ℓu,i = f CE  
+
+> θ
+
+(xyn 
+
+> u,i
+
+). (11) Let ℓyes (u, i ) and ℓno (u, i ) denote the entries of ℓu,i corresponding to the tokens “yes” and “no”, respectively. We define the cross-encoder relevance score as their logit difference: 
+
+sCE (u, i ) = ℓyes (u, i ) − ℓno (u, i ). (12)  
+
+> 4.1.2 Auxiliary Next-Token Prediction (NTP) on Item Prompt
+
+Recommendation data often contains rich item-side textual information, such as titles, descriptions, categories, and reviews. To better adapt the cross-encoder teacher to the recommendation domain, we add an auxiliary next-token prediction objective on item texts. Importantly, this objective is not applied as unconditional language modeling over item texts. Instead, the item text is always predicted conditioned on the corresponding user-side textual input, so that the model learns item semantics in the context of user preference. For a training pair (u, i ) ∈ S , where S denotes the training user-item pairs, let the item text be tokenized as 
+
+xi = [ ti, 1, t i, 2, . . . , t i,L i ].
+
+Given the user-side text xu, the auxiliary next-token prediction loss is defined as 
+
+Lntp = − X
+
+> (u,i )∈S
+> Li−1
+
+X
+
+> ℓ=1
+
+log pθ (ti,ℓ +1 | xu, t i, 1, . . . , t i,ℓ ) . (13) This objective follows the standard autoregressive language modeling paradigm used in large language models (Brown et al., 2020), but adapts it to the recommendation setting by conditioning item-text generation on the user context. As a result, the teacher model is encouraged to capture not only item-specific terminology and attributes, but also how these item attributes relate to user preferences. The final teacher-training objective combines the contrastive objective (Eq. (10) ) and the auxiliary user-conditioned next-token prediction loss: 
+
+LCE = Lcon (sCE ) + λntp Lntp , (14) where λntp controls the strength of the auxiliary objective. 
+
+4.2 Enhancing the Two-Tower Student 
+
+After improving the cross-encoder teacher, we further enhance the two-tower student so that it can better absorb the teacher’s ranking knowledge while preserving efficient retrieval. We introduce several techniques: shared user-item encoding, EOS pooling, cross-dataset transfer learning, CE2TT distillation, and Coconut-style latent user-tower reasoning. Note that we introduce these techniques separately, but they can be stacked together for cumulative gains, as verified empirically.  
+
+> 4.2.1 Shared User-Item Encoder
+
+Conventional two-tower models often use separate user and item encoders. In contrast, we use a shared textual encoder fθ for both user-side and item-side inputs, writing fθ (x) for its pooled sequence representation: 
+
+zu = fθ (xu), zi = fθ (xi), (15) where xu and xi denote the user-side and item-side textual inputs, respectively. Parameter sharing encourages users and items to be embedded into the same semantic space, following the general dual-encoder design used in semantic matching and retrieval (Reimers and Gurevych, 2019; Huang et al., 2013). It also reduces the number of trainable parameters compared with using two independent encoders. 4.2.2 EOS Pooling 
+
+Given a textual input x, the LLM encoder produces a sequence of hidden states: Hx = [ hx, 1, hx, 2, . . . , hx,L x ].
+
+For decoder-style LLMs, the EOS token is concatenated at the end of the sequence whose embedding is used as the sequence-level representation: zx = hx,L x .
+
+EOS pooling is commonly used when adapting decoder-style LLMs into embedding models, since the final token can aggregate information from the preceding sequence under causal attention (Wang et al., 2024; Lee et al., 2025). We empirically found EOS pooling is more effective compared to the mean pooling, detailed in Section 6.2.3.  
+
+> 4.2.3 Cross-Dataset Transfer Learning
+
+To improve the generalization ability of the two-tower student, we first mid-train the shared LLM encoder on all available recommendation datasets and then fine-tune it on each target dataset. Suppose we have R
+
+datasets, Dall = {D 1, D2, . . . , DR}. The mid-training objective is to minimize 
+
+Lmid = 1
+
+R
+
+> R
+
+X
+
+> r=1
+
+L(r)con (sTT ). (16) After mid-training, the model is further fine-tuned on a specific target dataset by minimizing L(t)con (sTT ),where t denotes the target dataset. This strategy follows the intuition of transferable recommendation representation learning, where shared behavioral and textual patterns across datasets can improve downstream recommendation performance (Hou et al., 2022, 2023).  
+
+> 4.2.4 Cross-Encoder-to-Two-Tower (CE2TT) Distillation
+
+The cross-encoder teacher produces stronger user-item relevance scores but is too expensive for large-scale retrieval. We therefore distill its ranking behavior into the two-tower student using candidate-set score-distribution distillation (Hinton et al., 2015). For each user u and candidate set Cu, the cross-encoder teacher produces scores sCE (u, i ), i ∈ C u.
+
+The teacher’s candidate-set score distribution is defined as qCE (i | u, Cu) = exp( sCE (u,i )/T )P   
+
+> j∈C uexp( sCE (u,j )/T )
+
+, where T
+
+is the distillation temperature. Similarly, the student’s candidate-set score distribution is pTT  
+
+> θ
+
+(i | u, Cu) =     
+
+> exp( sTT (u,i )/T )P
+> j∈C uexp( sTT (u,j )/T )
+
+.
+
+The candidate-set score-distribution distillation loss is the KL divergence between the teacher and student distributions: 
+
+LKD = T 2 X
+
+> u
+
+KL  qCE (· | u, Cu) ∥ pTT  
+
+> θ
+
+(· | u, Cu) . (17) This objective transfers the relative ranking preference of the cross-encoder into the efficient two-tower student.  
+
+> 4.2.5 Coconut-Style Latent Reasoning in the User Tower
+
+User-side inputs often contain multiple historical interactions and preference signals, so a single EOS-pooled representation may not fully summarize the user’s intent. Inspired by Coconut-style latent reasoning, which performs reasoning in continuous hidden space rather than through decoded natural-language tokens (Hao et al., 2024), we add one lightweight latent reasoning step only in the user tower. The item tower remains the standard EOS-pooled encoder defined above, i.e., zi = fθ (xi), so item embeddings can still be precomputed. The two towers continue to share the same parameters θ.Let gθ denote the shared LLM tower before pooling. For the user side, we first encode the user text without appending EOS and use the last hidden state as a continuous latent token, where [−1] denotes the last hidden state in the sequence: 
+
+H(0)  
+
+> u
+
+= gθ (xu), cu = H(0)  
+
+> u
+
+[−1] . (18) The latent token cu is then appended at the embedding level, followed by a final EOS token. The final EOS hidden state is used as the user representation: 
+
+H(1)  
+
+> u
+
+= gθ ([ xu; cu; EOS]) , zu = H(1)  
+
+> u
+
+[−1] . (19) Here cu is never decoded into a discrete word token; it acts as one continuous thought token that gives the user tower an additional step to refine the preference representation. The retrieval score remains the standard two-tower dot product, sTT (u, i ) = z⊤ 
+
+> u
+
+zi, where zi is the unchanged item embedding. This asymmetric computation improves the expressiveness of the user representation while preserving the retrieval efficiency of the item tower. 
+
+4.3 Efficiency Discussion 
+
+We compare the online serving efficiency of our LLM-based two-tower model with generative retrieval methods such as OneRec-Think (Liu et al., 2026). For each user query, our model encodes the user prompt once and retrieves items by a dot-product search over precomputed item embeddings. When latent reasoning is enabled, the user tower performs one additional cached decoding step. The subsequent maximum inner-product search can be efficiently parallelized with an approximate nearest-neighbor index. In contrast, generative retrieval methods must autoregressively decode a sequence that may include a reasoning trace and one or more semantic item identifiers. Given an output sequence of length Ngen , this requires a prompt-prefill pass followed by Ngen − 1 sequential decoding steps. These steps cannot be fully parallelized across output positions and therefore increase serving latency as the generated sequence grows. Thus, our approach replaces iterative item generation with a single user-side encoding pass and vector retrieval over an offline item index. This design is particularly advantageous when low-latency retrieval over a large catalog is required. Additional empirical observations and lessons learned from exploring alternative design choices are provided in Appendix F. 
+
+# 5 System Architecture 
+
+The system architecture LLM-Native Two Tower for Retrieval is designed to serve highly targeted items at scale while adhering to strict real-time latency requirements. This is achieved through a decoupled, asymmetrical design that isolates intensive language model inference from the online serving path. The architecture is split into three primary components: nearline embedding pipelines for items and users, and a high-performance online retrieval layer. 
+
+5.1 Serving Item Embeddings 
+
+When an item is created or updated, its features are retrieved and integrated into a prompt template for processing. A Predictor service then asynchronously generates a semantic representation of the item. This resulting embedding is indexed in real time, allowing for efficient user-to-item similarity calculations across vast candidate pools during live serving. 
+
+5.2 Serving User Embeddings 
+
+User embeddings are re-computed periodically to reflect fresh engagements within the platform. Similar to the item pipeline, the system aggregates a user’s interaction history and processes it through a User LLM. Figure 2 Serving architecture for LLM-Native Two Tower. 
+
+Once updated, the fresh embeddings are cached in a high-throughput, distributed key-value store for rapid online lookup. 
+
+5.3 Online Candidate Retrieval 
+
+The online retrieval layer fetches pre-computed user embeddings from the distributed store within milliseconds. These embeddings are used to query the item index, retrieving relevant candidates in under several hundred milliseconds. To meet these tight latency targets, the engine utilizes embedding space compression to accelerate 
+
+k-nearest neighbor ( kNN ) computations. The resulting candidate set is then forwarded to downstream ranking stages. 
+
+# 6 Experiments on Public Datasets 
+
+6.1 Setup 
+
+Datasets We evaluate on the same three Amazon Reviews benchmarks and preprocessing protocol used by TIGER (Rajput et al., 2023): Beauty , Sports and Outdoors , and Toys and Games (He and McAuley, 2016). Dataset construction, chronological splitting, and processed statistics are provided in Appendix B. 
+
+Preprocessing. We convert user and item features into natural language, enabling the LLM tower to more effectively extract key information from recommendation data. The verbalization templates for user and item features are detailed in Appendix A. 
+
+Backbone Model. We use Qwen3-0.6B (Yang et al., 2025) as the backbone for all LLM-based encoders in our framework. We initialize the backbone from the official Qwen3-0.6B checkpoint. 1
+
+Metrics We evaluate sequential recommendation performance using standard metrics: Recall@K and 
+
+Normalized Discounted Cumulative Gain (NDCG@K) . We report K = 5 and K = 10 , abbreviated as R@K and N@K in the tables. Detailed metric definitions are presented in Appendix C. 
+
+> 1https://huggingface.co/Qwen/Qwen3-0.6B
+
+Table 1 SOTA comparison on the three Amazon datasets. Baseline results are from Table 1 of ORT (OneRec-Think) (Liu et al., 2026). OneRec-Think uses a Qwen3-8B backbone, whereas all of our variants use Qwen3-0.6B. The best scores are shown in bold, the second-best scores are underlined, and parenthesized percentages below our scores denote relative changes over ORT.                                                                                                                 
+
+> Beauty Sports Toys Model R@5 R@10 N@5 N@10 R@5 R@10 N@5 N@10 R@5 R@10 N@5 N@10
+> BERT4Rec 0.0232 0.0396 0.0146 0.0199 0.0102 0.0175 0.0065 0.0088 0.0215 0.0332 0.0131 0.0168 HGN 0.0319 0.0536 0.0196 0.0266 0.0183 0.0313 0.0109 0.0150 0.0326 0.0517 0.0192 0.0254 GRU4Rec 0.0395 0.0584 0.0265 0.0326 0.0190 0.0312 0.0122 0.0161 0.0330 0.0490 0.0228 0.0279 SASRec 0.0402 0.0607 0.0254 0.0320 0.0199 0.0301 0.0106 0.0141 0.0448 0.0626 0.0300 0.0358 TIGER 0.0405 0.0623 0.0267 0.0337 0.0215 0.0347 0.0137 0.0179 0.0337 0.0547 0.0209 0.0276 HSTU 0.0424 0.0652 0.0280 0.0353 0.0268 0.0343 0.0173 0.0226 0.0366 0.0566 0.0245 0.0309 ReaRec 0.0450 0.0704 0.0262 0.0344 0.0214 0.0332 0.0116 0.0154 0.0523 0.0764 0.0298 0.0376 ORT 0.0563 0.0791 0.0398 0.0471 0.0288 0.0412 0.0199 0.0239 0.0579 0.0797 0.0412 0.0482 Ours (TT) 0.0473
+> (-16.0%)
+> 0.0825
+> (+4.3%)
+> 0.0267
+> (-32.9%)
+> 0.0380
+> (-19.3%)
+> 0.0320
+> (+11.1%)
+> 0.0542
+> (+31.6%)
+> 0.0193
+> (-3.0%)
+> 0.0264
+> (+10.5%)
+> 0.0644
+> (+11.2%)
+> 0.1078
+> (+35.3%)
+> 0.0366
+> (-11.2%)
+> 0.0506
+> (+5.0%)
+> Ours (CE) 0.0575
+> (+2.1%)
+> 0.0957
+> (+21.0%)
+> 0.0351
+> (-11.8%)
+> 0.0473
+> (+0.4%)
+> 0.0438
+> (+52.1%)
+> 0.0677
+> (+64.3%)
+> 0.0289
+> (+45.2%)
+> 0.0365
+> (+52.7%)
+> 0.0829
+> (+43.2%)
+> 0.1223
+> (+53.5%)
+> 0.0555
+> (+34.7%)
+> 0.0682
+> (+41.5%)
+
+6.2 Results 
+
+6.2.1 SOTA Comparison 
+
+To compare with state-of-the-art sequential recommendation baselines, Table 1 reports the results from Table 1 of OneRec-Think (Liu et al., 2026) together with our best cross-encoder teacher and the two-tower student. The baselines include BERT4Rec (Sun et al., 2019), HGN (Ma et al., 2019), GRU4Rec (Hidasi et al., 2016), SASRec (Kang and McAuley, 2018), TIGER (Rajput et al., 2023), HSTU (Zhai et al., 2024), ReaRec (Tang et al., 2025), and OneRec-Think (Liu et al., 2026). Notably, OneRec-Think uses Qwen3-8B as its backbone, whereas both of our models use Qwen3-0.6B. Following the source table, “Sports” denotes Sports and Outdoors 
+
+and “Toys” denotes Toys and Games .
+
+Analysis of SOTA Comparison. Table 1 shows that our cross-encoder achieves the SOTA overall performance, attaining the best results on 10 of the 12 dataset–metric combinations. Its gains over ORT are particularly pronounced on Sports and Toys , where R@10 improves by 64.3% and 53.5%, respectively. The efficient two-tower student also surpasses ORT in R@10 on all three datasets, with gains of 4.3%, 31.6%, and 35.3% on 
+
+Beauty , Sports , and Toys , respectively, although its NDCG results are less consistent. These results highlight the complementary roles of the two models: the cross-encoder provides the highest ranking quality, while the two-tower model delivers competitive top-10 retrieval performance with an architecture suitable for scalable item retrieval. We next analyze the teacher and student design choices underlying these results. 
+
+6.2.2 Improving Cross-Encoder (CE) Teachers 
+
+Analysis of Cross-Encoder Variants. Table 2 isolates the contributions of the output head and the auxiliary NTP objective. The yes/no head improves over the projection head on Beauty and Toys and Games , but degrades all four metrics on Sports and Outdoors , indicating that the benefit of verbalized relevance scoring alone is dataset-dependent. Adding the user-conditioned NTP objective resolves this inconsistency: the yes/no+NTP variant achieves the best score on all 12 dataset–metric combinations. In particular, relative to the yes/no head, it raises R@10 from 0.0914 to 0.0957 on Beauty , from 0.0550 to 0.0677 on Sports , and from 0.1203 to 0.1223 on Toys ;the corresponding N@10 improvements are 0.0023 , 0.0096 , and 0.0039 . These consistent gains suggest that predicting item text conditioned on user context supplies complementary recommendation-specific supervision. We therefore use the yes/no+NTP configuration as the cross-encoder teacher for distillation. Table 2 Performance comparison of CE teacher variants across the three Amazon datasets. The best is shown in bold.      
+
+> Dataset Variant R@5 R@10 N@5 N@10
+
+Beauty projection head 0.0509 0.0862 0.0307 0.0420 yes/no head 0.0535 0.0914 0.0328 0.0450 yes/no + NTP 0.0575 0.0957 0.0351 0.0473 
+
+Sports projection head 0.0391 0.0618 0.0245 0.0317 yes/no head 0.0317 0.0550 0.0195 0.0269 yes/no + NTP 0.0438 0.0677 0.0289 0.0365 
+
+Toys projection head 0.0757 0.1134 0.0492 0.0614 yes/no head 0.0814 0.1203 0.0517 0.0643 yes/no + NTP 0.0829 0.1223 0.0555 0.0682       
+
+> Table 3 Leave-one-out ablation of the TT student across the three Amazon datasets. All variants use Shared+EOS; each ablated variant removes one component from the full model. The best score in each dataset–metric pair is shown in bold.
+> Dataset Variant R@5 R@10 N@5 N@10
+
+Beauty Full 0.0473 0.0825 0.0267 0.0380 
+
+w/o TL 0.0431 0.0812 0.0241 0.0363 w/o CE2TT 0.0427 0.0715 0.0252 0.0345 w/o Latent 0.0463 0.0794 0.0269 0.0374 Sports Full 0.0320 0.0542 0.0193 0.0264 
+
+w/o TL 0.0300 0.0515 0.0174 0.0243 w/o CE2TT 0.0258 0.0417 0.0160 0.0211 w/o Latent 0.0308 0.0530 0.0185 0.0257 Toys Full 0.0644 0.1078 0.0366 0.0506 
+
+w/o TL 0.0604 0.1050 0.0346 0.0490 w/o CE2TT 0.0626 0.0992 0.0383 0.0502 w/o Latent 0.0650 0.1063 0.0370 0.0503  
+
+> 6.2.3 Improving Two-Tower (TT) Students
+
+Table 3 reports a leave-one-out ablation of the proposed two-tower student. All variants use a shared encoder with EOS pooling; each ablation removes one of transfer learning (TL), cross-encoder-to-two-tower distillation (CE2TT), or Coconut-style latent reasoning (Hao et al., 2024) in the user tower from the full model. Results for every combination of these three optional components, together with the vanilla two-tower and Shared+EOS-only baselines, are reported in Appendix E. 
+
+Analysis of Two-Tower Ablations. CE2TT is the most consequential optional component: removing it reduces R@10 by 0.0110 (13 .3% ), 0.0125 (23 .1% ), and 0.0086 (8.0% ) on Beauty , Sports , and Toys , respectively, relative to the full model. TL and latent reasoning provide smaller but complementary gains; removing either lowers R@10 on every dataset. Consequently, the full model achieves the best R@10 and N@10 on all three datasets. A few top-5 metrics favor an ablated variant, but the full configuration offers the most consistent top-10 retrieval quality. 7 Experiments on Internal Datasets 
+
+We evaluate the LLM-native retrieval framework on large-scale internal data under production serving conditions. We compare it with a heavily tuned DLRM Two-Tower production retriever following standard DLRM practices Naumov et al. (2019). This baseline uses independent user and item towers whose dot product supports efficient vector search, with most parameters concentrated in embedding layers that accommodate item-ID vocabularies of up to O(10 M ) entries. 
+
+7.1 Setup 
+
+Data. We evaluate on internal retrieval system. Each example is serialized as a structured sequence of user, item, and task blocks. Continuous features are discretized with Finite Scalar Quantization (FSQ) (Mentzer et al., 2023); legacy dense embeddings are compressed into a fixed set of learnable query tokens with a Q-Former (Li et al., 2023); and ID/event sequences are verbalized into short textual snippets. This common representation permits new feature blocks to be added without changing the model architecture. Unless otherwise noted, models use an 8K-token context. 
+
+Models. Unless otherwise stated, the internal models use the same Qwen3-0.6B backbone as the public experiments and perform prefill-only discriminative scoring. We evaluate a two-tower model for retrieval and a cross-encoder provides distillation targets for the former. For capacity scaling, we additionally evaluate a 
+
+4B dense backbone and a Mixtral-style sparse mixture-of-experts model with 8 experts and top-2 routing. We refer to our internal system as LLM-native TT/CE and to the production baseline as DLRM .
+
+Metrics. Our primary quality metric is evaluation Normalized Entropy (NE) , for which lower is better. We report relative NE gain (%) , defined as the percentage reduction in NE against the stated baseline. We measure generalization by the NE change on evaluation days ds +1, ds +2, . . . after the training cut-off, and report serving throughput (QPS) for efficiency. 
+
+7.2 Results and Learning  
+
+> 7.2.1 LLM-native Two-Tower Retrieval
+
+NE parity at reduced data scale. LLM-native TT matches the NE of the production DLRM baseline while using only 0.5% of the training data. Under the same evaluation, LLM-native CE improves NE by +2 .25% over the baseline, indicating headroom for the retriever through CE-to-TT distillation. 
+
+Segmentation analysis. We further evaluate the LLM-native TT across user and item engagement segments.  
+
+> It improves NE by
+
++5 .5% on tail items —the bottom 15% by engagement—relative to DLRM, consistent with the potential value of semantic representations when interaction histories are sparse. LLM-native TT also improves NE by +2 .3% for head users —the top 12% by engagement—suggesting that its sequence modeling captures additional signal in long interaction histories. 
+
+Serving efficiency. Table 4 summarizes the serving optimizations for LLM-native TT. To reduce the long inputs caused by digit-level tokenization of numerical features, we quantize continuous features into 64 FSQ bins and inject their learnable embeddings as soft tokens. This compression increases QPS by 19 .7% and improves NE by 0.3% . We also prune 3 of 28 transformer layers selected by a search-proxy metric and recover quality through knowledge transfer, which increases QPS by 10 .6% . Static vocabulary pruning removes rarely used embedding entries to reduce memory footprint and increases QPS by 2.0% . Finally, post-training FP8 quantization increases QPS by 13 .6% with an approximately 0.003% NE regression. Table 4 Improving serving efficiency for LLM-native TT without hurting NE 
+
+Technique QPS Gain Numerical Features FSQ Compression 19.7% Depth pruning 10.6% Static vocabulary pruning 2.0% Post-training Quantization 13.6%      
+
+> Table 5 Staleness. Both DLRM and LLM-Native model is trained until ds +0and evaluated on ds +1/ds +2/ds +3
+> (negative = degradation).
+
+Model ds +1 (NE) ds +2 ds +3 
+
+DLRM (production) baseline baseline baseline Frozen DLRM baseline −2.68% −4.30% 
+
+Frozen LLM-Native CE +2 .25% +2 .21% +2 .23%  
+
+> 7.2.2 LLM-native Cross-Encoder Generalization and Scaling
+
+Generalization under staleness. Unlike classic DLRMs, which demand continuous retraining to prevent rapid performance decay, LLM-native models demonstrate superior resilience to model staleness. To evaluate this property, we trained both a DLRM baseline and an LLM-native model on data up to date ds and benchmarked their frozen inference performance over three subsequent days ( ds + 1 , ds + 2 , and ds + 3 ) without parameter updates. All evaluation metrics are reported relative to a daily-recurrently retrained, fresh production DLRM baseline. As shown in Table 5, the frozen DLRM exhibits severe quality degradation over time (losing −2.68% 
+
+on ds + 2 and −4.30% on ds + 3 ) due to its reliance on shifting, ephemeral item ID distributions. Conversely, the Frozen LLM-Native CE maintains robust performance across future dates (+2.25% on ds + 1 , +2.21% on 
+
+ds + 2 , and +2.23% on ds + 3 ) by grounding representations in a stable token vocabulary. 
+
+Data scaling. While the LLM-Native TT retriever achieves NE parity with the production DLRM baseline using only 0.5% of the training data, the sample efficiency and scaling trajectory of the LLM-Native CE model are even more compelling. LLM-Native CE reaches baseline NE parity utilizing merely 0.15% of the training data. Furthermore, as dataset volume scales by 2× and 3×, LLM-Native CE demonstrates compounding performance gains (+1.59% and +2.19% NE improvement over its 1× baseline), outperforming the scaling curve of its classic DLRM counterpart (+1.30% and +1.80%, as detailed in Table 6). We attribute this superior scaling behavior to the stable semantic vocabulary of LLMs, which enables continuous, cumulative feature learning, in contrast to the fragile, ephemeral item ID reliance of traditional DLRM models. 
+
+Model scaling and capacity. To explore the upper limits of our architecture’s capacity, we conducted a headroom analysis by scaling model capacity and compute along three distinct axes: (i) increasing the parameter size of the backbone LLM, ( ii ) integrating Mixture-of-Experts (MoE) layers, and ( iii ) expanding computation via latent reasoning. As detailed in Table 7, each strategy yields substantial NE improvements. While these scaled configurations exceed our current serving budget and were omitted from the primary benchmark results, they demonstrate significant performance headroom when additional computational resources become available. 
+
+# 8 Conclusion 
+
+This paper studies how LLMs can improve point-wise recommendation architectures, with a focus on cross-encoders and efficient two-tower retrieval models. We develop stronger LLM-based cross-encoders and show that their fine-grained matching capability can be effectively transferred to two-tower models through distillation, preserving efficient retrieval. Across three public benchmarks, our methods consistently improve Table 6 Data scaling. The model performance (NE) is the same at 1× data while LLM-Native CE shows NE gains at    
+
+> 2×/3×relative to that model’s own 1×point.
+
+Model 2× 3×
+
+DLRM (production) +1 .30% +1 .80% 
+
+LLM-native CE +1 .59% +2 .19%  
+
+> Table 7 Headroom Study: Gains from Model Scaling
+
+Variant NE gain LLM-Native CE 0.6B baseline + Latent reasoning (residual-stream) +0 .41% 
+
++ Mixtral MoE ( 8 experts, top-2) +0 .91% 
+
+LLM-Native CE 4B +1 .90% 
+
+both model families and demonstrate the value of cross-encoder supervision for retrieval. Large-scale industrial experiments further show that the proposed LLM-native two-tower model is competitive with a heavily tuned production DLRM baseline while using only a small fraction of the training data, and provides gains across challenging traffic segments while remaining robust to model staleness. Overall, our results suggest that combining discriminative LLM representations with factorized architectures offers a practical and cost-effective path toward web-scale recommendation. References 
+
+Keqin Bao, Jizhi Zhang, Yang Zhang, Wenjie Wang, Fuli Feng, and Xiangnan He. Tallrec: An effective and efficient tuning framework to align large language model with recommendation. In Proceedings of the 17th ACM Conference on Recommender Systems , RecSys ’23, pages 1007–1014. Association for Computing Machinery, 2023. doi: 10.1145/3604915.3608857. Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language models are few-shot learners. In Advances in Neural Information Processing Systems , volume 33, pages 1877–1901, 2020. Paul Covington, Jay Adams, and Emre Sargin. Deep neural networks for youtube recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems , RecSys ’16, pages 191–198. Association for Computing Machinery, 2016. doi: 10.1145/2959100.2959190. Zeyu Cui, Jianxin Ma, Chang Zhou, Jingren Zhou, and Hongxia Yang. M6-Rec: Generative pretrained language models are open-ended recommender systems. arXiv preprint arXiv:2205.08084 , 2022. doi: 10.48550/arXiv.2205.08084. Sunhao Dai, Ninglu Shao, Haiyuan Zhao, Weijie Yu, Zihua Si, Chen Xu, Zhongxiang Sun, Xiao Zhang, and Jun Xu. Uncovering ChatGPT’s capabilities in recommender systems. In Proceedings of the 17th ACM Conference on Recommender Systems , RecSys ’23, pages 1126–1132. Association for Computing Machinery, 2023. doi: 10.1145/ 3604915.3610646. Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. OneRec: Unifying retrieve and rank with generative recommender and iterative preference alignment. arXiv preprint arXiv:2502.18965 , 2025. doi: 10.48550/arXiv.2502.18965. https://arxiv.org/abs/2502.18965 .Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In Proceedings of the 16th ACM Conference on Recommender Systems , RecSys ’22, pages 299–315. Association for Computing Machinery, 2022. doi: 10.1145/ 3523227.3546767. Shibo Hao, Sainbayar Sukhbaatar, DiJia Su, Xian Li, Zhiting Hu, Jason Weston, and Yuandong Tian. Training large language models to reason in a continuous latent space. arXiv preprint arXiv:2412.06769 , 2024. doi: 10.48550/arXiv.2412.06769. Ruining He and Julian McAuley. Ups and downs: Modeling the visual evolution of fashion trends with one-class collaborative filtering. In Proceedings of the 25th International Conference on World Wide Web , WWW ’16, pages 507–517. International World Wide Web Conferences Steering Committee, 2016. doi: 10.1145/2872427.2883037. Ruining He, Lukasz Heldt, Lichan Hong, Raghunandan Keshavan, Shifan Mao, Nikhil Mehta, Zhengyang Su, Alicia Tsai, Yueqi Wang, Shao-Chuan Wang, Xinyang Yi, Lexi Baugher, Baykal Cakici, Ed Chi, Cristos Goodrow, Ningren Han, He Ma, Romer Rosales, Abby Van Soest, Devansh Tandon, Su-Lin Wu, Weilong Yang, and Yilin Zheng. PLUM: Adapting pre-trained language models for industrial-scale generative recommendations. arXiv preprint arXiv:2510.07784 , 2025. doi: 10.48550/arXiv.2510.07784. https://arxiv.org/abs/2510.07784 .Xiangnan He, Lizi Liao, Hanwang Zhang, Liqiang Nie, Xia Hu, and Tat-Seng Chua. Neural collaborative filtering. In 
+
+Proceedings of the 26th International Conference on World Wide Web , WWW ’17, pages 173–182. International World Wide Web Conferences Steering Committee, 2017. doi: 10.1145/3038912.3052569. Balázs Hidasi, Alexandros Karatzoglou, Linas Baltrunas, and Domonkos Tikk. Session-based recommendations with recurrent neural networks. In 4th International Conference on Learning Representations , ICLR 2016, 2016. 
+
+https://arxiv.org/abs/1511.06939 .Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network. In NIPS Deep Learning and Representation Learning Workshop , 2015. https://arxiv.org/abs/1503.02531 .Yupeng Hou, Shanlei Mu, Wayne Xin Zhao, Yaliang Li, Bolin Ding, and Ji-Rong Wen. Towards universal sequence representation learning for recommender systems. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , KDD ’22, pages 585–593. Association for Computing Machinery, 2022. doi: 10.1145/3534678.3539381. Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. Learning vector-quantized item representation for transferable sequential recommenders. In Proceedings of the ACM Web Conference 2023 , WWW ’23, pages 1162–1171. Association for Computing Machinery, 2023. doi: 10.1145/3543507.3583434. Yupeng Hou, Junjie Zhang, Zihan Lin, Hongyu Lu, Ruobing Xie, Julian McAuley, and Wayne Xin Zhao. Large language models are zero-shot rankers for recommender systems. In Advances in Information Retrieval , volume 14609 of Lecture Notes in Computer Science , pages 364–381. Springer, 2024. doi: 10.1007/978-3-031-56060-6_24. Po-Sen Huang, Xiaodong He, Jianfeng Gao, Li Deng, Alex Acero, and Larry P. Heck. Learning deep structured semantic models for web search using clickthrough data. In Proceedings of the 22nd ACM International Conference on Information & Knowledge Management , CIKM ’13, pages 2333–2338. Association for Computing Machinery, 2013. doi: 10.1145/2505515.2505665. Jianchao Ji, Zelong Li, Shuyuan Xu, Wenyue Hua, Yingqiang Ge, Juntao Tan, and Yongfeng Zhang. GenRec: Large language model for generative recommendation. In Advances in Information Retrieval , Lecture Notes in Computer Science. Springer, 2024. Wang-Cheng Kang and Julian McAuley. Self-attentive sequential recommendation. In 2018 IEEE International Conference on Data Mining , ICDM ’18, pages 197–206. IEEE, 2018. doi: 10.1109/ICDM.2018.00035. Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense passage retrieval for open-domain question answering. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing , EMNLP 2020, pages 6769–6781. Association for Computational Linguistics, 2020. doi: 10.18653/v1/2020.emnlp-main.550. Omar Khattab and Matei Zaharia. ColBERT: Efficient and effective passage search via contextualized late interaction over BERT. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval , SIGIR ’20, pages 39–48. Association for Computing Machinery, 2020. doi: 10.1145/3397271. 3401075. Yehuda Koren, Robert Bell, and Chris Volinsky. Matrix factorization techniques for recommender systems. Computer ,42(8):30–37, 2009. doi: 10.1109/MC.2009.263. Chankyu Lee, Rajarshi Roy, Mengyao Xu, Jonathan Raiman, Mohammad Shoeybi, Bryan Catanzaro, and Wei Ping. NV-embed: Improved techniques for training LLMs as generalist embedding models. In The Thirteenth International Conference on Learning Representations , 2025. https://openreview.net/forum?id=lgsyLSsDRe .Guoyao Li, Ran He, Shusen Jing, Kayhan Behdin, Yubo Wang, Sundara Raman Ramachandran, Chanh Nguyen, Jian Sheng, Xiaojing Ma, Chuanrui Zhu, Sriram Vasudevan, Muchen Wu, Sayan Ghosh, Lin Su, Qingquan Song, Xiaoqing Wang, Zhipeng Wang, Qing Lan, Yanning Chen, Jingwei Wu, Luke Simon, Wenjing Zhang, Qi Guo, and Fedor Borisyuk. MixLM: High-throughput and effective LLM ranking via text-embedding mix-interaction. arXiv preprint arXiv:2512.07846 , 2025. doi: 10.48550/arXiv.2512.07846. Junnan Li, Dongxu Li, Silvio Savarese, and Steven C. H. Hoi. BLIP-2: Bootstrapping language-image pre-training with frozen image encoders and large language models. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learning Research , pages 19730–19742. PMLR, 2023. 
+
+https://proceedings.mlr.press/v202/li23q.html .Jianghao Lin, Xinyi Dai, Yunjia Xi, Weiwen Liu, Bo Chen, Hao Zhang, Yong Liu, Chuhan Wu, Xiangyang Li, Chenxu Zhu, Huifeng Guo, Yong Yu, Ruiming Tang, and Weinan Zhang. How can recommender systems benefit from large language models: A survey. ACM Transactions on Information Systems , 43(2):28:1–28:47, 2025. doi: 10.1145/3678004. Zhanyu Liu, Shiyao Wang, Xingmei Wang, Rongzhou Zhang, Jiaxin Deng, Honghui Bao, Jinghao Zhang, Wuchao Li, Pengfei Zheng, Xiangyu Wu, Yifei Hu, Qigen Hu, Xinchen Luo, Lejian Ren, Zixing Zhang, Qianqian Wang, Kuo Cai, Yunfan Wu, Hongtao Cheng, Zexuan Cheng, Lu Ren, Huanjie Wang, Yi Su, Ruiming Tang, Kun Gai, and Guorui Zhou. OneRec-think: In-text reasoning for generative recommendation. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 2664–2681, San Diego, California, USA, 2026. Association for Computational Linguistics. doi: 10.18653/v1/2026.acl-long.123. 
+
+https://aclanthology.org/2026.acl-long.123/ .Hanjia Lyu, Song Jiang, Hanqing Zeng, Yinglong Xia, Qifan Wang, Si Zhang, Ren Chen, Christopher Leung, Jiajie Tang, and Jiebo Luo. LLM-Rec: Personalized recommendation via prompting large language models. In Findings of the Association for Computational Linguistics: NAACL 2024 , pages 583–612. Association for Computational Linguistics, 2024. Chen Ma, Peng Kang, and Xue Liu. Hierarchical gating networks for sequential recommendation. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining , KDD ’19, pages 825–833. Association for Computing Machinery, 2019. doi: 10.1145/3292500.3330984. Aditya Menon, Sadeep Jayasumana, Ankit Singh Rawat, Seungyeon Kim, Sashank J. Reddi, and Sanjiv Kumar. In defense of dual-encoders for neural ranking. In Proceedings of the 39th International Conference on Machine Learning , volume 162 of Proceedings of Machine Learning Research , pages 15376–15400. PMLR, 2022. https: //proceedings.mlr.press/v162/menon22a.html .Fabian Mentzer, David Minnen, Eirikur Agustsson, and Michael Tschannen. Finite scalar quantization: VQ-VAE made simple. arXiv preprint arXiv:2309.15505 , 2023. doi: 10.48550/arXiv.2309.15505. Maxim Naumov, Dheevatsa Mudigere, Hao-Jun Michael Shi, Jianyu Huang, Narayanan Sundaraman, Jongsoo Park, Xiaodong Wang, Udit Gupta, Carole-Jean Wu, Alisson G. Azzolini, Dmytro Dzhulgakov, Andrey Mallevich, Ilia Cherniavskii, Yinghai Lu, Raghuraman Krishnamoorthi, Ansha Yu, Volodymyr Kondratenko, Stephanie Pereira, Xianjie Chen, Wenlin Chen, Vijay Rao, Bill Jia, Liang Xiong, and Misha Smelyanskiy. Deep learning recommendation model for personalization and recommendation systems. arXiv preprint arXiv:1906.00091 , 2019. doi: 10.48550/arXiv.1906.00091. https://arxiv.org/abs/1906.00091 .Rodrigo Nogueira and Kyunghyun Cho. Passage re-ranking with BERT. arXiv preprint arXiv:1901.04085 , 2019. doi: 10.48550/arXiv.1901.04085. Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan H. Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Maciej Kula, Ed H. Chi, and Maheswaran Sathiamoorthy. Recommender systems with generative retrieval. In Advances in Neural Information Processing Systems , volume 36, pages 10299–10315, 2023. Nils Reimers and Iryna Gurevych. Sentence-BERT: Sentence embeddings using Siamese BERT-networks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing , EMNLP-IJCNLP 2019, pages 3982–3992. Association for Computational Linguistics, 2019. doi: 10.18653/v1/D19-1410. Steffen Rendle, Christoph Freudenthaler, Zeno Gantner, and Lars Schmidt-Thieme. BPR: Bayesian personalized ranking from implicit feedback. In Proceedings of the Twenty-Fifth Conference on Uncertainty in Artificial Intelligence , UAI ’09, pages 452–461. AUAI Press, 2009. Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. BERT4Rec: Sequential recommen-dation with bidirectional encoder representations from transformer. In Proceedings of the 28th ACM International Conference on Information and Knowledge Management , CIKM ’19, pages 1441–1450. Association for Computing Machinery, 2019. doi: 10.1145/3357384.3357895. Jiakai Tang, Sunhao Dai, Teng Shi, Jun Xu, Xu Chen, Wen Chen, Jian Wu, and Yuning Jiang. Think before recommend: Unleashing the latent reasoning power for sequential recommendation. arXiv preprint arXiv:2503.22675 , 2025. doi: 10.48550/arXiv.2503.22675. Jinpeng Wang, Jieming Zhu, and Xiuqiang He. Cross-batch negative sampling for training two-tower recommenders. 
+
+arXiv preprint arXiv:2110.15154 , 2021. doi: 10.48550/arXiv.2110.15154. Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan Majumder, and Furu Wei. Improving text embeddings with large language models. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics , ACL 2024, pages 11897–11916. Association for Computational Linguistics, 2024. doi: 10.18653/v1/2024. acl-long.642. Likang Wu, Zhi Zheng, Zhaopeng Qiu, Hao Wang, Hongchao Gu, Tingjia Shen, Chuan Qin, Chen Zhu, Hengshu Zhu, Qi Liu, Hui Xiong, and Enhong Chen. A survey on large language models for recommendation. World Wide Web ,27(5):60, 2024. doi: 10.1007/s11280-024-01291-2. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jingren Zhou, Junyang Lin, Kai Dang, Keming Bao, Kexin Yang, Le Yu, Liangdong Deng, Mei Li, Mingfeng Xue, Mingze Li, Pei Zhang, Peng Zhu, Rui Men, Runji Lin, Tianhao Li, Tianyi Tang, Tingyu Xia, Xingzhang Ren, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yu Wan, Yuqiong Liu, Zeyu Cui, Zhenru Zhang, and Zihan Qiu. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. doi: 10.48550/arXiv.2505.09388. Ji Yang, Xinyang Yi, Derek Zhiyuan Cheng, Lichan Hong, Yang Li, Simon Xiaoming Wang, Taibai Xu, and Ed H. Chi. Mixed negative sampling for learning two-tower neural networks in recommendations. In Companion Proceedings of the Web Conference 2020 , WWW ’20 Companion, pages 441–447. Association for Computing Machinery, 2020. doi: 10.1145/3366424.3386195. Xinyang Yi, Ji Yang, Lichan Hong, Derek Zhiyuan Cheng, Lukasz Heldt, Aditee Kumthekar, Zhe Zhao, Li Wei, and Ed H. Chi. Sampling-bias-corrected neural modeling for large corpus item recommendations. In Proceedings of the 13th ACM Conference on Recommender Systems , RecSys ’19, pages 269–277. Association for Computing Machinery, 2019. doi: 10.1145/3298689.3346996. Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Jiayuan He, Yinghai Lu, and Yu Shi. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pages 58484–58509. PMLR, 2024. https://proceedings.mlr.press/v235/zhai24a.html .Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Lu Ren, Liao Yu, Pengfei Zheng, Qiang Luo, Qianqian Wang, Qigen Hu, Rui Huang, Ruiming Tang, Shiyao Wang, Shujie Yang, Tao Wu, Wuchao Li, Xinchen Luo, Xingmei Wang, Yi Su, Yunfan Wu, Zexuan Cheng, Zhanyu Liu, Zixing Zhang, Bin Zhang, Boxuan Wang, Chaoyi Ma, Chengru Song, Chenhui Wang, Chenglong Chu, Di Wang, Dongxue Meng, Dunju Zang, Fan Yang, Fangyu Zhang, Feng Jiang, Fuxing Zhang, Gang Wang, Guowang Zhang, Han Li, Honghui Bao, Hongyang Cao, Jiaming Huang, Jiapeng Chen, Jiaqiang Liu, Jinghui Jia, Kun Gai, Lantao Hu, Liang Zeng, Qiang Wang, Qidong Zhou, Rongzhou Zhang, Shengzhe Wang, Shihui He, Shuang Yang, Siyang Mao, Sui Huang, Tiantian He, Tingting Gao, Wei Yuan, Xiao Liang, Xiaoxiao Xu, Xugang Liu, Yan Wang, Yang Zhou, Yi Wang, Yiwu Liu, Yue Song, Yufei Zhang, Yunfeng Zhao, Zhixin Ling, and Ziming Li. OneRec-V2 technical report. arXiv preprint arXiv:2508.20900 , 2025. doi: 10.48550/arXiv.2508.20900. https://arxiv.org/abs/2508.20900 .Appendix 
+
+# A Data Preprocessing 
+
+As discussed in the main text, we preprocess the data to improve LLM performance on recommendation tasks. The user-side input contains two parts: 
+
+• Recent items (last 5): each item is formatted as “[Brand] Title (LeafCategory, L2Category) Price Rating”. 
+
+• Taste summary (for users with at least 3 history items): top-3 L2 categories with percentages (only those at least 15%), top-2 brands, and price range (min–max). The item-side input contains: 
+
+• Core information: ASIN, title, leaf category, L2 category, brand, price, and average rating count. 
+
+• Description snippet: the first 100 characters of the product description, truncated at a word boundary. 
+
+• Also-bought signal: up to 3 co-purchased items formatted as “Also bought: [Brand] Title (LeafCat) | [Brand] Title (LeafCat) | ...”. 
+
+# B Public Dataset Details 
+
+We use three public benchmarks from the Amazon Product Reviews dataset (He and McAuley, 2016): Beauty ,
+
+Sports and Outdoors , and Toys and Games . These datasets contain user reviews and item metadata collected from May 1996 to July 2014 and are commonly used for sequential recommendation evaluation. Following TIGER (Rajput et al., 2023), we construct a chronological item sequence for each user by sorting the user’s review history by timestamp and remove users with fewer than five reviews. We use a leave-one-out protocol: the last item in each sequence is used for testing, the second-to-last item for validation, and the remaining items for training. In our pointwise setup, the chronological item sequence serves as the user-side information.  
+
+> Table 8 Statistics of the three processed Amazon review datasets.
+
+Dataset # Users # Items Mean Len. Median Len. Beauty 22,363 12,101 8.87 6Sports and Outdoors 35,598 18,357 8.32 6Toys and Games 19,412 11,924 8.63 6
+
+# C Metrics 
+
+Recall@K. Let U denote the set of users, i∗ 
+
+> u
+
+the ground-truth next item for user u ∈ U , and RKu the set of top-K items ranked by the model. Recall@K is defined as 
+
+Recall@ K = Eu∈U 
+
+I i∗ 
+
+> u
+
+∈ R Ku
+
+ , (20) where I(·) is the indicator function. 
+
+NDCG@K. For user u, the Discounted Cumulative Gain at K (DCG@K) is computed as 
+
+DCG@ K =
+
+> K
+
+X
+
+> j=1
+
+2rel u,j − 1log 2(j + 1) , (21) Table 9 Cross-encoder (yes/no head + NTP loss) hyperparameters. 
+
+Hyperparameter Value Negatives per positive 31 
+
+NTP loss weight λntp 0.5
+
+Epochs 10 
+
+GPUs 4× A100-80GB Per-GPU batch 32 
+
+Effective batch 128 
+
+Learning rate 2 × 10 −5
+
+Weight decay 0.01 
+
+Warmup ratio 0.1
+
+Max length (query / item) 512 / 128 
+
+Precision bf16 Seed 42 
+
+where rel u,j ∈ { 0, 1} indicates whether the item ranked at position j matches the ground-truth next item i∗
+
+> u
+
+.The Ideal DCG at K (IDCG@K) is obtained by placing the ground-truth item at the first position. Under the standard leave-one-out evaluation protocol for sequential recommendation, this value is always 1: IDCG @K = 
+
+> 1log 2(1+1)
+
+= 1 . NDCG@K is then defined as 
+
+NDCG@ K = Eu∈U 
+
+ DCG@ K
+
+IDCG@ K
+
+
+
+. (22) 
+
+# D Implementation Details 
+
+D.1 Backbone and Hardware 
+
+Training uses bfloat16 mixed precision, the AdamW optimizer (weight decay 0.01 ), and a linear warmup over the first 10% of steps followed by cosine decay. Gradient checkpointing is enabled throughout to reduce activation memory. All experiments use NVIDIA A100-SXM4 80 GB GPUs; the cross-encoder and the two-tower pre-training/fine-tuning stages use 4 GPUs, and the distillation stage uses 8 GPUs. Text is tokenized with the Qwen3 tokenizer, truncating queries to 512 and items to 128 tokens. 
+
+D.2 Cross-Encoder (Yes/No Head + NTP Loss) 
+
+The contrastive and NTP losses introduced in the main text are jointly optimized as LCE = Lcon (sCE ) + 
+
+λntp Lntp , with λntp = 0 .5. Hyperparameters are listed in Table 9. 
+
+D.3 Two-Tower Retriever 
+
+During CE →TT distillation, the contrastive loss and candidate-set score-distribution distillation loss introduced in the main text are jointly optimized as LTT = Lcon (sTT ) + λKD LKD , with λKD = 0 .2. Table 10 reports the remaining implementation-specific settings for the two-tower retriever. 
+
+# E Full Two-Tower Ablation 
+
+The main paper reports a leave-one-out ablation of the three optional two-tower components. Table 11 provides results for every combination of these components. The vanilla baseline uses separate encoders with mean pooling; every other variant uses a shared encoder with EOS pooling. TL, CE2TT, and Latent denote Table 10 Two-tower retriever hyperparameters (shared encoder, EOS pooling, transfer + CE →TT distillation + latent reasoning). 
+
+Hyperparameter Value Embedding raw 1024 -d Similarity / temperature τ dot product / 0.07 
+
+Pre-training & fine-tuning (transfer) 
+
+GPUs 4× A100-80GB Per-GPU batch 32 
+
+Epochs 10 
+
+Learning rate 2 × 10 −5
+
+CE →TT distillation 
+
+GPUs 8× A100-80GB Per-GPU batch 32 
+
+In-batch negatives 31 
+
+Teacher candidates K 50 
+
+Epochs 5
+
+Learning rate 1 × 10 −5
+
+KD loss weight λKD 0.2
+
+Distill temperature T 1.0 (Beauty) / 0.5 (Sports, Toys) 
+
+Shared 
+
+Optimizer AdamW (wd 0.01 , warmup 0.1)Max length (query / item) 512 / 128 
+
+Precision bf16 Seed 42 
+
+transfer learning, cross-encoder-to-two-tower distillation, and Coconut-style latent reasoning in the user tower, respectively. 
+
+# F Additional Observations 
+
+We also evaluated several plausible variants that were not retained in the final configuration because they did not provide consistent gains. These observations further motivate the design choices used throughout the paper. 
+
+• Sharing the user and item encoder is beneficial. We evaluated separate LLM encoders for the user and item towers, which increase model capacity and allow tower-specific parameters. In our experiments, however, the shared encoder consistently performed better, suggesting that parameter sharing more effectively aligns user and item representations in a common semantic space. 
+
+• Embedding matching is less effective. In addition to CE2TT distillation, we matched the cross-encoder and two-tower EOS representations with an L2 loss on positive user-item pairs. This embedding-level objective degraded retrieval performance relative to candidate-set score-distribution distillation, indicating that matching the teacher’s relative preferences over candidates is more useful than directly aligning their pooled representations. 
+
+• Additional latent steps do not improve retrieval quality. Adding latent reasoning to the item tower did not improve performance, likely because item-side inputs are comparatively simple. Likewise, using more than one latent step in the user tower substantially enlarged the computation graph and increased memory use without measurable gains. We therefore use a single latent step only in the user tower. 
+
+• Decoder-to-encoder conversion is not consistently helpful. We also evaluated a Dec2Enc variant that Table 11 Complete two-tower ablation across the three Amazon datasets. The best score in each dataset–metric pair is shown in bold.         
+
+> Dataset Shared+EOS TL CE2TT Latent R@5 R@10 N@5 N@10
+
+Beauty - - - - 0.0214 0.0389 0.0125 0.0180 
+
+✓ - - - 0.0415 0.0672 0.0253 0.0337 
+
+✓ - ✓ - 0.0429 0.0800 0.0241 0.0360 
+
+✓ ✓ - - 0.0430 0.0714 0.0260 0.0351 
+
+✓ ✓ ✓ - 0.0463 0.0794 0.0269 0.0374 
+
+✓ - - ✓ 0.0425 0.0711 0.0251 0.0343 
+
+✓ - ✓ ✓ 0.0431 0.0812 0.0241 0.0363 
+
+✓ ✓ - ✓ 0.0427 0.0715 0.0252 0.0345 
+
+✓ ✓ ✓ ✓ 0.0473 0.0825 0.0267 0.0380 
+
+Sports - - - - 0.0054 0.0109 0.0033 0.0050 
+
+✓ - - - 0.0205 0.0347 0.0131 0.0177 
+
+✓ - ✓ - 0.0298 0.0510 0.0175 0.0243 
+
+✓ ✓ - - 0.0261 0.0426 0.0166 0.0219 
+
+✓ ✓ ✓ - 0.0308 0.0530 0.0185 0.0257 
+
+✓ - - ✓ 0.0223 0.0387 0.0132 0.0184 
+
+✓ - ✓ ✓ 0.0300 0.0515 0.0174 0.0243 
+
+✓ ✓ - ✓ 0.0258 0.0417 0.0160 0.0211 
+
+✓ ✓ ✓ ✓ 0.0320 0.0542 0.0193 0.0264 
+
+Toys - - - - 0.0294 0.0489 0.0175 0.0237 
+
+✓ - - - 0.0600 0.0968 0.0367 0.0487 
+
+✓ - ✓ - 0.0614 0.1049 0.0353 0.0493 
+
+✓ ✓ - - 0.0563 0.0928 0.0332 0.0450 
+
+✓ ✓ ✓ - 0.0650 0.1063 0.0370 0.0503 
+
+✓ - - ✓ 0.0604 0.0946 0.0383 0.0493 
+
+✓ - ✓ ✓ 0.0604 0.1050 0.0346 0.0490 
+
+✓ ✓ - ✓ 0.0626 0.0992 0.0383 0.0502 
+
+✓ ✓ ✓ ✓ 0.0644 0.1078 0.0366 0.0506 
+
+removes the causal attention mask to enable bidirectional token interactions. Although this modification is plausible for discriminative representation learning, it did not yield consistent improvements and often degraded both the cross-encoder and two-tower models. We therefore exclude it from the final method. 
+
+# G Extended Related Work 
+
+G.1 LLM-based Recommender Systems 
+
+Large language models (LLMs) have recently been widely explored for recommender systems due to their semantic understanding, instruction-following ability, and open-world knowledge (Wu et al., 2024; Lin et al., 2025). Existing work incorporates LLMs into recommendation through prompt-based recommendation, generative recommendation, zero-shot ranking, textual user/item representation, explanation generation, and conversational recommendation. A representative direction formulates recommendation as a language modeling problem. P5 unifies multiple recommendation tasks under a text-to-text pretraining and prompting framework (Geng et al., 2022), while M6-Rec studies generative pretrained language models as open-ended recommender systems (Cui et al., 2022). More recently, generative retrieval methods such as TIGER represent items with semantic identifiers and train generative models to decode target item IDs (Rajput et al., 2023). Other works further investigate LLMs that directly generate recommended items or ranked outputs from textual inputs (Ji et al., 2024). Recent industrial systems further extend generative recommendation to production-scale retrieval. PLUM adapts pretrained language models through semantic item IDs, continued pretraining, and task-specific fine-tuning for industrial-scale generative recommendation (He et al., 2025). At Kuaishou, OneRec unifies retrieval and ranking in an end-to-end generative framework; subsequent work improves the approach with a lazy decoder-only architecture and alignment with real-world user feedback, while OneRec-Think incorporates explicit in-text reasoning (Deng et al., 2025; Zhou et al., 2025; Liu et al., 2026). Another line of work studies LLMs as rankers or instruction-tuned recommendation models. LLMRank evaluates LLMs as zero-shot rankers over candidate items (Hou et al., 2024), and TALLRec aligns LLMs with recommendation data through efficient instruction tuning (Bao et al., 2023). Related studies analyze ChatGPT-style models for pointwise, pairwise, and listwise recommendation (Dai et al., 2023), or use LLM-generated textual augmentations to improve personalized recommendation (Lyu et al., 2024). Despite their flexibility, many LLM-based recommenders rely on generative decoding, prompt-based ranking, or interaction-heavy inference, which can be expensive for large-scale retrieval. In contrast, our work revisits the efficient two-tower retrieval paradigm in the LLM era. Instead of using LLMs purely as generators or rankers, we use LLMs as semantic representation backbones and study how to improve two-tower retrieval through shared encoding, EOS pooling, cross-dataset transfer, and distillation from stronger teacher models. 
+
+G.2 Neural Retrieval Models 
+
+Neural retrieval models learn dense representations of queries and candidates in a shared embedding space, enabling efficient relevance estimation with an inner product, cosine similarity, or another lightweight matching function (Huang et al., 2013; Reimers and Gurevych, 2019; Karpukhin et al., 2020). In recommender systems, the corresponding two-tower architecture independently encodes user-side and item-side inputs. Its factorized structure permits item embeddings to be precomputed and indexed, making it well suited to large-scale candidate generation. Neural retrieval builds on representation-learning approaches in collaborative filtering, including matrix factorization (Koren et al., 2009), Bayesian Personalized Ranking (Rendle et al., 2009), and Neural Collaborative Filtering (He et al., 2017). In information retrieval, DSSM introduced shared semantic representations learned from clickthrough data (Huang et al., 2013), while Sentence-BERT and DPR established effective neural dual encoders for semantic similarity and open-domain retrieval (Reimers and Gurevych, 2019; Karpukhin et al., 2020). For industrial recommendation, the YouTube deep recommendation model uses a neural candidate-generation stage to retrieve items from a large corpus before ranking (Covington et al., 2016). The efficiency of dual encoders comes at the cost of modeling fine-grained interactions between a user and an item. Cross-encoders jointly encode the pair and typically produce stronger ranking signals, but their inference cost prevents their direct use for first-stage retrieval over large item corpora (Nogueira and Cho, 2019). Late-interaction models provide an intermediate point on this efficiency–effectiveness spectrum by retaining token-level interactions at retrieval time (Khattab and Zaharia, 2020). Further work has improved dual-encoder training through sampling-bias correction, cross-batch negative sampling, and mixed negative sampling (Yi et al., 2019; Wang et al., 2021; Yang et al., 2020); dual encoders can also benefit substantially from distillation from more expressive models (Menon et al., 2022). Our work follows this neural retrieval paradigm while revisiting the two-tower architecture with modern LLM backbones. A shared LLM encodes the user history and item text in separate forward passes, producing representations that can be matched by a lightweight similarity function; item embeddings therefore remain precomputable and indexable. We further transfer cross-encoder ranking signals through distillation and refine only the user tower with latent reasoning, preserving the retrieval-time factorization. Compared with fully generative LLM recommenders, our approach retains the efficiency required for large-scale candidate generation while strengthening the semantic representations used for retrieval.
