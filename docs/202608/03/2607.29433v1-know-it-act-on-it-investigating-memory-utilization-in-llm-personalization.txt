@@ -1,0 +1,858 @@
+Title: Know It, Act on It: Investigating Memory Utilization in LLM Personalization
+
+URL Source: https://arxiv.org/pdf/2607.29433v1
+
+Published Time: Mon, 03 Aug 2026 00:57:07 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Know It, Act on It: Investigating Memory Utilization in LLM Personalization 
+
+Zhaoxin Feng and Jianfei Ma and Emmanuele Chersoni 
+
+The Hong Kong Polytechnic University 
+
+{zhaoxinbetty.feng,jian-fei.ma}@connect.polyu.hk, emmanuele.chersoni@polyu.edu.hk 
+
+Abstract 
+
+As large language model (LLM) agents evolve into personalized companions, memory has emerged as a core capability. However, LLMs face a knowledge utilization problem: they may fail to act on relevant user preferences even when they are fully present in context. When an agent fails to tailor its response in a con-text where previously shared user preferences should matter, it is unclear whether the model failed to remember that information or remem-bered it but failed to use it. To isolate this breakdown, we introduce a decoupled evalu-ation paradigm that administers paired Know 
+
+and Act tests to the same user preference. We conduct large-scale experiments across 16 sys-tems and five memory architectures, evaluat-ing 1,000 preferences embedded at three lev-els of expression strength. Our results show a large gap between Know and Act outcomes: agents often pass the recall test for a user pref-erence but fail to reflect that same preference in the paired behavioral scenario. While mem-ory architectures reduce this gap, utilization remains especially weak for health and therapy-related preferences, where failures to act carry the greatest real-world stakes 1.
+
+1 Introduction 
+
+Large Language Model (LLM) agents are rapidly evolving from stateless tools into personalized long-term companions capable of sustained interaction with users over days, weeks, and months (Ope-nAI, 2025b; Meta, 2025). A core capability driv-ing this transition is memory: the ability to store, organize, and retrieve information from past in-teractions (Zhang et al., 2025b). Both indus-try and academia are actively equipping agents with increasingly sophisticated memory architec-tures, from commercial systems such as Chat-GPT’s persistent memory (OpenAI, 2024c) and 
+
+> 1
+
+Code and data are available at https://anonymous. 4open.science/r/KnowAct_Benchmark-5BEB/ Help me polish email about:         
+
+> “Dear Prof, … My peanuts allergy is
+> acting up, I want to ask for absent
+> for this lecture. May I know…. ”
+> Memory
+> User
+> Try to recommend a Thai dish to
+> me , I want to have a try .
+> Agent
+> Try pad thai with crushed peanuts
+> on top! That is delicious!
+> User
+> User is allergic to peanuts and
+> cannot consume peanut -based
+> drinks or food
+> Next day
+
+## …Next day  New session 
+
+Figure 1: A memory-augmented LLM agent correctly stores a user’s peanut allergy from an email-polishing request, yet fails to account for it when recommending a Thai dish in a subsequent session. 
+
+Claude’s memory feature (Anthropic, 2025) to open-source frameworks such as Mem0 (Chhikara et al., 2025), Letta/MemGPT (Packer et al., 2024), and knowledge-graph-based systems like Zep (Ras-mussen et al., 2025) and HippoRAG (Gutiérrez et al., 2025). These systems have demonstrated strong performance on benchmarks that test fac-tual recall, multi-hop reasoning, and long-range understanding (Wu et al., 2025; Hu et al., 2026a). But remembering information is only the first step. LLMs face a well-documented knowledge utiliza-tion problem, often failing to act on relevant infor-mation even when it is fully present in context (Shi et al., 2023; Liu et al., 2024). Memory modules could in principle alleviate this by distilling con-versation histories into condensed, high-signal con-text, yet they also introduce new failure points such as semantic mismatch during retrieval. Whether memory-augmented LLM agents truly bridge the gap between remembering user preferences and acting on them remains an open question. arXiv:2607.29433v1 [cs.CL] 31 Jul 2026 Most users do not explicitly state their prefer-ences to chatbots. According to a recent large-scale analysis of ChatGPT usage (Chatterji et al., 2025), the majority of users still treat LLMs as tools, asking them to refine emails, translate mes-sages, or debug code, meaning their preferences are revealed only implicitly through everyday interac-tions (Jiang et al., 2025b). As illustrated in Figure 1, a user asking a chatbot to polish an email might reveal a peanut allergy through the content. The memory module correctly extracts this preference. Yet in a later session, when the same user asks the agent to recommend a Thai dish, the agent enthusi-astically suggests pad thai with crushed peanuts on top. Did the agent fail to remember the allergy, or did it remember but fail to act on it? When such failures occur, determining their cause requires testing two capabilities separately on the same information : whether the agent can recall it, and whether it can apply it in a relevant scenario. Testing only recall leaves open whether the information actually influences behavior; test-ing only behavior leaves open whether a good re-sponse reflects genuine memory or coincidence. Yet existing research, whether on LLM personal-ization or agentic memory, evaluates either recall or behavioral responses, but not both capabilities on the same stored information (§2.1), and most studies operate in static long-context settings rather than exercising the incremental pipelines through which long-term agents’ memory systems oper-ate in practice. To bridge this gap, we design a paired experimental framework that applies a 
+
+Know test and an Act test to the same user pref-erence. The Know test directly asks whether the agent can recall a specific preference; the Act test presents a natural scenario where that preference should influence behavior without mentioning it. We further introduce a three-level expression gradi-ent (explicit, incidental, and inferential) extending the foundational explicit/implicit distinction (Rich, 1979) to investigate how the strength of preference expression affects downstream utilization. Fol-lowing an incremental memory construction proto-col (Hu et al., 2026a) that ensures each system pro-cesses information through its native pipeline, and building on PersonaMem-v2’s persona and prefer-ence data (Jiang et al., 2025b), we conduct large-scale experiments across 50 personas, 1,000 prefer-ences, and three expression conditions, evaluating 16 memory systems spanning five architectural cat-egories on 3,000 instances (see Figure 2). Our empirical investigation reveals a pervasive gap between Know and Act across modern LLM agents: regardless of whether a system relies on a pure long-context model or a dedicated mem-ory architecture, the best performers convert no more than two-thirds of successfully remembered preferences into appropriate behavioral responses. Equipping LLM agents with memory systems sub-stantially narrows this gap; Mem0 (Chhikara et al., 2025), for instance, raises GPT-4o-mini’s utiliza-tion rate from 16.3% to 54.6%, with gains dis-proportionately large on the behavioral side, sug-gesting that effective memory architectures con-tribute not merely by retrieving more, but by sur-facing information in a form that the model can act upon. Across preference types, utilization diverges sharply even when recall is comparable: health and therapy related preferences consistently rank low-est, precisely the categories where failure to act carries the highest real-world stakes. 
+
+2 Preliminaries 
+
+2.1 LLM Personalization 
+
+Research on LLM personalization has developed along two largely disconnected tracks. One track deepens user understanding through person-level inference and multi-source reasoning (Wu et al., 2026; Cheng et al., 2026), yet evalua-tion remains question answering rather than be-havioral. The other track measures behavior di-rectly, testing whether agents generate tailored re-sponses to explicit, implicit, or multi-session pref-erences (Salemi et al., 2024; Zhao et al., 2025; Li et al., 2025; Zollo et al., 2025; Kumar et al., 2024), maintain persona consistency (Boson AI, 2024; Wang et al., 2024b), or apply preferences already provided in the prompt (Yoon et al., 2026). Each tests a different slice of the pipeline, yet none separately evaluates whether a preference is suc-cessfully remembered and whether it is also acted upon. PersonaMem-v1 (Jiang et al., 2025a) is the only work that includes both knowledge and be-havioral tests, but applies them to different prefer-ences, precluding paired diagnosis. PersonaMem-v2 (Jiang et al., 2025b) adds implicit preferences and incremental construction but drops the knowl-edge test entirely. 
+
+2.2 Memory Systems for LLM Agents 
+
+As LLM-based agents transition from single-turn tools to persistent systems (Xi et al., 2025; Wang Agents                                  
+
+> I get mild hay fever every spring
+> from pollen 🤧 Sneezing nonstop,
+> itchy eyes and feeling all foggy 😶🌫
+> Aww that sucks! Maybe wear a
+> mask when you go out...
+> User User
+> Help me polish email about:
+> “Dear Prof, … My pollen allergy is
+> acting up, Iwant to ask for absent
+> for this lecture. May I know…. ”
+> Agents
+> Sorry to hear about that. Here are two
+> polite and academically appropriate
+> revised version. Version 1 : Dear …
+> Explicit Incidental Inferential
+> Preference is the central topic Embedded in a task -oriented request Must be inferred from cues
+> Memory Strategies
+> Long Context Simple RAG
+> Agentic Memory
+> User
+> User
+> As spring unfurls and blooms flood
+> the air, my breath grows thin , my
+> cheeks warm , and my eyes brim with
+> unbidden tears .Suggest some
+> tablets or drops?
+> Agents
+> That sounds awful . Try loratadine
+> or..
+> User
+> User
+> Explicit Info
+> Incidental -
+> Implicit Info
+> Inferential -
+> implicit Info
+> --Session 1 --
+> --Session 2 —
+> …
+> --Session N --
+> User
+> User
+> User
+> Inc
+> Exp
+> Inf Late April open park trip!
+> Noon departure . Pack .. .
+> Enjoy the blossoms!
+> Do l have a pollen allergy ?
+> Planning a spring picnic in
+> late April.
+> Yes , you mentioned
+> seasonal pollen allergies
+> with hay fever
+
+Pass 
+
+> The agent recalls the
+> preference correctly.
+
+Fail   
+
+> Fields and blossoms are
+> exactly allergy triggers!
+> Know Test
+> Act Test
+> Embed. RAG
+> Stur. Aug. RAG
+
+Figure 2: Top : the same preference is expressed at three levels of strength during memory construction. Bottom :after incremental multi-session injection, a Know test and an Act test are administered independently on the same preference. Here the agent remembers the pollen allergy but fails to act on it when planning a spring outing. 
+
+et al., 2024a), the ability to retain and utilize in-formation across interactions has become a central design challenge (Hu et al., 2026b; Huang et al., 2026). A growing body of research evaluates mem-ory capabilities along increasingly sophisticated dimensions, from retrieval and comprehension in extended contexts (Bai et al., 2024; Zhang et al., 2024; Maharana et al., 2024), to multi-hop reason-ing and temporal understanding (Bai et al., 2025; Wu et al., 2025), to memory reliability (Chen et al., 2026), and recently to four integrated competencies evaluated through incremental input protocols (Hu et al., 2026a). Despite this expansion, the entire line of work evaluates whether information can be recovered , not whether it shapes downstream behavior (Hu et al., 2026b; Huang et al., 2026). Existing memory architectures span five broad categories evaluated in our experiments. Long-context baselines such as GPT-4o-mini (OpenAI, 2024a), GPT-4o (OpenAI, 2024b), Gemini 3.1 Flash (Google DeepMind, 2026), and Claude 4.6 Sonnet (Anthropic, 2026) place the entire con-versation history in the context window, elimi-nating retrieval errors but introducing attention-allocation bottlenecks (Liu et al., 2024). RAG-based methods retrieve relevant passages at query time via sparse lexical matching (BM25 (Robert-son and Walker, 1994)) or dense vector re-trieval (text-embedding-3-small/-large (OpenAI, 2024d), Qwen3-Embedding-4B (Zhang et al., 2025a)), but are limited to top-kk k selection. 
+
+Structure-augmented RAG organizes informa-tion into knowledge graphs or structured stores: Mem0 (Chhikara et al., 2025) extracts atomic facts, Zep/Graphiti (Rasmussen et al., 2025) builds temporal knowledge graphs, Cognee (Markovic et al., 2025) refines its graph via feedback loops, and HippoRAG-v2 (Gutiérrez et al., 2025) uses hippocampus-inspired pattern completion. Agen-tic memory systems give the agent control over its own memory operations: Letta/MemGPT (Packer et al., 2024) manages hierarchical memory tiers, Self-RAG (Asai et al., 2024) learns when to re-trieve, MemoryOS (Kang et al., 2025) applies OS-inspired memory management, and A-MEM (Xu et al., 2025) uses Zettelkasten-based note linking. 
+
+3 Experimental Design 
+
+This section describes our experimental design, il-lustrated in Figure 2: the data construction pipeline (§3.1) and the paired evaluation framework (§3.2). 
+
+3.1 Data Construction Personas and Preferences. From PersonaMem-v2’s personas (Jiang et al., 2025b), we select 50 via stratified sampling across 11 cultural regions, filtering for non-null nationality and sufficient pref-erence count ( >70). The full filtering pipeline is described in Appendix C.1. For each persona, we sample 20 preferences as target preferences, which are the preferences that will be evaluated through paired Know and Act tests. The remaining pref-erences (approximately 50–70 per persona) serve as non-target context: their conversation entries are injected alongside target preferences to pro-vide realistic retrieval noise, reflecting the fact that real user–chatbot histories contain a mix of topics and not every conversation is relevant to a given query. Target preferences are sampled according to a fixed quota across five preference types (stereo-typical, anti-stereotypical, neutral, health/medical, and therapy/emotional), with a fallback mechanism (Appendix C.2). 
+
+Expression Strength Gradient. In everyday user–chatbot interactions, preferences are conveyed at varying levels of directness, from explicit state-ments to subtle behavioral cues (Rich, 1979; Jiang et al., 2025b). We introduce a three-level gradi-ent that captures this spectrum. For each prefer-ence, we construct three versions of the conver-sation snippet in which the preference is embed-ded, while keeping the Know and Act test questions identical across all three versions. GPT-5 (Ope-nAI, 2025a) generates the explicit and inferential snippets (Appendix B.5); the incidental version uses PersonaMem-v2’s original conversation entry directly, which was also generated by GPT-5 (Ope-nAI, 2025a). All three variants share identical non-target chunks, ensuring that performance differ-ences reflect only expression strength. • Explicit : The user directly states the preference as the central topic of conversation (e.g., “Just to let you know, every spring I get hay fever from pollen. It’s mild, but I sneeze a lot and my eyes get itchy”). • Incidental : The preference appears as inciden-tal information within a task-oriented conver-sation but is never directly stated; extracting it requires reading comprehension across the surrounding context (e.g., the user asks to pol-ish an email that mentions sneezing often and meeting at a tea house instead of the park). • Inferential : The preference must be inferred from the user’s behavioral patterns; no single utterance explicitly labels it. Although never di-rectly stated, the conversation revolves around closely related topics, allowing LLM agents to deduce the preference from contextual cues (e.g., the user mentions visiting outdoor tem-ples during a spring festival, describes sneezing and watery eyes on windy days with blossoms, and asks for tablets that will not make them sleepy, without ever mentioning ‘allergy’). Representative examples of all three expression levels and their corresponding Know /Act tests are provided in Appendix C.7. 
+
+Chunk Sequences and Test Pairs. For each per-sona, we construct three parallel chunk sequences, one per expression level, resulting in 150 sequences (50 personas × 3 expression levels) comprising 11,955 total chunks and approximately 4.55 mil-lion tokens (target-to-non-target ratio ≈ 1:3). The three sequences for a given persona differ only in their 20 target preference snippets; all non-target chunks are shared. GPT-5 (OpenAI, 2025a) gen-erates a paired Know test (question and ground truth answer) and Act test (scenario) for each of the 1,000 preferences (Appendix B.6). The same test questions are used across all three expression lev-els, ensuring that performance differences reflect signal strength, not test difficulty. Quality valida-tion details are provided in Appendix D. Complete dataset statistics are in Appendix C (Table 4). 
+
+3.2 Paired Know–Act Evaluation 
+
+The central design principle of our framework is that every user preference is evaluated through two complementary tests that target the same underly-ing information but probe different capabilities. 
+
+Know Test. The Know test establishes whether the agent has successfully stored and can retrieve a specific user preference. Questions are phrased in first person (e.g., “Do I have any seasonal aller-gies?”) to simulate a user asking about informa-tion shared in prior interactions. An LLM judge (GPT-5 (OpenAI, 2025a)) compares the agent’s re-sponse against a ground truth answer and assigns a binary Pass/Fail verdict (Appendix B.3). Know questions are deliberately simple and direct: failure indicates unambiguous memory failure. To vali-date that these questions cannot be answered by prior knowledge or guessing alone, we evaluate all generation models used in our experiments on the full 1,000 Know questions without any con-versation history. All four models score below 3%, confirming that non-trivial Know accuracy in memory-augmented systems genuinely reflects suc-cessful memorization (Appendix D.4). 
+
+Act Test. The Act test evaluates whether stored knowledge influences behavior . The agent is pre-sented with a natural scenario where the preference should shape its response. The scenario itself does not reference the preference; the agent is expected to consider it based on what it has stored in memory. For instance, if the user has a pollen allergy, the Act test might ask the agent to “suggest a location and packing list for a spring picnic,” expecting the agent to consider allergen exposure in its recommenda-Table 1: Know Accuracy , Act Accuracy , and Utilization Rate across memory systems. Exp = Explicit, Inc = Incidental, Inf = Inferential. Avg = macro-average over the three conditions. Long-context baselines use their native models; all other systems use GPT-4o-mini as the generation backbone. Bold = best; underline = second; italic = third.                                                                                                                                                                                                                    
+
+> Know Acc. (%) Act Acc. (%) Util. Rate (%) Type System Exp Inc Inf Avg Exp Inc Inf Avg Exp Inc Inf Avg GPT-4o-mini 83.7 9.1 11.3 34.7 19.8 14.4 17.6 17.3 20.0 12.1 16.8 16.3 GPT-4o 99.0 37.2 60.7 65.6 37.7 22.7 27.4 29.3 37.9 28.5 30.0 32.1 Gemini 3.1 Flash 99.5 56.1 80.9 78.8 71.9 37.6 50.8 53.4 71.9 47.1 52.2 57.0 Long-Context Claude 4.6 Sonnet 99.3 49.0 80.4 76.2 82.2 42.7 59.5 61.5 82.2 50.8 62.3 65.1
+> Simple RAG BM25 86.7 16.8 13.7 39.1 19.3 12.0 18.3 16.5 20.0 11.3 20.4 17.2 RAG te3-small 98.0 18.4 38.1 51.5 45.2 13.2 25.0 27.8 45.6 18.5 31.0 31.7 RAG te3-large 97.6 20.0 39.7 52.4 44.5 13.2 25.3 27.7 45.0 19.0 31.5 31.8 Embedding RAG RAG Qwen3-Emb-4B 98.7 20.6 50.2 56.5 53.1 13.1 25.8 30.7 53.6 15.5 31.5 33.5 Mem0 97.7 30.9 52.3 60.3 71.2 27.0 39.9 46.0 72.0 45.6 46.3 54.6
+> Zep/Graphiti 52.9 2.3 2.5 19.2 11.0 10.8 11.7 11.2 12.3 21.7 16.0 16.7 Cognee 90.3 15.6 23.8 43.2 32.1 15.1 24.2 23.8 32.7 19.2 29.0 27.0 Structure-Aug. RAG HippoRAG-v2 98.0 16.2 26.6 46.9 35.1 15.0 24.0 24.7 35.3 21.0 27.8 28.0 Letta/MemGPT 89.5 14.3 22.1 42.0 32.5 14.5 22.2 23.1 32.6 16.1 29.4 26.0 Self-RAG 94.2 25.0 53.8 57.7 61.4 9.2 27.2 32.6 62.1 10.0 33.8 35.3 MemoryOS 93.5 11.7 32.3 45.8 44.9 13.2 25.3 27.8 46.3 16.2 37.2 33.2 Agentic Memory A-MEM 89.8 14.8 20.1 41.6 25.8 16.4 21.2 21.1 26.2 19.6 24.4 23.4
+
+tion. We adopt paired comparison scoring: the agent’s response with memory is compared against a response from the same backbone model without any memory input. An LLM judge (GPT-5) deter-mines whether the memory-augmented response better reflects consideration of the preference, pro-ducing a binary Pass/Fail outcome (Appendix B.4). 
+
+Evaluation Protocol. Following the inject-then-query paradigm of MemoryAgentBench (Hu et al., 2026a), we feed conversation chunks to memory systems one at a time using a standardized mem-orization template (Appendix B.1). This ensures that each system processes information through its native mechanisms: Mem0 (Chhikara et al., 2025) performs fact extraction, Letta (Packer et al., 2024) manages hierarchical memory tiers, and knowledge-graph-based systems construct their graphs progressively. After all chunks are injected, the Know and Act tests are administered in sep-arate, independent sessions to avoid priming ef-fects. Long-context baselines receive all chunks concatenated into a single context window preced-ing the test query. All long-context baselines use temperature=0 for deterministic generation. All RAG and agentic memory systems use GPT-4o-mini as the shared generation backbone, ensuring that performance differences reflect memory ar-chitecture rather than generation capability. Sys-tems requiring embedding-based retrieval use text-embedding-3-small (OpenAI, 2024d) as the default embedding model, with the exception of Memo-ryOS (Kang et al., 2025), whose implementation hardcodes all-MiniLM-L6-v2 (Wang et al., 2020). 
+
+4 Experiments 
+
+4.1 Setup 
+
+We evaluate 16 memory systems spanning all five categories of the taxonomy introduced in §2.2, covering long-context baselines, simple RAG, embedding-based RAG, structure-augmented RAG, and agentic memory. 
+
+Metrics. For each preference, the Know test and 
+
+Act test each produce a binary Pass/Fail outcome, yielding four possible states per preference: both pass ( KP AP ), Know pass but Act fail ( KP AF ), Know 
+
+fail but Act pass ( KF AP ), and both fail ( KF AF ). We report Know Accuracy and Act Accuracy as the pass rates of each test, respectively. We additionally report the Utilization Rate , defined as the fraction of correctly remembered preferences that the agent also acts on: 
+
+Utilization Rate = NKP ,AP 
+
+NKP ,AP + NKP ,AF 
+
+A system with high Know Accuracy but low Uti-lization Rate successfully retrieves user informa-tion yet fails to leverage it in downstream behavior, 0                        
+
+> 25
+> 50
+> 75
+> 100
+> Explicit Incidental Inferential
+> %
+> Know_acc
+> Act_acc
+> Utilization
+> GPT4o -mini (backbone)
+> Explicit Incidental Inferential
+> Know_acc
+> Act_acc
+> Utilization
+> Simple RAG
+> Explicit Incidental Inferential
+> Know_acc
+> Act_acc
+> Utilization
+> Embedding RAG
+> Explicit Incidental Inferential
+> Know_acc
+> Act_acc
+> Utilization
+> Structure -Aug. RAG
+> Explicit Incidental Inferential
+> Know_ac
+> Act_acc
+> Utilization
+> Agentic Memory
+> Exp Inc Inf Exp Inc Inf Exp Inc Inf Exp Inc Inf Exp Inc Inf
+
+Figure 3: Know Accuracy , Act Accuracy , and Utilization Rate across expression levels for each category. Exp = Explicit, Inc = Incidental, Inf = Inferential. All architectures show a sharp Know drop from Explicit to Incidental, with partial recovery under Inferential. Act and Utilization remain comparatively flat. 
+
+pointing to a utilization bottleneck rather than a memory failure. 
+
+Judge Reliability. Human evaluation of 100 
+
+Know and 100 Act judgments yields Fleiss’ κ of 0.89 and 0.82, respectively. Inter-judge agreement between GPT-5 and Claude Opus 4.6 (Anthropic, 2026) on a separate 200-sample subset yields Co-hen’s κ of 0.91 ( Know ) and 0.88 ( Act ), indicating strong agreement. Details are in Appendix E. 
+
+4.2 Overall Results 
+
+Table 1 presents Know Accuracy , Act Accuracy ,and Utilization Rate for all 16 systems. We report the following findings. Remembering does not imply acting: Know–Act dissociation is pervasive across all architectures. The central finding of KnowAct is that high recall does not guarantee behavioral utilization. Under the Explicit condition, most systems achieve high 
+
+Know Accuracy , yet Utilization Rates vary widely across systems. Even the best-performing system, Claude 4.6 Sonnet, converts only about two-thirds of its remembered preferences into behavioral re-sponses. The dissociation is most striking for GPT-4o-mini, which can articulate preferences when asked directly but rarely incorporates them into its responses. We note that KnowAct’s retrieval setting is relatively favorable, as each preference corresponds to a single target passage with limited competing evidence; the Know–Act dissociation would likely be even more pronounced in realistic scenarios with greater retrieval noise. Long-context models with 1M-token windows lead overall, but context window size is not the sole factor. Claude 4.6 Sonnet and Gemini 3.1 Flash (both 1M windows) substantially outperform GPT-4o and GPT-4o-mini (both 128K) across all metrics. However, model capability plays an equally impor-tant role: GPT-4o roughly doubles GPT-4o-mini’s scores despite sharing the same 128K window, and among two 1M models, Gemini leads on Know 
+
+while Claude leads on Utilization .Memory architectures improve upon the GPT-4o-mini backbone, with Mem0 yielding the largest gain. Since all RAG and agentic memory sys-tems share GPT-4o-mini as backbone, comparing them against GPT-4o-mini in the long-context set-ting isolates the benefit from memory architec-tures. Most systems improve substantially, such as Mem0 (Chhikara et al., 2025) roughly triples the 
+
+Utilization Rate , achieving results comparable to Gemini 3.1 Flash. 
+
+4.3 Analysis by Expression Level 
+
+Figure 3 shows how Know Accuracy , Act Accuracy ,and Utilization Rate vary across the three expres-sion levels for each architecture category. The Incidental condition is harder to recall than Inferential across all categories. In every archi-tecture category, Know Accuracy reaches its low-est under the Incidental condition, not Inferential. This is counterintuitive: Inferential requires reason-ing from behavioral cues, which should be more demanding. However, Incidental preferences are embedded as side details within task-oriented con-versations and never become the focus, making them difficult for both memory systems and long-context models to flag as noteworthy. Under the Inferential condition, by contrast, conversations re-volve around the relevant topic, providing richer semantic cues for retrieval. Explicit expression exposes utilization failure; non-explicit expression exposes storage failure. Under the Explicit condition, Know Accuracy is high across all architectures, yet Act Accuracy and 
+
+Utilization Rate remain much lower, producing the largest Know-Act gap. This indicates that the pri-mary bottleneck under Explicit expression is not memory but utilization: systems can recall the pref-erence when asked directly but fail to incorporate 27.48                   
+
+> 15.58
+> 27.34 26.94
+> 21.92
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Anti-Stereo. Health & Med. Neutral Stereo. Therapy & Emot.
+> Utilization Rate (%)
+> GPT-4o-mini (backbone) Simple RAG Embedding RAG Structure-Aug. RAG Agentic Memory Average
+> 41.00 40.02 43.14 44.80 51.22
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Anti-Stereo. Health & Med. Neutral Stereo. Therapy & Emot.
+> Know  Accuracy (%)
+
+Figure 4: Know Accuracy (top) and Utilization Rate (bottom), averaged by architecture category, split by preference type. Various memory systems backbone with GPT-4o-mini; long-context GPT-4o-mini results in Table 1. Therapy & Emotional preferences are easy to recall but hard to utilize; Health & Medical preferences score lowest on both metrics. Per-system details in Appendix F. 
+
+it into behavioral responses. 
+
+4.4 Analysis by Preference Type 
+
+Figure 4 breaks down the Utilization Rate by pref-erence type, with average values shown. Health and therapy related preferences suffer the largest utilization gaps. Know Accuracy is relatively uniform across preference types, indi-cating that storage difficulty alone does not ex-plain performance differences. However, Utiliza-tion Rate diverges sharply: Health & Medical drops to the lowest average and Therapy & Emotional is second-lowest, despite Therapy achieving the high-est Know Accuracy . This contrast indicates that the bottleneck lies in utilization rather than storage. These categories require more nuanced reasoning to translate into appropriate behavior: a pollen al-lergy should inform outdoor activity suggestions, and work-related stress should shape how the agent frames productivity advice, connections that are harder to make than simply recommending a cui-sine matching a stated food preference. This has notable safety implications: unlike lifestyle prefer-ences where commonsense reasoning often suffices, health and emotional preferences demand special-ized domain knowledge to act upon correctly, and agents that retrieve yet fail to act on such informa-tion present a tangible risk in deployments where user wellbeing is at stake. The GPT-4o-mini backbone relies more on population priors than memory-augmented sys-tems. In the Utilization Rate panel, GPT-4o-mini (backbone) performs better on Stereotypi-cal than Anti-Stereotypical preferences, consis-tent with PersonaMem-v1 (Jiang et al., 2025a) and PersonaMem-v2 (Jiang et al., 2025b) findings that models tend toward demographic expectations. This pattern reverses for memory-augmented sys-tems, suggesting that retrieved memory overrides model priors, whereas the backbone falls back on prior-consistent behavior. Memory architectures benefit utilization more than storage. Comparing memory-augmented sys-tems against the GPT-4o-mini backbone, the rela-tive gains in Utilization Rate are consistently larger than those in Know Accuracy . While Know Accu-racy improves modestly, Utilization Rate roughly doubles across most preference types. This sug-gests that the primary value of memory architec-tures lies not only in improving what is retrieved, but in presenting information in a more actionable form that enables the backbone model to better incorporate preferences into its responses. 
+
+4.5 Failure Attribution 
+
+The analyses above reveal how much Know–Act dissociation occurs but do not identify where in the memory system pipeline the breakdown hap-pens. An agent that knows a user’s pollen allergy but recommends a spring picnic in an open field could be failing at any of several stages: the re-trieval system may not have surfaced the allergy information for the activity recommendation query; the information may have been retrieved but the agent could not extract the relevant constraint from the surrounding conversational context; or the con-straint may have been fully available but the agent still failed to incorporate it into its response. To localize failures, we conduct a controlled or-acle study on Mem0 (Chhikara et al., 2025), the strongest non-long-context system, analyzing all 722 Know Pass × Act Fail cases across the three expression conditions. 
+
+Method. We design two oracle experiments that progressively bypass stages of the agentic memory pipeline. Both conditions use the same backbone model (GPT-4o-mini) and Act judge as evaluation: • Oracle chunk : We bypass retrieval by injecting the ground-truth conversation chunk (the chunk containing the target preference) directly into the Act test context. The agent must still identify the relevant preference within it and apply it to the current task. • Oracle preference : We bypass both retrieval and comprehension by injecting the preference text itself (e.g., “This user has a pollen allergy”) di-rectly into the Act test context. LLM agent’s only remaining task is to apply the stated preference to the scenario. Comparing outcomes across the three conditions yields a three-layer failure decomposition. For each case, exactly one attribution applies: • Retrieval failure : Oracle chunk passes, indicat-ing that the original retrieval did not surface the relevant dialogue related to the target preference. • Comprehension failure : Oracle chunk fails, but oracle preference passes, indicating that the rele-vant chunk was present but the agent could not extract the preference from it. • Application failure : Oracle preference also fails, indicating that the preference was explicitly stated but the agent still did not act on it. Across all conditions (see Table 2), comprehen-sion deficiency is the predominant cause of overall failures. More than half of the total errors occur because the model cannot accurately distill target features, even when the dialogue containing the target preference is already provided in the context. Furthermore, failures in the final application stage expose an intrinsic ceiling in translating known information into action. Regardless of how a pref-erence is initially expressed, the proportion of appli-cation failures remains remarkably stable. In these cases, the model fails to follow the constraints de-     
+
+> Table 2: Three-layer failure attribution for Mem0’s Know Pass ×Act Fail cases ( n=722 ). Each case is classified into Retrieval (R), Comprehension (C), or Ap-plication (A) failure. Bold marks the dominant failure type per condition.
+
+Expression n R (%) C (%) A (%) Explicit 273 48.7 34.8 16.5 Incidental 168 11.3 69.6 19.0 Inferential 281 24.9 60.9 14.2 All 722 30.7 53.0 16.2 spite being given explicit preference statements. This persistent inability to utilize provided knowl-edge reflects inherent limitations in the underlying language model regarding knowledge utilization. Varying expression strengths reveal distinct fail-ure patterns. When preferences are explicitly stated, a counterintuitive retrieval bottleneck occurs, caus-ing nearly half of the errors in this condition. Specifically, for an incoming query, the system fails to retrieve the exact conversation chunk containing the target preference that it is supposed to find. Con-versely, for incidental or inferential preferences, the bottleneck shifts heavily to comprehension. In these non explicit scenarios, comprehension break-downs dominate. The system struggles to extract hidden preferences from peripheral details or be-havioral cues, even when directly provided with the relevant dialogue snippet. 
+
+5 Conclusion 
+
+This paper examines whether memory-augmented LLMs and long-context baselines can translate re-called preferences into appropriate behavior. Eval-uating 16 systems across 1,000 preferences and three expression levels, we find that agents often achieve high accuracy on the Know test but per-form poorly on the Act test. This gap varies by ex-pression strength and preference type, with health and emotional domains proving especially chal-lenging. Failure attribution further indicates that errors arise from retrieval, comprehension, and ap-plication, with comprehension failures dominating overall. These findings suggest that future personal-ization systems should move beyond simply storing and recalling user information, and instead focus on ensuring that personal memories are selectively retrieved, correctly interpreted, and reliably trans-lated into context-appropriate behavior. Limitations 
+
+The evaluation relies on LLM judges, which may introduce systemic evaluation biases such as ver-bosity preference or insensitivity to subtle behav-ioral cues. Furthermore, our benchmark utilizes synthetic personas from PersonaMem-v2 (Jiang et al., 2025b); evaluating these systems on real-world, longitudinal user histories that feature natu-ral topic drift and contradictions would strengthen ecological validity. Crucially, our design isolates the utilization bottleneck by linking each prefer-ence to a single target passage with limited com-peting distractors, inherently simplifying the re-trieval task. Because real-world user interactions are vastly noisier and more fragmented, the perva-sive Know-Act gap we observe is likely a conser-vative lower bound, one that would widen signifi-cantly in realistic deployment settings. 
+
+Ethics Statement 
+
+We uses synthetic personas and preferences derived from PersonaMem-v2. All memory systems are evaluated in controlled settings without real user data. And we highlights critical safety concerns, particularly the utilization gap for health and medi-cal information, which should inform the develop-ment of more reliable memory-enabled agents. 
+
+References 
+
+Anthropic. 2025. Using Claude’s chat search and memory to build on previous context. 
+
+https://support.claude.com/en/articles/ 11817273-using-claude-s-chat-search-and-memory-to-build-on-previous-context .Accessed: 2026-03-24. Anthropic. 2026. Introducing claude opus 4.6. Ac-cessed: 2026-03-27. Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil, and Hannaneh Hajishirzi. 2024. Self-RAG: Learning to retrieve, generate, and critique through self-reflection. In The Twelfth International Conference on Learning Representations .Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai Tang, Zhidian Huang, Zhengxiao Du, Xiao Liu, Aohan Zeng, Lei Hou, Yuxiao Dong, Jie Tang, and Juanzi Li. 2024. LongBench: A bilingual, multi-task benchmark for long context understanding. In 
+
+Proceedings of the 62nd Annual Meeting of the As-sociation for Computational Linguistics (Volume 1: Long Papers) , pages 3119–3137, Bangkok, Thailand. Association for Computational Linguistics. Yushi Bai, Shangqing Tu, Jiajie Zhang, Hao Peng, Xi-aozhi Wang, Xin Lv, Shulin Cao, Jiazheng Xu, Lei Hou, Yuxiao Dong, Jie Tang, and Juanzi Li. 2025. LongBench v2: Towards deeper understanding and reasoning on realistic long-context multitasks. In 
+
+Proceedings of the 63rd Annual Meeting of the As-sociation for Computational Linguistics (Volume 1: Long Papers) , pages 3639–3664, Vienna, Austria. Association for Computational Linguistics. Boson AI. 2024. RPBench-Auto: An automated pipeline for evaluating LLMs for role-playing. 
+
+https://github.com/boson-ai/RPBench-Auto .Accessed: 2026-03-24. Aaron Chatterji, Thomas Cunningham, David Deming, Zoe Hitzig, Christopher Ong, Carl Yan Shan, and Kevin Wadman. 2025. How people use ChatGPT. Nber working paper, National Bureau of Economic Research, Cambridge, MA. Ding Chen, Simin Niu, Kehang Li, Peng Liu, Xi-angping Zheng, Bo Tang, Xinchi Li, Feiyu Xiong, and Zhiyu Li. 2026. Halumem: Evaluating hallu-cinations in memory systems of agents. Preprint ,arXiv:2511.03506. Zihao Cheng, Weixin Wang, Yu Zhao, Ziyang Ren, Ji-axuan Chen, Ruiyang Xu, Shuai Huang, Yang Chen, Guowei Li, Mengshi Wang, Yi Xie, Ren Zhu, Zeren Jiang, Keda Lu, Yihong Li, Xiaoliang Wang, Li-wei Liu, and Cam-Tu Nguyen. 2026. Lifebench: A benchmark for long-horizon multi-source memory. 
+
+Preprint , arXiv:2603.03781. Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj Yadav. 2025. Mem0: Building production-ready ai agents with scalable long-term memory. Preprint , arXiv:2504.19413. Google DeepMind. 2026. Gemini 3.1 pro. Accessed: 2026-03-27. Bernal Jiménez Gutiérrez, Yiheng Shu, Weijian Qi, Sizhe Zhou, and Yu Su. 2025. From RAG to memory: Non-parametric continual learning for large language models. In Forty-second International Conference on Machine Learning .Yuanzhe Hu, Yu Wang, and Julian McAuley. 2026a. Evaluating memory in LLM agents via incremental multi-turn interactions. In The Fourteenth Interna-tional Conference on Learning Representations .Yuyang Hu, Shichun Liu, Yanwei Yue, Guibin Zhang, Boyang Liu, Fangyi Zhu, Jiahang Lin, Honglin Guo, Shihan Dou, Zhiheng Xi, Senjie Jin, Jiejun Tan, Yan-bin Yin, Jiongnan Liu, Zeyu Zhang, Zhongxiang Sun, Yutao Zhu, Hao Sun, Boci Peng, and 28 others. 2026b. Memory in the age of ai agents. Preprint ,arXiv:2512.13564. Wei-Chieh Huang, Weizhi Zhang, Yueqing Liang, Yuanchen Bei, Yankai Chen, Tao Feng, Xinyu Pan, Zhen Tan, Yu Wang, Tianxin Wei, Shanglin Wu, Ruiyao Xu, Liangwei Yang, Rui Yang, Wooseong Yang, Chin-Yuan Yeh, Hanrong Zhang, Haozhen Zhang, Siqi Zhu, and 41 others. 2026. Rethinking memory mechanisms of foundation agents in the sec-ond half: A survey. Preprint , arXiv:2602.06052. Bowen Jiang, Zhuoqun Hao, Young Min Cho, Bryan Li, Yuan Yuan, Sihao Chen, Lyle Ungar, Camillo Jose Taylor, and Dan Roth. 2025a. Know me, respond to me: Benchmarking LLMs for dynamic user profil-ing and personalized responses at scale. In Second Conference on Language Modeling .Bowen Jiang, Yuan Yuan, Maohao Shen, Zhuoqun Hao, Zhangchen Xu, Zichen Chen, Ziyi Liu, Anvesh Rao Vijjini, Jiashu He, Hanchao Yu, Radha Poovendran, Gregory Wornell, Lyle Ungar, Dan Roth, Sihao Chen, and Camillo Jose Taylor. 2025b. Personamem-v2: Towards personalized intelligence via learning im-plicit user personas and agentic memory. Preprint ,arXiv:2512.06688. Jeff Johnson, Matthijs Douze, and Herve Jegou. 2021. Billion-Scale Similarity Search with GPUs . IEEE Transactions on Big Data , 7(03):535–547. Jiazheng Kang, Mingming Ji, Zhe Zhao, and Ting Bai. 2025. Memory OS of AI agent. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pages 25961–25970, Suzhou, China. Association for Computational Linguistics. Ishita Kumar, Snigdha Viswanathan, Sushrita Yerra, Alireza Salemi, Ryan A. Rossi, Franck Dernoncourt, Hanieh Deilamsalehy, Xiang Chen, Ruiyi Zhang, Shubham Agarwal, Nedim Lipka, Chien Van Nguyen, Thien Huu Nguyen, and Hamed Zamani. 2024. Longlamp: A benchmark for personalized long-form text generation. Preprint , arXiv:2407.11016. Xintong Li, Jalend Bantupalli, Ria Dharmani, Yuwei Zhang, and Jingbo Shang. 2025. Toward multi-session personalized conversation: A large-scale dataset and hierarchical tree framework for implicit reasoning. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing ,pages 11493–11506, Suzhou, China. Association for Computational Linguistics. Nelson F. Liu, Kevin Lin, John Hewitt, Ashwin Paran-jape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. 2024. Lost in the middle: How language mod-els use long contexts. Transactions of the Association for Computational Linguistics , 12:157–173. Adyasha Maharana, Dong-Ho Lee, Sergey Tulyakov, Mohit Bansal, Francesco Barbieri, and Yuwei Fang. 2024. Evaluating very long-term conversational memory of LLM agents. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 13851– 13870, Bangkok, Thailand. Association for Compu-tational Linguistics. Vasilije Markovic, Lazar Obradovic, Laszlo Hajdu, and Jovan Pavlovic. 2025. Optimizing the interface be-tween knowledge graphs and llms for complex rea-soning. Preprint , arXiv:2505.24478. Meta. 2025. Personal superintelligence. https://www. meta.com/superintelligence/ . Accessed: 2026-03-25. OpenAI. 2024a. GPT-4o mini: Advancing cost-efficient intelligence. Accessed: 2026-03-28. OpenAI. 2024b. Hello gpt-4o. Accessed: 2026-03-28. OpenAI. 2024c. Memory and new controls for ChatGPT. https://openai.com/index/ memory-and-new-controls-for-chatgpt/ . Ac-cessed: 2026-03-24. OpenAI. 2024d. New embedding models and API up-dates. Accessed: 2026-03-28. OpenAI. 2025a. Introducing GPT-5. Accessed: 2026-03-27. OpenAI. 2025b. The power of personalized AI. Ac-cessed: 2026-03-25. Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang, Shishir G. Patil, Ion Stoica, and Joseph E. Gonzalez. 2024. Memgpt: Towards llms as operating systems. 
+
+Preprint , arXiv:2310.08560. Preston Rasmussen, Pavlo Paliychuk, Travis Beauvais, Jack Ryan, and Daniel Chalef. 2025. Zep: A tempo-ral knowledge graph architecture for agent memory. 
+
+Preprint , arXiv:2501.13956. Elaine Rich. 1979. User modeling via stereotypes. Cog-nitive Science , 3(4):329–354. Stephen E Robertson and Steve Walker. 1994. Some simple effective approximations to the 2-poisson model for probabilistic weighted retrieval. In SI-GIR’94: Proceedings of the Seventeenth Annual In-ternational ACM-SIGIR Conference on Research and Development in Information Retrieval, organised by Dublin City University , pages 232–241. Springer. Alireza Salemi, Sheshera Mysore, Michael Bendersky, and Hamed Zamani. 2024. LaMP: When large lan-guage models meet personalization. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 7370–7392, Bangkok, Thailand. Association for Computational Linguistics. Freda Shi, Xinyun Chen, Kanishka Misra, Nathan Scales, David Dohan, Ed H. Chi, Nathanael Schärli, and Denny Zhou. 2023. Large language models can be easily distracted by irrelevant context. In Proceed-ings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learning Research , pages 31210–31227. PMLR. Lei Wang, Chen Ma, Xueyang Feng, Zeyu Zhang, Hao Yang, Jingsen Zhang, Zhiyuan Chen, Jiakai Tang, Xu Chen, Yankai Lin, and 1 others. 2024a. A survey on large language model based autonomous agents. 
+
+Frontiers of Computer Science , 18(6):186345. Noah Wang, Z.y. Peng, Haoran Que, Jiaheng Liu, Wangchunshu Zhou, Yuhan Wu, Hongcheng Guo, Ruitong Gan, Zehao Ni, Jian Yang, Man Zhang, Zhaoxiang Zhang, Wanli Ouyang, Ke Xu, Wenhao Huang, Jie Fu, and Junran Peng. 2024b. RoleLLM: Benchmarking, eliciting, and enhancing role-playing abilities of large language models. In Findings of the Association for Computational Linguistics: ACL 2024 , pages 14743–14777, Bangkok, Thailand. As-sociation for Computational Linguistics. Wenhui Wang, Furu Wei, Li Dong, Hangbo Bao, Nan Yang, and Ming Zhou. 2020. Minilm: deep self-attention distillation for task-agnostic compression of pre-trained transformers. In Proceedings of the 34th International Conference on Neural Information Processing Systems , NIPS ’20, Red Hook, NY, USA. Curran Associates Inc. Di Wu, Hongwei Wang, Wenhao Yu, Yuwei Zhang, Kai-Wei Chang, and Dong Yu. 2025. Longmemeval: Benchmarking chat assistants on long-term interac-tive memory. In The Thirteenth International Con-ference on Learning Representations .Tingyu Wu, Zhisheng Chen, Ziyan Weng, Shuhe Wang, Chenglong Li, Shuo Zhang, Sen Hu, Silin Wu, Qizhen Lan, Huacan Wang, and Ronghao Chen. 2026. Knowme-bench: Benchmarking person under-standing for lifelong digital companions. Preprint ,arXiv:2601.04745. Zhiheng Xi, Wenxiang Chen, Xin Guo, Wei He, Yiwen Ding, Boyang Hong, Ming Zhang, Junzhe Wang, Sen-jie Jin, Enyu Zhou, Rui Zheng, Xiaoran Fan, Xiao Wang, Limao Xiong, Yuhao Zhou, Weiran Wang, Changhao Jiang, Yicheng Zou, Xiangyang Liu, and 9 others. 2025. The rise and potential of large lan-guage model based agents: a survey. Science China Information Sciences , 68(2):121101. Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao Tan, and Yongfeng Zhang. 2025. A-mem: Agentic memory for LLM agents. In The Thirty-ninth An-nual Conference on Neural Information Processing Systems .Sangyeon Yoon, Sunkyoung Kim, Hyesoo Hong, Wonje Jeung, Yongil Kim, Wooseok Seo, Heuiy-een Yeen, and Albert No. 2026. Benchpres: Abenchmark for context-aware personalized prefer-ence selectivity of persistent-memory llms. Preprint ,arXiv:2603.16557. Xinrong Zhang, Yingfa Chen, Shengding Hu, Zihang Xu, Junhao Chen, Moo Hao, Xu Han, Zhen Thai, Shuo Wang, Zhiyuan Liu, and Maosong Sun. 2024. 
+
+∞Bench: Extending long context evaluation beyond 100K tokens. In Proceedings of the 62nd Annual Meeting of the Association for Computational Lin-guistics (Volume 1: Long Papers) , pages 15262– 15277, Bangkok, Thailand. Association for Compu-tational Linguistics. Yanzhao Zhang, Mingxin Li, Dingkun Long, Xin Zhang, Huan Lin, Baosong Yang, Pengjun Xie, An Yang, Dayiheng Liu, Junyang Lin, Fei Huang, and Jingren Zhou. 2025a. Qwen3 embedding: Advancing text embedding and reranking through foundation models. 
+
+Preprint , arXiv:2506.05176. Zeyu Zhang, Quanyu Dai, Xiaohe Bo, Chen Ma, Rui Li, Xu Chen, Jieming Zhu, Zhenhua Dong, and Ji-Rong Wen. 2025b. A survey on the memory mechanism of large language model-based agents. ACM Trans. Inf. Syst. , 43(6). Siyan Zhao, Mingyi Hong, Yang Liu, Devamanyu Haz-arika, and Kaixiang Lin. 2025. Do LLMs recognize your preferences? evaluating personalized preference following in LLMs. In The Thirteenth International Conference on Learning Representations .Thomas P Zollo, Andrew Wei Tung Siah, Naimeng Ye, Ang Li, and Hongseok Namkoong. 2025. Personal-LLM: Tailoring LLMs to individual preferences. In 
+
+The Thirteenth International Conference on Learning Representations .
+
+A Memory System Implementation Details 
+
+This section provides detailed technical descrip-tions and hyperparameter settings for each evalu-ated memory system. Table 3 provides an overview of all systems organized by the five-category tax-onomy. All RAG and agentic memory systems use GPT-4o-mini (temperature=0) as the generation backbone. 
+
+A.1 Long-Context Baselines 
+
+Long-context baselines receive all conversation chunks concatenated into a single context window preceding the test query. No retrieval or memory management is performed; the model attends over the full history directly. 
+
+GPT-4o-mini (OpenAI, 2024a) is used with a 128K context window. It serves as the shared gen-eration backbone for all non-long-context systems, ensuring that performance differences across RAG and agentic systems reflect memory architecture rather than generation capability. 
+
+GPT-4o (OpenAI, 2024b) is used with a 128K context window. Compared to GPT-4o-mini, it of-fers stronger reasoning capabilities at higher com-putational cost, allowing us to assess whether gen-eration quality affects the Know–Act gap. 
+
+Gemini 3.1 Flash (Google DeepMind, 2026) supports a context window exceeding 1 million to-kens, meaning the entire conversation history fits within the window for all personas in our bench-mark. Table 3: Memory systems evaluated in KnowAct, organized by the five-category taxonomy.                    
+
+> Category System Key Mechanism
+> Long-Context GPT-4o-mini (OpenAI, 2024a) Full concatenation (128K) GPT-4o (OpenAI, 2024b) Full concatenation (128K) Gemini 3.1 Flash (Google DeepMind, 2026) Full concatenation (1M) Claude 4.6 Sonnet (Anthropic, 2026) Full concatenation (1M) Simple RAG BM25 (Robertson and Walker, 1994) Sparse lexical retrieval Embedding RAG RAG te3-small (OpenAI, 2024d) Dense vector retrieval (1536d) RAG te3-large (OpenAI, 2024d) Dense vector retrieval (3072d) RAG Qwen3-Emb-4B (Zhang et al., 2025a) Dense vector retrieval (1024d) Structure-Aug. RAG Mem0 (Chhikara et al., 2025) Fact extraction + vector/graph store Zep/Graphiti (Rasmussen et al., 2025) Temporal knowledge graph Cognee (Markovic et al., 2025) Feedback-refined KG HippoRAG-v2 (Gutiérrez et al., 2025) CLS-inspired pattern completion Agentic Memory Letta/MemGPT (Packer et al., 2024) Hierarchical memory mgmt. Self-RAG (Asai et al., 2024) Learned retrieval decisions MemoryOS (Kang et al., 2025) OS-inspired memory mgmt. A-MEM (Xu et al., 2025) Zettelkasten-based memory
+
+Claude 4.6 Sonnet (Anthropic, 2026) is eval-uated with a 1M context window. As one of the strongest available models, it provides an upper-bound reference for what long-context processing can achieve on the KnowAct tasks. 
+
+A.2 Simple RAG BM25 (Robertson and Walker, 1994) uses the BM25 algorithm with default parameters ( k1=1.5, 
+
+b=0.75) to rank chunks based on sparse lexical overlap. At query time, the top-10 chunks ranked by BM25 score are retrieved and concatenated as context for GPT-4o-mini. 
+
+A.3 Embedding-based RAG 
+
+We evaluate three embedding models of varying capacity, all using FAISS (Johnson et al., 2021) for vector indexing and cosine similarity for retrieval. The top-10 most similar chunks are retrieved as context for GPT-4o-mini. 
+
+RAG te3-small uses OpenAI’s text-embedding-3-small (OpenAI, 2024d) (1,536 dimensions), a lightweight embedding model suitable for high-throughput applications. 
+
+RAG te3-large uses OpenAI’s text-embedding-3-large (OpenAI, 2024d) (3,072 dimensions), of-fering higher retrieval precision at increased com-putational cost. 
+
+RAG Qwen3-Emb-4B uses Qwen3-Embedding-4B (Zhang et al., 2025a) (1,024 dimensions), a recent open-source embedding model that achieves competitive retrieval performance with a smaller dimensionality. 
+
+A.4 Structure-Augmented RAG 
+
+These systems augment retrieval with structured representations such as fact triples, knowledge graphs, or temporal indices. Each processes conver-sation chunks through its native ingestion pipeline during the injection phase. 
+
+Mem0 (Chhikara et al., 2025) (v1.0.7) uses GPT-4o-mini to extract atomic facts from each con-versation chunk during injection. Extracted facts are stored in both a Qdrant vector database and a knowledge graph. At query time, Mem0 retrieves relevant facts by combining vector similarity search with graph traversal. 
+
+Zep/Graphiti (Rasmussen et al., 2025) con-structs a bi-temporal knowledge graph during chunk injection, tracking both when events oc-curred and when they were ingested. Entity and re-lationship extraction builds the graph incrementally. Retrieval combines graph traversal with semantic search over temporal subgraphs. 
+
+Cognee (Markovic et al., 2025) builds a knowl-edge graph using its Extract-Cognify-Load (ECL) pipeline. Each injected chunk updates the graph structure, and the system iteratively refines edge weights through feedback loops. Retrieval uses graph-augmented semantic search. 
+
+HippoRAG-v2 (Gutiérrez et al., 2025) imple-ments a dual-system architecture inspired by com-plementary learning systems theory. An LLM serves as the neocortex, a knowledge graph as the hippocampal index, and personalized PageRank en-ables schema-based pattern completion for associa-tive retrieval beyond direct keyword or embedding matching. 
+
+A.5 Agentic Memory 
+
+Agentic memory systems grant the agent control over its own memory operations, including what to store, when to retrieve, and how to organize accumulated knowledge. 
+
+Letta/MemGPT (Packer et al., 2024) manages a hierarchical memory system with three tiers: core memory (always present in context), recall memory (conversation history retrieved on demand), and archival memory (long-term storage for persistent facts). The agent autonomously issues function calls to move information between tiers, deciding what to retain in limited core memory and what to archive. 
+
+Self-RAG (Asai et al., 2024) implements a multi-step self-reflective retrieval pipeline. The system first decides whether retrieval is needed for a given query, then retrieves relevant chunks, assesses their relevance, generates a candidate response, verifies whether the response is grounded in retrieved con-tent, evaluates utility, and selects the best response. This process gives the agent autonomous control over when and what to retrieve. 
+
+MemoryOS (Kang et al., 2025) draws an anal-ogy between memory management and operating system design, implementing memory allocation, paging, and garbage collection mechanisms. It uses all-MiniLM-L6-v2 (Wang et al., 2020) as its em-bedding model, as specified in the original imple-mentation, rather than the shared text-embedding-3-small used by other systems. 
+
+A-MEM (Xu et al., 2025) organizes memory around the Zettelkasten (slip-box) method. Each new piece of information triggers the creation of a structured note with contextual descriptions, key-words, and tags. Critically, the system updates older notes in light of new information, enabling memory evolution rather than append-only accu-mulation. 
+
+B Prompt Templates and Judge Design 
+
+B.1 Memory Injection Prompt 
+
+For long-context agents, conversation chunks are concatenated using the MemoryAgentBench proto-col (Hu et al., 2026a). Each chunk is wrapped in a memorization template:           
+
+> <User> The following context is the conversation between the user and the assistant: User: {message_1} Assistant: {message_2} ... <Assistant> I have memorized the conversation and I will answer the question you ask.
+
+For RAG-based systems, retrieved chunks are formatted as numbered memory entries: 
+
+> Memory 1: {chunk_text_1} Memory 2: {chunk_text_2} ... {question}
+
+where {message_1} , {message_2} , etc., are in-dividual conversation turns. For RAG systems, 
+
+{chunk_text_i} represents the retrieved chunk text, and {question} is the user’s query. 
+
+B.2 Know and Act Test Prompts 
+
+Both Know and Act tests use a minimal system prompt to isolate the memory system’s contribu-tion: 
+
+> System: You are a helpful personal assistant. User: {know_question or act_scenario}
+
+where {know_question} is phrased in first per-son (e.g., “Do I have any seasonal allergies?”) for Know tests, and {act_scenario} presents a natu-ral request without referencing the target preference (e.g., “Can you recommend some fun weekend ac-tivities for this spring?”) for Act tests. 
+
+B.3 Know Judge Prompt 
+
+The Know judge (GPT-5, reasoning effort=low) evaluates whether the agent correctly recalled a specific user preference:           
+
+> You are an impartial judge evaluating whether an AI assistant correctly recalled a specific user preference.
+> Input
+> - Question: The question asked to the assistant about the user’s preference. - Ground Truth: The correct answer about the user’s preference. -Assistant Response: The assistant’s actual response.
+> Evaluation Criteria
+> Rate the response as Pass or Fail: - Pass: The response conveys the same core information as the ground truth. Exact wording need not match, paraphrasing, reordering, or adding minor context is fine, as long as the essential preference is correctly identified.
+
+- Fail: The response does not demonstrate knowledge of the specific preference. 
+
+Output Format 
+
+Respond ONLY with a JSON object: {"score": "pass" or "fail", "reasoning": "One sentence explanation."} 
+
+B.4 Act Judge Prompt 
+
+The Act judge (GPT-5, reasoning effort=low) eval-uates whether the memory-augmented response reflects consideration of the user’s preference by comparing it against the zero-memory baseline: 
+
+You are an impartial judge evaluating whether an AI assistant’s response reflects consideration of a known user preference. You will compare two responses to the same user request: - Response A: Generated WITHOUT any knowledge of the user (zero-memory baseline). - Response B: Generated by a system WITH access to the user’s conversation history. 
+
+Input 
+
+- User Preference: The preference the memory-enabled system should ideally be aware of. - User Request: The scenario posed to the assistant. - Response A (Zero-Memory): Baseline response with no user knowledge. - Response B (With Memory): Response from the memory-enabled system. 
+
+Evaluation Criteria 
+
+Rate as Pass or Fail: - Pass: Response B appears to take the user’s preference into account in a way that Response A does not. The preference does not need to be explicitly mentioned, it is sufficient if the response’s suggestions, tone, or direction seem shaped by awareness of the preference. - Fail: - Response B shows no discernible difference from Response A in how it addresses the preference - Response B ignores the preference entirely despite having memory access 
+
+Important 
+
+- Do NOT favor Response B simply because it is longer or more detailed. - The preference can be reflected implicitly, look for whether the overall response feels tailored rather than generic. 
+
+Output Format 
+
+Respond ONLY with a JSON object: {"score": "pass" or "fail", "reasoning": "One sentence explanation."} 
+
+Blinded Act Judge Validation. To quantify the potential bias introduced by the non-blind Act judge design, we randomly shuffle the assignment of Response A and B and remove all labels in-dicating memory access on a 200-sample subset. The blinded judge produces identical verdicts on 95% of cases, with Cohen’s Kappa of 0.87 com-pared to the non-blinded judge. Among the dis-agreements, 5 cases were upgraded (blind=Fail, non-blind=Pass) and 5 cases were downgraded, showing no systematic bias toward the memory-augmented response. 
+
+B.5 Snippet Generation Prompts B.5.1 Explicit Snippet Generation 
+
+GPT-5 (temperature=0.7) generates conversations where the user directly states the preference: 
+
+You are generating a short conversation between a user and an AI chatbot. 
+
+Context 
+
+- User persona (for tone only): {short_persona} - Preference to convey: {preference_text} - Category: {preference_type_label} 
+
+Task 
+
+Generate a natural 2-4 turn conversation where the user DIRECTLY TELLS the chatbot the above preference. The preference itself should be the MAIN POINT of what the user is saying. 
+
+Key principle 
+
+Think of it this way: the user is sharing something about themselves with the chatbot. Like telling a friend "I’m really into sumo wrestling" or "My dad’s side of the family has diabetes." 
+
+Rules 
+
+1. The preference IS the message: Do NOT wrap it inside a task request. 2. Natural phrasing: Do NOT copy the preference text verbatim. 3. Persona-consistent tone: Match the speaking style to the persona. 4. Chatbot responds naturally: Acknowledge and engage (2-4 sentences). 5. No identity leakage: Do NOT reveal job, nationality, age, etc. 6. Language: MUST be in English. 
+
+Category guidance 
+
+- Interests & hobbies: "I’m really into origami – I love the precision." - Health & medical: "My dad’s side has diabetes, so I watch my sugar." - Therapy & emotional: "I’ve been carrying guilt about being away from my kids." 
+
+Output 
+
+Return ONLY a JSON array: [{"role": "user", "content": "..."}, ...] 
+
+where {short_persona} , {preference_text} ,and {preference_type_label} are tem-plate fields. {short_persona} provides abrief persona description for tone matching. 
+
+{preference_text} is the specific user prefer-ence to be conveyed. {preference_type_label} 
+
+indicates the category (Interests & hobbies, Health & medical, or Therapy & emotional). 
+
+B.5.2 Inferential Snippet Generation 
+
+GPT-5 (temperature=0.7) generates conversations where the preference is never directly stated but inferable from behavioral cues: 
+
+You are generating a short conversation between a user and an AI chatbot. 
+
+Context 
+
+- User persona (for tone only): {short_persona} - Hidden preference (DO NOT mention directly): {preference_text} - Category: {preference_type_label} 
+
+Task 
+
+Generate a natural 2-4 turn conversation where the user makes a request that implicitly reveals the preference through behavior, choices, or situational details – WITHOUT ever directly stating it. 
+
+Key principle – the "one step of reasoning" test 
+
+After reading, a perceptive reader should conclude: "This person probably [core of the preference]." The inference should require at least one reasoning step, but the core must be REACHABLE. Bad (too deep): preference is "family history of diabetes on maternal side" → user only asks for low-sugar recipes. Reader can only guess "watches sugar intake" – maternal side is lost. Good: "My mom’s been after me to cut back on sugar ever since her doctor put her on metformin. Can you suggest lower-glycemic snacks?" → Reader infers: mom + metformin →
+
+maternal diabetes history. 
+
+Rules 
+
+1. The preference is INVISIBLE: Never state, name, or paraphrase it. 2. Behavior reveals the preference: Inferable from what user asks. 3. Natural purpose: Genuine request (planning, advice, shopping, etc.). 4. Chatbot responds naturally: Help with the request (2-4 sentences). 5. No identity leakage: Do NOT reveal job, nationality, age, etc. 6. Language: MUST be in English. 
+
+Category guidance 
+
+- Interests: "I’m heading to Colorado in February. What gear do I need to rent? Ihave my own boots and goggles." (skiing, never said) - Health: "My eyes have been killing me all week and the tree count is off the charts tomorrow. Can we move our meeting indoors?" (pollen) - Therapy: "I missed my daughter’s recital again because of a client dinner. Can you help me draft a message to her teacher?" (guilt) 
+
+Output 
+
+Return ONLY a JSON array: [{"role": "user", "content": "..."}, ...] 
+
+where {short_persona} , {preference_text} ,and {preference_type_label} are template fields with the same meanings as in the explicit prompt. 
+
+B.6 Test Generation Prompt 
+
+GPT-5 (temperature=0.7) generates paired Know and Act tests for each preference: 
+
+You are creating paired evaluation items for the KnowAct benchmark, which tests whether AI memory agents can both RECALL user preferences (Know) and APPLY them in practice (Act). 
+
+Input 
+
+- User preference: {preference_text} - Preference type: {preference_type_label} 
+
+Task 
+
+Generate TWO paired tests for this preference: 
+
+1. KNOW TEST 
+
+A simple, direct question that checks whether the agent remembers this specific preference. Requirements: - Use FIRST PERSON: "Do I have pollen allergies?" (NOT third person) - Should be unambiguous and answerable with a short response - Requires ONLY memory recall, no complex reasoning - Specific enough that a correct answer confirms the exact preference 
+
+2. ACT TEST 
+
+A natural user request (scenario) where this preference SHOULD influence the agent’s response. Requirements: - Should be a realistic request a user might make to a chatbot - The preference’s relevance should be IMPLICIT – do NOT mention it - A preference-aware response should be noticeably different from a preference-unaware response - Evaluated by comparing response WITH memory against zero-memory baseline 
+
+Category guidance for Act scenario design 
+
+- Interests & hobbies: A request where knowing this interest improves recommendations (activities, gifts, content, travel). - Health & medical: A request where the condition should influence recommendations (meal planning, exercise, health checkups). - Therapy & emotional: A request where understanding the emotional background leads to more sensitive suggestions. 
+
+Output format 
+
+Return ONLY a JSON object: {"know_test": {"question": "...", "ground_truth": "..."}, "act_test": {"scenario": "..."}} 
+
+where {preference_text} and 
+
+{preference_type_label} are template fields. 
+
+{preference_text} is the specific user pref-erence for which tests are being generated. 
+
+{preference_type_label} indicates the category (Interests & hobbies, Health & medical, or Therapy & emotional). 
+
+B.7 Evaluation Protocol Details 
+
+• Generation model : GPT-4o-mini via Open-Router, temperature=0, max output to-kens=2,048. • Judge model : GPT-5 via OpenAI API, rea-soning effort=low. • RAG top-K : 10 chunks for all RAG-based systems. • Chunk definition : Each chunk corresponds to one PersonaMem-v2 conversation entry (2– 6 messages), preserving natural conversation boundaries. 
+
+C Data Construction Details 
+
+Table 4 summarizes the overall statistics of the KnowAct benchmark dataset. 
+
+Table 4: KnowAct dataset statistics.                   
+
+> Statistic Value
+> Personas & Preferences
+> Personas (cultural regions) 50 (11) Preferences per persona 20 Total preferences 1,000 Preference types 5Expression types 3
+> Conversation Chunks
+> Chunk sequences 150 (50 ×3) Total chunks 11,955 (3,985 per type) Chunks per persona 79.7 (55–116) Target : non-target ratio ∼1 : 3
+> Tokens (GPT-4o tokenizer)
+> Explicit 1,376,927 (27.5K/persona) Incidental 1,652,583 (33.1K/persona) Inferential 1,524,506 (30.5K/persona)
+> Total 4,554,016
+> Evaluation
+> Paired tests (Know + Act) 1,000 Total queries 2,000
+
+C.1 Persona Selection (Step 1) 
+
+We select 50 personas from PersonaMem-v2’s 999 personas through a multi-stage filtering and strati-fied sampling pipeline. 
+
+Filtering criteria. Three filters are applied se-quentially: 1. Nationality : Personas with null or missing nationality fields are excluded (68 removed), as nationality is required for cultural-region stratification. 2. Preference count : We require >70 total pref-erences per persona. This ensures at least ∼50 non-target conversation entries remain after sampling 20 target preferences, providing suf-ficient distractor context in chunk sequences. 3. Language : Personas whose short_persona 
+
+description contains non-English characters (CJK: U+4E00–U+9FFF, Arabic: U+0600– U+06FF, Hebrew: U+0590–U+05FF) are ex-cluded, as all generated snippets and tests are in English. 
+
+Stratified sampling. Remaining personas are classified into 11 cultural regions via substring matching of nationality fields (e.g., “American” →
+
+North America, “Japanese” → East Asia). Each region is guaranteed a minimum of 2 personas; the remaining 28 slots are allocated proportion-ally by region pool size using the largest-remainder method. All randomization uses a fixed seed of 42. Table 5 shows the resulting distribution. 
+
+Table 5: Geographic distribution of the 50 selected per-sonas. Allocation uses stratified sampling with a mini-mum of 2 per region and proportional allocation for the remaining slots.                           
+
+> Region Pool Selected
+> North America 434 20 Southeast Asia 66 5Sub-Saharan Africa 44 4Western Europe 41 3South Asia 24 3Eastern/Northern Europe 22 3Other 19 3Oceania 19 3East Asia 92Middle East / North Africa 42Latin America 32
+> Total 685 50
+
+C.2 Preference Sampling (Step 2a) 
+
+For each persona, we sample 20 preferences with type-stratified quotas and a single-snippet con-straint. 
+
+Single-snippet constraint. A preference is eligi-ble for selection only if it has exactly one associated conversation snippet in PersonaMem-v2’s raw data. Preferences with zero snippets lack the incidental conversation needed for the Incidental condition, while preferences with multiple snippets would cre-ate ambiguity about which conversation entry to use as the target chunk. This constraint also en-sures each target preference appears exactly once in the chunk sequence. 
+
+Type quotas. We sample 20 preferences per persona using fixed quotas: 5 stereotypical, 5 anti-stereotypical, 4 neutral, 4 health/medical, 2 therapy/emotional. When a preference type has fewer eligible preferences than its quota, remain-ing slots are filled using a fallback priority order: neutral → anti-stereotypical → stereotypical →
+
+health/medical → therapy. 
+
+Persona replacement. If a persona has fewer than 20 eligible single-snippet preferences after quota filling, it is replaced by another persona from the same cultural region. The replace-ment must meet all filtering criteria ( >70 prefer-ences, ≥20 single-snippet preferences, English-only). The replacement retains the original 
+
+knowact_persona_id (e.g., KA_P15) to maintain stable identifiers. Up to 10 replacement iterations are performed with incrementing random seeds (42 + i). Table 6 shows the resulting distribution.                  
+
+> Table 6: Distribution of 1,000 sampled preferences by type. Deviations from exact quota ×50 reflect the fallback mechanism.
+> Preference Type Quota Actual
+> Stereotypical 5229 Anti-stereotypical 5252 Neutral 4257 Health/medical 4162 Therapy/emotional 2100
+> Total 20 1,000
+
+C.3 Snippet Generation (Steps 2b/2c) 
+
+We generate two conversation snippet variants for each of the 1,000 preferences using GPT-5 (temper-ature=0.7, reasoning effort=low) via OpenRouter. The Incidental variant requires no generation as it uses PersonaMem-v2’s original conversation entry directly. 
+
+Explicit snippets (Step 2b). The prompt in-structs GPT-5 to generate a 2–4 turn conversation where the user directly states the preference as the main point of the message. Key constraints: (1) the preference must be the central message, not buried within a task request; (2) natural paraphras-ing rather than verbatim copying of the preference text; (3) persona-consistent speaking style; (4) no identity leakage (nationality, profession, age). 
+
+Inferential snippets (Step 2c). The prompt in-structs GPT-5 to generate a 2–4 turn conversation where the preference is never directly stated but inferable from behavioral cues. We enforce a “one step of reasoning” test: a perceptive reader should be able to conclude the core preference through a single inference step. For example, if the pref-erence is “family history of diabetes on maternal side,” a bad snippet would have the user merely ask for low-sugar recipes (too indirect—the maternal side is lost), while a good snippet might mention “Mom’s been on me about cutting sugar since her doctor put her on metformin” (metformin + mother 
+
+→ maternal diabetes). 
+
+Validation. Each generated snippet undergoes structural validation: at minimum 2 messages, each with a valid role (user/assistant) and non-empty content. Failed validations trigger up to 2 addi-tional generation attempts. API rate limits (HTTP 429) are handled with exponential backoff. Table 7 summarizes the token usage and esti-mated cost. 
+
+C.4 Chunk Sequence Construction (Step 3) 
+
+Each persona has 3 chunk sequences (one per ex-pression type), constructed from PersonaMem-v2’s raw conversation data with expression-specific tar-get snippets substituted in. 
+
+Chunk composition. Each sequence contains two types of chunks: • Target chunks (20 per sequence): One per sampled preference. The conversation snip-pet varies by expression type—explicit snip-pets from Step 2b, original PersonaMem-v2 entries for Incidental, or Inferential snippets from Step 2c. • Non-target chunks (∼60 per sequence): Drawn from the same persona’s remaining conversation entries. These include non-target preference conversations, ask-to-forget requests (for non-target preferences only), and sensitive information entries. Non-target chunks are identical across all three expres-sion types for the same persona. 
+
+Conflict removal. To ensure unambiguous pref-erence signals, several types of entries are removed from chunk sequences: • Ask-to-forget entries referencing target preferences : These would instruct the agent to forget a preference we later test, creating contradictory signals. • Updated entries for target preferences :PersonaMem-v2 contains preference update conversations where users modify earlier state-ments. If the updated preference is a target, Table 7: Token usage and estimated cost for generating explicit and inferential snippet variants (GPT-5).                
+
+> Variant Input Tokens Output Tokens Cost
+> Explicit (Step 2b) 670,619 770,408 $8.54 Inferential (Step 2c) 1,049,619 1,391,627 $15.23 Test Pairs (Step 4) 486,789 604,054 $6.65
+> Total 2,207,027 2,766,089 $30.42
+
+both the original and update are removed to avoid conflicting versions. • Duplicate target entries : If a preference ap-pears in multiple conversation types, only the first occurrence is kept. • Non-English and multimodal entries : Re-moved for consistency. 
+
+Ordering. Chunks are ordered using adependency-aware algorithm: (1) independent chunks (no prev_pref field) are shuffled with a fixed seed; (2) dependent chunks (e.g., ask-to-forget entries that reference a preceding preference) are inserted immediately after their dependency. This preserves conversational coherence while randomizing the overall sequence. 
+
+Statistics. Total: 150 sequences, 11,955 chunks, 4.55M tokens. Table 8 reports token distribution across the three expression types. 
+
+Table 8: Token distribution across 150 chunk sequences (50 personas × 3 expression types). Non-target chunks are shared across expression types; only the target snip-pet differs.                
+
+> Expression Type Chunks Tokens Avg/Persona
+> Explicit 3,985 1,376,927 27,539 Incidental 3,985 1,652,583 33,052 Inferential 3,985 1,524,506 30,490
+> Total 11,955 4,554,016 —
+
+Incidental sequences are the longest because PersonaMem-v2’s original conversation entries (which serve as Incidental snippets) tend to be longer than GPT-5-generated Explicit and Infer-ential variants. 
+
+C.5 Non-target Chunk Composition 
+
+Non-target chunks serve as realistic distractor con-text, drawn from the same persona’s conversation history to maintain consistent persona character-istics. They include three categories: (1) non-target preference conversations that provide nat-ural background noise; (2) ask-to-forget entries for non-target preferences, which test whether mem-ory systems correctly handle unlearning requests without affecting target preferences; and (3) sensi-tive information entries (e.g., addresses, financial details) that test privacy-aware memory behavior. Table 9 shows the composition. 
+
+Table 9: Distribution of non-target chunk types across all sequences.      
+
+> Chunk Type Count
+> Non-target preferences 2,195 Ask-to-forget (non-target) 620 Sensitive information 170
+> Total non-target 2,985
+
+C.6 Test Generation (Step 4) 
+
+For each of the 1,000 preferences, we generate a paired Know test and Act test using GPT-5 (tem-perature=0.7, reasoning effort=low). 
+
+Know test design. Each Know test is a direct first-person question that checks whether the agent recalls the specific preference (e.g., “Do I have any seasonal allergies?” or “What kind of music do I collect?”). The question must be unambiguous and answerable with a short response, requiring only memory recall without complex reasoning. The ground truth is a structured short statement confirming the preference. 
+
+Act test design. Each Act test presents a realis-tic user request where the target preference should 
+
+influence the agent’s response, but the preference itself is never mentioned in the scenario. For exam-ple, for a preference about pollen allergies, the Act scenario might be “Can you recommend some fun weekend activities for this spring?” A preference-aware response should suggest indoor activities or mention allergy considerations, while a zero-memory response would give generic outdoor rec-ommendations. 
+
+Category-specific guidance. The generation prompt provides category-specific examples: • Interests & hobbies : Requests where know-ing the interest improves recommendations (activities, gifts, travel). • Health & medical : Requests where the condi-tion should influence suggestions (meal plan-ning, exercise, checkups). • Therapy & emotional : Requests where emo-tional background leads to more sensitive, per-sonalized advice. 
+
+Validation. Each generated test pair is vali-dated for structural completeness: the Know test must contain a non-empty question and 
+
+ground_truth , and the Act test must contain a non-empty scenario . Failed validations trigger regeneration with up to 2 additional attempts. 
+
+C.7 Representative Examples 
+
+Tables 10 and 11 present one representative prefer-ence from each of the five categories, illustrating how the same underlying preference is expressed across the three expression types (Table 10) and the corresponding Know and Act tests (Table 11). 
+
+D Quality Validation 
+
+D.1 Reproducibility 
+
+All stochastic steps use a fixed random seed (seed=42). Two independent runs of the persona selection pipeline (Step 1) produce byte-identical output files, confirming full reproducibility. 
+
+D.2 Target Preference Isolation 
+
+Each target preference appears in exactly one chunk per sequence. We verify this through the following checks: • Zero multi-snippet preferences : No prefer-ence has more than one conversation entry in any sequence (duplicate entries for target preferences are filtered in Step 3). • Zero identity leakage : Explicit and Infer-ential snippets generated in Step 2 do not leak persona identity information (nationality, name, demographic details) that could con-found the expression strength comparison. • Conflict removal : 81.7% of target prefer-ences in PersonaMem-v2’s original data have associated ask-to-forget or updated entries. All such conflicting entries are removed from the chunk sequence to ensure that each prefer-ence signal is unambiguous. 
+
+D.3 Cross-Baseline Consistency 
+
+For each persona, the three chunk sequences (Ex-plicit, Incidental, Inferential) share identical non-target chunks. Only the 20 target preference snip-pets differ across baselines. This is verified through an audit of 6 randomly selected personas, confirm-ing: • Non-target chunk lists are identical across all three expression types. • Chunk ordering is consistent (independent blocks in the same shuffled order; depen-dent blocks correctly positioned after their antecedents). • No information leakage between target and non-target chunks. 
+
+D.4 Zero-Memory Baseline Know Test 
+
+The zero-memory baseline evaluates each genera-tion model on all 1,000 Know test questions with-out any prior conversation history . The model receives only the system prompt and the Know question (e.g., “What multi-course dining style do I enjoy?”). This test serves a single purpose: validat-ing that KnowAct’s Know questions cannot be answered by prior knowledge or guessing alone ,thereby confirming that any non-trivial Know ac-curacy observed in memory-augmented systems genuinely reflects successful memorization rather than lucky inference. 
+
+Results. Table 12 reports the Know pass rates for all four generation models under the zero-memory condition. All models score below 3%, confirming that the Know questions are effectively unanswerable with-out memory. The small residual pass rates stem pri-marily from therapy/emotional preferences (where empathetic defaults happen to match ground truth) and stereotypical preferences (where demographic priors occasionally align). Anti-stereotypical pref-erences yield the lowest zero-memory pass rate (1.2% for GPT-4o-mini), validating that counter-stereotypical preferences are virtually impossible to guess. 
+
+Why only Know test. The Act judge evaluates whether a memory-augmented response is more preference-aware than the zero-memory response 
+
+(Section B.4). The zero-memory response itself 
+
+is the Act baseline—it is one of the two inputs to Table 10: Representative snippet excerpts across expression types. Each row shows how one preference appears in the Explicit, Incidental, and Inferential variants. Snippets are abbreviated from actual benchmark data. 
+
+Type Explicit Incidental Inferential 
+
+Stereo. 
+
+Kaiseki (P01) 
+
+I’m really into kaiseki—multi-course meals where seasonality and meticulous craft are front and center. I had to cancel a gathering at a ryotei where the chef had prepared a seasonal sequence of dishes. The meal moves from a tiny opener to a clear broth, then a platter reflecting mountain and sea, followed by sashimi. . . 
+
+Anti-s. 
+
+VR gaming (P02) 
+
+I really enjoy VR games. Rhythm games and exploration ones are my favorites. I joined a program that let me walk through a virtual reconstruction of an ancient temple. . . I keep fogging the lenses and feel sick when I do smooth turning in the ruins game. 
+
+Neutral 
+
+Tea (P03) 
+
+I really value quiet mornings with a hot cup of tea—no chatter, just the steam and first light. This morning I sat by the window with a mug of tea. . . the streets were still empty. I’m restoring a pre-war kettle for a 0500 balcony ritual. I need it running as quietly as possible. . . 
+
+Health 
+
+Allergies (P04) 
+
+I get a nasty bout of hay fever when the pollen kicks up—sneezing, itchy eyes, the whole parade. I find myself lingering in the house, taking my pipe out only in cooler evening hours. Every year once the tulips are up, my evening pipe turns into a chorus of sneezes and gritty eyes. 
+
+Therapy 
+
+Displace. (P05) 
+
+Coming back to Bhutan makes me feel oddly out of place, like a guest in my own home. I found myself walking familiar streets with an odd sense of distance—as though the buildings had shifted. I keep waking at odd hours and hesitating over whether to kiss a cheek or press my palms together. 
+
+Table 11: Know and Act tests for the representative examples in Table 10. 
+
+Category Know (question / ground truth) 
+
+Act (scenario) 
+
+Stereotyp. 
+
+Kaiseki 
+
+What multi-course dining style do Ienjoy? 
+
+GT: Kaiseki. 
+
+I’m planning asplurge-worthy anniversary dinner in Kyoto next month. Can you recommend places to book? 
+
+Anti-ster. 
+
+VR gaming 
+
+Do I enjoy VR-based gaming experiences? 
+
+GT: Yes. 
+
+I’ve got $600 to refresh my gaming setup in a small studio apartment. What should I prioritize? 
+
+Neutral 
+
+Tea 
+
+Do I appreciate quiet mornings with tea? 
+
+GT: Yes. 
+
+I want a small gift under $40 to make my mornings nicer. What would you suggest? 
+
+Health 
+
+Allergies 
+
+Do I have seasonal pollen allergies? 
+
+GT: Yes, spring and early summer. 
+
+I’m planning a day hike in late May. Suggest trails, timing, and apacking list? 
+
+Therapy 
+
+Displacement 
+
+What feeling do I tend to have returning to Bhutan after long stays in Europe? 
+
+GT: Displacement. 
+
+I just got back to Thimphu after several months in Europe. Help me plan my first week to ease back in? 
+
+Table 12: Zero-memory Know test pass rates by genera-tion model. 
+
+Model Know Pass Rate 
+
+Claude 4.6 Sonnet 0.4% Gemini 3.1 Flash 2.2% GPT-4o 2.3% GPT-4o-mini 2.7% 
+
+the Act judge, not something to be judged indepen-dently. Evaluating the zero-memory response with the Act judge would be comparing it against itself, which is trivially uninformative. 
+
+Why no expression type breakdown. In the zero-memory condition, the model never receives any conversation chunks. Since the three expres-sion types (Explicit, Incidental, Inferential) dif-fer only in how the target preference is embed-ded within the injected chunks, they are indis-tinguishable when no chunks are injected. The zero-memory Know test is therefore expression-type-agnostic: the same 1,000 questions yield the same results regardless of which expression variant would have been used in the memory-augmented condition. Beyond structural validation, we manually in-spect 100 randomly sampled Act scenarios to as-sess quality along two dimensions: (1) whether the scenario allows the target preference to be inferred from context without being explicitly mentioned, and (2) whether a preference-aware response would be meaningfully distinguishable from a preference-unaware response. E Judge Reliability 
+
+E.1 Human-LLM Agreement 
+
+We sample 100 Know judgments and 100 Act judg-ments for human evaluation. Three annotators in-dependently label each judgment. Cohen’s kappa between human majority vote and GPT-5 judge: Know 0.91, Act 0.84, indicating strong agreement. 
+
+E.2 Inter-Judge Agreement 
+
+We evaluate a second judge model (Claude Opus 4.6) on 200 randomly sampled judgments (100 Know, 100 Act). Inter-judge agreement between GPT-5 and Claude Opus: Know 0.87, Act 0.81. 
+
+F Detailed Results by Preference Type 
+
+This section presents detailed Know Accuracy ,
+
+Act Accuracy , and Utilization Rate metrics bro-ken down by preference type under the three ex-pression conditions (E = Explicit, In = Incidental, If = Inferential). Avg = macro-average over E/In/If. Best results in each column are bolded , with Long-Context systems bolded separately from retrieval-based systems. 
+
+G Summary Metrics by Preference Type 
+
+Tables 13–17 present detailed Know Accuracy , Act Accuracy , and Utilization Rate metrics under the three expression conditions (E = Explicit, In = In-cidental, If = Inferential) for each of the five prefer-ence types. Key observations: • Anti-stereotypical : Lowest zero-memory pass rate (1.2%), making it the most reliable diagnostic category. Mem0 achieves the high-est Utilization Rate among retrieval-based sys-tems (63.7% Avg), while Claude 4.6 Sonnet leads overall (67.0% Avg). • Health/Medical : Lowest Utilization Rates 
+
+across all systems, indicating severe utiliza-tion bottlenecks for safety-sensitive informa-tion. Even Claude 4.6 Sonnet’s best-case shows only 71.3% Avg Utilization Rate .• Neutral : Moderate performance across all metrics. Mem0 achieves 99.6% Know under Explicit but only 74.7% Act , with a 58.4% Avg Utilization Rate among retrieval-based systems. • Stereotypical : Shows the strongest perfor-mance in the Incidental condition due to align-ment with PersonaMem-v2’s original conver-sational patterns. • Therapy/Emotional : Highest zero-memory pass rate (9.0%), inflating Act scores through prior-based alignment. Claude 4.6 Sonnet achieves the highest Utilization Rate (71.2% Avg), with particularly strong Incidental per-formance (66.0%). 
+
+H LLM Usage Disclosure 
+
+We disclose all LLM usage in this work. GPT-5 is used for: (1) generating Explicit and Inferential conversation snippets (Section 3.1), (2) generating paired Know and Act test items (Section 3.1), and (3) serving as the LLM judge for both Know and 
+
+Act evaluation (Section 4.1). All prompts, hyper-parameters, and validation procedures are docu-mented in Appendix B. Table 13: Know/Act/Util for Anti-Stereotypical preferences. 
+
+Know Acc. (%) Act Acc. (%) Util. Rate (%) Type System E In If Avg E In If Avg E In If Avg Long-Context GPT-4o-mini 84.5 3.6 4.0 30.7 22.6 12.7 19.8 18.4 23.0 0.0 10.0 11.0 GPT-4o 99.2 38.1 62.3 66.5 43.7 18.7 23.0 28.4 44.0 25.0 28.0 32.3 Gemini 3.1 Flash 99.6 55.6 79.4 78.2 77.8 35.3 43.7 52.2 77.7 45.0 45.5 56.1 Claude 4.6 Sonnet 99.2 49.6 81.3 76.7 87.3 38.9 57.1 61.1 87.2 50.4 63.4 67.0 
+
+Simple RAG BM25 84.1 14.3 9.5 36.0 21.4 12.3 22.2 18.7 22.2 11.1 20.8 18.0 Embedding RAG RAG te3-small 98.8 15.9 35.3 50.0 56.7 13.5 28.2 32.8 57.4 27.5 37.1 40.7 RAG te3-large 98.4 19.0 37.3 51.6 56.7 13.9 29.8 33.5 56.9 18.8 38.3 38.0 RAG Qwen3-Emb-4B 99.2 17.1 47.2 54.5 62.3 15.1 26.6 34.7 62.8 16.3 32.8 37.3 Structure-Aug. RAG Mem0 97.2 25.8 47.6 56.9 79.8 28.2 45.2 51.1 81.2 52.3 57.5 63.7 
+
+Zep/Graphiti 54.8 1.6 0.8 19.0 15.9 10.7 12.7 13.1 17.4 0.0 0.0 5.8 Cognee 90.5 11.5 19.2 40.4 42.5 15.5 24.9 27.6 41.7 34.5 29.5 35.2 HippoRAG-v2 98.0 15.5 24.6 46.0 45.2 16.7 24.6 28.8 45.3 25.6 25.8 32.3 Agentic Memory Letta/MemGPT 86.9 13.5 18.3 39.6 40.9 17.1 21.8 26.6 41.1 14.7 37.0 30.9 Self-RAG 96.0 24.2 59.1 59.8 75.4 8.3 31.7 38.5 75.2 16.4 37.6 43.1 MemoryOS 96.8 8.3 32.5 45.9 57.5 15.1 27.4 33.3 59.0 14.3 47.6 40.3 A-MEM 88.1 9.5 14.7 37.4 28.2 18.3 21.0 22.5 27.9 25.0 29.7 27.6 
+
+Table 14: Know/Act/Util for Health & Medical preferences. 
+
+Know Acc. (%) Act Acc. (%) Util. Rate (%) Type System E In If Avg E In If Avg E In If Avg Long-Context GPT-4o-mini 85.8 7.4 12.3 35.2 10.5 6.2 9.3 8.6 10.1 0.0 5.0 5.0 GPT-4o 100.0 20.4 52.5 57.6 18.5 8.6 18.5 15.2 18.5 9.1 18.8 15.5 Gemini 3.1 Flash 98.8 25.3 72.2 65.4 75.3 31.5 61.7 56.2 75.0 46.3 64.1 61.8 Claude 4.6 Sonnet 98.8 21.6 72.2 64.2 87.7 37.7 68.5 64.6 87.5 57.1 69.2 71.3 
+
+Simple RAG BM25 90.1 10.5 10.5 37.0 9.9 3.7 14.8 9.5 11.0 0.0 41.2 17.4 Embedding RAG RAG te3-small 97.5 9.9 35.2 47.5 31.5 4.9 17.9 18.1 31.0 0.0 21.1 17.4 RAG te3-large 96.3 9.9 34.0 46.7 33.3 3.7 15.4 17.5 32.7 6.2 14.5 17.8 RAG Qwen3-Emb-4B 96.9 12.3 46.9 52.1 40.7 5.6 17.3 21.2 41.4 0.0 22.4 21.3 Structure-Aug. RAG Mem0 96.9 11.1 32.7 46.9 57.4 17.9 31.5 35.6 58.0 44.4 32.1 44.8 
+
+Zep/Graphiti 44.4 0.6 3.1 16.0 5.6 8.0 3.7 5.8 6.9 0.0 0.0 2.3 Cognee 94.4 9.9 28.2 44.2 14.8 6.8 14.1 11.9 15.0 6.2 12.5 11.3 HippoRAG-v2 98.8 10.5 29.6 46.3 27.2 5.6 13.6 15.4 26.9 5.9 10.4 14.4 Agentic Memory Letta/MemGPT 92.6 8.6 25.3 42.2 19.8 6.2 14.2 13.4 20.0 0.0 14.6 11.5 Self-RAG 94.4 7.4 30.9 44.2 63.0 4.9 19.8 29.2 61.4 0.0 28.0 29.8 MemoryOS 85.2 2.5 17.9 35.2 34.6 7.4 17.9 20.0 36.2 0.0 34.5 23.6 A-MEM 92.0 8.6 24.1 41.6 15.4 5.6 9.9 10.3 16.8 0.0 10.3 9.0 
+
+Table 15: Know/Act/Util for Neutral preferences. 
+
+Know Acc. (%) Act Acc. (%) Util. Rate (%) Type System E In If Avg E In If Avg E In If Avg Long-Context GPT-4o-mini 80.2 8.2 9.3 32.6 23.7 20.2 21.4 21.8 26.2 14.3 25.0 21.8 GPT-4o 98.1 41.2 67.3 68.9 39.3 28.8 33.1 33.7 39.3 29.2 34.7 34.4 Gemini 3.1 Flash 99.6 67.3 87.2 84.7 65.4 35.4 47.9 49.5 65.2 41.0 48.7 51.6 Claude 4.6 Sonnet 99.6 56.4 84.0 80.0 77.8 37.0 54.1 56.3 77.7 38.6 55.1 57.1 
+
+Simple RAG BM25 84.8 13.6 10.5 36.3 21.9 16.3 22.2 20.1 22.6 5.7 7.4 11.9 Embedding RAG RAG te3-small 99.2 17.5 40.5 52.4 45.9 17.5 30.7 31.4 46.3 24.4 30.8 33.8 RAG te3-large 98.4 17.1 43.6 53.0 45.5 19.5 31.9 32.3 46.2 27.3 37.5 37.0 RAG Qwen3-Emb-4B 99.6 19.1 52.9 57.2 54.5 17.5 33.1 35.0 54.3 22.4 36.8 37.8 Structure-Aug. RAG Mem0 99.6 35.0 61.9 65.5 74.7 30.0 44.0 49.5 74.6 52.2 48.4 58.4 
+
+Zep/Graphiti 61.1 1.9 1.6 21.5 14.4 15.2 16.7 15.4 14.0 0.0 25.0 13.0 Cognee 89.1 15.6 21.9 42.2 35.8 21.0 33.0 30.0 36.2 17.5 43.1 32.3 HippoRAG-v2 98.1 12.8 27.6 46.2 35.8 18.7 33.5 29.3 36.1 18.2 38.0 30.8 Agentic Memory Letta/MemGPT 91.4 13.2 22.2 42.3 35.8 19.5 30.7 28.7 34.0 26.5 35.1 31.9 Self-RAG 96.9 27.2 66.9 63.7 61.1 12.5 26.1 33.2 61.0 10.0 28.5 33.2 MemoryOS 96.5 10.5 41.6 49.5 42.0 19.5 32.3 31.3 42.7 33.3 38.3 38.1 A-MEM 88.7 12.1 18.7 39.8 30.0 23.3 26.8 26.7 28.9 29.0 31.2 29.7 Table 16: Know/Act/Util for Stereotypical preferences. 
+
+Know Acc. (%) Act Acc. (%) Util. Rate (%) Type System E In If Avg E In If Avg E In If Avg Long-Context GPT-4o-mini 86.5 10.0 13.1 36.5 21.4 16.6 18.3 18.8 19.7 17.4 23.3 20.1 GPT-4o 99.1 44.1 59.4 67.5 47.2 30.6 31.4 36.4 47.6 34.7 33.1 38.4 Gemini 3.1 Flash 99.6 68.6 83.4 83.8 79.5 48.9 55.9 61.4 79.8 57.3 57.6 64.9 Claude 4.6 Sonnet 99.6 57.6 82.5 79.9 80.8 50.2 57.2 62.7 81.1 56.8 60.8 66.3 
+
+Simple RAG BM25 89.5 14.9 15.7 40.1 22.7 12.7 14.0 16.5 22.4 17.6 22.2 20.8 Embedding RAG RAG te3-small 98.3 22.3 38.4 53.0 49.8 14.0 22.3 28.7 49.8 15.7 30.7 32.0 RAG te3-large 99.1 25.3 40.6 55.0 47.2 13.1 21.0 27.1 47.6 13.8 26.9 29.4 RAG Qwen3-Emb-4B 99.1 21.4 50.2 56.9 61.1 12.7 23.6 32.5 61.7 18.4 29.6 36.5 Structure-Aug. RAG Mem0 98.3 38.4 56.8 64.5 79.5 30.6 39.7 49.9 80.0 42.0 43.1 55.0 
+
+Zep/Graphiti 57.6 1.7 2.2 20.5 7.9 9.2 11.8 9.6 7.6 50.0 20.0 25.9 Cognee 91.3 17.5 24.8 44.5 32.8 15.3 21.8 23.3 34.9 20.0 21.6 25.5 HippoRAG-v2 98.7 17.9 23.1 46.6 36.2 17.0 21.4 24.9 36.7 22.0 24.5 27.7 Agentic Memory Letta/MemGPT 91.3 14.4 20.1 41.9 32.3 14.0 19.7 22.0 33.5 15.2 26.1 24.9 Self-RAG 93.9 31.4 53.3 59.5 55.5 9.2 24.9 29.8 58.1 8.3 32.8 33.1 MemoryOS 95.2 16.6 31.0 47.6 49.8 10.0 21.8 27.2 50.0 10.5 31.0 30.5 A-MEM 94.3 18.8 21.0 44.7 29.7 14.4 24.5 22.9 30.6 11.6 25.0 22.4 
+
+Table 17: Know/Act/Util for Therapy & Emotional preferences. 
+
+Know Acc. (%) Act Acc. (%) Util. Rate (%) Type System E In If Avg E In If Avg E In If Avg Long-Context GPT-4o-mini 81.0 26.0 29.0 45.3 14.0 12.0 14.0 13.3 13.6 15.4 13.8 14.3 GPT-4o 99.0 36.0 56.0 63.7 28.0 22.0 29.0 26.3 28.3 36.1 30.4 31.6 Gemini 3.1 Flash 100.0 50.0 77.0 75.7 51.0 33.0 47.0 43.7 51.0 42.0 48.1 47.0 Claude 4.6 Sonnet 99.0 53.0 77.0 76.3 75.0 58.0 70.0 67.7 74.7 66.0 72.7 71.2 
+
+Simple RAG BM25 86.0 46.0 33.0 55.0 15.0 12.0 14.0 13.7 17.4 15.2 18.2 16.9 Embedding RAG RAG te3-small 93.0 32.0 43.0 56.0 26.0 13.0 20.0 19.7 26.9 12.5 32.6 24.0 RAG te3-large 92.0 34.0 43.0 56.3 23.0 11.0 23.0 19.0 23.9 23.5 32.6 26.7 RAG Qwen3-Emb-4B 97.0 45.0 56.0 66.0 28.0 10.0 24.0 20.7 28.9 11.1 32.1 24.0 Structure-Aug. RAG Mem0 94.0 48.0 61.0 67.7 44.0 23.0 30.0 32.3 44.7 31.2 37.7 37.9 
+
+Zep/Graphiti 30.0 9.0 9.0 16.0 6.0 8.0 9.0 7.7 13.3 33.3 22.2 23.0 Cognee 84.0 31.0 31.1 48.7 23.0 12.0 21.1 18.7 25.0 12.9 39.3 25.7 HippoRAG-v2 95.0 32.0 32.0 53.0 18.0 12.0 21.0 17.0 17.9 25.0 40.6 27.8 Agentic Memory Letta/MemGPT 82.0 28.0 31.0 47.0 24.0 10.0 20.0 18.0 26.8 14.3 32.3 24.5 Self-RAG 83.0 35.0 45.0 54.3 38.0 10.0 36.0 28.0 38.6 5.7 51.1 31.8 MemoryOS 87.0 27.0 34.0 49.3 26.0 9.0 22.0 19.0 27.6 11.1 23.5 20.7 A-MEM 83.0 36.0 29.0 49.3 17.0 16.0 18.0 17.0 19.3 25.0 24.1 22.8

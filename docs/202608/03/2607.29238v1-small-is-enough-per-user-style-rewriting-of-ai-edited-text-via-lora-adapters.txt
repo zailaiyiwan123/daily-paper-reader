@@ -1,0 +1,254 @@
+Title: Small Is Enough: Per-User Style Rewriting of AI-Edited Text via LoRA Adapters
+
+URL Source: https://arxiv.org/pdf/2607.29238v1
+
+Published Time: Mon, 03 Aug 2026 00:43:33 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Small Is Enough: Per-User Style Rewriting of AI-Edited Text via LoRA Adapters 
+
+Antorweep Chakravorty 1[0000-0002-3576-2406] 
+
+University of Stavanger, Norway 
+
+antorweep.chakravorty@uis.no https://www.uis.no/nb/profile/antorweep-chakravorty 
+
+Abstract. InMyStyle is a privacy first, single user system that adapts small language models to rewrite AI-edited text towards an individual user’s writing style without an instruction prompt at inference. Given a user’s documents, it uses multiple local helper LLMs to construct paired training examples and fine tunes LoRA adapters on base models rang-ing from 0.5B to 7B parameters. Length aware generation budgets and automatic chunking support inputs of different lengths. On 219 evalua-tion pairs from a scientific-paper corpus, the automatic composite score plateaus at 0.69 [scale 0-1] across all model sizes under both greedy and sampled decoding. This observed plateau suggests that small models are sufficient for the measured rewriting task, with model size determining trade-offs rather than a stable quality ranking. As a secondary evalua-tion, 400 ratings from five LLM judges give InMyStyle outputs a mean perceived AI-ness score over 20% lower than their helper-AI generated inputs, while mean perceived AI-ness scores decrease with model size within InMyStyle. 
+
+Keywords: Personalized rewriting · style transfer · LoRA · small lan-guage models · private NLP · parameter-efficient fine-tuning · LLM eval-uation 
+
+# 1 Introduction 
+
+AI-assisted editing can create a trade-off where users want their prose to be more clear, but do not want to sacrifice their idiosyncratic wording, sentence structure, and framing. This creates a personalization problem: can an AI-edited paragraph be rewritten in the direction of a specific user’s writing style while preserving its content? Our goal is not to evade AI-text detectors, but personalized rewriting. InMyStyle 1 is a privacy first, single user system that learns this transforma-tion from the user’s own documents. Multiple local helper LLMs convert the original paragraphs into “AI-shadow” variants, which are then paired with the originals to train the LoRA adapters [8] on four compact Qwen2.5 models [14] with parameter sizes of 0.5B, 1.5B, 3B and 7B. Response-only loss restricts the  
+
+> 1
+
+Project source: https://github.com/achak1987/inmystyle arXiv:2607.29238v1 [cs.CL] 31 Jul 2026 2 A. Chakravorty 
+
+optimization to the user-written target tokens. Three requirements shaped the design: no explicit style instruction at inference time, no external processing of personal documents, and a separate adapter for each user rather than a generic “humanization” model. Our main question is how much base-model capacity the measured rewriting task requires. We hypothesize that recurring preferences in wording, sentence structure and framing can be captured through low-rank updates without the need to train the complete model. We evaluate the models on 219 held-out pairs derived from 73 scientific-paper paragraphs under greedy and sampled decoding. All model and decoding combinations achieve an automatic composite score of 0.69 (scale 0 - 1), forming an observed plateau across model sizes. This suggests that the measured task can be handled by compact models with the given dataset and training recipe with smaller sizes being better suited when compute is limited. As a secondary evaluation, five LLM judges provide 400 perceived-AI ratings. Pooled across judges, InMyStyle rewrites receive a 22% lower mean perceived-AI score than their helper generated inputs. The ratings vary substantially across judges, with the size-pooled means within InMyStyle decreasing as model size increases. This descriptive secondary result favors 7B when lower perceived AI-ness is prioritized and additional compute is available; it does not overturn the automatic plateau or demonstrate additional recovery of the target user’s voice. Our contributions are: (1) a local pipeline for constructing multi-family AI-shadow to user-original training pairs with paragraph-level split isolation and length-aware rewriting; (2) a controlled model-size and decoding study; and (3) an LLM-as-a-judge analysis of perceived AI-ness. 
+
+# 2 Related Work 
+
+Text style transfer aims at changing the stylistic properties while keeping the underlying content [9]. Authorship transfer is particularly challenging as the tar-get is a user’s recurring choices rather than a predefined attribute. StyleRemix uses pretrained LoRA modules to perturb interpretable stylistic dimensions for authorship obfuscation [4]. TinyStyler combines an 800M-parameter model with authorship embeddings for few-shot transfer to a target style [7], while Au-thorMix composes author-specific LoRA adapters layer by layer to support low-resource target authors [17]. InMyStyle differs as it constructs paired AI-shadow to user-original examples from the user’s documents and trains a dedi-cated rewriting adapter. At inference, it requires neither target examples nor an explicit style instruction. LoRA enables compact task- or user-specific adaptation by freezing the base model and learning low-rank updates [8]. This makes it practical to store a separate adapter for each user. OPPU similarly represents user-specific behavior through individual PEFT modules [16]. Panza is closest to our privacy setting: it provides a fully local personalized email assistant using fine-tuning, reverse instructions, and retrieval-augmented generation [12]. InMyStyle instead targets Small Is Enough 3
+
+paragraph rewriting with a single local adapter and no retrieval component at inference. We do not introduce a new PEFT algorithm; the contribution is a private paired-data pipeline and a controlled comparison of LoRA adaptation. Stylistic transfer is inherently multi-faceted, as stronger stylistic change can reduce semantic fidelity or fluency. Automatic metrics may also disagree with human judgments, motivating complementary evaluation with language mod-els or people [13]. InMyStyle reports a composite of authorship, content, target similarity, AI-tell reduction, and stylometric measures, and includes a separate LLM-as-a-judge study. Work on AI-text detection provides additional context for evaluating rewritten machine text: RAID finds substantial degradation across unseen generators, decoding strategies, and adversarial transformations [3], while controlled paraphrasing can sharply reduce detector accuracy without large se-mantic changes [10]. InMyStyle does not train against or evaluate detector eva-sion; this work provides context for examining how rewriting affects the perceived and measurable characteristics of AI-edited prose. 
+
+# 3 Method 
+
+3.1 Task Formulation and Design Constraints 
+
+InMyStyle learns a separate paragraph-rewriting function per user. Let Yu =
+
+{yi}Ni=1 be the paragraphs extracted from user u’s documents. For each original paragraph yi, a helper model hk produces an AI-shadow paragraph that conveys the same content, but in machine generated prose. After optional corruption, this paragraph is fed as input xik to the paragraph-rewriting model, leading to the paired dataset 
+
+Du = {(xik , y i) : i = 1 , . . . , N ; k = 1 , . . . , K }, (1) where N is the number of retained user paragraphs, K is the number of helper models, and i and k index source paragraphs and helper models, respectively. A frozen language model with user-specific adapter parameters ϕu is trained to map xik back to yi. The objective is not to reconstruct the exact source paragraph for arbitrary inputs, but to learn recurring choices in the user’s prose while retaining the input’s meaning. Three constraints determine the system design. First, inference must not de-pend on an explicit instruction such as “rewrite this in my style” or on retrieved style demonstrations. Second, personal documents and all derived training text must remain on the user’s machine. Third, personalization must be represented by a separate adapter for each user, rather than by a shared multi-user model. The model’s tokenizer still supplies its ordinary chat formatting, but the infer-ence input contains only the paragraph to rewrite without any explicit system message or natural-language rewriting instruction. 
+
+3.2 Corpus Preparation 
+
+The source corpus comprises documents written by the target user. InMyStyle extracts the page text from the source corpus PDF files and passes it through 4 A. Chakravorty 
+
+two stages of filtering before creating the training pairs. The first stage per-forms deterministic mechanical cleanup while ingesting the pages. It normalizes Unicode, fixes common mojibake (garbled text), rejoins words broken by line-end hyphenation, removes inline citation markers, and discards page numbers, captions, URLs, spaced-letter headings, and repeated headers or footers. The cleaned pages are stored in a local SQLite database and split into paragraph candidates. The second stage uses paragraph-level content heuristics outside the database. It filters out candidates that resemble flattened tables or lists, URL- or email-heavy fragments, affiliation blocks, math-dense passages, and cross-page frag-ments. We purposefully separate these two stages: the mechanical cleaning pro-vides a stable representation of the source documents, while the heuristic thresh-olds can be revised and re-run without re-extracting the PDFs. Rather than fix-ing highly corrupted passages, the pipeline simply ignores them, allowing adapter capacity to focus on continuous prose. 
+
+3.3 Multi-Family AI-Shadow Construction 
+
+Supervised style adaptation requires paired machine-style inputs and user-written targets. However, naturally occurring aligned pairs are rare. InMyStyle creates the input side by automatically paraphrasing the user’s paragraph while keeping it unchanged as the target. Three locally executed helper models from differ-ent model families: Qwen2.5-3B, Llama-3.2-3B, and Phi-3-mini [14, 5, 1]; each paraphrases every retained paragraph once. The common helper instruction is to provide a meaning-preserving rewrite and suppress explanations, markup, and preambles. The outputs are subsequently cleaned to remove any remain-ing introductions, metadata, quotation fences, and repeated-token failures. The generation budget for each helper rewrite scales with the length of the source paragraph rather than using the same fixed allowance for every input. The use of multiple helper families increases the variety of machine phrasings seen during training. A single helper could otherwise bias the learned transfor-mation to specific lexical and structural patterns of that model. We further use two stochastic corruption operators. With probability 0.5, an AI-tell operator re-places common words with more stereotypically machine-like alternatives, such as use with utilize , or inserts formulaic framing expressions. With probability 0.3,a light-noise operator drops a small fraction of words and occasionally transposes single characters. Thus, 
+
+xik = C(hk(yi)) , (2) where C denotes the composition of the optional AI-tell and noise operators. The paragraph identifier, helper identity, applied corruptions and input and target sentences are retained as provenance for every pair. 
+
+3.4 Leakage-Resistant Dataset Construction 
+
+Each original paragraph produces several rows with the same target. A random row-level split would cause target text leakage: one helper variant of yi could Small Is Enough 5
+
+end up in training while another variant of the same yi ends up in evaluation. InMyStyle instead partitions the set of source paragraph identifiers and assigns every variant associated with one identifier to the same partition. Let Dtrain 
+
+and Deval denote the resulting training and evaluation partitions, respectively. Consequently, 
+
+{i : ( xik , y i) ∈ D train } ∩ { i : ( xik , y i) ∈ D eval } = ∅. (3) This grouped split evaluates transfer to unseen source paragraphs rather than recall of a target observed through another helper model. Each retained pair is stored as a two-turn conversation: xik occupies the user turn and yi the assistant turn. No system turn is added. 
+
+3.5 User-Specific LoRA Adaptation 
+
+For a pretrained model with parameters θ, InMyStyle freezes the base weights and inserts LoRA updates into its linear layers [8]. For a weight matrix W , the adapted transformation is 
+
+W ′ = W + αr BA, (4) where A and B are trainable low-rank matrices, r is the adapter rank, and α
+
+controls the update scale. Only these adapter parameters are optimized and stored for the user. The same training interface supports conventional LoRA and 4-bit QLoRA [2], allowing the base weights to remain frozen while reducing memory use on supported hardware. The model is trained using a response-only loss. The input tokens are included as conditioning context, but are masked from the objective; the cross-entropy is computed only over the user-written assistant response: 
+
+L(ϕu) = − X
+
+> (x,y )∈D train
+> |y|
+
+X
+
+> t=1
+
+log pθ,ϕ u (yt | x, y <t ) . (5) Here, x is the AI-shadow input, y is the user-written target, t indexes target tokens, |y| is the target length and y<t are the target tokens preceding posi-tion t. The term pθ,ϕ u is the next-token distribution defined by the frozen base parameters θ and the user-specific adapter parameters ϕu.The masking is crucial as the input is deliberately machine-edited and could suffer from further corruption. Including the input tokens in the objective would train the adapter to model the same machine-style text as it is trying to trans-form. Hence, for each AI-shadow user-original pair, the loss is computed only over the user-written target tokens, with the AI-shadow tokens serving merely as conditioning context. The model sizes, adapter geometry, optimization set-tings and the hardware-specific quantization configuration are described in the experimental setup. 6 A. Chakravorty 
+
+3.6 Prompt-Free Rewriting 
+
+At inference time, the base model and the adapter for the selected user is loaded. The input paragraph is fed directly to the tokenizer’s user turn and generation starts from the assistant turn. The system does not provide any style label, rewriting instruction, target example or retrieval context. Greedy decoding is used as a default since it provides deterministic paragraph rewrites. Sampling is an optional alternative that is evaluated separately. Generation is guided by a length-aware token budget. For an input segment with w words, the budget is 1.5w + 32 new tokens, floored to the budget for the configured minimum paragraph length of 30 words and capped at a hard limit of 600 tokens. This allows shorter paragraphs less room for padding or repetition while enabling longer inputs to expand when needed. Inputs with at most 500 words are kept as a single segment. Longer inputs are greedily split at sentence boundaries, each segment is independently rewritten and the outputs are concatenated with blank lines between segments. 
+
+# 4 Experimental Setup 
+
+4.1 Objectives 
+
+The experiments assess whether increasing the base-model size yields a consis-tent advantage in automatic style-rewriting quality when the training data and adapter configuration is kept fixed. Moreover, we investigate whether stochastic decoding outperforms deterministic greedy decoding. Finally, we use five LLM judges as model-dependent proxies for perceived AI-ness. 
+
+4.2 Dataset 
+
+The main corpus includes around 36 scientific papers published between 2012 and 2025 in peer-reviewed journals and conference proceedings, authored or co-authored by the target user. The papers are related to privacy-preserving data analytics, distributed and cloud computing, blockchain-based systems, energy informatics, and machine-learning applications. After PDF extraction and the two-stage filtering process explained in Section 3.2, 487 prose paragraphs re-mained. The three helper models provided one AI-shadow for each paragraph, which generated 1,461 paired examples. We re-generated the variants with the length-aware helper budgets described in Section 3.6 before retraining and eval-uating all four adapters. We split the data by source paragraph identifier using an evaluation fraction of 0.15 . The training partition included 414 source paragraphs and 1,242 pairs. The evaluation partition included 73 source paragraphs and 219 pairs. All three helper variants of a source paragraph remained in the same partition. We ex-cluded pairs whose combined input and target length exceeded 8,192 characters before constructing the dataset. The final counts above reflect the records that remained after this exclusion. Small Is Enough 7                     
+
+> Table 1. Training configuration shared by all four model sizes. Setting Value LoRA rank / scaling 8/16
+> LoRA dropout 0.05
+> Target modules All linear layers Epochs 3
+> Per-device batch size 2
+> Gradient accumulation 8
+> Effective batch size 16
+> Maximum sequence length 2,048 tokens Learning rate 2×10 −4
+> LR schedule / warmup Cosine / 0.03
+> Weight decay 0.01
+> Random seed 42
+> Quantization 4-bit NF4 QLoRA
+
+4.3 Configuration 
+
+We trained adapters for the instruction-tuned Qwen2.5 models with 0.5B, 1.5B, 3B, and 7B parameters [14]. Using checkpoints from the same model family reduces cross-family differences in tokenization, vocabulary, and model design, making model size the primary experimental variable. The evaluated checkpoints span from 0.5B to 7B parameters, a fourteen-fold range. Every adapter used the same paired dataset and optimization recipe. Table 1 summarizes the shared configuration. Training used response-only loss, length-grouped batches, and gradient check-pointing. Following QLoRA, we reduced the model’s memory footprint by storing the base-model weights in 4-bit NF4 format, compressing their scaling values, and using bfloat16 for calculations [2]. All runs were performed on one NVIDIA RTX PRO 5000 Blackwell Generation Laptop GPU. The training environment used Python 3.12, PyTorch 2.13.0 with CUDA 13.2, Transformers 4.46.3, PEFT 0.13.2, TRL 0.12.1, and bitsandbytes 0.49.2. 
+
+4.4 Decoding Conditions 
+
+Each adapter generated rewrites for all 219 evaluation pairs under two decoding modes. Greedy decoding selects the highest-probability token at each step. Sam-pled decoding uses temperature 0.7 to control the sharpness of the next-token distribution and nucleus sampling with top-p = 0 .9, which limits sampling to the smallest token set whose cumulative probability reaches 0.9 [6]. For both modes, 600 new tokens is a hard ceiling per segment rather than a fixed budget; the actual per-segment budget follows the length-aware rule in Section 3.6. The same evaluation inputs and adapter weights are used for both modes, leading to eight complete evaluations: four model sizes times two decoding modes. 8 A. Chakravorty 
+
+4.5 Automatic Evaluation 
+
+We used five complementary metrics to evaluate each rewrite. Authorship (A)is the probability of the target-user class predicted by a character-level TF-IDF logistic-regression classifier following a standard linear approach to authorship attribution [15]. The classifier was trained on the training partition only, using 414 original paragraphs as positive examples and 414 randomly downsampled AI-shadow inputs as negative examples. The classifier used character 1−3 grams within word boundaries and at most 10,000 features. 
+
+Content similarity (C) is the BERTScore F1 between the rewrite and its AI-shadow input [18]. It measures whether the rewrite preserves the meaning of the text supplied at inference. Target similarity (T ) is the BERTScore F1 between the rewrite and the corresponding user-written reference paragraph. It measures how closely the rewrite approaches the paired target used during evaluation. Both metrics were computed with roberta-base [11]. 
+
+AI-tell reduction (R) measures the relative decrease in occurrences of the configured AI-associated phrases and the substituted words: 
+
+R = clip [−2,1] 
+
+ nin − nout 
+
+max( nin , 1) 
+
+
+
+, (6) here nin and nout are the respective tell counts in the AI-shadow input and the rewrite. If the value is positive, it means that the rewrite was able to remove the configured AI tells. If the value is negative, it means that the rewrite has added additional tells. 
+
+Stylometric improvement (S) measures whether the rewrite got closer to the target user’s stylometric profile: 
+
+S = d(vin , vu) − d(vout , vu). (7) 
+
+d is cosine distance, and vin and vout are the input and output feature vectors. vu
+
+is the mean profile formed from the user’s training paragraphs. A positive value indicates movement toward the profile. The feature vector comprises statistics of sentence and paragraph lengths, type-token ratio, comma, semicolon, em-dash, and parenthesis rates. The per-pair composite score is 
+
+Q = 0 .40 A + 0 .25 C + 0 .15 T + 0 .15 eR + 0 .05 eS, (8) 
+
+R and S having different scales compared to the other metrics are normalized to values between [0 , 1] . We define eR = R+2 4 and eS = clip [0 ,1] (( S + 0 .2) /0.4) . The reported score for an adapter is the mean of Q over all 219 evaluation pairs. We report each component separately as different combinations of content fidelity and stylistic change can lead to similar composite values. 
+
+4.6 LLM-as-a-Judge Evaluation 
+
+As a secondary evaluation, we measured the perceived AI-ness using five publicly available LLM judges: ChatGPT 5.6 Sol High, Claude Sonnet 5 High, Gemini Small Is Enough 9
+
+3.6 Flash, Grok 4.5 Expert, and Mistral Think. Ratings were collected through the models’ chat interfaces. Each judge received ten independent batches of eight paragraphs, for 80 ratings per judge and 400 ratings in total. A new private or temporary conversation was used for every batch. The item pool was created from eight source paragraphs in the held-out eval-uation partition. It included four conditions: H the original human paragraph; 
+
+AI , a helper-generated AI-shadow; Gen , an open-ended paragraph generated by a helper model; and IMS , an InMyStyle rewrite drawn from one of the four adapter sizes and either decoding condition. Each batch included one item per source paragraph, ensuring that two variants of the same source were never shown together in one batch. Conditions and systems were hidden behind ran-dom item keys; the mapping was not provided to the judges. The judges provided ratings for each paragraph independently on an integer scale from 0 (completely human-written) to 10 (completely AI-generated) and no explanations. The number of ratings per condition across all judges was 34 H, 39 AI, 34 Gen and 293 IMS. The per-judge condition counts varied: each judge rated between six and eight examples from each anchor condition and between 57 and 61 IMS outputs. The IMS assignments covered all eight size-decoding systems, though not perfectly balanced. We therefore report the number of ob-servations for each system mean. This experiment measures perceived AI-ness, not similarity to the target user’s writing. A human-participant evaluation study is not included in the reported experiments and will be conducted in the future. 
+
+# 5 Results 
+
+5.1 Automatic Evaluation 
+
+Table 2 shows all automatic metrics for the four model sizes and two decoding conditions. The composite Q is rounded to 0.69 under both greedy and sampled decoding. Authorship stays close to the classifier’s decision boundary for all systems. The measured stylometric improvement is also very small and approximately equal for them. The measured score is dominated by high semantic fidelity, moderate reduction in AI-tell and small movements in the two explicit style metrics. Sampling does not seem to have a consistent effect on the composite. Across sizes, it slightly lowers content similarity and increases authorship. Its effect on AI-tell reduction is mixed: it improves the metric for 0.5B and 1.5B but reduces it for 3B and 7B. Overall, although the results can be interpreted as comparable, the plateau suggests that all models only partially recover a distinctive personal voice. Training cost provides a distinction among the models. As shown in Table 3, the wall time increases from 9.53 minutes for 0.5B to 67.73 minutes for 7B on the same hardware and recipe. The mean training crossentropy (CE) decreases with the model size. Moreover, the larger models also achieve lower evaluation cross-entropy. However, this ordering does not carry over to the task level composite. 10 A. Chakravorty                                                                                             
+
+> Table 2. Automatic evaluation on 219 pairs from 73 held-out source paragraphs. Higher is better for all metrics. A: authorship; C: content similarity; T: target sim-ilarity; R: AI-tell reduction; S: stylometric improvement; Q: composite. Bold marks the highest value within each decoding condition, including ties after rounding. Size Decoding ACTRSQ
+> 0.5B Greedy 0.52 0.94 0.89 0.52 0.00 0.69
+> 1.5B Greedy 0.52 0.93 0.89 0.46 0.00 0.69
+> 3B Greedy 0.51 0.94 0.89 0.47 0.00 0.69
+> 7B Greedy 0.53 0.93 0.89 0.50 0.00 0.69
+> 0.5B Sample 0.52 0.93 0.88 0.55 0.00 0.69
+> 1.5B Sample 0.53 0.93 0.89 0.53 0.00 0.69
+> 3B Sample 0.52 0.92 0.89 0.45 0.00 0.69
+> 7B Sample 0.53 0.92 0.89 0.49 0.00 0.69 Table 3. Training dynamics by model size. Train CE is the mean training loss recorded over three epochs; Eval CE 1and Eval CE 3are evaluation losses after the first and third epochs. Size Train CE Eval CE 1Eval CE 3Minutes 0.5B 1.45 1.66 1.66 9.53 1.5B 1.26 1.47 1.51 20.10 3B 1.18 1.40 1.46 35.67 7B 1.05 1.33 1.43 67.73
+
+As neither mode dominates, we choose greedy decoding since it is determin-istic. 
+
+5.2 Perceived AI-ness 
+
+Table 4 summarizes the ratings on the 0-10 scale, where lower values indicate more human-like text. Pooled across judges, human paragraphs receive the low-est mean score ( 3.47 ), followed by InMyStyle rewrites ( 5.34 ), helper AI shadows (6.85 ), and open-ended generated text ( 8.44 ). The mean perceived-AI score of InMyStyle rewrites is 22% lower than that of their helper-generated inputs. The separation of Gen suggests that most judges readily identify open-ended gener-ated prose, while the paired H, AI and IMS conditions are harder to distinguish. The per-judge rows show a fair amount of calibration discrepancy. ChatGPT and Gemini are at the lower end of the spectrum for H and IMS compared to AI and Gen. Mistral on the other hand squeezes all four conditions into the 6.00 -
+
+8.00 range and rates Gen as less AI-like than the other three. Hence the pooled means should be understood as a multi-model proxy and not as interchangeable or equivalent human calibrated judgments. In the IMS conditions, the pooled ratings tend to get more human-like with the increase of model size (Table 5). The size-pooled means are 6.24 , 5.80 , 4.93 Small Is Enough 11                               
+
+> Table 4. Perceived AI-ness by judge and condition. Lower is more human-like. Counts: H 34, AI 39, IMS 293, and Gen 34. Judge HAI IMS Gen ChatGPT 1.50 7.88 4.83 9.25 Claude 2.29 5.50 4.86 9.14 Gemini 1.29 5.50 3.88 8.67 Grok 4.75 7.50 5.82 8.71 Mistral 7.67 8.00 7.23 6.00 All judges 3.47 6.85 5.34 8.44
+> Table 5. Perceived AI-ness of IMS outputs by size and decoding; lower is more human-like. Greedy Sample Pooled Size nMean nMean nMean 0.5B 36 6.39 36 6.08 72 6.24 1.5B 36 5.39 35 6.23 71 5.80 3B 38 4.95 35 4.91 73 4.93 7B 37 4.11 40 4.78 77 4.45
+
+and 4.45 for 0.5B, 1.5B, 3B and 7B respectively. Thus, the 7B adapter receives the most preference from this judge proxy, in contrast with the flat automatic composite. As the IMS assignment is not a balanced factorial design, the com-parisons are descriptive rather than controlled estimates. 
+
+5.3 Qualitative De-AI Diagnostics 
+
+To further illustrate the compact models, we evaluate them on three general-domain AI-generated passages rich with AI associated wording. The chosen pas-sages were constructed to contain formulaic framing and are not representative of the target user’s prose. Thus, they are presented to demonstrate naturaliza-tion rather than authorship recovery. Table 6 shows the automatic diagnostics of the passages, and Appendix A presents selected transformations. The AI-input row represents the baseline. All four IMS models achieve high mean content similarity ( 0.93 -0.94 ) and reduce the number of configured tells. The 7B model achieves the largest mean AI-tell reduction ( 0.91 ) and the fewest tells out ( 1.0). The intermediate models are between the two endpoint systems on these diagnostics. At the sample level, 0.5B under-edits Sample A and thins some content in Sample B. In Sample C, 7B does not dominate every individual example. 12 A. Chakravorty                        
+
+> Table 6. Automatic diagnostics averaged over three general-domain demonstrations. Content F1is BERTScore against the AI input; AI-tell reduction uses the same phrase/substitution dictionary as the primary automatic evaluation. Tells-out is the mean number of configured AI-tell occurrences remaining in the text. Target F1is not available as there is no human gold. Authorship and stylometric improvement are not evaluated because these general-domain demonstrations do not evaluate recovery of the target user’s style. Bold among IMS rows; marks the best value in each column, including ties after rounding. System Content F1AI-tell reduction Tells out AI input 1.00 0.00 11.7 IMS 0.5B greedy 0.94 0.76 2.7 IMS 1.5B greedy 0.94 0.88 1.3 IMS 3B greedy 0.94 0.83 2.0 IMS 7B greedy 0.93 0.91 1.0
+
+5.4 Automatic and Perceived-AI Assessment 
+
+All the models remain viable under the primary composite, while training cost and the secondary perceived-AI ratings distinguish their practical choice of use. The 3B model offers a practical sweet spot: it retains a composite score of 0.69 and greedy content similarity of 0.94, while achieving a pooled perceived-AI score of 4.93 with 47% less training time than 7B. The smaller 0.5B and 1.5B models remain suitable when compute is more constrained, while 7B provides the lowest perceived AI-ness when compute is a secondary concern. 
+
+# 6 Limitations 
+
+The experiments use documents from one target user and therefore cannot es-tablish generalization across users, languages or amounts of available writing. The publication timespan and co-authorships cause the learned distribution to include temporal, domain, co-author, reviewer and venue effects rather than an uncontaminated personal writing style. The training inputs are also synthetic: three helper-model families and a manually configured corruption process ap-proximate, but cannot cover, the variety of AI-edited or generated prose en-countered in practice. Finally, the model-size sweep is restricted to the Qwen2.5 family and one rank-8, three-epoch recipe; it does not establish that the same plateau holds for other model families, users, or adaptation settings. The automatic results are specific to a manually weighted composite. The au-thorship classifier may capture general human-machine or helper-specific signals in addition to user style, BERTScore can reward conservative copying, and the stylometric profile captures only coarse surface features. We therefore interpret the observed plateau as specific to the defined metric and configuration. The LLM-judge study contains 400 ratings but is based on eight source para-graphs and uses unequal sample counts per IMS system. The judges are cali-brated very differently to each other, are external models that may change over Small Is Enough 13 
+
+time, and measure perceived AI-ness rather than similarity to the target user. No completed human-participant ratings are available. 
+
+# 7 Conclusion 
+
+InMyStyle is a local, single-user system that learns to rewrite AI-edited para-graphs toward the language distribution of a user. Paired supervision is con-structed by transforming user-written paragraphs with multiple local helper-model families. Source leakage is prevented by paragraph-level splitting. Com-pact user-specific LoRA adapters are trained with response-only loss. Length-aware generation budget and sentence-boundary chunking provide a common inference path for interactive rewriting and automatic evaluation. Across the Qwen2.5 models with parameters ranging from 0.5B to 7B, the defined automatic composite score is 0.69 with both greedy and sampled de-coding. Thus, in this experiment, the larger model size does not demonstrate a composite advantage. The relatively smaller models can also achieve similar content fidelity to the 7B model with much lower training cost. The secondary LLM-judge study showed that InMyStyle outputs were per-ceived as less AI-like than their helper-generated inputs. Within InMyStyle, the mean perceived-AI scores decreased with model size, though the calibration var-ied substantially across judges. We conclude that automatic task metrics and perceived-AI judgments should be seen as complementary but not interchange-able pieces of evidence. These results support the "small is enough" view for the measured rewrit-ing task. While the models demonstrated partial style adaptation, balancing the depth of style recovery against training cost and perceived AI-ness remains a trade-off. Based on the evaluation results, the 3B model balances performance and efficiency better, though users prioritizing lower perceived AI-ness over com-pute cost may still favor the 7B variant. Establishing broader per-user style transfer remains a target for future work, which will incorporate expanded user corpora, base-model and prompt-based baselines, and blinded human evalua-tion. 14 A. Chakravorty 
+
+# A Appendix: Qualitative De-AI Examples 
+
+Tables 7-9 show a selection of passages from the three general-domain demonstra-tions summarized in Table 6. The inputs were crafted to contain many formulaic expressions, such as furthermore , in essence , and utilize , in order to make the naturalization behavior stand out. Because the inputs were not crafted with a specific human target in mind and are unrelated to the user’s documents, they do not test recovery of a private user voice. Small Is Enough 15 
+
+Table 7. Sample A (pangram and typography). Red marks AI-associated framing or wording, green marks clearer naturalization, and yellow marks partial cleanup or content thinning. Ellipses mark omitted text, not model deletions beyond those explicitly noted. 
+
+System Selected text 
+
+AI input Furthermore, the quick brown fox is commonly utilized as an illustra-tive example . . . In essence, this construction is not intended to describe a real wildlife observation; rather, it is utilized to facilitate typographic and pedagogical tasks. Moreover, educators and designers frequently rely on the sentence . . . It is worth mentioning that alternative pangrams ex-ist . . . due to the fact that it balances simplicity with coverage. IMS 0.5B Furthermore, the quick brown fox is commonly used as an illus-trative example . . . In essence, this construction . . . is utilized to facilitate typographic and pedagogical tasks. Moreover, educators and designers . . . It is worth mentioning that alternative pangrams exist . . . due to the fact that it balances simplicity with coverage. The final two input sentences are omitted. IMS 1.5B Moreover, the quick brown fox is often used as an example when dis-cussing character coverage . . . This construction is not intended to repre-sent a real wildlife observation, but is used to facilitate typographic and pedagogical tasks . . . The example below continues to demonstrate . . . Three configured tells remain. IMS 3B The quick brown fox jumps over the lazy dog is a common pangram used to demonstrate character coverage . . . The construction is not meant to describe a real wildlife observation, but rather to facilitate typo-graphic and pedagogical tasks . . . The example continues to demonstrate . . . Three configured tells remain. IMS 7B The quick brown fox jumps over the lazy dog is a well-known pangram, a sentence that incorporates every letter of the alphabet. It is often used as an example . . . The sentence is not intended to describe a real observation of wildlife, but is used to facilitate typographic and pedagogical tasks . . . Opening frames removed ; most content is retained. 16 A. Chakravorty 
+
+Table 8. Sample B (morning coffee). Colors and ellipses follow Table 7. 
+
+System Selected text 
+
+AI input Many individuals utilize a morning cup of coffee in order to commence their daily routine. Indeed, the beverage is frequently associated with in-creased alertness . . . In essence, preparing coffee can be viewed as both a practical task and a small personal ritual. Moreover, some prefer a simple black brew . . . It is important to note that grinding beans immediately before brewing is often recommended to facilitate a fresher aroma. IMS 0.5B Many people prefer to drink coffee in the morning. Coffee is often asso-ciated with increased alertness . . . Some people prefer a strong coffee, while others prefer a weak one . . . It is important to note that grinding the coffee beans right before brewing can help produce a fresher aroma. The brewing-method and social-custom content is dropped. IMS 1.5B Coffee is a beverage that is often consumed in the morning to kick start the day. It is generally associated with increased alertness, although the effect can vary with tolerance and sleep qual-ity . . . Cafés and home kitchens vary in their methods of brewing coffee, from pour-over to espresso machines . . . All configured tells are removed and the main content is retained. IMS 3B Coffee is a beverage that many people drink in the morning in order to start their day. . . . Some prefer a simple black brew, while others add milk, sugar, or flavored syrups to obtain a sweeter profile . . . Cafés and home kitchens alike demonstrate a wide range of methods . . . Two configured tells remain; the main content is retained. IMS 7B Many people start their day with a cup of coffee. It is often associated with increased alertness, although the effect varies with caffeine tolerance and sleep . . . Making coffee is both a practical task and a small personal ritual . . . Different brewing methods result in different body, bitterness, and serving size. Most frames removed ; the main content is retained. Small Is Enough 17 
+
+Table 9. Sample C (city park). Colors and ellipses follow Table 7. 
+
+System Selected text 
+
+AI input In essence, a city park can be utilized by residents seeking open space within a dense urban environment . . . Furthermore, the park functions as a shared public resource. Moreover, on warm afternoons one may observe joggers, families, and readers . . . Notably, local regulations may limit amplified music or commercial activity . . . In conclusion, the park illustrates how simple outdoor amenities can support community well-being. IMS 0.5B A city park can be a place for people to have open space in a dense urban environment. The walking paths, benches, and shaded lawns provide a place for casual recreation . . . The park is a shared public resource, not a private garden . . . It is worth noting that seasonal plantings and water features can encourage longer visits. Most heavy discourse frames are removed. IMS 1.5B A city park can be a place for residents to enjoy open space in a dense urban environment. Walking paths, benches, and shaded lawns provide opportunities for casual recreation . . . Evening hours can demonstrate a quieter pattern of use as daylight decreases. One configured tell remains; the final community sentence is omitted. IMS 3B A city park can provide residents with a green space in the midst of a dense urban environment. Walking paths, benches, and shaded lawns provide opportunities for casual recreation . . . Evening hours can demonstrate a quieter pattern of use as daylight decreases. The park illustrates how simple outdoor amenities can support community well-being without requiring complex infrastructure. One configured tell remains; the core content is retained. IMS 7B A city park is a place where people can go to get some open space in the middle of a dense urban environment. There are walking paths, benches, and shaded lawns that facilitate casual recreation . . . It is a shared public resource rather than a private garden . . . In the evening, the pattern of use is quieter as daylight diminishes. Most frames are removed, with one configured tell remaining. 18 A. Chakravorty 
+
+Across the three demonstrations, all IMS systems achieve high average con-tent similarity while removing most configured tells. The 0.5B outputs vary the most, with under-editing of Sample A and thinning of content in Sample B. The intermediate models show that tell removal is not ordered by size: 1.5B on av-erage leaves fewer tells than 3B. The 7B outputs remove the stacked discourse frames the most consistently overall, although Sample C still has one configured tell. 
+
+# References 
+
+[1] Marah Abdin, Jyoti Aneja, Hany Awadalla, et al. Phi-3 Technical Report: A Highly Capable Language Model Locally on Your Phone . Aug. 2024. doi :
+
+10.48550/arXiv.2404.14219 . arXiv: 2404.14219 [cs.CL] .[2] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. 
+
+QLoRA: Efficient Finetuning of Quantized LLMs . May 2023. doi : 10 . 48550/arXiv.2305.14314 . arXiv: 2305.14314 [cs.LG] .[3] Liam Dugan, Alyssa Hwang, Filip Trhlik, et al. RAID: A Shared Bench-mark for Robust Evaluation of Machine-Generated Text Detectors . Com-ment: ACL 2024. June 2024. doi : 10.48550/arXiv.2405.07940 . arXiv: 
+
+2405.07940 [cs.CL] .[4] Jillian Fisher, Skyler Hallinan, Ximing Lu, Mitchell Gordon, Zaid Har-chaoui, and Yejin Choi. StyleRemix: Interpretable Authorship Obfuscation via Distillation and Perturbation of Style Elements . Aug. 2024. doi : 10. 48550/arXiv.2408.15666 . arXiv: 2408.15666 [cs.CL] .[5] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, et al. The Llama 3 Herd of Models . 2024. doi : 10.48550/ARXIV.2407.21783 .[6] Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and Yejin Choi. The Curious Case of Neural Text Degeneration . Published in ICLR 2020. 2019. 
+
+doi : 10.48550/ARXIV.1904.09751 .[7] Zachary Horvitz, Ajay Patel, Kanishk Singh, Chris Callison-Burch, Kath-leen McKeown, and Zhou Yu. TinyStyler: Efficient Few-Shot Text Style Transfer with Authorship Embeddings . Nov. 2024. doi : 10.48550/arXiv. 2406.15586 . arXiv: 2406.15586 [cs.CL] .[8] Edward J. Hu, Yelong Shen, Phillip Wallis, et al. LoRA: Low-Rank Adap-tation of Large Language Models . Comment: Draft V2 includes better base-lines, experiments on GLUE, and more on adapter latency. Oct. 2021. doi :
+
+10.48550/arXiv.2106.09685 . arXiv: 2106.09685 [cs.CL] .[9] Di Jin, Zhijing Jin, Zhiting Hu, Olga Vechtomova, and Rada Mihalcea. “Deep Learning for Text Style Transfer: A Survey”. In: Computational Linguistics 48.1 (2022), pp. 155–205. doi : 10.1162/coli_a_00426 .[10] Kalpesh Krishna, Yixiao Song, Marzena Karpinska, John Wieting, and Mohit Iyyer. Paraphrasing Evades Detectors of AI-generated Text, but Re-trieval Is an Effective Defense . Comment: NeurIPS 2023 camera ready (32 pages). Oct. 2023. doi : 10.48550/arXiv.2303.13408 . arXiv: 2303.13408 [cs.CL] .Small Is Enough 19 
+
+[11] Yinhan Liu, Myle Ott, Naman Goyal, et al. RoBERTa: A Robustly Opti-mized BERT Pretraining Approach . 2019. doi : 10.48550/ARXIV.1907. 11692 .[12] Armand Nicolicioiu, Eugenia Iofinova, Andrej Jovanovic, et al. Panza: Design and Analysis of a Fully-Local Personalized Text Writing Assis-tant . Feb. 2025. doi : 10.48550/arXiv.2407.10994 . arXiv: 2407.10994 [cs.CL] .[13] Phil Ostheimer, Mayank Nagda, Marius Kloft, and Sophie Fellenz. “Text Style Transfer Evaluation Using Large Language Models”. In: Proceedings of the 2024 Joint International Conference on Computational Linguis-tics, Language Resources and Evaluation (LREC-COLING 2024) . Torino, Italia: ELRA and ICCL, 2024, pp. 15802–15822. [14] Qwen, An Yang, Baosong Yang, et al. Qwen2.5 Technical Report . Jan. 2025. doi : 10.48550/arXiv.2412.15115 . arXiv: 2412.15115 [cs.CL] .[15] Efstathios Stamatatos. “A Survey of Modern Authorship Attribution Meth-ods”. In: Journal of the American Society for Information Science and Technology 60.3 (Mar. 2009), pp. 538–556. issn : 1532-2882, 1532-2890. 
+
+doi : 10.1002/asi.21001 .[16] Zhaoxuan Tan, Qingkai Zeng, Yijun Tian, Zheyuan Liu, Bing Yin, and Meng Jiang. Democratizing LLMs via Personalized Parameter-Efficient Fine-tuning . Comment: EMNLP 2024 Main. Feb. 2025. doi : 10.48550/ arXiv.2402.04401 . arXiv: 2402.04401 [cs.CL] .[17] Sarubi Thillainathan, Ji-Ung Lee, Michael Sullivan, and Alexander Koller. 
+
+AuthorMix: Modular Authorship Style Transfer via Layer-Wise Adapter Mixing . Mar. 2026. doi : 10 . 48550 / arXiv . 2603 . 23069 . arXiv: 2603 . 23069 [cs.CL] .[18] Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q. Weinberger, and Yoav Artzi. BERTScore: Evaluating Text Generation with BERT . 2019. doi :
+
+10.48550/ARXIV.1904.09675 .

@@ -1,0 +1,563 @@
+Title: Think2Go: Generative Next POI Recommendation with LLM Reasoning
+
+URL Source: https://arxiv.org/pdf/2607.28997v1
+
+Published Time: Mon, 03 Aug 2026 00:24:29 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Think2Go: Generative Next POI Recommendation with LLM Reasoning 
+
+# Zhuang Zhuang 
+
+Dalian University of Technology School of Computer Science and Technology Dalian, China zhuang97@mail.dlut.edu.cn 
+
+# Shanshan Feng 
+
+Wuhan University School of Computer Science Wuhan, China victor_fengss@whu.edu.cn 
+
+# Hangwei Qian ∗
+
+A*STAR CFAR and IHPC Singapore Qian_Hangwei@a-star.edu.sg 
+
+# Mingqi Yang 
+
+South China University of Technology Institute of Digital Business & Intelligent Logistics Guangzhou, China yangmq@scut.edu.cn 
+
+# Heng Qi ∗
+
+Dalian University of Technology School of Computer Science and Technology Dalian, China hengqi@dlut.edu.cn 
+
+# Yanming Shen 
+
+Dalian University of Technology School of Computer Science and Technology Dalian, China shen@dlut.edu.cn 
+
+# Baocai Yin 
+
+Dalian University of Technology School of Computer Science and Technology Dalian, China ybc@dlut.edu.cn 
+
+## Abstract 
+
+Next Point-of-Interest (POI) recommendation task focuses on min-ing user behavioral preference patterns from historical check-ins to provide personalized suggestions for the next destination. Exist-ing methods primarily rely on shallow contextual information and handcrafted feature interactions to predict the next POI. However, the inherent sparsity and complexity of user mobility patterns limit the computational capacity of non-reasoning models to capture deep intent, while large language models (LLMs) perform subopti-mally because they lack a deep understanding of semantic IDs (SIDs) when SIDs are trained separately. To address these limitations, we propose Think2Go , a novel generative next POI recommendation framework, which enhances the model’s comprehension of SID representations and explores diverse spatial-temporal patterns via test-time computational scaling. We unify supervised fine-tuning (SFT) and reinforcement learning (RL)-based reasoning within a single architecture, enabling joint optimization of memorization and adaptive reasoning to better retain user behavior patterns while exploring diverse user preferences. To further calibrate policy opti-mization in adaptive reasoning, we propose two advantage weight-ing mechanisms that integrate (1) prompt epistemic uncertainty ,estimated via kernel density methods to assess the spatial-temporal  
+
+> ∗Corresponding author.
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> KDD ’26, Jeju Island, Republic of Korea
+> ©2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2258-5/2026/08 https://doi.org/10.1145/3770854.3780334
+
+periodic pattern alignment between queries and user history, pro-moting increased exploration under high epistemic uncertainty; and (2) reward-informed advantage scaling , captured by nor-malizing rewards against their maxima to adapt update magni-tudes, thereby improving training stability and mitigating overfit-ting to noisy signals. This joint calibration forms an implicit cur-riculum learning strategy, delivering fine-grained, instance-aware policy updates that prevent entropy collapse and support robust exploration. Extensive experiments conducted on three real-world datasets demonstrate that Think2Go exhibits strong generalization capabilities and enhances the LLM’s understanding of SIDs. 
+
+## CCS Concepts 
+
+• Information systems → Location based services ; Data min-ing ; • Human-centered computing → Ubiquitous and mobile computing design and evaluation methods .
+
+## Keywords 
+
+POI Recommendation, Generative Model, Reasoning Model, LLM 
+
+ACM Reference Format: 
+
+Zhuang Zhuang, Shanshan Feng, Hangwei Qian, Mingqi Yang, Heng Qi, Yanming Shen, and Baocai Yin. 2026. Think2Go: Generative Next POI Recom-mendation with LLM Reasoning. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.1 (KDD ’26), Au-gust 09–13, 2026, Jeju Island, Republic of Korea. ACM, New York, NY, USA, 12 pages. https://doi.org/10.1145/3770854.3780334 
+
+Resource Availability: 
+
+The source code of this paper has been made publicly available at https: //doi.org/10.5281/zenodo.18206701. arXiv:2607.28997v1 [cs.IR] 31 Jul 2026 KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhuang Zhuang et al. 
+
+## 1 Introduction 
+
+Location-based social networks (LBSNs) are increasingly becoming an integral part of modern life, as a growing number of users share their check-in records at interesting points of interest (POIs) via mobile platforms such as Foursquare and Google Maps. As a result, POI recommendation has emerged as a key research task [ 36 , 41 ]based on LBSN data, aiming to understand users’ behavioral prefer-ences [ 48 , 62 ] from their historical trajectories and provide location-based services [ 15 , 19 , 61 ]. A notable variant of this task is next POI recommendation, which aims to predict the next location a user is likely to visit based on the spatial-temporal context of their check-in history and a given temporal cue [ 56 ], assisting users in trip planning [ 20 , 49 ] and in discovering locations of potential interest [39, 51, 60]. Recently, large language models (LLMs) have demonstrated re-markable progress in contextual understanding [ 9], marking a sig-nificant breakthrough in tackling complex real-world tasks. This has motivated the use of LLM-based generative modeling as a novel paradigm for next POI recommendation, where the model directly generates the ID of the next POI at the target time based on user-provided prompts. Compared to traditional POI recommendation methods, this approach avoids the semantic loss that occurs when heterogeneous textual data are converted into numerical IDs. It effectively leverages the general knowledge of LLMs to capture contextual dependencies in user check-in trajectories. Moreover, semantic POI ID representations have been proposed to initialize IDs with similar meanings for geographically or functionally re-lated locations, further enhancing the LLM’s ability to understand and generalize POI semantics. Recent methods [ 17 , 18 , 22 , 26 ] based on LLMs primarily focus on fine-tuning pre-trained models but overlook the benefits of expand-ing computational capacity through test-time scaling, enhancing the next POI generation via reasoning. For instance, GNPR [ 42 ]fine-tunes the base model with pre-trained SIDs to enforce seman-tic alignment between the model and the ID space. However, this decoupled training strategy leads to an incomplete understanding of SID information, particularly under sparse POI recommenda-tion scenarios. As a result, current LLM-based approaches struggle to accurately incorporate SID signals during generation, yielding suboptimal performance. This insufficient comprehension of se-mantic IDs is further reflected in the model’s poor generalization on out-of-domain datasets and its limited capability to distinguish SID categories. These limitations highlight the importance of designing effective reasoning models to improve both SID understanding and sequen-tial modeling within LLMs. However, developing a generation-based POI recommendation framework with integrated reasoning is nontrivial due to several challenges: (1) Model Architecture: 
+
+Traditional reasoning models rely on RL-based policy optimiza-tion, which assumes that the base model has sufficient predictive capability to sample correct answers. Moreover, overfitting dur-ing the supervised fine-tuning (SFT) stage can restrict exploration in subsequent RL training and decouple memorization from rea-soning, ultimately resulting in suboptimal learning [ 11 , 21 , 47 ]. (2) 
+
+Prompt-Aware Adaptive Optimization: Existing policy opti-mization methods treat all prompts equally, neglecting varying Large Recommender Model Large Recommender Model trained with Think2Go Prompt Answer Prompt Answer reasoning Self-correct Prompt CE Loss Reward Loss CE Loss Think2Go: Generative Next POI Recommendation with LLM Reasoning (submit to KDD 2026) 
+
+Figure 1: The architecture overview of Think2Go, which uni-fies RL-based reasoning and SFT within the auto-regressive generation process, connecting reasoning and supervised an-swers through self-correction. 
+
+prediction difficulties, which limits exploration of more challenging prompts. In POI recommendation scenarios, predicting targets that deviate from a user’s habitual temporal patterns or commonly vis-ited regions presents greater difficulty. (3) Model-Aware Adaptive Optimization: While Dr.GRPO [ 23 ] removes the variance term in advantage estimation to alleviate signal amplification caused by estimation bias, it still overlooks another form of bias: the tendency of the model to produce similar intra-group advantage distributions across samples of varying difficulty. For example, a hard instance with rewards [2.5, 2.5, 1.5] and an easy one with [4.5, 4.5, 3.5] both yield the same advantage [0.33, 0.33, –0.67] under mean-centered advantage estimation. This leads to uniform updates across tasks of different difficulty, which undermines fine-grained learning and limits the ability to assign appropriate update magnitudes based on model competence. To address the aforementioned challenges, we propose Think2Go as shown in Figure 1, a unified framework that combines SFT and RL-based reasoning to unlock LLM’s test-time reasoning capacity, thereby improving its comprehension of semantic identifiers and modeling of sequential user behaviors. To tackle the first challenge, we introduce a unified training paradigm that integrates both SFT and RL-based policy optimization. The model generates structured outputs in the form of Think->Go->Self-Correct->Answer , where the Self-Correct token serves as a bridge between the reasoning and SFT phase. The final Answer token is used for computing the SFT loss, while the Think and Go segments comprise the reasoning trajectory, which is optimized via policy gradients. This unified structure facilitates seamless learning between memorization and exploration. To address the second challenge, we propose an epis-temic uncertainty advantage calibration strategy for prompt-based learning. Specifically, we use kernel density estimation to assess the spatial-temporal similarity between the current query and the user’s historical behavior. This similarity quantifies epistemic un-certainty and adaptively modulates the advantage signal to better explore challenging instances. For the third challenge, we intro-duce difficulty-aware advantage weighting, which regularizes the reward of each sample by its maximum value to reflect prediction difficulty. This allows the model to adaptively adjust the scale of policy updates. As a result, the combined effect of prompt and model-aware calibrations serves as an implicit curriculum learn-ing mechanism, delivering fine-grained, instance-specific gradients that enable more effective and adaptive policy optimization. Think2Go: Generative Next POI Recommendation with LLM Reasoning KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Our contributions can be summarized as follows: 
+
+• We propose Think2Go, the first generative next POI rec-ommendation framework based on LLM reasoning, which unifies SFT and RL-based reasoning to better balance memo-rization and exploration. 
+
+• We propose an advantage calibration mechanism that adapts to both prompt epistemic uncertainty and prediction diffi-culty, implicitly forming a competence-aware curriculum that refines exploration and enhances learning efficiency. 
+
+• Think2Go consistently outperforms baselines across three public datasets. Further evaluation on out-of-domain datasets and SID classification tasks shows that reasoning improves LLMs’ understanding of SIDs and enhances generalization. 
+
+## 2 Related Work 2.1 Next POI Recommendation 
+
+Existing literature on next POI recommendation primarily focuses on modeling users’ historical check-in sequences to capture the spatial-temporal transition patterns [ 33 , 38 , 46 ] between POIs, mak-ing it a typical sequential recommendation task [ 12 , 13 , 35 , 57 , 63 ]. Early studies [ 1, 6, 30 ] widely adopted Markov Chain (MC) meth-ods [ 3], leveraging personalized transition matrices to model user preferences and mobility patterns. However, these approaches fall short in capturing users’ complex interests and implicit behavioral signals compared to deep learning-based models. With the rise of deep learning, research has gradually shifted towards models based on Recurrent Neural Networks (RNNs) [ 10 ]and attention mechanisms [ 40 ]. For instance, DeepMove [ 5] in-tegrates attention and gating mechanisms to jointly learn users’ long-term periodic and short-term preferences. STGN [ 59 ] enhances LSTM architectures by incorporating spatial-temporal gates into the gating units, enabling the modeling of long- and short-term spatial-temporal preferences. STAN [ 28 ] and STiSAN [ 43 ] further introduce attention mechanisms to capture both continuous and non-continuous spatial-temporal contextual intervals in the mod-eling process. In addition, Graph Neural Networks (GNNs) have been leveraged to model high-level POI transition patterns by uti-lizing the user-POI graph structure [ 29 , 32 ]. For example, Graph-Flashback [ 34 ] constructs a powerful weighted user-POI knowledge graph to initialize POI embeddings, while STHGCN [ 50 ] employs hypergraphs to capture trajectory-level collaborative signals. Recently, LLMs with extensive commonsense knowledge have shown strong potential in recommendation tasks, leading to a rise in LLM-based approaches for next POI recommendation [ 24 ]. LLM-Mob [ 45 ] enhances the modeling of historical trajectory con-text through in-context learning. NextLocLLM [ 22 ] attempts to predict spatial coordinates directly to improve spatial reasoning within LLMs. LLM4POI [ 17 ] reformulates next POI recommenda-tion as a question-answering task and fine-tunes the model us-ing QLoRA-based supervised learning. Refine-POI [ 16 ] applies Group-based Rule-guided Policy Optimization (GRPO) [ 37 ] with recommendation-driven reward design to generate top-k recom-mendation lists. However, they have not explored reasoning-enhanced models to boost generalization. While Refine-POI leverages the GRPO framework for reasoning-based prediction, it overlooks the optimization of the advantage function, which limits performance improvements. 
+
+## 2.2 Reinforcement Learning for LLM Reasoning 
+
+Recent advancements in generative Artificial Intelligence (AI), par-ticularly with models like OpenAI-o1 [ 31 ] and Deepseek-R1 [ 14 ], have extended the scope of research from large language models (LLMs) to large reasoning models (LRMs). This shift is predicated on the application of the Reinforcement Learning from Human Feedback (RLHF) training framework, coupled with test-time scal-ing and an emphasis on deep thinking capabilities. The core inno-vation lies in explicitly leveraging a long chain-of-thought (CoT) mechanism [ 25 ]. This encourages models to generate a substantial number of intermediate reasoning tokens before arriving at a final answer, leading to significant performance improvements in com-plex domains such as mathematics, code generation, and question answering. GRPO has emerged as a leading reinforcement learning algo-rithm for training reasoning-augmented large language models GRPO eliminates the need for a separate value model by employing group-level rewards based on rule validation, thereby enabling self-play validation to enhance reasoning efficacy [ 4]. However, GRPO faces challenges such as inefficient sampling and length bias, which have spurred further optimizations in algorithms like Decoupled Advantage Policy Optimization (DAPO) [ 55 ] and Dr.GRPO [ 23 ]. Large Reasoning Models have garnered considerable interest in the domain of generative recommendation systems. R 2EC [ 54 ] re-conceptualizes recommendation model architectures by integrat-ing an inherent reasoning capability within a regression process. R2Rec [ 58 ] employs sampled interaction chains from user-item graphs to guide chain-of-thought reasoning. Nevertheless, both overlook sparse spatiotemporal behavior patterns, limiting their policy optimization and overall performance. 
+
+## 3 Preliminaries 3.1 Key Concept and Problem Definitions 
+
+Definition 1 (Check-in and Trajectory Seqence). Each check-in record is defined as a triplet 𝑠 𝑖 = (𝑢, 𝑙 𝑖 , 𝑡 𝑖 ), where user 𝑢 visits a POI 𝑙 𝑖 at timestamp 𝑡 𝑖 . Each POI 𝑙 𝑖 is characterized by its geographic coordinate 𝑔 𝑖 = (𝑙𝑎𝑡𝑖𝑡𝑢𝑑𝑒 = 𝑙𝑎𝑡 𝑖 , 𝑙𝑜𝑛𝑔𝑖𝑡𝑢𝑑𝑒 = 𝑙𝑜𝑛 𝑖 ), along with an associated categorical label 𝑐 𝑖 indicating its type. Here, we denote the set of all users as 𝑈 = {𝑢 1, 𝑢 2, . . . , 𝑢 |𝑈 | }, and the set of all POIs as 
+
+𝐿 = {𝑙 1, 𝑙 2, . . . , 𝑙 |𝐿 | }.
+
+Problem 1 (Next POI recommendation). Given a user 𝑢 𝑖 ,the trajectory 𝑆 𝑢 = {𝑠 1, 𝑠 2, . . . , 𝑠 𝑛 } denotes the sequence of historical check-ins sequence from time step 𝑡 1 to 𝑡 𝑛 . The objective of the next POI recommendation task is to identify the next POI 𝑙 𝑛 +1 ∈ 𝐿 that the user 𝑢 is most likely to visit in the next time step 𝑡 𝑛 +1.
+
+## 3.2 Kernel Density Estimates 
+
+Given the spatial 𝐺 𝑢 = {𝑔 𝑖 }𝑛 𝑖 =1 and temporal 𝑇 𝑢 = {𝑡 𝑖 }𝑛 𝑖 =1 features extracted from a user’s historical check-in sequence 𝑆 𝑢 , a query 
+
+𝑞 𝐺 or 𝑞 𝑇 representing the spatial or temporal attributes of a tar-get POI, we employ a kernel density estimation (KDE) function defined as 𝑘 (𝑥, 𝑥 ′) = 𝛼 exp  −𝛾 (𝑥 − 𝑥 ′)2 , where 𝛼 determines the KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhuang Zhuang et al. 
+
+amplitude of the kernel function, and 𝛾 controls the smoothness of the similarity measure. This formulation quantifies the spatial-temporal uncertainty of a query by estimating its likelihood under the user’s historical distribution. A lower density score indicates that the query falls in a sparse region of past behavior, suggesting higher uncertainty or more exploratory intent. 
+
+## 3.3 Reinforcement Learning for Large Reasoning Models 
+
+Inspired by DeepSeek-R1, it is worth noting that RL-based post-training methods enhance reasoning capabilities by promoting discriminative exploration from high-quality reasoning trajectories. In particular, GRPO introduces a novel approach that samples 𝐺 
+
+groups of rollouts 𝑜 1, 𝑜 2, . . . , 𝑜 𝐺 from the old policy 𝜋 𝜃 old for each input 𝑞 and utilizes normalized rule-based rewards to estimate advantages ˆ𝐴 , thereby guiding the current policy 𝜋 𝜃 optimization. Following GRPO, DAPO further improves sample efficiency by removing the KL penalty and incorporating dynamic sampling, clip-higher updates, and token-level policy gradients. The overall objective can be formalized as follows: 
+
+LDAPO (𝜃 ) = E(𝑞,𝑎 )∼ 𝐷, {𝑜 𝑖 }𝐺 𝑖 =1∼𝜋 𝜃 old (· | 𝑞 )
+
+"
+
+1
+
+Í𝐺 𝑖 =1 |𝑜 𝑖 |
+
+> 𝐺
+
+∑︁  
+
+> 𝑖 =1
+> |𝑜 𝑖 |
+
+∑︁ 
+
+> 𝑡 =1
+
+min 
+
+
+
+𝑟 (𝑖 ) 
+
+> 𝑡
+
+(𝜃 ) ˆ𝐴 𝑖 𝑡 , clip  𝑟 (𝑖 ) 
+
+> 𝑡
+
+(𝜃 ), 1 − 𝜖 low , 1 + 𝜖 high 
+
+ ˆ𝐴 𝑖 𝑡 
+
+#
+
+,
+
+s.t. 0 < {𝑜 𝑖 | is _equivalent (𝑎, 𝑜 𝑖 )} < 𝐺 
+
+(1) where 𝐷 denotes a dataset of queries 𝑞 paired with corresponding ground-truth answers 𝑎 . The clipping parameters 𝜖 low and 𝜖 high 
+
+define the trust region for importance ratio clipping, which con-tributes to optimization stability. The importance ratio at time step 𝑡 
+
+for trajectory 𝑖 is defined as 𝑟 (𝑖 ) 
+
+> 𝑡
+
+(𝜃 ) = 𝜋 𝜃 (𝑜 𝑡 |𝑞,𝑜 <𝑡 )    
+
+> 𝜋 𝜃 old (𝑜 𝑡 |𝑞,𝑜 <𝑡 )
+
+, measuring the relative likelihood of the token under the updated policy 𝜋 𝜃 versus the old policy 𝜋 𝜃 old . And, the estimated advantage ˆ𝐴 𝑖 is calculated as follows: 
+
+ˆ𝐴 𝑖 = 𝑅 𝑖 − mean ({ 𝑅 𝑖 }𝐺 𝑖 =1)
+
+std ({ 𝑅 𝑖 }𝐺 𝑖 =1) , (2) 
+
+## 4 Methods 
+
+Think2Go is a large next POI recommendation model that adopts a “think-then-recommend” paradigm. Section 4.1 presents the ar-chitecture, wherein generative reasoning and recommendation are jointly integrated into a unified framework. Section 4.2 introduces a tailored RL algorithm designed to alleviate entropy collapse and maintain an effective balance between exploration and exploitation. 
+
+## 4.1 Model Architecture 
+
+Our proposed Think2Go model is built upon a decoder-only back-bone, leveraging self-correction prompts as a bridge to unify super-vised fine-tuning (SFT) and reinforcement learning (RL). In exist-ing RLHF approaches, they typically perform SFT followed by RL, which limits learning efficiency and leads to catastrophic forgetting from SFT[ 11 , 21 ]. To overcome this, we unify SFT and RL within a single architecture. It employs SFT to ensure the model retains correct answers, while RL is used to enhance the model’s ability to explore and infer correct answers through reasoning. As illustrated in Figure 2, the old policy model first generates a reasoning trace composed of a Think step and a final prediction (Go). While the correct answer is typically appended for SFT, we instead introduce a self-correct prompt to provide contextual grounding. This forms a Think–>Go–>Self–correct–>Answer structure, where tokens from the reasoning trace are used for RL, and tokens from the appended answer are used for SFT. Specifically, SFT uses the standard next-token prediction task, with its objective function defined as follows: 
+
+LSFT = −∑︁  
+
+> (𝑥,𝑦 ) ∈ D |𝑦 |
+
+∑︁ 
+
+> 𝑖 =1
+
+log 𝑃 𝜃 (𝑦 𝑖 | 𝑥, 𝑦 <𝑖 ), (3) where 𝑦 𝑖 denotes the 𝑖 -th token in the answer 𝑦 , and 𝑃 𝜃 (𝑦 𝑖 | 𝑥, 𝑦 <𝑖 )
+
+denotes the probability of predicting 𝑦 𝑖 conditioned on the previ-ously generated tokens. The final model optimization loss is formu-lated as L = LSFT +𝛼 LCAPO , where 𝛼 is a hyperparameter balancing the SFT loss and the policy optimization loss. And, 𝐿 𝐶𝐴𝑃𝑂 will be detailed in Section 4.2. 
+
+## 4.2 Calibrated Advantage Policy Optimization (CAPO) 
+
+4.2.1 Adaptive Advantage Calibration in Robust Policy Optimiza-tion. Adaptive advantage calibration facilitates self-adjusting pol-icy updates in Think2Go. Specifically, we customize a sample-level calibration coefficient 𝑐 𝑖 𝑡 and a token-level calibration coefficient 
+
+𝑒 𝑖 𝑡 . This mechanism leverages both epistemic uncertainty and the model’s predictive capability to realize an implicit curriculum learn-ing effect. It dynamically balances exploration and exploitation: challenging samples with high epistemic uncertainty and correct predictions receive larger updates to encourage exploration, while incorrect predictions are updated conservatively to ensure robust-ness. As training progresses, the model naturally allocates more learning capacity to correctly predicted samples and epistemically challenging problems, thereby accelerating convergence and en-hancing overall generalization. To better understand this mechanism, we present a simplified gradient analysis, considering the unclipped loss function for clar-ity: 
+
+𝐿 𝑖 (𝜃 ) = 𝑟 (𝑖 ) 
+
+> 𝑡
+
+(𝜃 ) · ˆ𝐴 𝑖 = 𝜋 𝜃 (𝑜 𝑖 | 𝑞 )
+
+𝜋 𝜃 old (𝑜 𝑖 | 𝑞 ) · ˆ𝐴 𝑖 , (4) Accordingly, the policy update with the global learning rate 𝜂 is given by: 
+
+𝜃 ← 𝜃 + 𝜂 · ∇ 𝜃 log 𝜋 𝜃 (𝑜 𝑖 | 𝑞 ) · 𝑟 (𝑖 ) 
+
+> 𝑡
+
+(𝜃 ) · 𝑐 𝑖 𝑡 · ( 𝐴 𝑖 + 𝑒 𝑖 𝑡 )| {z }
+
+> ˆ𝐴 𝑖
+
+, (5) where 𝑒 𝑖 𝑡 represents the entropy of each reasoning token, which is used to measure its uncertainty, and is defined as follows: 
+
+𝑒 𝑖 𝑡 = − 
+
+> |𝑉 |
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑝 𝑖 𝑡,𝑗 log 𝑝 𝑖 𝑡,𝑗 , where 𝑝 𝑖 𝑡 = 𝜋 𝜃 (· | 𝑞 𝑖 , 𝑜 𝑖  
+
+> <𝑡
+
+) (6) Think2Go: Generative Next POI Recommendation with LLM Reasoning KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Policy Model ⋯𝑂 ଵ𝑂ீ 
+
+> q
+
+Question Samples Compute Reward Gap, 
+
+Advantages, Uncertainty 
+
+> aଵ
+> aୋ
+> Aଵ
+> Aଶ
+> Aୋିଵ
+> Aୋ
+
+## ⋯ ⋯
+
+(b) Iterative Policy Optimization 
+
+> mଵ
+> mୋ
+
+## ⋯  
+
+> Difficulty ‐aware Reward Gap
+> Advantage Function
+
+## ⋯𝑟 ଵ𝑟ீ 𝑟 ଵ𝑟 ଵ23Max group 1 2reward 
+
+> pଵ
+> pୋ
+
+## ⋯ 
+
+> Epistemic Uncertainty
+> difficult easy
+> ST pattern distribution
+
+𝑎 ௜ ൌ 𝑟 ௜ െ 𝑚𝑒𝑎𝑛ሺ𝑟 ଵ, ⋯ , 𝑟ீ ሻ
+
+Reward 
+
+> certainty uncertainty
+> User Check-in Trajectory
+
+Model (a) The Architecture of Think2Go LoRA Large Recommender Model <a_6> <b_1> <c_7> ⋯                     
+
+> When 2012-07-24 09:47 the user is likely to visit: <think> Unfortunately </think> <answer> </answer> Check regularity incorrect
+> ⋯
+> <a_6> <b_1> <c_7> <think> </think> <answer> </answer> ⋯⋯<a_7> <b_6> <c_9> </think> <answer> Unfortunately incorrect ⋯<a_7> <b_6> <c_9> </think> <answer> </answer> Check regularity </answer>
+
+Think Go Self-correct Answer Prompt 
+
+Figure 2: The overall framework of Think2Go, which performs iterative policy optimization over the Think →Go token sequence, while the Answer tokens are trained via SFT. To enhance iterative policy learning, we propose a Difficulty-Aware Advantage Weighting Estimator to reflect reasoning difficulty via reward gaps, and a Spatial-Temporal Epistemic Uncertainty (STEU) Estimator based on kernel density estimation to capture epistemic uncertainty. These jointly refine a centralized advantage function, enabling more precise policy gradient updates. 
+
+where |𝑉 | denotes the vocabulary size of the policy model. They show that the value of the advantage directly influences the magni-tude of policy updates. Among them, the incorporation of token-level entropy encourages exploration and promotes policy diversity during reasoning, particularly for uncertain tokens [ 44 ]. Moreover, we integrate calibration coefficients into the advantage estimation to realize prompt-specific adaptive learning rates, enabling dynamic adjustment of update magnitudes based on both the epistemic un-certainty of the prompt and the model’s predictive competence. 
+
+4.2.2 Rule-based Reward Estimation. Given the sampled trajecto-ries, the next step is to assign appropriate rewards to each one. Con-ventionally, reward signals include format rewards and evaluation-based rewards (e.g., Acc@1), which encourage the model to generate outputs with correct answer formatting and ultimately improve task performance. However, the inherent sparsity of such rewards severely restricts effective optimization. This is particularly prob-lematic in the initial training phase, where the model often fails to generate outputs in the prescribed format and much less the correct answer. To address this challenge, we design a progressive reward mech-anism that first encourages the model to generate well-formatted responses and then to produce semantically correct answers. For format rewards, we use a two-level scheme: if the output contains a partial format (i.e., <answer>: ), a reward of 0.5 is assigned; if the out-put satisfies the full structure </think><answer>:SID</answer> 
+
+and exceeds a length threshold of 300 tokens, a full reward of 1.0 is given. Benefiting from SFT, the model gradually learns to produce partially correct formats before mastering the complete structure. The length constraint is crucial for preventing reward hacking, where the model exploits formatting alone to obtain undeserved rewards. For evaluation-based rewards, we adopt a fine-grained scoring strategy based on decomposed semantic ID units. Each correctly predicted unit receives a reward of 3 
+
+> 𝐿
+
+, where 𝐿 denotes the total number of semantic units. This approach provides graded feedback for partially correct answers and encourages the model to incrementally refine its output toward complete correctness. 
+
+4.2.3 Spatial-Temporal Epistemic Uncertainty (STEU). Group-wise normalized advantage estimation captures the model’s relative com-petence on given prompts and serves as the basis for subsequent KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhuang Zhuang et al. 
+
+policy updates. However, this uniform treatment fails to account for the varying difficulty of different instances, resulting in equally weighted updates regardless of prediction complexity. Such insen-sitivity may diminish learning incentives for challenging samples, thereby constraining the model’s exploration capacity and general-ization ability. For the next POI recommendation, where prediction tasks are inherently heterogeneous due to spatial preferences and temporal regularities in user behavior, ignoring epistemic uncer-tainty distinctions can prevent the model from fully optimizing on high-value, hard-to-learn samples, ultimately limiting overall performance. To address the aforementioned issue, we employ a kernel density estimator in section 3.2 to quantify the spatial-temporal uncertainty of each trajectory, which serves as an indicator of the question’s epistemic difficulty. Firstly, from the temporal perspective, we con-sider the periodic characteristics of user behavior by measuring the temporal differences between the target query time and the user’s historical check-in times. A Gaussian kernel is used to perform smooth density estimation over these time differences, capturing the confidence of the query time under the user’s historical tem-poral distribution. To ensure normalization and interpretability as confidence, we take the average of all kernel responses. The formulation is: 
+
+𝑝 temporal (𝑞 ) = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+exp −
+
+min  |𝑡 𝑞 − 𝑡 𝑖 |, 24 − | 𝑡 𝑞 − 𝑡 𝑖 | 2
+
+2𝜎 2
+
+!
+
+, (7) where 𝑡 𝑞 is the target query timestamp, 𝑡 𝑖 denotes the timestamp of the 𝑖 -th historical check-in, 𝜎 is the bandwidth of the Gaussian kernel, and 𝑁 is the number of historical check-ins. Second, from the spatial perspective, we quantify whether the target query location lies within the user’s frequently visited regions by measuring the geodesic distance between the query location and historical check-in points. A Gaussian kernel is applied to these distances to estimate a spatial preference score, reflecting the user’s activity density around the query location. The final spatial confidence is obtained by averaging these kernel values: 
+
+𝑝 spatial (𝑞 ) = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+exp 
+
+
+
+− Δ𝐷 (𝑙 𝑞 , 𝑙 𝑖 )2
+
+2𝜎 2
+
+
+
+, (8) where 𝑙 𝑞 is the query location, 𝑙 𝑖 denotes the 𝑖 -th historical check-in location, 𝜎 is the kernel bandwidth, and 𝑁 is the num-ber of historical check-ins. A higher 𝑝 spatial (𝑞 ) or 𝑝 temporal (𝑞 ) in-dicates that the query is more consistent with the user’s past be-havior, implying lower uncertainty. Finally, we combine them us-ing a hyperparameter 𝛽 to form the query epistemic uncertainty 
+
+𝑝 = 𝛽 ·  1 − 𝑝 temporal (𝑞 ) + ( 1 − 𝛽 )  1 − 𝑝 spatial (𝑞 ).
+
+4.2.4 Difficulty-aware Reward Gap (DRG). Dr.GRPO removes the regularization term to avoid difficulty bias caused by excessively small group-wise standard deviations when the input prompts are either too hard or too easy, and retains only the centered outcome reward as the advantage. However, this leads to a problem in multi-reward settings where predictions of varying quality receive iden-tical advantages if their rewards follow similar group-wise distri-butions. As a result, it weakens the model’s ability to distinguish between better and worse strategies, reduces the directional speci-ficity of gradient updates, and increases the risk of converging to suboptimal local minima. For example, consider a group size of 3, where the reward values are [4.5, 4.5, 3.5] for an easy instance and [2.5, 2.5, 1.5] for a hard one. After mean-centering, both groups yield the same advantage distribution: [0.33, 0.33, -0.67]. This identical advantage assignment leads the model to perform equivalent policy updates for both groups, disregarding the absolute magnitude of the rewards and failing to capture the intrinsic difficulty of the underlying prediction task. As a result, the optimization process becomes insensitive to task difficulty, weakening the learning incentives for challenging samples and ultimately constraining the effectiveness of policy optimization and the upper bound of model performance. To mitigate the value dilution introduced by intra-group normal-ization, we re-scale the group-wise advantage using the original reward magnitude relative to the maximum reward to preserve the signal of absolute performance. This adjustment mitigates the loss of reward intensity information caused by standardization alone. Our DRG is defined as: 
+
+𝑚 = 1 − 𝑅 𝑚𝑎𝑥 − 𝑅 𝑅 𝑚𝑎𝑥 
+
+, (9) where 𝑅 denotes the current sample reward, 𝑅 𝑚𝑎𝑥 denotes the max-imum reward value. As illustrated in the earlier example, the DRG advantage calibration coefficients are [1.0,1.0,0.778] for the easy instance and [0.556,0.556,0.333] for the difficult one, reflecting the intended sensitivity to different samples. Serving as scaling factors based on the centered advantage, these coefficients enable the dif-ferentiation of instance difficulty, leading to more fine-grained and adaptive policy optimization. Through comparative experiments, we further observe that it effectively alleviates entropy collapse by maintaining a high entropy level for the reasoning tokens, which implies greater exploration capacity. 
+
+4.2.5 Training Objective. With the spatial-temporal epistemic un-certainty and the difficulty-aware advantage weight, we proceed to compute the policy optimization loss. However, as noted in Dr.GRPO, conventional advantage regularization introduces bias, where the variance term may disproportionately amplify the ad-vantage signal. To mitigate this issue, we eliminate the variance component. Consequently, the final advantage in Eq. 1 is updated as follows: 
+
+ˆ𝐴 𝑖 𝑡 = 𝑒 (𝛾 ·𝑝 ·𝑚 ) · 𝐴 𝑖 𝑡 , (10) 
+
+𝐴 𝑖 𝑡 = 𝑅 𝑖 − mean ({ 𝑅 𝑖 }𝐺 𝑖 =1), (11) 
+
+𝛾 is a hyperparameter that controls the scaling effect of the calibra-tion coefficient on the advantage. 
+
+## 5 Experimental Setting 5.1 Datasets 
+
+We evaluated our model’s performance on three widely used real-world datasets. Foursquare-NYC [ 52 ] and Foursquare-TKY [ 52 ]contain check-in data from New York City and Tokyo, respectively, from April 2012 to February 2013. Gowalla-CA [ 2 ] collected check-ins from February 2009 to October 2010 in California and Nevada. Think2Go: Generative Next POI Recommendation with LLM Reasoning KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 1: Statistics of three benchmark datasets. Dataset NYC TKY CA 
+
+Categories 209 190 301 POIs 5,135 7,873 14,027 Users 1,083 2,293 6,592 Avg. Check-In 136 195 53 Fre. Check-In 68 100 10 Each check-in record consists of userID, POIID, POI Category, Lon-gitude, Latitude, and Timestamp. We maintained the following preprocessing techniques, consistent with GNPR: (i) Filtered out unpopular POIs with fewer than ten interactions. (ii) Removed check-in records of inactive users with fewer than ten check-ins. (iii) Removed users and POIs from the test set that did not appear in the training set to ensure consistency between training and eval-uation. Then, check-in records were grouped by user and sorted chronologically. The first 80% of these records were used for train-ing, the subsequent 10% for validation, and the final 10% for testing. For each user, the last check-in was used as the answer, while the previous historical check-ins were used to build the input sequence for the problem. Table 1 shows the check-in data statistics for the three datasets used in our experiments. 
+
+## 5.2 Baselines 
+
+We have carefully selected the following state-of-the-art methods as our baselines, including those based on LLM methods: (1) Tra-ditional methods : PRME [ 6], a metric embedding method to learn personalized user transition patterns. LSTM [8], a sequence recom-mendation model based on recurrent neural networks. (2) Sequence-based methods : STAN [28 ], a self-attention model that considers spatio-temporal intervals. TPG [ 27 ], a transformer model that uses timestamps as prompts. ROTAN [7 ], a rotation-based temporal attention model that incorporates a temporal rotary posi-tional encoder to enhance temporal awareness. (3) GCN-based methods : GETNext [ 53 ], a graph convolutional network model, leverages a global transition graph to capture collab-orative signals from other users. STHGCN [50 ], a hypergraph-based model that captures both inter-user and intra-user relationships. (4) LLM-based methods : LLM-Mob [ 45 ], a reasoning-driven framework utilizing context-inclusive prompts to capture multi-scale mobility dependencies. LLM4POI [17 ], a supervised fine-tuned large language model based on question–answer pairs. GNPR [ 42 ], a generative recommendation LLM based on semantic IDs. (5) Reasoning-based methods : Refine-POI [16 ], an improved reasoning model based on GRPO. 
+
+## 5.3 Evaluation Metrics 
+
+Following previous work and use the widely adopted evaluation metric, Accuracy@K ( Acc@K) and Mean Reciprocal Rank (MRR), to assess the performance of comparative experiments. Acc@K measures the hit rate within the top-𝐾 results, whereas MRR eval-uates the specific rank of the ground-truth POI. Specifically, the Acc@K metric is formally defined as follows: Acc@K = 1
+
+|𝑈 |∑︁ 𝑢 ∈𝑈 
+
+|𝑆 𝐾 𝑢 ∩ 𝑆 𝑢 ||𝑆 𝑢 | , (12) where 𝑆 𝑢 is the target POI, and 𝑆 𝐾 𝑢 denotes the list of top-𝐾 predicted POIs. This metric measures the proportion of correctly sampled items within the top-K predicted samples. And, 𝑀𝑅𝑅 is defined as follows: 
+
+𝑀𝑅𝑅 = 1
+
+|𝑇 𝑒𝑠𝑡 | 
+
+> |𝑇 𝑒𝑠𝑡 |
+
+∑︁ 
+
+> 𝑖 =1
+
+1
+
+𝑟𝑎𝑛𝑘 𝑖 
+
+(13) where 𝑟𝑎𝑛𝑘 𝑖 is the index of the correctly predicted POI in the order list. This metric calculates the mean reciprocal rank of the ground-truth POIs, effectively emphasizing models that achieve higher placements in the ranked list. 
+
+## 5.4 Main Results 
+
+Table 2 presents the performance comparison between our proposed method and various baselines across three benchmark datasets. Our method consistently outperforms all baselines, including those based on large language models (LLMs), on all datasets. In particular, compared to the strongest traditional baseline ROTAN, we achieve relative Acc@1 improvements of 23.86%, 31.77%, and 17.47% on the NYC, TKY, and CA datasets, respectively. Moreover, all LLM-based methods surpass traditional approaches, indicating that the inher-ent commonsense knowledge in LLMs helps alleviate the sparsity issue in check-in trajectory data, making them more suitable for POI recommendation tasks. Additionally, compared to the strongest LLM-based baseline GNPR, our method achieves improvements of 6.33%, 5.78%, and 7.49% on the NYC, TKY, and CA datasets, respectively. These im-provements mainly stem from our reasoning-enhanced approach, which endows the model with a thinking process that strength-ens its predictive capability. Furthermore, our method incorporates heuristic optimization techniques at both the sampling level and the token level from the perspectives of prompt and model, effectively mitigating entropy collapse and ensuring a balanced trade-off be-tween exploration and exploitation during reasoning optimization. 
+
+## 5.5 Ablation Study 
+
+To further verify the effectiveness of each key component in our approach, we conduct the following ablation studies on the three datasets, as shown in the Table: (1) w/o Reasoning Tokens : We remove the reasoning tokens during fine-tuning and still employ Calibrated Advantage Policy Optimization to train the model (2) 
+
+w/o STEU : We exclude the spatial-temporal epistemic uncertainty weighting factor in the policy optimization loss. (3) w/o DRG : We remove the difficulty-aware reward sparsity regularization term that guides the model using a full-score reward signal. (4) w/o Token Entropy Bonus : We eliminate the influence of token-level entropy on the advantage estimation. Table 3 demonstrates that all components of our proposed method are effective across all three benchmark datasets. (1) We find that even without the use of reasoning tokens, optimizing listwise se-mantic IDs achieves better performance than the pointwise seman-tic IDs used in GNPR. This improvement is mainly attributed to the correlation among semantic IDs learned through RQ-VAE, which KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhuang Zhuang et al. 
+
+Table 2: Cross three datasets performance comparison. Best results are reported in bold, with the second-best results underlined. Model NYC TKY CA 
+
+Acc@1 Acc@5 Acc@10 MRR Acc@1 Acc@5 Acc@10 MRR Acc@1 Acc@5 Acc@10 MRR PRME 0.1159 0.2236 0.3105 0.1712 0.1052 0.2278 0.2944 0.1786 0.0521 0.1034 0.1425 0.1002 LSTM 0.1305 0.2719 0.3283 0.1857 0.1335 0.2728 0.3277 0.1834 0.0665 0.1306 0.1784 0.1201 PLSPL 0.1917 0.3678 0.4523 0.2806 0.1889 0.3523 0.4150 0.2542 0.1072 0.2278 0.2995 0.1847 STAN 0.2231 0.4582 0.5734 0.3253 0.1963 0.3798 0.4464 0.2852 0.1104 0.2348 0.3018 0.1869 GETNext 0.2406 0.4815 0.5811 0.3528 0.1829 0.4045 0.4961 0.2853 0.1526 0.3278 0.3946 0.2364 STHGCN 0.2734 0.5361 0.6244 0.3915 0.2950 0.5207 0.5980 0.3986 0.1730 0.3529 0.4191 0.2558 TPG 0.2555 0.5005 0.5932 0.3669 0.1420 0.3631 0.4492 0.2436 0.1749 0.3285 0.3860 0.2479 ROTAN 0.3106 0.5281 0.6131 0.4104 0.2458 0.4626 0.5392 0.3475 0.2199 0.3718 0.4334 0.2931 LLM-Mob 0.2582 0.5066 0.5973 0.3694 0.1673 0.3837 0.4786 0.2519 0.1764 0.3658 0.4237 0.2596 LLM4POI 0.3372 - - - 0.3035 - - - 0.2065 - - -Refine-POI 0.3469 0.5984 0.6627 0.4520 0.3160 0.5140 0.5830 0.4020 0.2174 0.3758 0.4321 0.2903 GNPR 0.3618 - - - 0.3062 - - - 0.2403 - - -
+
+Think2Go 0.3847 0.6287 0.6835 0.4663 0.3239 0.5461 0.6051 0.4147 0.2583 0.4190 0.4682 0.3167 Table 3: Results of ablation models on NYC, TKY, and CA datasets with Acc@1 metric. Ablations NYC TKY CA                                          
+
+> Think2Go 0.3847 0.3239 0.2583 w/o Reasoning Tokens 0.3674 ( ↓4.5% )0.3103 ( ↓4.2% )0.2478( ↓4.07% )w/o STEU 0.3763 ( ↓2.18% )0.3161 ( ↓2.41% )0.2503( ↓3.1% )w/o DRG 0.3744 ( ↓2.68% )0.3147 ( ↓2.84% )0.2489 ( ↓3.64% )w/o Token Entropy Bonus 0.3823 ( ↓0.62% )0.3207 ( ↓0.99% )0.2561( ↓0.85% )2460500 1000 1500 2000
+> Step Entropy
+> 1450500 1000 1500 2000
+> Step Reward
+> 3
+> 0.5 1.5 20500 1000 1500 2000
+> Step Acc@1
+> 12
+> (A) (B) (C) Refine-POI Think2Go Refine-POI Think2Go Refine-POI Think2Go
+
+Figure 3: Advantage Estimation Analysis. We compare Refine-POI, which uses the standard GRPO method, with Think2Go, and analyze the training dynamics of Entropy, Acc@1, and Reward under each approach. 
+
+allows the listwise IDs to leverage the autoregressive prediction advantages of LLMs and thus reduce the difficulty of POI prediction. (2) w/o STEU assigns higher advantage weights to harder and less predictable targets in irregular trajectory data, helping the model tackle difficult cases more effectively. (3) w/o DRG removes the reward-guided sparsity constraint, which otherwise helps guide the model using high-reward samples and alleviates entropy collapse. (4) w/o Token Entropy Bonus removes the bonus for high-entropy tokens, which otherwise promotes exploration of reasoning tokens during training. Overall, these components contribute to the RL–based reasoning framework by enhancing the utilization and exploration of rollout data, thereby leading to improved predictive performance. 
+
+## 5.6 Analysis on Advantage Estimation 
+
+Accurate advantage estimation is critical for mitigating entropy collapse and finding globally optimal solutions in policy gradient RL. To assess this, we compare our method with Refine-POI, focusing on the behavior of their advantage estimators during training in the Figure 3. We report entropy, Acc@1, and reward over training steps, and summarize the following findings: (1) Entropy stability: Think2Go better mitigates entropy collapse than Refine-POI, enabling sus-tained exploration. This improvement stems from the DRG, which adaptively scales the advantage based on reward signals—assigning smaller updates to incorrect predictions and maintaining higher entropy levels. We also observe that entropy first drops sharply, then rises and stabilizes. This is due to the base model initially lack-ing knowledge of semantic IDs and answer templates; once such knowledge is acquired, entropy increases as the model explores more diverse outputs. (2) Accuracy and reward performance: 
+
+Think2Go consistently outperforms Refine-POI in both Acc@1 and reward throughout training, demonstrating that its advantage esti-mator facilitates more effective policy optimization. (3) Template generalization: The consistently high reward (above 1.5) after around 400 training steps suggests that the model has effectively learned to produce structurally correct responses. This is largely attributed to the supervision from the SFT loss, which enforces template-conforming output. 
+
+## 5.7 Analysis on Reasoning-Enhanced Semantic ID 
+
+The reasoning-enhanced model improves prediction performance, which raises an important question: Does reasoning training enhance the model’s understanding and generalization of SID? 
+
+To assess the LLM’s semantic understanding of semantic IDs, we design a category prediction task comparing our model with the GNPR baseline trained only with SFT. Given a semantic ID, the model is asked to identify its correct category from ten randomly Think2Go: Generative Next POI Recommendation with LLM Reasoning KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 4: Semantic ID prediction categories based on Think2Go (reasoning model) and GNPR (SFT model). Model NYC TKY CA 
+
+Think2Go 0.3024 0.2673 0.1722 GNPR 0.1241 ( ↓ 58 .96% ) 0.1038 ( ↓ 61 .15% ) 0.1182( ↓ 31 .36% )
+
+sampled candidates, including the ground-truth category. As shown in the Table 4, our method achieves higher classification accuracy on SID-category prediction, confirming that reasoning training indeed improves the model’s semantic understanding and generalization of SID by expanding computation via test-time scaling. 
+
+## 5.8 Performance on Out-of-domain Data 
+
+We propose Think2Go, an advantage-calibrated reasoning model that improves generalization by increasing the computational depth of the reasoning process. Compared to existing methods such as GNPR, which leverage semantic IDs during fine-tuning to help the model memorize semantic information, Think2Go addresses a key limitation: in GNPR, the training of semantic IDs is decoupled from the model itself, leading to insufficient understanding of semantic IDs and poor generalization to unseen POIs. As shown in the Table 5, Think2Go exhibits smaller performance degradation on out-of-domain datasets compared to other methods, further demonstrating its superior generalization ability. 
+
+Table 5: Cross-domain generalization comparison among 
+
+LLM4POI , GNPR , and Think2Go . Each column shows source-to-target domain transfer performance. Model NYC-TKY NYC-CA TKY-NYC TKY-CA CA-NYC CA-TKY                   
+
+> LLM4POI 0.2594 0.1885 0.3463 0.1960 0.3344 0.2600 GNPR 0.2946 0.2297 0.3481 0.2342 0.3536 0.2869 Think2Go 0.3183 0.2484 0.3523 0.2545 0.3677 0.3042
+
+## 6 Conclusion 
+
+In this work, we study a novel generative next POI recommendation framework with reasoning, aiming to improve model generalization by increasing the computational depth of inference. We introduce a unified fine-tuning and reinforcement learning–based reasoning model to enhance the model’s reasoning ability, where the policy is optimized by calibrating the advantage based on both the epis-temic uncertainty of the data and the difficulty agnostic bias in the model’s advantage estimation. Building upon this design, we propose Think2Go, an advantage-calibrated reasoning model for time-sensitive next POI recommendation. Think2Go employs kernel density estimation to quantify epistemic uncertainty by measur-ing the spatial-temporal proximity between the current query and the user’s historical activity patterns. Moreover, difficulty-aware calibration enables reward-sensitive advantage estimation by scal-ing rewards relative to the maximum, thus mitigating bias from uniform update strength. This allows for more fine-grained and adaptive control over the policy updates, ensuring that samples of varying difficulty contribute appropriately to the learning process. Extensive experiments and ablation studies validate the effective-ness of our proposed CAPO method, demonstrating its superior generalization capability. 
+
+## Acknowledgments 
+
+This work was supported in part by the National Social Science Fund of China (No. 22BZX025) and the National Natural Science Foundation of China (No. 62572361 and 62506134). HW Qian is supported by the A*STAR Career Development Fund <Project No. C243512010>. Zhuang Zhuang is supported by the China Scholar-ship Council <Project No. 202406060124>. 
+
+## References 
+
+[1] Chen Cheng, Haiqin Yang, Michael R Lyu, and Irwin King. 2013. Where you like to go next: Successive point-of-interest recommendation.. In IJCAI , Vol. 13. 2605–2611. [2] Eunjoon Cho, Seth A Myers, and Jure Leskovec. 2011. Friendship and mobility: user movement in location-based social networks. In Proceedings of the 17th ACM SIGKDD international conference on Knowledge discovery and data mining .1082–1090. [3] Kai Lai Chung. 1967. Markov chains. Springer-Verlag, New York (1967). [4] Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. 2025. Onerec: Unifying retrieve and rank with generative recommender and iterative preference alignment. arXiv preprint arXiv:2502.18965 
+
+(2025). [5] Jie Feng, Yong Li, Chao Zhang, Funing Sun, Fanchao Meng, Ang Guo, and Depeng Jin. 2018. Deepmove: Predicting human mobility with attentional recurrent networks. In Proceedings of the 2018 world wide web conference . 1459–1468. [6] Shanshan Feng, Xutao Li, Yifeng Zeng, Gao Cong, and Yeow Meng Chee. 2015. Personalized ranking metric embedding for next new poi recommendation. In 
+
+IJCAI’15 Proceedings of the 24th International Conference on Artificial Intelligence .ACM, 2069–2075. [7] Shanshan Feng, Feiyu Meng, Lisi Chen, Shuo Shang, and Yew Soon Ong. 2024. Rotan: A rotation-based temporal attention network for time-specific next poi recommendation. In Proceedings of the 30th ACM SIGKDD conference on knowledge discovery and data mining . 759–770. [8] Alex Graves. 2012. Long short-term memory. Supervised sequence labelling with recurrent neural networks (2012), 37–45. [9] Xuegang Hao, Ming Zhang, Alex Li, Xiangyu Qian, Zhi Ma, Yanlong Zang, Shijie Yang, Zhongxuan Han, Xiaolong Ma, Jinguang Liu, et al . 2025. OxygenREC: An Instruction-Following Generative Framework for E-commerce Recommendation. 
+
+arXiv preprint arXiv:2512.22386 (2025). [10] Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long short-term memory. Neural computation 9, 8 (1997), 1735–1780. [11] Zeyu Huang, Tianhao Cheng, Zihan Qiu, Zili Wang, Yinghui Xu, Edoardo M Ponti, and Ivan Titov. 2025. Blending Supervised and Reinforcement Fine-Tuning with Prefix Sampling. arXiv preprint arXiv:2507.01679 (2025). [12] Yiheng Jiang, Yuanbo Xu, Yongjian Yang, Funing Yang, Pengyang Wang, and Chaozhuo Li. 2025. Auto Encoding Neural Process for Multi-interest Recommen-dation. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 39. 11879–11887. [13] Yiheng Jiang, Yuanbo Xu, Yongjian Yang, Funing Yang, Pengyang Wang, Chaozhuo Li, Fuzhen Zhuang, and Hui Xiong. 2024. TriMLP: A foundational MLP-like architecture for sequential recommendation. ACM Transactions on Information Systems 42, 6 (2024), 1–34. [14] Bowen Jin, Hansi Zeng, Zhenrui Yue, Jinsung Yoon, Sercan Arik, Dong Wang, Hamed Zamani, and Jiawei Han. 2025. Search-r1: Training llms to reason and leverage search engines with reinforcement learning. arXiv preprint arXiv:2503.09516 (2025). [15] Chen Li, Guoyan Huang, Zhu Sun, Lu Zhang, Shanshan Feng, and Guanfeng Liu. 2025. PCDe: A personalized conversational debiasing framework for next POI recommendation with uncertain check-ins. Neural Networks 188 (2025), 107443. [16] Peibo Li, Shuang Ao, Hao Xue, Yang Song, Maarten de Rijke, Johan Barthélemy, Tomasz Bednarz, and Flora D Salim. 2025. Refine-POI: Reinforcement Fine-Tuned Large Language Models for Next Point-of-Interest Recommendation. arXiv preprint arXiv:2506.21599 (2025). [17] Peibo Li, Maarten de Rijke, Hao Xue, Shuang Ao, Yang Song, and Flora D Salim. 2024. Large language models for next point-of-interest recommendation. In 
+
+Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1463–1472. [18] Songwei Li, Jie Feng, Jiawei Chi, Xinyuan Hu, Xiaomeng Zhao, and Fengli Xu. 2024. Limp: Large language model enhanced intent-aware mobility prediction. 
+
+arXiv preprint arXiv:2408.12832 (2024). KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhuang Zhuang et al. 
+
+[19] Siyu Li, Toan Tran, Haowen Lin, John Krumm, Cyrus Shahabi, Lingyi Zhao, Khurram Shafique, and Li Xiong. 2024. Geo-llama: Leveraging llms for human mobility trajectory generation with spatiotemporal constraints. arXiv preprint arXiv:2408.13918 (2024). [20] Xuchuan Li, Fei Huang, Jianrong Lv, Zhixiong Xiao, Guolong Li, and Yang Yue. 2024. Be more real: Travel diary generation using llm agents and individual profiles. arXiv preprint arXiv:2407.18932 (2024). [21] Mingyang Liu, Gabriele Farina, and Asuman Ozdaglar. 2025. UFT: Unifying Supervised and Reinforcement Fine-Tuning. arXiv preprint arXiv:2505.16984 
+
+(2025). [22] Shuai Liu, Ning Cao, Yile Chen, Yue Jiang, and Gao Cong. 2024. nextlocllm: next location prediction using LLMs. arXiv preprint arXiv:2410.09129 (2024). [23] Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi, Tianyu Pang, Chao Du, Wee Sun Lee, and Min Lin. 2025. Understanding r1-zero-like training: A critical perspective. arXiv preprint arXiv:2503.20783 (2025). [24] Zhao Liu, Wei Liu, Huajie Zhu, Jianxing Yu, Jian Yin, Wang-Chien Lee, and Shun Wang. 2025. Geography-Aware Large Language Models for Next POI Recommendation. arXiv preprint arXiv:2505.13526 (2025). [25] Zhanyu Liu, Shiyao Wang, Xingmei Wang, Rongzhou Zhang, Jiaxin Deng, Honghui Bao, Jinghao Zhang, Wuchao Li, Pengfei Zheng, Xiangyu Wu, et al .2025. Onerec-think: In-text reasoning for generative recommendation. arXiv preprint arXiv:2510.11639 (2025). [26] Jing Long, Liang Qu, Guanhua Ye, Tong Chen, Quoc Viet Hung Nguyen, and Hongzhi Yin. 2024. Unleashing the power of large language models for group poi recommendations. arXiv preprint arXiv:2411.13415 (2024). [27] Yan Luo, Haoyi Duan, Ye Liu, and Fu-Lai Chung. 2023. Timestamps as prompts for geography-aware location recommendation. In Proceedings of the 32nd ACM International Conference on Information and Knowledge Management . 1697–1706. [28] Yingtao Luo, Qiang Liu, and Zhaocheng Liu. 2021. Stan: Spatio-temporal attention network for next location recommendation. In Proceedings of the web conference 2021 . 2177–2185. [29] Xiaoting Lyu, Yufei Han, Wei Wang, Hangwei Qian, Ivor Tsang, and Xiangliang Zhang. 2024. Cross-context backdoor attacks against graph prompt learning. In 
+
+Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 2094–2105. [30] Wesley Mathew, Ruben Raposo, and Bruno Martins. 2012. Predicting future locations with hidden Markov models. In Proceedings of the 2012 ACM conference on ubiquitous computing . 911–918. [31] OpenAI. 2024. Learning to Reason with LLMs . https://openai.com/index/learning-to-reason-with-llms/ Accessed: 2025-07-31. [32] Hongliang Qiao, Shanshan Feng, Xutao Li, Huiwei Lin, Han Hu, Wei Wei, and Yunming Ye. 2023. RotDiff: A hyperbolic rotation representation model for information diffusion prediction. In Proceedings of the 32nd ACM international conference on information and knowledge management . 2065–2074. [33] Hongliang Qiao, Shanshan Feng, Min Zhou, WenTao Li, and Fan Li. 2025. Hyper-bolic Multi-semantic Transition for Next POI Recommendation. In Companion Proceedings of the ACM on Web Conference 2025 . 1830–1837. [34] Xuan Rao, Lisi Chen, Yong Liu, Shuo Shang, Bin Yao, and Peng Han. 2022. Graph-flashback network for next location recommendation. In Proceedings of the 28th ACM SIGKDD conference on knowledge discovery and data mining . 1463–1471. [35] Xuan Rao, Shuo Shang, Lisi Chen, Renhe Jiang, and Peng Han. 2025. Disentangled and personalized representation learning for next point-of-interest recommenda-tion. In Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence . 7697–7705. [36] Kangrui Ruan, Xinyang Wang, and Xuan Di. 2024. From twitter to reasoner: Understand mobility travel modes and sentiment using large language models. In 2024 IEEE 27th International Conference on Intelligent Transportation Systems (ITSC) . IEEE, 454–459. [37] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, et al . 2024. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 (2024). [38] Zhengke Sun, Hangwei Qian, and Ivor Tsang. 2025. Exploring the Effectiveness and Interpretability of Texts in LLM-based Time Series Models. arXiv preprint arXiv:2504.08808 (2025). [39] Yihong Tang, Zhaokai Wang, Ao Qu, Yihao Yan, Zhaofeng Wu, Dingyi Zhuang, Jushi Kai, Kebing Hou, Xiaotong Guo, Han Zheng, et al . 2024. ItiNera: Integrating spatial optimization with large language models for open-domain urban itinerary planning. arXiv preprint arXiv:2402.07204 (2024). [40] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. Advances in neural information processing systems 30 (2017). [41] Zhenglin Wan, Anjun Gao, Xingrui Yu, Pingfu Chao, Jun Song, and Maohao Ran. 2025. POI Recommendation via Multi-Objective Adversarial Imitation Learning. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 39. 12676– 12684. [42] Dongsheng Wang, Yuxi Huang, Shen Gao, Yifan Wang, Chengrui Huang, and Shuo Shang. 2025. Generative Next POI Recommendation with Semantic ID. 
+
+arXiv preprint arXiv:2506.01375 (2025). [43] En Wang, Yiheng Jiang, Yuanbo Xu, Liang Wang, and Yongjian Yang. 2022. Spatial-temporal interval aware sequential POI recommendation. In 2022 IEEE 38th international conference on data engineering (ICDE) . IEEE, 2086–2098. [44] Shenzhi Wang, Le Yu, Chang Gao, Chujie Zheng, Shixuan Liu, Rui Lu, Kai Dang, Xionghui Chen, Jianxin Yang, Zhenru Zhang, et al . 2025. Beyond the 80/20 rule: High-entropy minority tokens drive effective reinforcement learning for llm reasoning. arXiv preprint arXiv:2506.01939 (2025). [45] Xinglei Wang, Meng Fang, Zichao Zeng, and Tao Cheng. 2023. Where would i go next? large language models as human mobility predictors. arXiv preprint arXiv:2308.15197 (2023). [46] Xinfeng Wang, Fumiyo Fukumoto, Jin Cui, Yoshimi Suzuki, Jiyi Li, and Dongjin Yu. 2023. Eedn: Enhanced encoder-decoder network with local and global context learning for poi recommendation. In Proceedings of the 46th international ACM SIGIR conference on research and development in information retrieval . 383–392. [47] Zhipeng Wei, Kuo Cai, Junda She, Jie Chen, Minghao Chen, Yang Zeng, Qiang Luo, Wencong Zeng, Ruiming Tang, Kun Gai, et al . 2025. Oneloc: Geo-aware generative recommender systems for local life service. arXiv preprint arXiv:2508.14646 (2025). [48] Wilson Wongso, Hao Xue, and Flora D Salim. 2024. Genup: Generative user profilers as in-context learners for next poi recommender systems. arXiv preprint arXiv:2410.20643 (2024). [49] Jian Xie, Kai Zhang, Jiangjie Chen, Tinghui Zhu, Renze Lou, Yuandong Tian, Yanghua Xiao, and Yu Su. 2024. Travelplanner: A benchmark for real-world planning with language agents. arXiv preprint arXiv:2402.01622 (2024). [50] Xiaodong Yan, Tengwei Song, Yifeng Jiao, Jianshan He, Jiaotuan Wang, Ruopeng Li, and Wei Chu. 2023. Spatio-temporal hypergraph learning for next POI rec-ommendation. In Proceedings of the 46th international ACM SIGIR conference on research and development in information retrieval . 403–412. [51] Dingqi Yang, Benjamin Fankhauser, Paolo Rosso, and Philippe Cudre-Mauroux. 2020. Location prediction over sparse user mobility traces using rnns. In Pro-ceedings of the twenty-ninth international joint conference on artificial intelligence .2184–2190. [52] Dingqi Yang, Daqing Zhang, Vincent W Zheng, and Zhiyong Yu. 2014. Modeling user activity preference by leveraging user spatial temporal characteristics in LBSNs. IEEE Transactions on Systems, Man, and Cybernetics: Systems 45, 1 (2014), 129–142. [53] Song Yang, Jiamou Liu, and Kaiqi Zhao. 2022. GETNext: Trajectory flow map enhanced transformer for next POI recommendation. In Proceedings of the 45th International ACM SIGIR Conference on research and development in information retrieval . 1144–1153. [54] Runyang You, Yongqi Li, Xinyu Lin, Xin Zhang, Wenjie Wang, Wenjie Li, and Liqiang Nie. 2025. Towards Large Recommender Models with Reasoning. arXiv preprint arXiv:2505.16994 (2025). [55] Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan, Gaohong Liu, Lingjun Liu, et al . 2025. Dapo: An open-source llm reinforcement learning system at scale. arXiv preprint arXiv:2503.14476 
+
+(2025). [56] Xie Yu, Jingyuan Wang, Yifan Yang, Qian Huang, and Ke Qu. 2025. BIGCity: A universal spatiotemporal model for unified trajectory and traffic state data analysis. In 2025 IEEE 41st International Conference on Data Engineering (ICDE) .IEEE, 4455–4469. [57] Zhaoqi Zhang, Haolei Pei, Jun Guo, Tianyu Wang, Yufei Feng, Hui Sun, Shaowei Liu, and Aixin Sun. 2025. OneTrans: Unified Feature Interaction and Sequence Modeling with One Transformer in Industrial Recommender. arXiv preprint arXiv:2510.26104 (2025). [58] Keyu Zhao, Fengli Xu, and Yong Li. 2025. Reason-to-Recommend: Using Interaction-of-Thought Reasoning to Enhance LLM Recommendation. arXiv preprint arXiv:2506.05069 (2025). [59] Pengpeng Zhao, Anjing Luo, Yanchi Liu, Jiajie Xu, Zhixu Li, Fuzhen Zhuang, Victor S Sheng, and Xiaofang Zhou. 2020. Where to go next: A spatio-temporal gated network for next poi recommendation. IEEE Transactions on Knowledge and Data Engineering 34, 5 (2020), 2512–2524. [60] Zhuang Zhuang, Lingbo Liu, Heng Qi, Yanming Shen, and Baocai Yin. 2024. CMAAN: Cross-Modal Aggregation Attention Network for Next POI Recommen-dation. IEEE Transactions on Computational Social Systems (2024). [61] Zhuang Zhuang, Lu Wang, Zhenliang Hao, Heng Qi, Yanming Shen, and Baocai Yin. 2021. Traffic knowledge graph based trajectory destination prediction. In 
+
+CCF Conference on Big Data . Springer, 194–215. [62] Zhuang Zhuang, Tianxin Wei, Lingbo Liu, Heng Qi, Yanming Shen, and Baocai Yin. 2024. TAU: trajectory data augmentation with uncertainty for next POI recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence ,Vol. 38. 22565–22573. [63] Zhuang Zhuang, Haitao Yuan, Shanshan Feng, Heng Qi, Yanming Shen, and Baocai Yin. 2025. MGSTDN: Multi-Granularity Spatial-Temporal Diffusion Net-work for Next POI Recommendation. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 4560–4570. Think2Go: Generative Next POI Recommendation with LLM Reasoning KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+## A Implementation Detail 
+
+For the fine-tuning module, we utilized LLaMA3.1-8B as the base model, fine-tuning it with LoRA (Low-Rank Adaptation) using a rank of 8, an alpha of 16, and a dropout of 0.1. The maximum generation length for tokens was set to 2048, with a batch size of 1 per GPU. The learning rate was configured to 2e-5, incorporating a 20-step warm-up phase. For generating the reasoning module, we used VLLM for the inference module, setting its maximum generation length to 1024, a temperature of 1.3, and returning 4 rollout samples with a beam search width of 10. Our hardware setup comprised five Nvidia L40s GPUs. Four of these GPUs were dedicated to data training, while the remaining one was equipped with the VLLM model to generate online sampling data. Each input prompt consisted of the user’s 50 most recent check-in records. During inference, we employ beam search with a size of 15 to generate multiple candidate predictions. 
+
+## B Hyperparameter Analysis 
+
+We conducted a parameter sensitivity study to analyze the impact of the number of sampling groups and the scaling factor 𝛾 for optimization. As shown in the figure, the performance improves as the number of groups increases, reaching the best result when the group size 𝐺 = 4, and then stabilizing. Considering the trade-off between computational efficiency and performance, we choose 
+
+𝐺 = 4 as the default setting. In addition, 𝛾 serves as a crucial hyperparameter that modulates the influence of spatial-temporal cognitive uncertainty on the advantage estimation. We observe that the best performance is achieved when 𝛾 is set to 0.5. 
+
+Table 6: Hyperparameter analysis on group size 𝐺 and advan-tage estimator scaling coefficient 𝛾 .Hyperparameter NYC TKY CA 
+
+𝐺 =2 0.3785 0.3217 0.2538 
+
+𝐺 =3 0.3802 0.3224 0.2551 
+
+𝐺 =4 0.3847 0.3239 0.2583 
+
+𝐺 =5 0.3840 0.3246 0.2580 
+
+𝛾 = 0.3 0.3803 0.3209 0.2524 
+
+𝛾 = 0.4 0.3819 0.3221 0.2567 
+
+𝛾 = 0.5 0.3847 0.3239 0.2583 
+
+𝛾 = 0.6 0.3810 0.3217 0.2554 
+
+𝛾 = 0.7 0.3742 0.3198 0.2511 
+
+## C Prompt Format C.1 Reasoning Prompt Format 
+
+We provide our reasoning prompt template in the Table 7. It is important to note that the training and inference stages must remain consistent to ensure the model produces correct reasoning and prediction formats. 
+
+Table 7: The prompt format of reasoning for training and inference. System Instruction You are a helpful assistant specialized in location prediction. You analyze POI access patterns to predict next locations. Respond in the follow-ing format: <think>\n[Your step-by-step reasoning here]\n</think>\n<answer>: <a_7><b_25><c_16></answer><|end_of_text|> 
+
+Instruction Here is a record of a user’s POI check-in trajectory. Your task is to analyze the user’s POI check-in trajectory patterns and predict the next location they will visit at the specified time. You should perform a detailed analysis of temporal patterns, transitions between POIs, and user preferences. Present your reasoning step-by-step inside a <think> and </think> 
+
+block. After completing your analysis, provide your final POI prediction within <answer>: 
+
+and </answer> tags. For example: <answer>: <a_7><b_25><c_16></answer><|end_of_text|> 
+
+Self-correct Unfortunately (Fortunately), the predicted answer is incorrect (correct). It is more likely that the user will visit: 
+
+Input User_<uid> visited: <SID> at [time], ..., <SID> at [time]. When [time] user_<uid> is likely to visit: 
+
+Example User_3 visited: <a_22><b_20><c_25><d_0> at 2012-05-05 13:58, <a_22><b_18><c_16><d_0> ..., 
+
+<a_6><b_27><c_31> at 2012-12-10 10:07. When 2012-12-30 20:47 user_3 is likely to visit: 
+
+## C.2 Zero-shot Semantic Information Prediction Prompt Format for SID 
+
+In the Table 8, we demonstrate that semantic IDs possess semantic information after fine-tuning with SFT and Think2Go reinforce-ment reasoning. To help the model predict categories in the cor-rect format under zero-shot conditions, we need to customize the prompt template.Specifically, to guide the model in predicting the category corresponding to the target semantic ID, we employ a concrete example as a prompt. 
+
+## D Case Study 
+
+To more intuitively demonstrate Think2Go’s reasoning behavior, we analyzed representative cases from the NYC dataset in Table 9, including a real example from user ID 451 in the test set. It shows how LLM utilizes common knowledge combined with prompts to analyze the target check-in process based on the semantic ID transition patterns and temporal periodicity of sequential check-ins. This helps the LLM understand semantic IDs, rather than just simple symbolic transition patterns. KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Zhuang Zhuang et al. 
+
+Table 8: The prompt format for zero-shot semantic informa-tion prediction. System Instruction You are a location prediction assistant. Predict POI categories based on user check-in patterns. Output only category names, not semantic IDs. 
+
+Instruction Here is a reference example to guide your re-sponse: [example] Trajectory: [Input] Now, you are required to select the category correspond-ing to the semantic ID of the target POI from the following list of candidate categories: 1.epart-ment Store, 2.Comedy Club, 3.Racetrack, 4.City, 5.Cosmetics Shop, 6. Building, 7.Plaza, 8.Book-store, 9.Nursery School, 10.Light Rail. <answer>: 
+
+Input User_<uid> visited: <SID> at [time], ..., <SID> at [time]. When [time] user_<uid> is likely to visit: <SID>. 
+
+example Trajectory: <a_1><b_1><c_29> at 2013-01-01 10:00, <a_2><b_3><c_8> at 2013-01-01 12:00. When 2013-01-02 20:47 user is likely to visit: <a_2><b_1><c_29>. Now, you are required to se-lect the category corresponding to the semantic ID of the target POI from the following list of candi-date categories: 1.Food, 2.Shopping, 3.Hotel, 4.Ed-ucation, 5.Park, 6.Hospital, 7.Transport, 8.Office, 9.Entertainment, 10.Residence. <answer>: Hospi-tal</answer> 
+
+Table 9: The case of test examples. Input User_451 visited:<a_28><b_27><c_22><d_2> at 2012-11-15 20:45, ..., <a_1><b_23><c_20> at 2013-01-08 10:21. When 2013-01-09 07:13 user_451 is likely to visit: 
+
+Reasoning <think>The best predictions often emerge when one follows recurring behavioral patterns rather than attempting to account for every possible deviation. In this user’s case, visits are centered around a few high-frequency POIs, with notable repetitions during weekday mornings and af-ternoons. Particularly, the user tends to return to familiar places shortly after recent visits, es-pecially those with high historical engagement. When transitions repeat with short intervals, it often signals a strong preference or necessity. In this context, recent consecutive visits to the same POI indicate a reinforced habit. Visits in the early morning typically follow the previous day’s routine, often resuming at the same or nearby POI. Considering all these patterns, it is highly probable that the user will repeat the last known check-in behavior.</think> <answer>: <a_1><b_23><c_20></answer><|end_of_text|> 
+
+Answer <a_1><b_23><c_20> 
+
+## E Analysis on Model Efficiency 
+
+In this paper, we propose Think2Go, which unifies SFT and RL-based reasoning models. We utilize semantic IDs as data and only incorporate temporal information to describe check-in trajectories. Compared to conventional RL-based reasoning methods, this ap-proach achieves higher efficiency. Table 10 reports a comparison of the efficiency between our method and Refine-POI (RL methods based on standard text prompts). Both methods were trained on the NYC dataset. It can be observed that our method achieves higher efficiency in both training and testing time and reduces memory consumption. This improvement benefits from using semantic IDs as POI identifiers, which reduces redundant input information, and from online sampling with VLLM during the reasoning stage, which also helps accelerate sampling speed. 
+
+Table 10: Efficiency comparison on the NYC dataset. Models Training Time per epoch Test Time Memory
