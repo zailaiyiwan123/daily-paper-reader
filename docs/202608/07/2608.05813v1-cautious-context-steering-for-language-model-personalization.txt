@@ -1,0 +1,430 @@
+Title: Cautious Context Steering for Language Model Personalization
+
+URL Source: https://arxiv.org/pdf/2608.05813v1
+
+Published Time: Fri, 07 Aug 2026 00:46:03 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+Preprint. 
+
+# CAUTIOUS CONTEXT STEERING FOR LANGUAGE MODEL PERSONALIZATION 
+
+Gihoon Kim 1∗ Jeyoung Lee 1∗ Suhan Woo 1 Sekwon Oh 1
+
+Minsu Jeon 1 Hyounsoo Han 2 Euntai Kim 1,3† 
+
+> 1
+
+Yonsei University 2 Hyundai Motors Company 3 Korea Institute of Science and Technology 
+
+{gihoon, jeyoung0103, etkim }@yonsei.ac.kr 
+
+# ABSTRACT 
+
+Personalizing language models (LMs) to individual user preferences is essential for aligning responses with diverse goals and backgrounds. Existing methods typ-ically train a separate adapter for each user or learn a reward model whose scores depend on the user. Despite explicitly optimizing for each user, these methods must learn from limited observations and therefore suffer from data sparsity and poor generalization to unseen users and domains. In-context learning (ICL) and Context Steering (CoS) can instead provide more effective personalization by con-ditioning the base LM directly on user context and leveraging its pretrained capa-bilities without per-user training. Yet neither adapts the influence of that context across decoding steps: ICL leaves it uncontrolled, whereas CoS applies a fixed steering coefficient and requires two LM forward passes per step. We propose 
+
+Cautious Context Steering (CCS), which adds a lightweight adapter to a frozen backbone LM to decide at each token whether and how strongly user context should affect generation. The adapter learns this behavior from an oracle context-conditioned LM and preserves the base LM when the context is not helpful. A sin-gle CCS adapter trained on only one dataset improves generation quality both in-domain and across four out-of-distribution personalization benchmarks, demon-strating robust generalization to new users and domains. CCS also avoids per-user fine-tuning and the additional context-conditioned forward pass required by CoS, substantially reducing inference cost. 
+
+# 1 INTRODUCTION 
+
+Post-training methods are widely used to align language models (LMs) with human values and im-prove their performance (Christiano et al., 2017; Ouyang et al., 2022; Rafailov et al., 2023). How-ever, these methods commonly rely on the Bradley–Terry model (Bradley & Terry, 1952), which aggregates human preferences into a single learning objective and may therefore overlook differ-ences in individual users’ values (Prabhakaran et al., 2021; Feffer et al., 2023; Casper et al., 2023). Addressing this limitation calls for personalized alignment: rather than following a single aggre-gate preference, an LM should adapt its responses to each user’s values using their past preference choices (Sorensen et al., 2024). Prior work has pursued this goal either by adapting model parame-ters using user-specific preference data (Tan et al., 2024; Thonet et al., 2025; Liu et al., 2026) or by training user-specific reward models on such data (Oh et al., 2024; Poddar et al., 2024; Bose et al., 2025; Shenfeld et al., 2025; Kim & Kim, 2026). Despite this progress, learning-based approaches to personalized alignment remain difficult to scale. Such methods must learn from limited data for each user, which limits their ability to generalize to unseen users and out-of-domain settings (Rezk et al., 2025). They also complicate post-training 
+
+> ∗
+
+Equal Contribution 
+
+> †
+
+Corresponding Author 
+
+1arXiv:2608.05813v1 [cs.AI] 6 Aug 2026 Preprint. With  
+
+> user context
+
+# Context Steering (CoS) 
+
+> LM prefix + context
+> Without
+> user context
+> LM prefix only
+> context logits
+> base logits
+> steered logits
+
+# Cautious Context Steering (Ours)   
+
+> LM prefix only
+> base logits
+> current
+> hidden state
+> `
+> user context
+> CCS
+> Adapter gate
+> bias
+> Token-wise adaptive steering
+> Base-preserving when uncertain
+> 1 LM forward + small adapter
+> Always-on steering
+> Fixed strength for every token
+> 2 LM forwards per step
+> next token
+> steered logits next token
+> strength
+> fixed
+
+Figure 1: Overview of CCS. Conventional Context Steering (CoS) uses the difference between context-conditioned and base model logits with a fixed steering strength. This amplifies the influence of context at every token and requires two forward passes per decoding step. In contrast, our CCS adapter learns to predict token-wise logit biases and steering strengths based on user context. It is trained to steer only when the user context provides reliable evidence and to preserve the base LM’s behavior otherwise. and often require managing user-specific models at deployment time. A simple yet strong alterna-tive is to prepend user preference information to the prompt and rely on the base LM’s in-context capabilities (Dong et al., 2022; He et al., 2024). As shown in Fig. 1, Context Steering (CoS) (He et al., 2024) computes a steering direction by subtracting the logits of a context-free forward pass from those of a context-conditioned forward pass, and then amplifies or attenuates this direction during decoding. However, CoS uses a steering strength fixed in advance and applies it uniformly across all generation steps. As a result, CoS may amplify the influence of user context even when the context is uninformative or misleading for the current token. It also increases serving costs because it requires two LM forward passes per decoding step. To address these limitations, we propose Cautious Context Steering (CCS). The central idea is to apply personalization cautiously: at each decoding step, CCS determines whether to use the user context and how strongly it should influence the prediction. We train a small CCS adapter attached to a frozen backbone LM to predict token-wise logit biases over plausible next tokens, conditioned on the current decoding state and user context. During training, we derive the target steering direction and strength from a ㅜoracle context-conditioned teacher only when the teacher assigns the chosen response a higher likelihood than the base LM does. Otherwise, the adapter is trained to preserve the base LM’s output distribution. We train the CCS adapter on a single dataset and evaluate its generation quality across multiple per-sonalization benchmarks. Our method achieves higher generation quality than the baselines. More-over, unlike CoS, CCS does not require an additional context-conditioned LM forward pass and therefore substantially reduces inference cost. Together, these results show that CCS enables gener-alizable inference-time personalization without per-user fine-tuning. 2Preprint. 
+
+# 2 MOTIVATION 
+
+Steering Strength of Context Steering As illustrated in Fig. 1, Context Steering (CoS) (He et al., 2024) uses a steering strength λ to scale the logit shift induced by the context at every decoding step. To examine the effect of this fixed coefficient on personalization, we provide the preference history 
+
+Hu of user u as context and evaluate generation under different values of λ. Here, Hu consists of query-response pairs that the user preferred in the past. The context effect on the next-token logit, denoted by ∆ℓt, is defined as the difference between the logit with user context ℓctx  
+
+> t
+
+and the logit without user preference ℓbase  
+
+> t
+
+:
+
+∆ℓt = ℓctx  
+
+> t
+
+− ℓbase  
+
+> t
+
+= ℓ(yt | x, y <t , Hu) − ℓ(yt | x, y <t , ∅).
+
+Here, x denotes the current user prompt, y<t denotes the prefix generated so far, and yt denotes the next token. Using the steering strength λ, CoS forms the final next-token logit for decoding as follows: 
+
+ℓCoS  
+
+> t
+
+= ℓctx  
+
+> t
+
++ λ∆ℓt (1) Thus, increasing λ strengthens the influence of the user context. When λ = −1, the context effect is canceled and the logit becomes the base next-token logit ℓbase  
+
+> t
+
+; when λ = 0 , it becomes the ICL logit ℓctx  
+
+> t
+
+.
+
+Effect of Steering Strength We then evaluate CoS generation under different steering strengths for a target prompt x, using four past queries and their corresponding user-chosen responses 
+
+(xc, y + 
+
+> c
+
+) as the preference history Hu. We conduct this analysis with two language models, Qwen3-0.6B and Qwen3-4B. For each generated response y, we measure ROUGE-1 for unigram overlap and ROUGE-L for longest-common-subsequence similarity with the target user’s chosen response 
+
+y+ (Lin, 2004), as well as BERTScore-F1 for contextual semantic similarity (Zhang et al., 2019), across a grid of steering strengths λ ∈ Λ ⊂ [−1.5, 1.5] . The results are shown in Fig. 2. ROUGE-1                    
+
+> 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 -1.5 -1 -0.5 00.5 11.5
+> λScore
+> ROUGE-L
+> 0.1 0.11 0.12 0.13 0.14 0.15 0.16 -1.5 -1 -0.5 00.5 11.5
+> λ
+> BERTScore-F1
+> 0.8 0.81 0.82 0.83 0.84 0.85 0.86 -1.5 -1 -0.5 00.5 11.5
+> λ
+> Qwen3-0.6B Qwen3-4B
+
+Figure 2: Effect of steering strength. We vary the CoS steering strength λ and report ROUGE-1, ROUGE-L, and BERTScore-F1 for Qwen3-0.6B and Qwen3-4B on PRISM evaluation set (Kirk et al., 2024). The large markers indicate the best score for each model and metric. The maximizing value differs across model scales and metrics, showing that a single fixed steering strength is insuf-ficient for reliable personalization. Generation quality varies non-monotonically with λ, and the maximizing value differs across models and metrics. Thus, no single steering strength is consistently optimal across settings, motivating an adaptive choice of λ rather than a globally fixed coefficient. To further examine the role of λ at the token level, we perform an oracle analysis on a chosen response for a single prompt. At each decoding step t, we compute ℓCoS  
+
+> t
+
+for each λ ∈ Λ using Eq. 1. We then compute the oracle coefficient λ⋆t = max  
+
+> λ∈Λ
+
+log pλ(y+ 
+
+> t
+
+| x, y +
+
+> <t
+
+, Hu), which selects the steering strength that assigns the highest probability to the user-chosen token at that step. The results are shown in Fig. 3. This qualitative example shows that the optimal steering coefficient varies across tokens. The result supports the view that a single fixed steering strength is not consistently optimal over an entire 3Preprint. Insert sentences in the following paragraph to make it more coherent. The use of AI 
+
+has been increasing rapidly in recent years. Impact this has on society. What are the 
+
+potential benefits and risks? 
+
+Query: 
+
+Response: 
+
+Figure 3: Token-level oracle steering coefficients. For a single prompt and chosen response, we compute the oracle steering coefficient λ⋆t that maximizes the reference-token log-probability at each decoding step. Green tokens prefer positive λ values, meaning that stronger context influence improves the token probability; red tokens prefer negative λ values, meaning that reducing the con-text effect is better; unhighlighted tokens show no gain from steering. The mixed pattern within one response shows that the useful amount and direction of personalization vary across tokens, motivat-ing token-wise adaptive steering rather than always-on steering with a fixed coefficient. sequence. Instead, personalization is often needed strongly only for a subset of tokens, while other tokens should remain close to the base LM distribution. 
+
+# 3 CAUTIOUS CONTEXT STEERING 
+
+We propose Cautious Context Steering (CCS), a framework for inference-time personalization. Its central principle is simple: user context should affect generation only when it provides useful ev-idence for the current token prediction. Accordingly, CCS learns both when and how strongly to personalize, and otherwise follows the behavior of the frozen backbone LM. 3.1 PLAUSIBLE TOKEN STEERING WITH USER CONTEXT 
+
+For a user u, let Hu = {(xi, y + 
+
+> i
+
+, y − 
+
+> i
+
+)}Ki=1 denote a preference history. Here, xi is a past prompt, y+
+
+> i
+
+is the response preferred by the user, and the rejected response y− 
+
+> i
+
+is optional. Given a new prompt x
+
+and a generated prefix y<t , the frozen base LM produces a next-token logit ℓbase  
+
+> t
+
+(v | x, y <t ) for each vocabulary token v. Our goal is to use Hu to construct personalized logits ℓCCS t (v | x, y <t , Hu).When the context is uninformative or unreliable for the current prediction, these logits should remain close to those of the base LM. 
+
+Plausible Token Steering Modifying every vocabulary logit at every decoding step is both costly and unnecessary. We instead restrict steering to a plausible token set Pt containing tokens that re-ceive high probability under the base LM. The size of this set adapts to the uncertainty of the base distribution p0. When the base LM is confident, CCS considers only a small set; when it is uncer-tain, CCS considers a broader set. No bias is added outside Pt, so the relative probabilities of the remaining tokens are preserved. The adapter can therefore focus on reordering tokens that are likely to be generated, rather than learning a transformation over the full vocabulary. 
+
+Cautious Context Steering Adapter The CCS adapter adjusts the relative base logits within Pt.We first combine the current hidden state ht, a representation of the prompt, and the encoded pref-erence history Hu into a personalized state zt. This state summarizes how the user context should 4Preprint. be interpreted at the current decoding step. The adapter then predicts a steering score sθt (v) for each plausible token v ∈ Pt:
+
+sθt (v) = fθ
+
+ zt, ℓ base  
+
+> t
+
+(v | x, y <t ) , (2) where sθt (v) is a signed score that determines how much the logit of plausible token v should increase or decrease. A positive score favors the token relative to the base LM, whereas a negative score suppresses it. We normalize the scores within Pt, so the adapter changes the relative ordering of plausible tokens rather than assigning a new absolute score to each token. CCS does not apply the predicted scores blindly. A separate gate head predicts a cautious gate 
+
+gt ∈ [0 , 1] that measures whether steering is useful at the current step. The gate takes as input the personalized state zt and summary statistics of the base distribution over Pt. The resulting steering bias from CCS adapter is 
+
+δθt (v) = gθt · sθt (v), v ∈ Pt. (3) When gt is close to one, CCS applies the predicted steering scores strongly. When it is close to zero, CCS suppresses steering and preserves the base prediction. The final personalized logits and distribution are 
+
+ℓCCS  
+
+> t
+
+(v) = 
+
+ℓbase  
+
+> t
+
+(v) + δt(v), v ∈ Pt,ℓbase  
+
+> t
+
+(v), v / ∈ Pt, (4) 
+
+pCCS t (·) = softmax( ℓCCS t ). (5) Thus, the adapter decides both which plausible tokens to promote or suppress and whether person-alization is warranted at the current step. For all v / ∈ Pt, we set δt(v) = 0 . This keeps the method efficient and preserves the base LM’s relative ordering outside the plausible set. 3.2 CAUTIOUS DISTILLATION 
+
+We train the CCS adapter by distilling a token-level steering direction from a history-conditioned teacher LM. This direction is given by the difference between the teacher and base logits, as in Context Steering (CoS). However, the analysis in Section 2 shows that a fixed shift λ∆ℓt is not helpful at every generation step. Uniformly amplifying the teacher–base difference can introduce noise when the history is irrelevant or misleading. We therefore distill the teacher only at helpful tokens and learn a suitable steering strength for each such token. 
+
+Steering Advantage Function For a preferred response y+, we define the token-level steering advantage as 
+
+At = log pctx  
+
+> t
+
+(y+ 
+
+> t
+
+| x, y +
+
+> <t
+
+, Hu) − log pbase  
+
+> t
+
+(y+ 
+
+> t
+
+| x, y +
+
+> <t
+
+). (6) 
+
+At measures how much more likely the history-conditioned LM considers the preferred token y+
+
+> t
+
+than the base LM does. Using a margin m, we partition the training positions into helpful and preservation sets: 
+
+Thelp = {t | At > m }, Tpreserve = {t | At ≤ m}.
+
+At positions in Thelp , the history provides useful evidence and the adapter learns from the teacher. At positions in Tpreserve , the adapter instead learns to retain the base distribution. 5Preprint. 
+
+Oracle Steering Strength The advantage identifies where the history is useful, but it does not specify how strongly the adapter should steer. We therefore construct an oracle coefficient λ⋆t that controls the strength of the teacher direction over Pt.For each plausible token v ∈ Pt, we first define the teacher-induced direction as the difference between the teacher and base log-probabilities: 
+
+dt(v) = log pctx  
+
+> t
+
+(v | x, y +
+
+> <t
+
+, Hu) − log pbase  
+
+> t
+
+(v | x, y +
+
+> <t
+
+).
+
+We normalize this direction within Pt to obtain ¯dt(v). Intuitively, ¯dt describes which plausible tokens the history-conditioned LM favors or disfavors relative to the base LM. We then define a support-local distribution parameterized by a steering strength λ:
+
+qt,λ (v) = softmax v∈Pt
+
+ log pbase  
+
+> t
+
+(v) + λ ¯dt(v) .
+
+Here, λ determines how strongly the distribution moves along ¯dt. Within a bounded interval, we choose the oracle strength that maximizes the likelihood of the preferred token: 
+
+λ⋆t = arg max  
+
+> λ∈[λmin ,λ max ]
+
+log qt,λ (y+ 
+
+> t
+
+). (7) Thus, λ⋆t gives the strength at which the teacher direction best explains the next token of the preferred response. Substituting this strength yields the oracle-steered target distribution 
+
+q⋆t (v) = softmax v∈Pt
+
+ log pbase  
+
+> t
+
+(v) + λ⋆t ¯dt(v) . (8) The CCS adapter bias δθt (v) similarly defines the student distribution 
+
+qθt (v) = softmax v∈Pt
+
+ log pbase  
+
+> t
+
+(v) + δθt (v) (9) over the same support. At helpful positions, we distill q⋆t into qθt . At preservation positions, we ignore the teacher direction and train the adapter to match the base distribution. The teacher distribution and λ⋆t are used only during training. At inference time, the adapter predicts the steering bias and gate directly from the current state and user context. 3.3 OBJECTIVE FUNCTION OF CCS At helpful positions t ∈ T help , CCS learns to match the oracle-steered teacher distribution. From Eq. 8 and Eq. 9 the helpful-token distillation loss is 
+
+Lhelp = X
+
+> t∈T help
+
+DKL 
+
+ q⋆t ∥ qθt
+
+ . (10) This term teaches the CCS adapter how user context changes the relative preference among plausible tokens. At non-helpful positions t ∈ T preserve , the CCS adapter should avoid changing the base distribution without evidence. We define the base distribution restricted to Pt as 
+
+qbase  
+
+> t
+
+= softmax v∈Pt
+
+ log pbase  
+
+> t
+
+(v)
+
+and use the following base-preserving loss: 
+
+Lpreserve = X
+
+> t∈T preserve
+
+DKL 
+
+ qbase  
+
+> t
+
+∥ qθt
+
+ . (11) This Eq. 10 and Eq. 11 term is central to the cautious behavior of CCS. The adapter thus learns to use the user context only at tokens where it is helpful, while preserving the base LM elsewhere. Finally, we define a soft target ˜gt that aligns the gate gt with the teacher advantage: 
+
+˜gt = 1[t ∈ T help ] · σ
+
+ At − mτ
+
+
+
+,
+
+6Preprint. where the temperature τ controls the softness of the transition around the margin. The target enables steering when the advantage is sufficiently large and suppresses it otherwise. We train the gate with binary cross-entropy: 
+
+Lgate = − X
+
+> t∈C
+
+[˜ gt log gt + (1 − ˜gt) log(1 − gt)] , (12) where C denotes the response-token positions used for training, excluding padding and special to-kens such as EOS. The final objective is 
+
+LCCS = ηhelp Lhelp + ηpreserve Lpreserve + ηgate Lgate . (13) 3.4 INFERENCE -TIME PERSONALIZATION 
+
+At inference time, we use only the frozen base LM and the trained CCS adapter. We encode the user context Hu once and reuse its representation throughout generation. At each decoding step, the base LM produces the next-token distribution, after which CCS selects Pt and predicts the gated bias δt
+
+in Eq. 3. Adding this bias to the base logits gives the personalized distribution in Eq. 5. This inference procedure differs fundamentally from CoS. CoS requires two LM forward passes at every generation step, one for the base prompt and one for the context-conditioned prompt. CCS distills this context effect into the adapter and therefore needs no additional context-conditioned backbone pass during generation. It can thus use preference history at substantially lower inference cost. 
+
+# 4 EXPERIMENTS 
+
+We evaluate whether CCS provides accurate and efficient inference-time personalization from user context. Our experiments are designed to test three questions. First, can a single CCS adapter trained on one personalization dataset improve generation quality on the same distribution? Second, does the learned adapter transfer to users, tasks, and preference structures that were not observed dur-ing training? Third, can CCS obtain these gains with substantially lower inference overhead than Context Steering (CoS), which requires an additional context-conditioned LM forward pass at every decoding step? 4.1 EXPERIMENTAL SETUP 
+
+Backbone We use the Qwen3 model (Yang et al., 2025) as the frozen backbone LM and evaluate two model scales, Qwen3-0.6B and Qwen3-4B. For both scales, we train only the lightweight CCS adapter described in Section 3, which has fewer than 1% of the parameters of the backbone LM. All backbone parameters remain frozen. The adapter is trained on the PRISM (Kirk et al., 2024) training split and then reused without further dataset-specific fine-tuning for all in-domain and out-of-distribution evaluations. 
+
+Training Setup CCS is trained on PRISM preference pairs constructed from user-rated conversa-tions. For each training example, the base prompt is paired with a compact preference history con-sisting of previously preferred user interactions. The context-conditioned backbone serves only as a teacher during training: it provides token-level steering directions and the oracle steering strengths used in the cautious distillation objective. At inference time, the teacher pass is removed; CCS uses the frozen base LM plus the learned adapter. 
+
+Baselines We compare against the following systems: • Base : the frozen Qwen3 backbone without user context. • ICL (Dong et al., 2022): In-Context Learning, an in-context personalization baseline that prepends the user context to the current prompt. 7Preprint. • CoS (He et al., 2024): Context Steering, a training-free logit-delta steering method that combines the base and context-conditioned next-token logits during decoding. • CCS (Ours) : Cautious Context Steering, the proposed method which predicts a gated logit bias over the plausible token set. For a fair comparison, all context-based methods use the same per-user context budget of four pre-vious preference examples. For CoS, we use the same context format as ICL and set the steering strength to λ = −0.5, following the best-performing configuration reported in the original CoS paper (He et al., 2024). 
+
+Datasets We train CCS on the PRISM training split and use its separate test split for in-domain evaluation. To evaluate whether the personalization behavior learned by CCS generalizes beyond its training distribution, we test the same adapter without further fine-tuning on four out-of-distribution benchmarks: UF-P-4, Psoups, PersonalLLM, and Reddit TLDR (Poddar et al., 2024; Jang et al., 2023; Zollo et al., 2025; V¨ olske et al., 2017). UF-P-4 is a pluralistic preference benchmark de-rived from UltraFeedback (Cui et al., 2023), where preferences correspond to different alignment dimensions such as helpfulness, honesty, instruction-following, and truthfulness. Psoups contains user-indexed preference data for personalized alignment. PersonalLLM provides simulated individ-ual users with multiple pairwise interactions, allowing us to evaluate personalization under sparse user feedback. Reddit TLDR evaluates whether the method transfers to summarization preferences from human comparisons over Reddit post summaries. 
+
+Metrics We report generation quality against the user’s chosen reference response using ROUGE-1, ROUGE-L, and BERTScore-F1 (Lin, 2004; Zhang et al., 2019). ROUGE-1 measures lexical unigram overlap, ROUGE-L measures sequence-level overlap through the longest common sub-sequence, and BERTScore captures contextual semantic similarity. Because these automatic metrics compare generated responses to user-preferred references, higher scores indicate that the output is closer to the response selected by the target user. We also report the average inference time per sample on PRISM to measure the computational cost of personalization. 4.2 GENERATION QUALITY 
+
+Table 1 shows that CCS consistently improves personalized generation quality. On the in-domain PRISM benchmark, CCS obtains the best result on every metric for both Qwen3-0.6B and Qwen3-4B. The gains over Base and ICL show that simply providing context is not sufficient, while the gains over CoS show the limitation of applying a fixed steering strength at every decoding step. Together, these results highlight the importance of deciding both when and how strongly the context should influence generation. Across the four out-of-distribution benchmarks, CCS achieves the best score in nearly all model– metric combinations and performs close to the best in the remaining cases, despite being trained only on PRISM and applied without dataset-specific fine-tuning. This broad improvement suggests that the adapter learns a reusable rule for when and how strongly to use context, rather than memorizing PRISM-specific response patterns. The comparison with CoS further highlights the value of CCS. Fixed-strength steering can amplify unhelpful context under domain shift, as shown by the sharp degradation of CoS on Reddit TLDR with Qwen3-0.6B, whereas CCS remains stable and improves all three metrics. Overall, these results show that selective and strength-adaptive personalization generalizes more reliably than uniformly applying the same steering strength throughout generation. 4.3 INFERENCE EFFICIENCY 
+
+Table 2 compares inference latency on PRISM. CoS is the most expensive method because it per-forms two LM forward passes at each decoding step: one with the current prompt alone and one with the context-conditioned prompt. This nearly doubles inference time relative to Base, increas-ing latency from 0.3017 to 0.6755 seconds per sample for Qwen3-0.6B and from 0.4529 to 1.2443 seconds per sample for Qwen3-4B. CCS avoids this repeated teacher computation by distilling the context effect into the adapter. As a result, CCS remains close to ICL-level latency while achieving 8Preprint. Table 1: Generation quality of Qwen3-0.6B and Qwen3-4B on PRISM and out-of-distribution benchmarks. Best results within each model scale are shown in bold. Dataset Split Method Qwen3-0.6B Qwen3-4B R-1 R-L B-1 R-1 R-L B-1 PRISM ID Base 20.81 13.12 82.13 28.05 15.47 84.92 ICL 21.12 12.98 82.50 28.06 14.97 84.82 CoS 22.05 13.82 82.75 27.86 15.11 85.06 CCS (Ours) 22.88 14.20 83.14 28.76 15.93 85.16 
+
+UF-P-4 OOD Base 28.08 16.81 82.58 30.79 16.93 83.91 ICL 26.32 16.43 81.89 31.14 17.14 83.94 CoS 29.19 17.31 82.90 30.91 16.98 83.92 CCS (Ours) 29.12 17.58 82.92 31.46 17.38 84.03 
+
+Psoups OOD Base 18.28 12.20 81.04 24.97 14.90 84.08 ICL 18.61 12.67 81.78 24.46 14.42 83.83 CoS 18.26 12.73 81.29 23.89 14.09 83.63 CCS (Ours) 18.71 12.78 81.65 25.11 15.15 84.09 
+
+PersonalLLM OOD Base 23.24 13.87 80.09 37.90 18.84 84.70 ICL 26.22 15.11 81.05 36.38 17.84 84.34 CoS 25.23 14.89 80.46 36.31 17.91 84.34 CCS (Ours) 27.05 16.01 81.08 39.10 19.55 84.93 
+
+Reddit TLDR OOD Base 14.75 10.26 82.88 21.92 14.78 86.47 ICL 14.00 10.96 83.16 22.64 14.87 86.01 CoS 7.600 5.366 79.38 22.31 14.74 85.94 CCS (Ours) 20.96 14.72 85.89 21.93 15.10 86.52 
+
+Table 2: Inference time on PRISM Method Time [s/sample] Qwen3-0.6B Qwen3-4B Base 0.3017 0.4529 ICL 0.3417 0.7120 CoS 0.6755 1.2443 CCS 0.3732 0.6094 stronger generation quality: it is 44.8% faster than CoS on Qwen3-0.6B and 51.0% faster on Qwen3-4B. These efficiency gains are important for practical personalization because user context can be used without maintaining separate user-specific models or running an additional context-conditioned backbone pass during generation. 
+
+# 5 CONCLUSION 
+
+We proposed Cautious Context Steering (CCS), a lightweight framework for inference-time lan-guage model personalization. CCS trains a small adapter on top of a frozen backbone LM to decide at each decoding step whether and how strongly user context should steer plausible next tokens. By distilling useful context-induced shifts from a context-conditioned teacher, the adapter learns to per-sonalize when the context provides reliable evidence and to preserve the base distribution otherwise. Across PRISM and four out-of-distribution benchmarks, a single adapter trained only on PRISM consistently improves generation quality and generalizes without dataset-specific fine-tuning. CCS also avoids the additional context-conditioned backbone pass required by CoS, substantially reduc-ing inference time. These results show that selective and strength-adaptive context steering enables scalable and reliable personalization without per-user adaptation. 9Preprint. 
+
+# REFERENCES 
+
+Avinandan Bose, Zhihan Xiong, Yuejie Chi, Simon Shaolei Du, Lin Xiao, and Maryam Fazel. Lore: Personalizing llms via low-rank reward modeling. arXiv preprint arXiv:2504.14439 , 2025. Ralph Allan Bradley and Milton E Terry. Rank analysis of incomplete block designs: I. the method of paired comparisons. Biometrika , 39(3/4):324–345, 1952. Stephen Casper, Xander Davies, Claudia Shi, T. Gilbert, J’er’emy Scheurer, Javier Rando, Rachel Freedman, Tomasz Korbak, David Lindner, Pedro J Freire, Tony Wang, Samuel Marks, Charbel-Raphau00ebl Su00e9gerie, Micah Carroll, Andi Peng, Phillip J. K. Christoffersen, Mehul Damani, Stewart Slocum, Usman Anwar, Anand Siththaranjan, Max Nadeau, Eric J. Michaud, J. Pfau, Dmitrii Krasheninnikov, Xin Chen, L. Langosco, Peter Hase, Erdem Biyik, A. Dragan, David Krueger, Dorsa Sadigh, and Dylan Hadfield-Menell. Open problems and fundamental lim-itations of reinforcement learning from human feedback. In Trans. Mach. Learn. Res. , 2023. P. Christiano, Jan Leike, Tom B. Brown, Miljan Martic, S. Legg, and Dario Amodei. Deep rein-forcement learning from human preferences. In Neural Information Processing Systems , 2017. Ganqu Cui, Lifan Yuan, Ning Ding, Guanming Yao, Wei Zhu, Yuan Ni, Guotong Xie, Zhiyuan Liu, and Maosong Sun. Ultrafeedback: Boosting language models with high-quality feedback. In 
+
+International Conference on Machine Learning , 2023. doi: 10.48550/arXiv.2310.01377. Qingxiu Dong, Lei Li, Damai Dai, Ce Zheng, Jingyuan Ma, Rui Li, Heming Xia, Jingjing Xu, Zhiyong Wu, Tianyu Liu, et al. A survey on in-context learning. arXiv preprint arXiv:2301.00234 ,2022. Michael Feffer, Hoda Heidari, and Zachary Chase Lipton. Moral machine or tyranny of the majority? In AAAI Conference on Artificial Intelligence , 2023. doi: 10.48550/arXiv.2305.17319. Jerry Zhi-Yang He, Sashrika Pandey, Mariah L Schrum, and Anca Dragan. Context steering: Con-trollable personalization at inference time. arXiv preprint arXiv:2405.01768 , 2024. Joel Jang, Seungone Kim, Bill Yuchen Lin, Yizhong Wang, Jack Hessel, Luke Zettlemoyer, Hannaneh Hajishirzi, Yejin Choi, and Prithviraj Ammanabrolu. Personalized soups: Per-sonalized large language model alignment via post-hoc parameter merging. arXiv preprint arXiv:2310.11564 , 2023. Gihoon Kim and Euntai Kim. Swap-guided preference learning for personalized reinforcement learning from human feedback. In The Fourteenth International Conference on Learning Repre-sentations , 2026. URL https://openreview.net/forum?id=nc28mSbyVG .Hannah R Kirk, Alexander Whitefield, Paul R¨ ottger, Andrew Bean, Katerina Margatina, Juan Ciro, Rafael Mosquera, Max Bartolo, Adina Williams, He He, et al. The prism alignment dataset: What participatory, representative and individualised human feedback reveals about the subjective and multicultural alignment of large language models. Advances in Neural Information Processing Systems , 37:105236–105344, 2024. Chin-Yew Lin. Rouge: A package for automatic evaluation of summaries. In Text summarization branches out , pp. 74–81, 2004. Jiahong Liu, Wenhao Yu, Quanyu Dai, Zhongyang Li, Jieming Zhu, Menglin Yang, Tat-Seng Chua, and Irwin King. Perfit: Exploring personalization shifts in representation space of llms. In The Fourteenth International Conference on Learning Representations , 2026. Minhyeon Oh, Seungjoon Lee, and Jungseul Ok. Active preference-based learning for multi-dimensional personalization. In arXiv.org , 2024. doi: 10.48550/arXiv.2411.00524. Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to fol-low instructions with human feedback. Advances in neural information processing systems , 35: 27730–27744, 2022. 10 Preprint. Sriyash Poddar, Yanming Wan, Hamish Ivison, Abhishek Gupta, and Natasha Jaques. Personalizing reinforcement learning from human feedback with variational preference learning. Advances in Neural Information Processing Systems , 37:52516–52544, 2024. Vinodkumar Prabhakaran, Aida Mostafazadeh Davani, and Mark D´ ıaz. On releasing annotator-level labels and information in datasets. arXiv (Cornell University) , 2021. Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D Manning, Stefano Ermon, and Chelsea Finn. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36:53728–53741, 2023. Fady Rezk, Yuangang Pan, Chuan-Sheng Foo, Xun Xu, Nancy Chen, Henry Gouk, and Timo-thy Hospedales. The reward model selection crisis in personalized alignment. arXiv preprint arXiv:2512.23067 , 2025. Idan Shenfeld, Felix Faltings, Pulkit Agrawal, and Aldo Pacchiano. Language model personalization via reward factorization. arXiv preprint arXiv:2503.06358 , 2025. Taylor Sorensen, Jared Moore, Jillian R. Fisher, Mitchell Gordon, Niloofar Mireshghallah, Christo-pher Rytting, Andre Ye, Liwei Jiang, Ximing Lu, Nouha Dziri, Tim Althoff, and Yejin Choi. A roadmap to pluralistic alignment. In International Conference on Machine Learning , 2024. doi: 10.48550/arXiv.2402.05070. Zhaoxuan Tan, Qingkai Zeng, Yijun Tian, Zheyuan Liu, Bing Yin, and Meng Jiang. Democratizing large language models via personalized parameter-efficient fine-tuning. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , pp. 6476–6491, 2024. Thibaut Thonet, Germ´ an Kruszewski, Jos Rozen, Pierre Erbacher, and Marc Dymetman. Fast: Feature-aware sampling and tuning for personalized preference alignment with limited data. In 
+
+Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pp. 9352–9381, 2025. Michael V¨ olske, Martin Potthast, Shahbaz Syed, and Benno Stein. Tl; dr: Mining reddit to learn automatic summarization. In Proceedings of the workshop on new frontiers in summarization , pp. 59–63, 2017. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q Weinberger, and Yoav Artzi. Bertscore: Evaluat-ing text generation with bert. arXiv preprint arXiv:1904.09675 , 2019. Thomas Zollo, Andrew Siah, Naimeng Ye, Li Li, and Hongseok Namkoong. Personalllm: Tailoring llms to individual preferences. In International Conference on Learning Representations , volume 2025, pp. 66949–66971, 2025. 11

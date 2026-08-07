@@ -7,64 +7,72 @@
 
 ## 每次日报
 - 最新运行日期：2026-08-07
-- 运行时间：2026-08-07 02:22:16 UTC
+- 运行时间：2026-08-07 21:17:21 UTC
 - 运行状态：成功
-- 本次总论文数：15
+- 本次总论文数：17
 - 精读区：8
-- 速读区：7
+- 速读区：9
 
 ### 今日简报（AI）
-今日15篇论文聚焦个性化推荐与生成，精读重点在《MultiCompose》和《Personalizing LLM Agents》。最值得关注多概念个性化组合的细粒度属性绑定，以及用小策略模型定制大模型智能体的高效路径。建议普通读者优先浏览这两篇，并速读行为对齐基准与LoRA生成方法，把握轻量化、可解释的个性化趋势。
+1) 今日共阅17篇，精读8篇，速读9篇，两篇满分聚焦个性化与自适应。
+2) 最值关注：个性化文化自适应情感TTS与LLM谨慎上下文引导，均获满分10.0。
+3) 建议延伸浏览速读的PALMs、SPEAR等8分论文，了解人口偏好建模和个性化检索。
 - 详情：[/202608/07/README](/202608/07/README)
 
 ### 精读区论文标签
-1. [MultiCompose: Multi-Concept Personalized Composition with Per-Subject Attribute Binding](/202608/07/2608.03708v1-multicompose-multi-concept-personalized-composition-with-per-subject-attribute-binding)  
+1. [Beyond One-Size-Fits-All: Personalized and Culturally Adaptive Emotional TTS via Interactive Optimization of Individual Emotion Perception Spaces](/202608/07/2608.00998v1-beyond-one-size-fits-all-personalized-and-culturally-adaptive-emotional-tts-via-interactive-optimization-of-individual-emotion-perception-spaces)  
    标签：评分：10.0/10、query:pers-gen
-   evidence：文本到图像扩散模型中的多概念个性化组合
-2. [Personalizing Large Language Model Agents with Small Policy Models](/202608/07/2608.00215v1-personalizing-large-language-model-agents-with-small-policy-models)  
+   evidence：通过交互优化个体感知空间实现个性化与文化自适应情感语音合成，属于个性化内容生成方法。
+2. [Cautious Context Steering for Language Model Personalization](/202608/07/2608.05813v1-cautious-context-steering-for-language-model-personalization)  
+   标签：评分：10.0/10、query:pers-gen
+   evidence：提出面向个体用户偏好的语言模型个性化上下文引导方法。
+3. [Personalizing Large Language Model Agents with Small Policy Models](/202608/07/2608.00215v1-personalizing-large-language-model-agents-with-small-policy-models)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：通过小型逐用户策略层个性化冻结LLM代理的执行
-3. [CopyCat: Improving Fine-Grained Subject Consistency in Subject-to-Image Models within Seconds](/202608/07/2608.00674v1-copycat-improving-fine-grained-subject-consistency-in-subject-to-image-models-within-seconds)  
+   evidence：用小型策略模型为冻结的LLM智能体做用户个性化
+4. [CopyCat: Improving Fine-Grained Subject Consistency in Subject-to-Image Models within Seconds](/202608/07/2608.00674v1-copycat-improving-fine-grained-subject-consistency-in-subject-to-image-models-within-seconds)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：直接针对个性化图像生成，提升主体到图像模型中细粒度主体一致性
-4. [Beyond One-Size-Fits-All: Personalized and Culturally Adaptive Emotional TTS via Interactive Optimization of Individual Emotion Perception Spaces](/202608/07/2608.00998v1-beyond-one-size-fits-all-personalized-and-culturally-adaptive-emotional-tts-via-interactive-optimization-of-individual-emotion-perception-spaces)  
+   evidence：提升主体到图像模型中细粒度主体一致性
+5. [MultiCompose: Multi-Concept Personalized Composition with Per-Subject Attribute Binding](/202608/07/2608.03708v1-multicompose-multi-concept-personalized-composition-with-per-subject-attribute-binding)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：通过个体感知优化实现个性化与文化自适应情感语音合成
-5. [Rethinking Personalized Reward Modeling for LLMs under Preference Heterogeneity via Group-Debiased Federated Learning](/202608/07/2608.01556v1-rethinking-personalized-reward-modeling-for-llms-under-preference-heterogeneity-via-group-debiased-federated-learning)  
+   evidence：多概念个性化合成，并结合每个主体的属性绑定
+6. [FinPerMA: A Theory-Informed, Event-Grounded Personalized-Memory Benchmark for LLM Agents](/202608/07/2608.04095v1-finperma-a-theory-informed-event-grounded-personalized-memory-benchmark-for-llm-agents)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：通过联邦学习实现大语言模型的个性化奖励建模
-6. [SPEAR: Selection-aware Personalized End-to-end Adaptive Rewriting and Retrieval for Community Search](/202608/07/2608.01738v1-spear-selection-aware-personalized-end-to-end-adaptive-rewriting-and-retrieval-for-community-search)  
+   evidence：面向LLM智能体的个性化记忆基准，评估用户模型更新能力
+7. [LUNAR: Benchmarking Personalized Large Language Models on UNiversal User BehAvioR Logs](/202608/07/2608.05246v1-lunar-benchmarking-personalized-large-language-models-on-universal-user-behavior-logs)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：用于社区搜索的个性化查询改写与检索
-7. [Energy- and Memory-Efficient PEFT Methods for Personalized On-Device SLMs on Consumer GPUs](/202608/07/2608.04488v1-energy--and-memory-efficient-peft-methods-for-personalized-on-device-slms-on-consumer-gpus)  
+   evidence：首个利用纵向应用行为日志评估LLM跨域个性化的基准
+8. [Training-Free Token-Level Steering for LLM Personalized Co-Writing](/202608/07/2608.06069v1-training-free-token-level-steering-for-llm-personalized-co-writing)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：比较面向个性化端侧小模型的PEFT方法
-8. [The Personalization Mirage: How LLMs Fabricate User Profiles, and Why Self-Monitoring Misleads](/202608/07/2608.04570v1-the-personalization-mirage-how-llms-fabricate-user-profiles-and-why-self-monitoring-misleads)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：大语言模型个性化中的用户画像编造与过度推断的基准研究
+   evidence：面向LLM个性化协作写作的训练自由token级引导方法
 
 ### 速读区论文标签
-1. [From Profiling to Synthesis: Benchmarking Implicit Behavioral Alignment in Personalized LLM Agents](/202608/07/2608.02171v1-from-profiling-to-synthesis-benchmarking-implicit-behavioral-alignment-in-personalized-llm-agents)  
+1. [PALMs: Using Multi Construct-Grounded Rationales for Modeling Population Preferences in LLMs](/202608/07/2608.01458v1-palms-using-multi-construct-grounded-rationales-for-modeling-population-preferences-in-llms)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：针对个性化LLM智能体的基准，评测隐式行为对齐与偏好条件任务执行
-2. [MoEGen: Mixture-of-Experts for Instance-Adaptive LoRA Generation](/202608/07/2608.03275v1-moegen-mixture-of-experts-for-instance-adaptive-lora-generation)  
+   evidence：通过基于构念的理由将LLM与特定群体对齐
+2. [SPEAR: Selection-aware Personalized End-to-end Adaptive Rewriting and Retrieval for Community Search](/202608/07/2608.01738v1-spear-selection-aware-personalized-end-to-end-adaptive-rewriting-and-retrieval-for-community-search)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：生成实例自适应的LoRA适配器，实现按需模型适配，属于个性化模型适配的范畴。
-3. [FinPerMA: A Theory-Informed, Event-Grounded Personalized-Memory Benchmark for LLM Agents](/202608/07/2608.04095v1-finperma-a-theory-informed-event-grounded-personalized-memory-benchmark-for-llm-agents)  
+   evidence：面向搜索的个性化端到端查询改写，属于个性化文本生成
+3. [From Profiling to Synthesis: Benchmarking Implicit Behavioral Alignment in Personalized LLM Agents](/202608/07/2608.02171v1-from-profiling-to-synthesis-benchmarking-implicit-behavioral-alignment-in-personalized-llm-agents)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：面向LLM代理的个性化记忆与偏好适应事件接地基准
-4. [Preference-Driven Online Adaptation for Personalized Interaction Initiation in Proactive AI Assistants](/202608/07/2608.04416v1-preference-driven-online-adaptation-for-personalized-interaction-initiation-in-proactive-ai-assistants)  
+   evidence：面向大语言模型智能体个性化的纵向行为基准
+4. [Vorch-IR: Long-Form Unified Multimodal Identity Replacement Video Generation](/202608/07/2608.05648v1-vorch-ir-long-form-unified-multimodal-identity-replacement-video-generation)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：主动助手中基于在线偏好的个性化交互时机适配
-5. [Embedding Large Language Models into Flow Controls: An Agentic Framework for Adaptive and Trustworthy Automated Cooking](/202608/07/2608.04768v1-embedding-large-language-models-into-flow-controls-an-agentic-framework-for-adaptive-and-trustworthy-automated-cooking)  
+   evidence：基于参考图像和文本的身份替换视频生成，属于多模态个性化生成方法。
+5. [GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval](/202608/07/2608.00938v2-grace-generative-recommender-acceleration-engine-for-real-time-ads-retrieval)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：通过LLM智能体将个性化烹饪需求分解为可执行工作流
-6. [Illuminating Visual Identity in Universal Multimodal Embeddings](/202608/07/2608.01794v1-illuminating-visual-identity-in-universal-multimodal-embeddings)  
+   evidence：生成式推荐器通过语义ID前缀的个性化过滤实现面向用户的广告生成
+6. [Is Personalized Modality Weighting Actually Personalized? A Controlled Audit of Per-User Weighting Claims in Multimodal Recommenders](/202608/07/2608.05655v1-is-personalized-modality-weighting-actually-personalized-a-controlled-audit-of-per-user-weighting-claims-in-multimodal-recommenders)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：对多模态推荐中的逐用户模态加权进行受控审计，属于个性化模型适配研究。
+7. [GARDRec: Decision-Level Graph Grounding for Large Language Model Recommendation](/202608/07/2608.00669v1-gardrec-decision-level-graph-grounding-for-large-language-model-recommendation)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：面向AI生成内容身份保持的视觉身份基准与形式化
-7. [FraQ: Efficient Coordinate-Space Recompression for Federated Low-Rank Adaptation](/202608/07/2608.03605v1-fraq-efficient-coordinate-space-recompression-for-federated-low-rank-adaptation)  
+   evidence：面向下一项推荐的用户上下文感知LLM排序，属于个性化任务，但不是内容生成
+8. [Illuminating Visual Identity in Universal Multimodal Embeddings](/202608/07/2608.01794v1-illuminating-visual-identity-in-universal-multimodal-embeddings)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：联邦LoRA适配，面向隐私保护的个性化模型适配
+   evidence：提出视觉身份判别基准，支持AI生成内容中的身份保持，与个性化图像生成相关
+9. [Adapting Vision Foundation Models with Cascaded Semantics](/202608/07/2608.05393v1-adapting-vision-foundation-models-with-cascaded-semantics)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：带语义先验的视觉模型参数高效适配方法，可迁移至个性化模型适配。
 
 
 <div class="dpr-home-promo-card">

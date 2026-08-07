@@ -1,0 +1,438 @@
+Title: Is Personalized Modality Weighting Actually Personalized? A Controlled Audit of Per-User Weighting Claims in Multimodal Recommenders
+
+URL Source: https://arxiv.org/pdf/2608.05655v1
+
+Published Time: Fri, 07 Aug 2026 00:34:07 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Is Personalized Modality Weighting Actually Personalized? A Controlled Audit of Per-User Weighting Claims in Multimodal Recommenders 
+
+## Jingyuan Zheng 1, Xin Zhang 1, Yang Gu 2, Dongjing Wang 1, Yuxiang Wang 1,Xudong Shen 3, Haiping Zhang 1, Youhuizi Li 1, Dongjin Yu 1
+
+> 1
+
+School of Computer Science and Technology, Hangzhou Dianzi University, Hangzhou, China 
+
+> 2
+
+College of Humanities, Hangzhou Normal University, Hangzhou, China 
+
+> 3
+
+Fuxi AI Lab, NetEase Games, NetEase Inc., Hangzhou, China 
+
+zhengjoy, zhangxin, dongjing.wang, lsswyx, zhanghp, huizi, yudj @hdu.edu.cn 3073572279@qq.com hzshenxudong@corp.netease.com 
+
+Abstract 
+
+Per-user modality weighting is deployed at billion-user scale in multimodal recommenders, through user modality-strength vectors, attention gates, meta-weight hypernetworks, and low-rank guided weights, each claiming a ranking gain from user-specific modality preference. Yet, to our knowledge, prior evaluations do not isolate a genuinely user-specific signal from a global modality weight plus model capacity. We audit this family with a two-contrast audit principle, reducing six imple-mentations onto one shared collaborative backbone and mea-suring a utility gap (real-GM) against a single global modality weight and an identifiability gap (real-shuf) against an eval-time permutation of the user-weight binding. Across three in-dependent short-video corpora, a single global weight already delivers nearly all of the content gain (+1.9/+3.6/+3.5pp over a no-modality baseline, p < . 001 ). Making the weight per-user adds no consistent utility: no implementation wins on all corpora and metrics, and the few positive gaps are small (≤0.9pp) and flip. The shuffle control is necessary but not sufficient, since real-shuf reaches +128% of the content gain for heads that simultaneously lose to the global weight. We trace this dissociation to gates reading the shared collaborative embedding: decoupling the gate input collapses the inflated real-shuf to near zero while the utility conclusion stands. A monotone signal-implant dose-response (capture AUROC ris-ing from 0.57 to 0.89 and from 0.64 to 1.00) verifies the har-ness would detect user-specific structure if present, and every finding replicates on a fourth, cross-domain e-commerce cor-pus. We propose reporting real-GM alongside real-shuf as a minimum evidentiary standard for personalization claims. 
+
+## Introduction 
+
+Multimodal recommender systems increasingly deploy per-user modality weights, on the claim that users differ in how much they trust visual, acoustic, or textual content. A billion-user framework learns a user modality-strength vector so that each profile scales the visual, textual, and acoustic chan-nels on its own (Chen et al. 2024), and reliability-guided variants tie the weight to per-user modality-reliability esti-mates (Dong et al. 2025). The same idea recurs as bilinear attention gates, meta-weight hypernetworks (Shu et al. 2019), and low-rank guided user weights, and each reports a ranking gain over an unweighted or globally weighted model. Audit studies in collaborative filtering have found that complex methods often fail to outperform well-tuned sim-ple baselines once evaluation is made fair (Ferrari Dacrema, Cremonesi, and Jannach 2019; Ferrari Dacrema et al. 2021), and the same pattern appears in information retrieval (Lin 2019). To our knowledge, prior per-user modality-weighting evaluations do not isolate a genuinely user-specific signal from a single global modality weight plus model capacity. Standard ablations remove a modality or a module, but they do not directly break the binding between a user and the weight it receives, so a gain that a single global weight would also produce still counts as evidence for personalization. Two confounds are left uncontrolled: a global modality scale that helps every user equally, and the extra capacity a per-user head adds to the backbone. We therefore audit this family with two paired contrasts on one shared collaborative backbone: a utility gap (real-GM) against a single global weight, and an identifiability gap (real-shuf) against a frozen permutation of the user-weight binding (Figure 1). Six weighting heads, from a free per-user table to attention gates, a hypernetwork, and a low-rank guided weight, are reduced onto the same backbone so that only the weight-production mechanism differs. The audit covers this explicit weighting family, where personalization enters as a per-user scalar, vector, or gate over modality channels, rather than multimodal recommendation architectures at large. A head is genuinely personalized only when it beats the global weight on the utility gap, not merely when it beats its own shuffle on the identifiability gap. This audit makes three contributions. 
+
+• We formulate a general audit principle for personaliza-tion claims: a per-user mechanism is credible only when it beats the strongest non-personalized alternative on a utility contrast, not merely its own shuffle on an identifia-bility contrast. Instantiating it across six implementations and four corpora, no head beats a single global weight on all corpora across all metrics, and the global weight alone captures nearly all of the content gain (Audit Design; Results; Appendix). 
+
+• Shuffle controls are necessary but not sufficient, because architectural confounding inflates the identifiability gap to +128% of the content gain while utility stays negative, and decoupling the gate input removes the inflation causally (Results). arXiv:2608.05655v1 [cs.IR] 6 Aug 2026 (a) Do users receive different modality weights?            
+
+> User & recent interactions (illustrative) →user embedding pu→
+> shared attention-weighting function gATT →learned weights αu
+
+A B                               
+
+> pApBgATT (pA)gATT (pB)
+> same gATT
+> αu∈Δ3
+> αA= [0.58, 0.25, 0.17] αB= [0.20, 0.46, 0.34]
+> 0.58 0.25 0.17 0.20 0.46 0.34 Tag Music Meta Tag Music Meta
+> Answer
+
+Yes — users receive different learned weights. 
+
+> These are model outputs, not observed modality preferences.
+
+(b) Do these per-user weights improve recommendations?  
+
+> KuaiRand-27K · Pairwise accuracy (PairAcc ↑)
+
+BPR 
+
+> ID-only baseline
+
+GM (shared) ATT (per user) 
+
+> Same embeddings/backbone; only modality weighting changes. BPR: ID-only · GM: shared weights · ATT: per-user attention weights
+
+GM − BPR 
+
+> content gain
+
+ATT − GM       
+
+> per-user increment
+> +3.61
+> −0.69
+> −101234
+> ΔPairAcc (percentage points) Answer
+
+Not here — shared weights perform better. 
+
+> Content helps (+3.61 points), but per-user weighting costs 0.69 points. Across 6 heads × 3 corpora × 3 metrics, no per-user head wins consistently.
+> Sanity check (positive control)
+> AUROC  1.0 0.5 0.0
+> 0.638
+> 0.25
+> 0.898
+> 0.50
+> 0.990
+> 0.75
+> 1.000
+> 1.00 Injected signal strength When a true preference signal is planted, the audit recovers it.
+
+(c) If these weights do not help, why does swapping them hurt? Weight-swap test — ATT on KuaiRand-27K            
+
+> evaluation only · trained head frozen · within activity bins
+> AB
+> αA= [0.58, 0.25, 0.17]
+> αB= [0.20, 0.46, 0.34]
+> swap users’ learned weights AB
+> αB= [0.20, 0.46, 0.34]
+> αA= [0.58, 0.25, 0.17]
+> Pairwise accuracy (PairAcc ↑)
+> (higher is better) Original pairing Swapped pairing
+
+4.64 percentage-point drop = 128% of content gain Architectural diagnosis Before (coupled) After (decoupled)            
+
+> pugATT (pu)
+> αu
+> Recommender (same backbone) Scores
+> qu
+> (independent weighting embedding)
+> gATT (qu)
+> αupuRecommender (same backbone) Scores
+> Weight-swap drop / content gain
+
+128% → 0.6% Answer The same user embedding drives both recommendation and weighting. 
+
+> With a separate weighting embedding, the normalized drop falls from 128% to 0.6%. A drop after swapping weights does not by itself prove useful modality personalization.
+
+Figure 1: Different per-user modality weights do not imply useful modality personalization. The three panels ask in turn whether users receive different weights (a), whether those weights beat a single global weight (b), and why swapping them still hurts (c). On KuaiRand-27K the attention head trails the global weight by 0.69pp (utility gap real-GM), yet an eval-time weight swap costs +4.64pp, equal to 128% of the content gain (identifiability gap real-shuf). Decoupling the gate input collapses that swap effect to 0.6%, so it is architectural, and a swap effect alone cannot certify useful personalization. 
+
+• We release a two-contrast audit protocol with implant-based sensitivity calibration, five-seed paired tests with Benjamini–Hochberg FDR correction, and all per-seed results, a statistical standard not previously applied to this family of claims (Audit Design). Our sharpest finding is a dissociation, where heads that look strongly personalized under a shuffle control simultane-ously lose to a global weight. On KuaiRand-27K the atten-tion head posts an identifiability gap of +128% of the content gain yet trails the global weight by 0.7pp on PairAcc, and de-coupling its gate input shows the inflation is architectural. A positive shuffle gap alone can therefore look convincing while utility over a global weight is absent (Chen et al. 2024; Dong et al. 2025), so we propose reporting both contrasts together as the audit standard. 
+
+## Related Work 
+
+Per-User Modality Weighting 
+
+Per-user modality weighting has become a recurring design pattern in multimodal recommendation, motivated by the in-tuition that users differ in how much they rely on visual, textual, or acoustic content. M3CSR learns a user modality-strength vector so that each user’s collaborative profile scales the three content channels independently, and reports billion-user deployment as evidence of practical value (Chen et al. 2024). MARGO conditions the per-user weight on modality-reliability estimates, arguing that weights optimized with-out reliability guidance may not reflect true user prefer-ences (Dong et al. 2025). The same intuition drives graph-based recommenders that build per-user modality-specific in-teraction graphs, routing message passing through whichever channel each user’s history emphasizes (Wei et al. 2019; Wang et al. 2023). It also appears as user hypergraph struc-tures that separate local modality preference from global item semantics (Guo et al. 2024), as bilinear attention gates and meta-weight hypernetworks (Shu et al. 2019) that condition the weight on the user’s collaborative embedding. Our au-dit focuses on the gate- and weight-vector subfamily, where the per-user weight is an explicit scalar or vector applied to modality channels. Graph-based routing methods share the same intuition but differ structurally and fall outside the scope of this audit. Across this family, the shared evaluation practice is to report a ranking gain over a no-modality or globally weighted baseline and attribute it to user-specific modality preference. To our knowledge these evaluations provide no control that breaks the user-weight binding, so a gain attributable to a single global weight or to extra model capacity is indistinguishable from a genuinely user-specific signal. Our audit supplies that control and shows it is nec-essary but not sufficient, since a shuffle control can certify a head as strongly user-specific while it simultaneously loses to a global weight. 
+
+Multimodal Recommendation 
+
+The broader multimodal recommendation literature fuses content features into collaborative backbones, and the fu-sion gain itself is well established. Collaborative filtering backbones range from matrix factorization (Koren, Bell, and Volinsky 2009) to graph-based propagation models such as NGCF (Wang et al. 2019) and LightGCN (He et al. 2020); our audit uses this family as the shared backbone so that only the weighting head varies. VBPR (He and McAuley 2016) extends BPR with visual item embeddings and demonstrates that content features improve ranking over interaction-only models. Subsequent work mines latent item-item structure from multimodal features (Zhang et al. 2021, 2023) and prop-agates it with graph attention or convolution (Tao et al. 2020; Wei et al. 2020; Zhou and Shen 2023; Zhou et al. 2023b), bootstraps contrastive views across modalities without aux-iliary graphs (Zhou et al. 2023c), adds self-supervised and multi-view objectives over content and structure (Tao et al. 2023; Wei et al. 2023; Yu et al. 2023; Xu et al. 2025), and fuses spectrum-based modality representations to suppress cross-modality noise (Ong and Khong 2025). Recent surveys catalogue the rapid growth of this design space (Zhou et al. 2023a). This fusion gain is uneven across ranking metrics, because raw modality features carry noise that dedicated de-noising and graph-refinement methods are designed to sup-press (Wei et al. 2020; Zhou and Shen 2023). Our own results later exhibit the same tension, where a single global weight improves pairwise accuracy and recall yet trades off NDCG on some corpora. These methods improve recommendation by better representing items; none claims the modality weight must be per-user, the narrower claim our audit targets rather than the value of multimodal content in general. 
+
+Permutation and Control Tests 
+
+Permutation and control tests are a standard instrument for isolating entity-specific signal in machine learning. The idea originates in permutation feature importance for random forests, where a feature is shuffled and the resulting loss in-crease measures its contribution (Breiman 2001), and permu-tation likewise underpins distribution-free significance tests for whether a measured performance exceeds chance (Ojala and Garriga 2010). Fisher, Rudin, and Dominici (Fisher, Rudin, and Dominici 2019) generalize this into model re-liance, the expected loss increase when a feature is permuted across an entire class of predictors, a model-agnostic mea-sure that needs no retraining. A parallel line in interpretabil-ity shows why such controls are indispensable, since san-ity checks reveal many saliency methods are insensitive to the signal they claim to explain (Adebayo et al. 2018), and controlled ablation benchmarks separate genuine importance from estimator artifacts (Hooker et al. 2019). Our identifi-ability gap, real-shuf, follows this tradition by freezing the trained head and permuting the user-weight binding at evalu-ation within activity deciles, so the gap measures how much the binding matters net of activity-level confounds. The key finding of our audit is that this control, while necessary, is not sufficient, since a gate reading the shared collaborative em-bedding inflates the shuffle gap through an architectural con-found. This mirrors a known hazard in variable-importance estimation, where permuting an input correlated with others biases importance upward unless the permutation is made conditional (Strobl et al. 2008), and unrestricted permutation forces the model to extrapolate off the data manifold, so an honest estimate needs at least one additional model (Hooker, Mentch, and Zhou 2021). Decoupling the gate input causally confirms this inflation, which to our knowledge has not been identified or controlled for in prior work on per-user modality weighting. 
+
+Audit Studies and Negative Results 
+
+Our work joins a line of audit studies that re-examine pub-lished gains under matched baselines and controls. Fer-rari Dacrema et al. found that 11 of 12 reproducible neu-ral recommendation methods were outperformed by prop-erly tuned nearest-neighbor or matrix-factorization base-lines (Ferrari Dacrema, Cremonesi, and Jannach 2019), and later showed the problem persists across conference years (Ferrari Dacrema et al. 2021). Rendle et al. demon-strated that a carefully tuned dot product matches or beats learned similarity functions once baselines are given equal care (Rendle et al. 2020), echoing earlier evidence that the evaluation protocol alone can reorder top-N rankings (Cre-monesi, Koren, and Turrin 2010). Reproducibility-driven analyses reach the same verdict for graph collaborative fil-tering, where reported gains shrink under fair compari-son (Anelli et al. 2023), and for metric learning, where a real-ity check erases most claimed progress (Musgrave, Belongie, and Lim 2020). These studies, alongside broader commen-tary on how weak baselines and conflated gains distort mea-sured progress (Lipton and Steinhardt 2019; Sculley et al. 2018), ask whether reported improvements survive fair com-parison. We ask a more specific question, namely whether the personalization mechanism in per-user modality weighting is real, and answer it with a paired-contrast criterion applicable to any weighting head on a shared backbone. Unlike those audits, which largely rely on single runs without significance testing, our conclusions rest on five random seeds, paired t-tests, and Benjamini–Hochberg FDR correction across all six heads. We further distinguish our audit targets from methods that improve multimodal recommendation through graph de-noising (Qi et al. 2025) or calibration distillation (Li et al. 2025), since those methods address interaction noise rather than per-user modality preference, and their gains do not depend on the user-weight binding our audit tests. 
+
+## Audit Design 
+
+Datasets and Modality Features 
+
+We audit on three short-video corpora with implicit watch-ratio feedback that differ in scale, modality structure, and platform origin. 
+
+Tsinghua ShortVideo (TSV) (Shang et al. 2025) is a short-video platform log filtered to users with at least 30 exposures, yielding 4,099 active users across three modality channels: a 256-dimensional visual embedding from mean-pooled ResNet/ViT frame features (L2-normalized), a 128-dimensional text embedding from ASR transcripts and titles reduced by truncated SVD, and a metadata channel encoding item category and author popularity. 
+
+KuaiRand-27K (Gao et al. 2022) is a randomly exposed short-video log from 27,285 users; after compacting the item space to the 2.9M unique videos seen in training, we extract three modality channels from 58-dimensional tag features, 39-dimensional music features, and 22-dimensional meta-data features. 
+
+MicroLens-100K (Ni et al. 2023) is a short-video corpus from a distinct UGC platform with 100,000 users and 19,738 items; modality channels are a 1,024-dimensional CLIP-RN50 visual embedding and a 1,024-dimensional BGE-M3 text embedding, both L2-normalized. For all three corpora we split each user’s interaction history by chronological order, assigning the first third to training, the middle third to validation, and the final third to test. Watch ratio is the implicit preference proxy throughout; duration is excluded from all modality channels to prevent mechanical coupling with the label. A fourth corpus, the Amazon-Baby e-commerce log, replicates the full audit outside the short-video domain and is reported in the Appendix. 
+
+One Backbone, Six Weighting Heads 
+
+We reduce the entire family onto one matrix-factorization collaborative backbone (Koren, Bell, and Volinsky 2009) so that six weighting heads differ only in how the per-user modality weight is produced. The backbone scores a user-item pair as ˆyui = p⊤ 
+
+> u
+
+qi + bi + P 
+
+> m
+
+wu,m sm(u, i ), where 
+
+sm(u, i ) is the cosine similarity between a modality-specific item embedding and a shared item embedding, scaled by a learnable factor to keep content from overwhelming the collaborative signal (He and McAuley 2016). Two baselines bound the family: BPR (Rendle et al. 2009) sets all wu,m 
+
+to zero, and GM learns a single global weight wm shared across users. GM is not an unpersonalized baseline, since it keeps every user’s own collaborative embedding pu and personalizes what each user likes; the one quantity it does not make per-user is the cross-modal weight wm, the variable this audit isolates. Real-GM therefore asks whether per-user modality weighting adds anything on top of the collaborative personalization GM already provides. Every per-user head is initialized to the uniform softmax so that all heads equal GM at initialization and any gap is purely learned. Unlike Ferrari Dacrema et al. (Ferrari Dacrema, Cremonesi, and Jannach 2019), we audit our own reimplementations rather than original author code. This is deliberate, since one shared backbone controls for dataset, training procedure, and eval-uation protocol at once, so any measured gap is attributable to the weight-production mechanism rather than to backbone capacity or training setup. Each head follows its published description as closely as the shared backbone permits, and the within-backbone comparisons stay internally valid be-cause every contrast is paired on the same backbone, seeds, and metric. The six heads differ in how wu, · is produced, as summa-rized in Table 1. PUM learns a free per-user weight table with 
+
+U × M parameters. ATT applies a bilinear gate to the shared collaborative embedding: wu, · = softmax (p⊤ 
+
+> u
+
+Watt ). MWN feeds the shared embedding into a two-layer hypernetwork: 
+
+wu, · = softmax (MLP (pu)) . LRG uses a rank-8 independent per-user embedding gu ∈ R8 combined with M shared basis vectors to produce weights, so the gate reads no collaborative signal. The decoupled variants ATT d and MWN d replace pu
+
+in the gate with a private embedding ˜pu trained separately and never shared with the collaborative path. This lets us test                       
+
+> Head Weight mechanism Reads pu?PUM Free U×Mtable, row softmax No ATT Bilinear: softmax (p⊤
+> uWatt )Yes MWN Hypernetwork: softmax (MLP (pu)) Yes LRG Low-rank: softmax (g⊤
+> uG), rank 8 No ATT dSame as ATT; gate reads ˜puNo MWN dSame as MWN; MLP reads ˜puNo
+
+Table 1: Six per-user weighting heads audited on the shared backbone. The rightmost column marks whether the gate reads the shared collaborative embedding pu, which is the key variable in the decoupling analysis. whether the gate input, rather than the weighting itself, drives any observed effects. 
+
+Two Paired Contrasts 
+
+Each head faces two paired contrasts: the utility gap real-GM asks whether a per-user weight helps at all, and the identifi-ability gap real-shuf asks whether the weight is bound to the right user. Writing Perf( ·) for a ranking metric, the utility gap is ∆U (h) = Perf( hreal ) − Perf( GM ) and the identifia-bility gap is ∆I (h) = Perf( hreal ) − Perf( hshuf ). A positive 
+
+∆I certifies that the user-weight binding matters, yet it does not imply a positive ∆U , since only ∆U > 0 shows the bind-ing adds utility over the strongest non-personalized alterna-tive. The utility gap compares a trained head against GM, the strongest single-weight baseline, so a positive gap means personalization beats a global weight rather than merely beat-ing no modality at all. The identifiability gap compares the trained head against a version where each user’s weight is replaced by that of a different user drawn from the same activity decile, averaged over five draws. We constrain the shuffle to the same activity decile because activity level shapes the collaborative embedding indepen-dently of modality preference, and cross-decile swaps would confound activity-driven differences with the user-modality binding under test. The shuffle must also happen after train-ing, because a permutation applied during training is a bi-jection that the model absorbs through its user embeddings, leaving real and shuffled runs indistinguishable. We there-fore freeze each trained head and permute the weights only at evaluation, so the identifiability gap measures how much the learned user-weight binding matters, net of all activity effects (Fisher, Rudin, and Dominici 2019). 
+
+Instrument Calibration by Signal Implants 
+
+To confirm the harness can detect user-specific structure when it exists, we implant synthetic modality preferences at four strengths and require a monotone dose-response. For each user we draw a latent preferred modality uniformly at random, then amplify the content score of that modality by a factor α ∈ { 0.25 , 0.5, 0.75 , 1.0} during training and evalua-tion. We track capture AUROC, the area under the ROC curve for predicting the planted preferred modality from the learned weight vector, alongside the resulting identifiability gap, and require both to rise monotonically with α (Figure 3b). This calibration also yields an effect-size ceiling, since 
+
+α = 0 .25 , the weakest implant we can already detect, yields capture AUROC 0.57 on Tsinghua ShortVideo and 0.64 on KuaiRand-27K. Any natural signal weaker than this cannot explain the null utility result, so the null is a genuine absence of user-specific signal at this scale rather than a measurement failure. The same monotone dose-response holds on all four corpora (Appendix). The calibration uses a single seed, since the relevant property is the monotone ordering across four implant strengths. 
+
+Statistical Protocol 
+
+All conclusions rest on five random seeds per configura-tion and paired t-tests on per-seed aggregates, a statistical standard not previously applied to this family of claims (Fer-rari Dacrema, Cremonesi, and Jannach 2019). We evaluate three metrics: pairwise ranking accuracy on held-out expo-sure pairs (PairAcc), which most directly probes modality-driven preference because pairs ranked differently by the two modalities are where a user-specific weight should help most; together with NDCG@20 and Recall@20 for ranking quality. We express each gap in percentage points and, in the figures, as a fraction of the PairAcc content gain, so that iden-tifiability and utility share one interpretable scale. We apply Benjamini–Hochberg FDR correction across the six heads for each metric and dataset; main tables report paired-t sig-nificance for readability, and conclusions are robust to the correction. The identifiability gaps are stable under twenty eval-time permutations, changing by at most 0.11pp against the five-draw setting, so five draws report a converged gap (Appendix). A head clears the personalization bar only when it beats GM on real-GM, not merely when it beats its own shuffle on real-shuf. 
+
+## Results 
+
+A Single Global Weight Captures the Content Gain 
+
+Across all three corpora, a single global modality weight already delivers nearly all of the content gain: +1.9pp on Tsinghua ShortVideo, +3.6pp on KuaiRand-27K, and +3.5pp on MicroLens-100K over the no-modality baseline (all p < . 001 ). We measure this gain on pairwise ranking accuracy (PairAcc) over held-out exposure pairs, the metric that most directly probes modality-driven preference because it scores the pairs the two modalities can rank differently. The same global weight also raises Recall on all three cor-pora and trades off NDCG on some, reflecting a modality-collaborative tension that varies across corpora (Table 2). This tension cannot bias the audit, since every contrast is paired and affects both arms equally. The content gain is real, and the audit asks only whether making the weight per-user adds anything beyond it. Throughout, we report each per-user gap as a fraction of this PairAcc content gain. 
+
+Per-User Weighting Adds No Consistent Utility 
+
+Making the weight per-user adds no consistent utility in our evaluation. No implementation wins on all three corpora across all three metrics, and the few positive gaps are small (≤0.9pp) and flip across corpora and metrics. On Tsinghua             
+
+> Dataset PairAcc NDCG Recall Tsinghua ShortVideo +1.89 ∗∗∗ −0.40 +1.21 ∗
+> KuaiRand-27K +3.61 ∗∗∗ −2.46 ∗∗∗ +2.64 ∗∗∗
+> MicroLens-100K +3.50 ∗∗∗ +1.83 ∗∗∗ +5.86 ∗∗∗
+
+Table 2: Content gain of a single global modality weight over the no-modality baseline (GM −BPR, percentage points). The gain concentrates on pairwise accuracy and recall; a global weight trades off NDCG on some corpora, a known modality-collaborative tension. Five seeds, paired t-tests. 
+
+> ∗
+
+p < . 05 , ∗∗ p < . 01 , ∗∗∗ p < . 001 .ShortVideo every head loses to the global weight on NDCG and Recall, and five of six lose on PairAcc (Table 3). On KuaiRand-27K the meta-weight family is the lone winner, small but significant, up to +0.9pp on NDCG, yet the same heads are negative across all three metrics on Tsinghua Short-Video and MicroLens-100K. On MicroLens-100K all six heads are negative across all three metrics with no exception. The decoupling analysis below shows the few surviving pos-itive cells are indifferent to the user-weight binding. GM is not a weakened baseline. A capacity-matched global gate that spends the meta-weight budget on item content rather than user identity (GMc) does not help; it loses 2.84pp of PairAcc on Tsinghua ShortVideo and 3.75pp on MicroLens-100K. On KuaiRand-27K it stays flat on PairAcc while its ranking metrics collapse by 7.59pp NDCG and 16.77pp Recall, so extra capacity does not rescue the global weight (Appendix). 
+
+Identifiability Dissociates from Utility 
+
+Identifiability dissociates sharply from utility. The attention head on KuaiRand-27K gains +4.6pp from its own user-weight binding, +128% of the content gain, while losing to the global weight by 0.7pp. Table 4 reports the identifiability gaps, and Figure 2 plots every head across all three corpora in the (utility, identifiability) plane, where this head sits alone in the top-left, strongly identifiable yet below the global weight. The large identifiability gaps concentrate in heads whose gate reads the shared collaborative embedding (ATT, MWN), not the independent-embedding heads (PUM, LRG). A shuffle control alone would certify the top-left heads as strongly user-specific, yet real-GM shows they carry no utility, so the two contrasts measure different things and only real-GM tracks whether personalization helps. 
+
+Decoupling and Dose-Response Close the Loop 
+
+Decoupling the gate input from the collaborative embed-ding collapses the inflated identifiability gaps to near zero on KuaiRand-27K, from +128% to +0.6% for attention and from +87% to +0.2% for meta-weight, while the utility con-clusion stands. On Tsinghua ShortVideo the same interven-tion shrinks both gates far less, and the decoupled gaps stay clearly nonzero (Figure 3a). For the single positive PairAcc cell, Tsinghua attention, decoupling flips the gap negative (from +0.44 to −0.70pp, p = .038 ), removing that excep-tion to the null. The KuaiRand-27K meta-weight cells shrink under decoupling yet stay positive, but a gain that survives Tsinghua ShortVideo KuaiRand-27K MicroLens-100K Head PairAcc NDCG Recall PairAcc NDCG Recall PairAcc NDCG Recall PUM −0.21 −0.12 ∗∗ −0.20 −0.44 ∗∗∗ −0.32 ∗∗∗ −0.60 ∗∗∗ −0.13 ∗ −0.24 ∗ −0.31 ∗
+
+ATT +0.44 −0.46 ∗∗∗ −0.53 ∗∗ −0.69 ∗∗ +0.54 ∗∗∗ −0.17 −1.25 ∗∗∗ −0.97 ∗∗∗ −1.83 ∗∗∗ 
+
+MWN −0.17 −0.63 ∗∗ −1.08 ∗∗ +0.29 +0.88 ∗∗∗ +0.57 ∗∗ −0.91 ∗∗∗ −1.00 ∗∗∗ −1.39 ∗∗∗ 
+
+LRG −0.42 −0.56 ∗∗ −0.85 ∗∗ −0.48 ∗∗∗ −0.35 ∗∗∗ −0.60 ∗∗∗ −1.12 ∗∗∗ −0.88 ∗∗∗ −1.74 ∗∗∗ 
+
+ATT d −0.70 −0.65 ∗∗ −1.14 ∗∗ −0.50 ∗∗∗ −0.36 ∗∗∗ −0.62 ∗∗∗ −1.55 ∗∗∗ −1.17 ∗∗∗ −2.40 ∗∗∗ 
+
+MWN d −0.69 −0.68 ∗∗ −1.31 ∗∗ +0.26 ∗∗ +0.16 ∗∗ +0.32 ∗∗∗ −0.89 ∗∗ −0.80 ∗ −1.26 ∗∗ 
+
+Table 3: Utility gap of per-user modality weighting against a single global weight (real-GM, percentage points) across six heads, three corpora, and three metrics. No head wins on all three corpora across all three metrics; positive cells are small and flip. Subscript d marks decoupled-gate variants (Audit Design). Five seeds, paired t-tests; stars denote Benjamini–Hochberg FDR 
+
+q-values across the six heads within each column. ∗q < . 05 , ∗∗ q < . 01 , ∗∗∗ q < . 001 .
+
+TSV KuaiRand-27K MicroLens-100K Head pp %gain pp %gain pp %gain PUM +0.12 6.1 +0.13 ∗∗∗ 3.5 +0.11 ∗∗∗ 3.2 ATT +1.20 ∗ 63.4 +4.64 ∗∗∗ 128.5 +1.29 ∗∗∗ 36.7 MWN +1.06 ∗∗ 56.2 +3.15 ∗∗ 87.5 +0.92 ∗∗∗ 26.4 LRG +0.65 ∗ 34.5 +0.03 ∗∗ 0.9 +0.78 ∗∗∗ 22.1 ATT d +0.43 22.9 +0.02 ∗ 0.6 +0.88 ∗∗∗ 25.0 MWN d +0.68 ∗∗ 35.8 +0.01 ∗ 0.2 +0.34 ∗∗ 9.6 
+
+Table 4: Identifiability gap (real-shuf on PairAcc): percentage points and share of the content gain across three corpora (TSV is Tsinghua ShortVideo). Large gaps track the shared-
+
+pu gate heads (ATT, MWN), not the heads closest to utility. Five seeds, five eval-time permutations, paired t-tests; stars denote Benjamini–Hochberg FDR q-values across the six heads within each corpus. ∗q < . 05 , ∗∗ q < . 01 , ∗∗∗ q < . 001 .swapping users’ weights is capacity, not personalization. Fig-ure 3b calibrates the harness, where implanting synthetic per-user preferences at four strengths raises capture AUROC monotonically from 0.57 to 0.89 on Tsinghua ShortVideo and from 0.64 to 1.00 on KuaiRand-27K. The identifiabil-ity gap rises in parallel from +0.35pp to +3.0pp, so the null utility result reflects an absent signal, not a blind instrument, and the same monotone dose-response holds on all four cor-pora (Appendix). All four results replicate on Amazon-Baby, a cross-domain e-commerce corpus, where every utility gap is negative and no identifiability gap is inflated (Appendix). The dissociation also reproduces under a LightGCN back-bone rather than matrix factorization, where per-user heads still fail to beat the global weight while their weights stay identifiable, so our audit spans two collaborative backbones (Appendix). 
+
+## Why Per-User Weighting Shows No Consistent Utility, and What Would Work 
+
+The measurable value of a per-user weight is, in our audited settings, empirically bounded by a global weight plus model capacity, and two mechanisms explain why. The first reason is informational, since a scalar watch ra-tio never records whether the frames or the caption earned −40 −20 0 20      
+
+> Utility gap real ¡GM (% of content gain)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 120
+> Identifiability gap  real ¡shuf  (% of content gain)
+> ATT (KuaiRand-27K):
+> identi fi able but useless
+> useful
+> (real >GM)
+> independent-emb head
+> shared-pugate head
+> TSV (○) / 27K (□) / ML (◇)
+
+Figure 2: Utility versus identifiability for six heads on three corpora (circle=TSV, square=27K, diamond=MicroLens), each gap as a fraction of the PairAcc content gain. Points in the top-left are identifiable (large real-shuf) yet useless (negative real-GM); the KuaiRand-27K attention head is the extreme case. Large gaps track shared-pu gate heads, not utility. it, so implicit feedback, which encodes only a confidence-weighted preference per interaction (Hu, Koren, and Volin-sky 2008), cannot assign credit across modalities. The utility gap therefore sits at the global weight regardless of head capacity. The dose-response calibration confirms a genuine ceiling, not a measurement failure, since capture AUROC rises monotonically with implant strength while natural data stays at the null. A cold-start slice sharpens the account: the coldest activity decile, where any surviving per-user signal should surface, recovers no benefit on either corpus and is significantly negative on KuaiRand-27K, so the most plausi-ble niche for per-user weighting is empty (Appendix). The second mechanism explains the inflated identifiabil-ity gaps rather than the utility gaps: a gate that reads the shared collaborative embedding routes user identity through ATT MWN      
+
+> 0
+> 50
+> 100
+> 150
+> real ¡shuf (% content gain)
+> 23
+> 36
+> 10
+> gate decoupling
+> collapses gap to ~0
+> (a) Decoupling the gate input
+> TSV coupled
+> TSV decoupled
+> 27K coupled
+> 27K decoupled
+> 0.25 0.50 0.75 1.00
+> implanted preference strength ®
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> capture AUROC
+> (b) Instrument sensitivity (signal implants)
+> capture AUROC
+> real ¡shuf
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> real ¡shuf (pp  £100)
+
+Figure 3: (a) Decoupling the gate input from the shared col-laborative embedding collapses the identifiability gap, most sharply on KuaiRand-27K where it falls to near zero; the utility conclusion is unchanged. (b) Signal-implant calibra-tion: capture AUROC and the identifiability gap both rise monotonically with implant strength α, confirming the har-ness detects user-specific structure when it exists; the same monotone pattern holds on all four corpora (Appendix). a high-capacity path, so replacing one user’s weight with another’s disturbs that path and makes the shuffle look dam-aging even when the weight carries no modality signal. De-coupling the gate input collapses the inflated real-shuf to near zero while the utility conclusion is unchanged, confirming the large identifiability gap measures absorbed capacity, not a user-specific modality signal. These two mechanisms yield three prescriptions. Ashuffle-only standard would be self-reinforcing, since a pos-itive real-shuf is easy to obtain and sufficient for publication, so each paper reporting it alone would license the next, the same propagation mechanism Ferrari Dacrema et al. iden-tified for weak baselines (Ferrari Dacrema, Cremonesi, and Jannach 2019). For auditors, a positive real-shuf without a positive real-GM is not evidence of useful personalization, so we argue that a claim of effective per-user modality weight-ing should report real-GM > 0 with statistical significance on at least two independent corpora, as a minimum eviden-tiary standard, and should calibrate the harness with a sig-nal implant before trusting any null. For method designers, a genuine per-user modality weight may require supervi-sion that scalar feedback does not provide, such as missing-modality natural experiments, counterfactual exposure logs, or session-level interaction traces. For parameterization, a weight could condition on interpretable user-level modality-reliability statistics rather than a free identity embedding. More broadly, our audit operationalizes a distinction be-tween identity-sensitive parameterization and useful person-alization reaching past multimodal recommendation: any ar-chitecture conditioning parameters on a user embedding can inflate an identifiability signal through capacity alone, so separating a binding that merely matters from one that adds utility is a general requirement for personalization claims. 
+
+## Limitations 
+
+Our audit is bounded in three ways. It covers weighting-class personalization with a static user-weight binding, not fusion architectures or session-level dynamic weights, and the reduction to one backbone assumes the family shares its behavior in the head rather than the collaborative path. A LightGCN backbone check supports this assumption (Re-sults; Appendix). By design we audit reimplementations on one shared backbone, not original author code, so our claims concern the weight-production mechanism under matched conditions rather than any original system’s reported num-bers. Its main results rest on three short-video corpora with implicit-feedback proxy metrics, so pairwise accuracy stands in for a modality-driven preference we cannot observe di-rectly; the e-commerce replication widens the domain but shares the proxy. The cold-start slice ruling out a low-activity niche is powered mainly by KuaiRand-27K, since the Ts-inghua ShortVideo deciles are too small to settle that ques-tion alone. 
+
+## Conclusion 
+
+Across six implementations, three independent short-video corpora, and a cross-domain e-commerce replication, the measurable value of per-user modality weighting is, in these settings, empirically bounded by a global modality weight plus model capacity, not a user-specific signal. A personal-ization claim is credible only when a head beats the global weight, not merely its own shuffle, so both contrasts must be reported together as a minimum evidentiary standard. We release the audit harness, the two-contrast protocol, and all per-seed runs as supplementary material. 
+
+## Ethical Statement 
+
+This work is a methodological audit of existing recommen-dation techniques and introduces no new deployed system. It uses three short-video logs and one e-commerce review log under their intended research terms, reporting only aggre-gate ranking statistics with no personally identifying content or human-subject intervention. By showing that a common personalization claim does not survive a controlled contrast, it raises the evidentiary bar rather than guiding user targeting or profiling. Head Parameters Gate input BPR none ( wu,m =0 ) n/a GM one global w ∈ RM n/a PUM free table U ×M , zero init n/a ATT Wq ∈ Rd×d, K ∈ RM ×d pu                   
+
+> MWN MLP 64 →64 →M, ReLU pu
+> LRG gu∈R8, basis R8×Mgu
+> ATT das ATT, private gate embedding ˜pu˜pu
+> MWN das MWN, private gate embedding ˜pu˜pu
+
+Table 5: Head parameterizations on the shared d = 64 back-bone. U users, M modalities ( M =3 on Tsinghua Short-Video and KuaiRand-27K, M =2 on MicroLens-100K and Amazon-Baby). Output layers are zero-initialized so every head starts equal to GM. 
+
+## Technical Appendix 
+
+This appendix gives the configuration needed to reproduce the audit, together with robustness analyses: a capacity-matched global baseline, shuffle-permutation stability, cold-start slices, a cross-domain replication on Amazon-Baby, a LightGCN backbone check, and dose-response calibration on all four corpora. We release the full harness and every per-seed run; the tables below list the static settings shared across all runs. 
+
+Backbone and Weighting Heads 
+
+All heads share one matrix-factorization backbone with user and item embeddings of dimension d = 64 and a per-item bias. The modality term is a bounded gate: each modality contributes a cosine similarity scaled into [−c, c ] by a single global learnable factor c, so content corrects the collabora-tive score instead of overwhelming it, and this scale is never per-user. Every per-user head zeroes its output layer at ini-tialization, so all heads equal GM at step zero and any gap is purely learned. Table 5 lists the head-specific parameteriza-tions; PUM, LRG, ATT d, and MWN d never read the shared collaborative embedding pu, while ATT and MWN do. 
+
+Optimization and Final Hyperparameters 
+
+We use the same configuration for every head on every cor-pus, with no per-head tuning, so that any measured gap re-flects the weighting mechanism rather than a search budget. Table 6 lists the final values. Weights are optimized with Adam under a BPR pairwise objective. 
+
+Dataset Cards 
+
+The three short-video corpora use watch ratio as the im-plicit preference proxy; Amazon-Baby binarizes rating in-teractions into implicit feedback. Duration is excluded from every modality channel to prevent mechanical coupling with the label. Each user’s history is split into training, validation, and test by chronological order, taking the first, middle, and final thirds. 
+
+Tsinghua ShortVideo (TSV) (Shang et al. 2025). A short-video platform log filtered to users with at least 30 expo-sures, yielding 4,099 active users. Three channels: a 256-                                
+
+> Setting Value Embedding dimension d64 LRG rank 8Optimizer Adam Learning rate 1×10 −2
+> Weight decay 1×10 −6
+> Batch size 8192 Training epochs 15 Embedding init N(0 ,0.01 2)
+> Random seeds {0,1,2,3,4}
+> Shuffle draws nperm 5 (within-decile) Activity deciles 10 Ranking cutoff K20 Sampled negatives (eval) 99 Implant strengths α{0.25 ,0.5,0.75 ,1.0}
+
+Table 6: Final hyperparameters, shared across all heads and all corpora. dimensional L2-normalized visual embedding from mean-pooled ResNet/ViT frame features, a 128-dimensional text embedding from ASR transcripts and titles reduced by trun-cated SVD, and a metadata channel encoding item category and author popularity. 
+
+KuaiRand-27K (Gao et al. 2022). A randomly exposed short-video log from 27,285 users. We compact the item space to the 2.9M unique videos seen in training and ex-tract 58-dimensional tag, 39-dimensional music, and 22-dimensional metadata features. 
+
+MicroLens-100K (Ni et al. 2023). A short-video corpus from a distinct UGC platform with 100,000 users and 19,738 items. Two channels: a 1,024-dimensional CLIP-RN50 visual embedding and a 1,024-dimensional BGE-M3 text embed-ding, both L2-normalized. 
+
+Amazon-Baby (McAuley et al. 2015). An e-commerce review log with visual and textual product features, using the preprocessed release of FREEDOM (Zhou and Shen 2023): a 4,096-dimensional CNN image embedding and a 384-dimensional sentence-transformer text embedding, both L2-normalized. Filtering to users with at least 10 interactions yields 4,382 users, 6,883 items, and 67,060 interactions over two modality channels. 
+
+Evaluation and Statistical Protocol 
+
+We report three metrics on the held-out test third: pairwise ranking accuracy on held-out exposure pairs (PairAcc), and NDCG@20 and Recall@20 against 99 sampled negatives per positive. PairAcc most directly probes modality-driven preference because a user-specific weight should help most on pairs that the two modalities rank differently. Because sampled ranking metrics can diverge from their full-ranking counterparts (Krichene and Rendle 2020), we treat PairAcc over observed exposure pairs as the primary probe and read NDCG and Recall as corroborating evidence. The identifi-ability gap real-shuf freezes each trained head and, only at evaluation, replaces each user’s weight with that of another user drawn from the same activity decile, averaged over five draws. Every reported number aggregates five seeds; sig-Dataset GMc −GM (PairAcc) Tsinghua ShortVideo −2.84 KuaiRand-27K −0.23 MicroLens-100K −3.75 
+
+Table 7: Capacity-matched global baseline GMc against GM (GMc −GM, percentage points on PairAcc). GMc spends MWN-level capacity on item content rather than user iden-tity. Added capacity does not help a global weight, confirm-ing GM is near-optimal rather than a strawman. Five seeds, paired t-tests. nificance uses paired t-tests on per-seed aggregates, with Benjamini–Hochberg FDR correction across the six heads for each metric and dataset. 
+
+Capacity-Robustness of the Global Baseline 
+
+A referee may ask whether GM is a weakened strawman that any per-user head could beat on capacity alone. To test this, we add GMc, a global head that matches the meta-weight capacity but conditions the weight on item content rather than user identity: a two-layer MLP maps each item embedding to a softmax over modalities, shared across all users. GMc adds exactly the parameters that MWN spends on personalization, but spends them on content, so a gap between them isolates capacity from identity. Table 7 reports GMc −GM on three corpora. Extra capacity does not help the global weight; it hurts. On Tsinghua ShortVideo GMc loses 2.84pp of PairAcc, and on KuaiRand-27K it collapses the ranking metrics by 7.59pp NDCG and 16.77pp Recall ( p < .001 ), with PairAcc statistically flat ( −0.23pp, p = .30 ). On MicroLens-100K GMc loses 3.75pp of PairAcc, 2.92pp of NDCG, and 5.33pp of Recall (all p < . 001 ). The simple global weight is therefore near-optimal and robust to added capacity, not a strawman, which is why every per-user head is measured against GM rather than against a no-modality baseline. We stress that the GMc collapse is not evidence that personalization is real: a content-conditioned gate that destabilizes ranking on three corpora is a poor model, not proof that a user-keyed gate is a good one. 
+
+Shuffle-Permutation Robustness 
+
+The identifiability gaps in the main results average five eval-time permutations, so we verify that five draws suffice. We rerun Tsinghua ShortVideo seeds 0 to 2 with twenty permu-tations and compare the gap and its per-permutation spread against the five-draw setting (Table 8). The gap moves by at most 0.11pp across all six heads, and the per-permutation standard deviation is 0.17 to 0.38pp, far below the coupled-gate gaps near 1.2pp. The large identifiability gaps are there-fore a property of the user-weight binding, not permutation noise, and five draws already report a converged gap. 
+
+Cold-Start Activity Slices 
+
+If a per-user weight helped anywhere, it should help most for cold users whom the collaborative path cannot yet describe, so we slice the utility gap by user activity decile (d0 coldest,                      
+
+> Head gap@20 (pp) gap@5 (pp) per-perm SD (pp) PUM +0.179 +0.195 0.167 ATT +1.258 +1.150 0.383 MWN +1.178 +1.163 0.297 LRG +0.721 +0.706 0.349 ATT d+0.294 +0.296 0.318 MWN d+0.675 +0.617 0.340
+
+Table 8: Identifiability gap under twenty versus five eval-time permutations (Tsinghua ShortVideo, seeds 0 to 2). Gaps change by at most 0.11pp; the per-permutation standard devi-ation is far below the coupled-gate gaps, so five draws suffice.                                            
+
+> Tsinghua ShortVideo KuaiRand-27K Head d0 d9 pd0d0 d9 pd0
+> PUM −0.4 −0.7 .21 −0.5 −0.4 <.001 ATT +0.4 +1.3 .33 −0.7 −0.6 <.001 MWN +0.2 +0.8 .65 +0.2 +0.4 .24 LRG −0.5 −0.1 .25 −0.5 −0.4 <.001 ATT d−0.1 −0.2 .82 −0.5 −0.4 <.001 MWN d+0.8 −0.2 .44 +0.2 +0.3 .002
+
+Table 9: Utility gap (real-GM on PairAcc, percentage points) at the coldest (d0) and hottest (d9) activity deciles, with paired significance at d0. No head concentrates positive util-ity at the cold end; on KuaiRand-27K the coldest users are significantly worse. Five seeds. d9 hottest) at evaluation, without changing training. Table 9 reports the coldest and hottest decile gaps and the paired sig-nificance at d0. No head concentrates a positive utility gap at the cold end. On Tsinghua ShortVideo the coldest decile is insignificant for all six heads ( p from .21 to .82), and the signs are scattered rather than monotone toward the cold end. On KuaiRand-27K, where each decile holds roughly 2,700 users and power is ample, four of six heads are significantly neg-ative at d0 ( p < . 001 ), so the coldest users fare worse, not better; the meta-weight heads are uniformly small-positive across all deciles with no cold concentration. The most plau-sible niche for per-user weighting therefore does not exist on either corpus, which strengthens the informational account in the main text. 
+
+Cross-Domain Replication: Amazon-Baby 
+
+Every main-text conclusion replicates on Amazon-Baby, an e-commerce corpus outside the short-video domain, under the identical protocol: five seeds, six heads, both contrasts, and within-decile eval-time shuffles. The global weight de-livers the largest content gain of the four corpora, +6.97pp PairAcc, +5.61pp NDCG, and +9.26pp Recall (all p < . 001 ), and it is the only corpus where all three metrics are posi-tive. Making the weight per-user helps nowhere: all 18 head-metric utility cells are negative, from −0.20 to −1.83pp, and 17 of 18 are significant under FDR (Table 10). The identifi-ability gaps are all at most 4.1% of the content gain, and the only gap passing FDR is ATT d at +0.15pp, negligible in size. The coupled-gate inflation seen on the short-video corpora Utility gap real-GM real-shuf Head PairAcc NDCG Recall pp %gain PUM −0.36 ∗∗ −0.20 ∗∗ −0.23 ∗∗ −0.03 −0.5 ATT −0.76 ∗∗ −0.54 ∗∗ −0.97 ∗∗∗ +0.28 4.1 MWN −0.26 −0.17 ∗ −0.39 ∗ +0.09 1.2 LRG −0.94 ∗∗∗ −0.66 ∗∗∗ −1.20 ∗∗∗ +0.08 1.2 ATT d −1.29 ∗∗ −0.97 ∗∗∗ −1.83 ∗∗∗ +0.15 ∗ 2.1 MWN d −1.05 ∗∗ −0.78 ∗∗∗ −1.62 ∗∗ −0.03 −0.4 
+
+Table 10: Amazon-Baby replication: utility gap (real-GM, percentage points) and identifiability gap (real-shuf, per-centage points and share of the +6.97pp content gain). All utility cells are negative; no identifiability gap is inflated. Five seeds, paired t-tests; stars denote Benjamini–Hochberg FDR q-values across the six heads per column. ∗q < . 05 ,
+
+> ∗∗
+
+q < . 01 , ∗∗∗ q < . 001 .          
+
+> Contrast Mean (pp) p
+> ATT −GM −0.41 .018 MWN −GM −0.49 .079 ATT real −shuf +0.76 .054 MWN real −shuf +0.85 .033
+
+Table 11: Audit contrasts under a two-layer LightGCN backbone (Tsinghua ShortVideo, PairAcc, three seeds, one-sample t on per-seed means). Per-user heads do not beat the global weight, yet their weights remain identifiable, replicat-ing the dissociation. does not appear here, which is consistent with the architec-tural account: the confound strength scales predictably with how much identity information the collaborative embedding carries, and with 4,382 users and sparse histories the embed-ding carries little. The cold-start slice is also flat: the coldest decile is insignificant for all six heads ( p from .17 to .95). The corpus has two modality channels, image and text, and its dose-response calibration appears in the four-corpus table below. 
+
+Backbone Robustness: LightGCN 
+
+To test whether the audit conclusion depends on the matrix-factorization backbone, we replace it with a two-layer Light-GCN: embeddings propagate over the symmetrically nor-malized user-item adjacency, the final embedding averages layers 0 to 2, and every head, contrast, and evaluation step is unchanged. On Tsinghua ShortVideo with three seeds, the audit conclusion replicates: per-user heads still fail to beat the global weight, with ATT −GM at −0.41pp ( p = .018 )and MWN −GM at −0.49pp ( p = .079 ), while their weights remain identifiable, with real-shuf at +0.76pp ( p = .054 )for ATT and +0.85pp ( p = .033 ) for MWN (Table 11). The utility-identifiability dissociation is therefore not an artifact of the matrix-factorization backbone. We scope this check to the audit conclusion: the content gain itself is metric-dependent under LightGCN, positive on Recall only, so we make no claim that the content gain replicates under this backbone.                     
+
+> Corpus α=0 .25 α=0 .5α=0 .75 α=1 .0
+> Tsinghua ShortVideo .571 .698 .817 .888 KuaiRand-27K .638 .898 .990 1.000 MicroLens-100K .501 .537 .655 .896 Amazon-Baby .511 .592 .789 .974
+
+Table 12: Capture AUROC of the signal implant at four strengths on all four corpora. AUROC rises monotonically with α everywhere, so the audit instrument detects user-specific structure whenever it is planted, and the natural nulls are not measurement failures. Single seed, PUM head. 
+
+Dose-Response Calibration on All Four Corpora 
+
+The signal-implant calibration of the main text extends to all four corpora: capture AUROC rises monotonically with implant strength α on every corpus (Table 12). Each run im-plants a synthetic per-user preferred modality into the PUM head on a single seed, matching the main-text protocol; the relevant property is the monotone ordering, a qualitative in-strument check. On MicroLens-100K the α = 0 .25 implant is at chance level, so the natural-gap anchor on that corpus is α = 0 .5: natural identifiability gaps sit below what an 
+
+α = 0 .5 implant produces. On Tsinghua ShortVideo and KuaiRand-27K the anchor is α = 0 .25 , as reported in the main text. 
+
+Computing Infrastructure 
+
+Experiments run on a shared NVIDIA A40 GPU (44 GB) under PyTorch with CUDA expandable-segments allocation and Python 3.11. Each 27K seed takes roughly 48 to 58 minutes; TSV seeds are faster. The harness picks the least-loaded GPU and retries on transient out-of-memory failures, so results are insensitive to co-tenant load. 
+
+Code availability. Code, per-seed results, and figure-generation scripts are released at https://github.com/ ziyi0227/personalized-modality-weighting-audit. 
+
+## References 
+
+Adebayo, J.; Gilmer, J.; Muelly, M.; Goodfellow, I.; Hardt, M.; and Kim, B. 2018. Sanity Checks for Saliency Maps. In Advances in Neural Information Processing Systems (NeurIPS) , volume 31, 9525–9536. Anelli, V. W.; Malitesta, D.; Pomo, C.; Bellogín, A.; Di Scias-cio, E.; and Di Noia, T. 2023. Challenging the Myth of Graph Collaborative Filtering: A Reasoned and Reproducibility-driven Analysis. In Proceedings of the 17th ACM Conference on Recommender Systems (RecSys ’23) , 350–361. ACM. Breiman, L. 2001. Random Forests. Machine Learning ,45(1): 5–32. Chen, Y.; Sun, F.; Jiang, Y.; Cao, Y.; Zhang, Y.; Lin, Z.; Li, Z.; Gai, K.; and Zhang, G. 2024. A Multi-modal Modeling Framework for Cold-start Short-video Recommendation. In 
+
+Proceedings of the 18th ACM Conference on Recommender Systems (RecSys ’24) , 391–400. ACM. Cremonesi, P.; Koren, Y.; and Turrin, R. 2010. Performance of Recommender Algorithms on Top-N Recommendation Tasks. In Proceedings of the 4th ACM Conference on Rec-ommender Systems (RecSys ’10) , 39–46. ACM. Dong, X.; Song, X.; Zheng, N.; Zhao, S.; and Ding, G. 2025. Modality Reliability Guided Multimodal Recommendation. 
+
+arXiv preprint arXiv:2504.16524 .Ferrari Dacrema, M.; Boglio, S.; Cremonesi, P.; and Jan-nach, D. 2021. A Troubling Analysis of Reproducibility and Progress in Recommender Systems Research. ACM Trans-actions on Information Systems , 39(2): 20:1–20:49. Ferrari Dacrema, M.; Cremonesi, P.; and Jannach, D. 2019. Are We Really Making Much Progress? A Worrying Analysis of Recent Neural Recommendation Approaches. In Proceed-ings of the 13th ACM Conference on Recommender Systems (RecSys ’19) , 101–109. ACM. Fisher, A.; Rudin, C.; and Dominici, F. 2019. All Mod-els are Wrong, but Many are Useful: Learning a Variable’s Importance by Studying an Entire Class of Prediction Mod-els Simultaneously. Journal of Machine Learning Research ,20(177): 1–81. Gao, C.; Li, S.; Zhang, Y.; Chen, J.; Li, B.; Lei, W.; Jiang, P.; and He, X. 2022. KuaiRand: An Unbiased Sequential Recommendation Dataset with Randomly Exposed Videos. In Proceedings of the 31st ACM International Conference on Information and Knowledge Management (CIKM ’22) ,3953–3957. ACM. Guo, Z.; Li, J.; Li, G.; Wang, C.; Shi, S.; and Ruan, B. 2024. LGMRec: Local and Global Graph Learning for Multimodal Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 38, 8454–8462. He, R.; and McAuley, J. 2016. VBPR: Visual Bayesian Per-sonalized Ranking from Implicit Feedback. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 30, 144–150. He, X.; Deng, K.; Wang, X.; Li, Y.; Zhang, Y.; and Wang, M. 2020. LightGCN: Simplifying and Powering Graph Convo-lution Network for Recommendation. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’20) , 639–648. ACM. Hooker, G.; Mentch, L.; and Zhou, S. 2021. Unrestricted Permutation Forces Extrapolation: Variable Importance Re-quires at Least One More Model, or There Is No Free Variable Importance. Statistics and Computing , 31(6): 82. Hooker, S.; Erhan, D.; Kindermans, P.-J.; and Kim, B. 2019. A Benchmark for Interpretability Methods in Deep Neural Networks. In Advances in Neural Information Processing Systems (NeurIPS) , volume 32, 9734–9745. Hu, Y.; Koren, Y.; and Volinsky, C. 2008. Collaborative Filtering for Implicit Feedback Datasets. In Proceedings of the 8th IEEE International Conference on Data Mining (ICDM ’08) , 263–272. IEEE. Koren, Y.; Bell, R.; and Volinsky, C. 2009. Matrix Factor-ization Techniques for Recommender Systems. Computer ,42(8): 30–37. Krichene, W.; and Rendle, S. 2020. On Sampled Metrics for Item Recommendation. In Proceedings of the 26th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD ’20) . ACM. Li, H.; Du, H.; Li, Y.; Fu, J.; Li, C.; Zhuang, Z.; Li, J.; and Ni, Y. 2025. Teach Me How to Denoise: A Universal Frame-work for Denoising Multi-modal Recommender Systems via Guided Calibration. In Proceedings of the 18th ACM Interna-tional Conference on Web Search and Data Mining (WSDM ’25) , 782–791. ACM. Lin, J. 2019. The Neural Hype and Comparisons Against Weak Baselines. SIGIR Forum , 52(2): 40–51. Lipton, Z. C.; and Steinhardt, J. 2019. Research for Practice: Troubling Trends in Machine-Learning Scholarship. Com-munications of the ACM , 62(6): 45–53. McAuley, J.; Targett, C.; Shi, Q.; and van den Hengel, A. 2015. Image-Based Recommendations on Styles and Substi-tutes. In Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’15) , 43–52. ACM. Musgrave, K.; Belongie, S.; and Lim, S.-N. 2020. A Metric Learning Reality Check. In Computer Vision – ECCV 2020 ,volume 12370 of Lecture Notes in Computer Science , 681– 699. Springer. Ni, Y.; Bi, L.; Han, J.; Zhao, G.; Wang, Y.; Li, S.; Zhang, J.; Mao, J.; Wei, Y.; Ma, W.; Ye, Y.; and Zhang, M. 2023. Mi-croLens: A Relevance-based Micro-video Recommendation Dataset with Natural Language Explanations. In Advances in Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track .Ojala, M.; and Garriga, G. C. 2010. Permutation Tests for Studying Classifier Performance. Journal of Machine Learn-ing Research , 11(62): 1833–1863. Ong, R.; and Khong, A. W. H. 2025. Spectrum-based Modal-ity Representation Fusion Graph Convolutional Network for Multimodal Recommendation. In Proceedings of the 18th ACM International Conference on Web Search and Data Mining (WSDM ’25) , 773–781. ACM. Qi, F.; Zhang, D.; Lin, X.; Su, X.; Zhu, Z.; Wang, X.; and Li, K. 2025. Seeing Beyond Noise: Joint Graph Structure Eval-uation and Denoising for Multimodal Recommendation. In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 39, 12461–12469. Rendle, S.; Freudenthaler, C.; Gantner, Z.; and Schmidt-Thieme, L. 2009. BPR: Bayesian Personalized Ranking from Implicit Feedback. In Proceedings of the 25th Conference on Uncertainty in Artificial Intelligence (UAI ’09) , 452–461. Rendle, S.; Krichene, W.; Zhang, L.; and Anderson, J. R. 2020. Neural Collaborative Filtering vs. Matrix Factorization Revisited. In Proceedings of the 14th ACM Conference on Recommender Systems (RecSys ’20) , 240–248. ACM. Sculley, D.; Snoek, J.; Wiltschko, A.; and Rahimi, A. 2018. Winner’s Curse? On Pace, Progress, and Empirical Rigor. In 
+
+6th International Conference on Learning Representations (ICLR ’18), Workshop Track .Shang, Y.; Gao, C.; Li, N.; and Li, Y. 2025. A Large-scale Dataset with Behavior, Attributes, and Content of Mobile Short-video Platform. In Companion Proceedings of the ACM Web Conference 2025 (WWW ’25 Companion) , 793– 796. ACM. Shu, J.; Xie, Q.; Yi, L.; Zhao, Q.; Zhou, S.; Xu, Z.; and Meng, D. 2019. Meta-Weight-Net: Learning an Explicit Mapping for Sample Weighting. In Advances in Neural Information Processing Systems (NeurIPS) , volume 32. Strobl, C.; Boulesteix, A.-L.; Kneib, T.; Augustin, T.; and Zeileis, A. 2008. Conditional Variable Importance for Ran-dom Forests. BMC Bioinformatics , 9: 307. Tao, Z.; Liu, X.; Xia, Y.; Wang, X.; Yang, L.; Huang, X.; and Chua, T.-S. 2023. Self-Supervised Learning for Multimedia Recommendation. IEEE Transactions on Multimedia , 25: 5107–5116. Tao, Z.; Wei, Y.; Wang, X.; He, X.; Huang, X.; and Chua, T.-S. 2020. MGAT: Multimodal Graph Attention Network for Recommendation. Information Processing & Management ,57(5): 102277. Wang, Q.; Wei, Y.; Yin, J.; Wu, J.; Song, X.; and Nie, L. 2023. DualGNN: Dual Graph Neural Network for Multi-media Recommendation. IEEE Transactions on Multimedia ,25: 1074–1084. Wang, X.; He, X.; Wang, M.; Feng, F.; and Chua, T.-S. 2019. Neural Graph Collaborative Filtering. In Proceedings of the 42nd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’19) , 165–174. ACM. Wei, W.; Huang, C.; Xia, L.; and Zhang, C. 2023. Multi-Modal Self-Supervised Learning for Recommendation. In 
+
+Proceedings of the ACM Web Conference 2023 (WWW ’23) ,790–800. ACM. Wei, Y.; Wang, X.; Nie, L.; He, X.; and Chua, T.-S. 2020. Graph-Refined Convolutional Network for Multimedia Rec-ommendation with Implicit Feedback. In Proceedings of the 28th ACM International Conference on Multimedia (MM ’20) , 3541–3549. ACM. Wei, Y.; Wang, X.; Nie, L.; He, X.; Hong, R.; and Chua, T.-S. 2019. MMGCN: Multi-modal Graph Convolution Net-work for Personalized Recommendation of Micro-video. In 
+
+Proceedings of the 27th ACM International Conference on Multimedia (MM ’19) , 1437–1445. ACM. Xu, J.; Chen, Z.; Yang, S.; Li, J.; Wang, H.; and Ngai, E. C.-H. 2025. MENTOR: Multi-level Self-supervised Learning for Multimodal Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, 12908– 12917. Yu, P.; Tan, Z.; Lu, G.; and Bao, B.-K. 2023. Multi-View Graph Convolutional Network for Multimedia Recommen-dation. In Proceedings of the 31st ACM International Con-ference on Multimedia (MM ’23) , 6576–6585. ACM. Zhang, J.; Zhu, Y.; Liu, Q.; Wu, S.; Wang, S.; and Wang, L. 2021. Mining Latent Structures for Multimodal Recom-mendation. In Proceedings of the 29th ACM International Conference on Multimedia (MM ’21) , 3872–3880. ACM. Zhang, J.; Zhu, Y.; Liu, Q.; Zhang, M.; Wu, S.; and Wang, L. 2023. Latent Structure Mining with Contrastive Modality Fusion for Multimedia Recommendation. IEEE Transactions on Knowledge and Data Engineering , 35(9): 9154–9167. Zhou, H.; Zhou, X.; Zeng, Z.; Zhang, L.; and Shen, Z. 2023a. A Comprehensive Survey on Multimodal Recommender Sys-tems: Taxonomy, Evaluation, and Future Directions. arXiv preprint arXiv:2302.04473 .Zhou, H.; Zhou, X.; Zhang, L.; and Shen, Z. 2023b. En-hancing Dyadic Relations with Homogeneous Graphs for Multimodal Recommendation. In Proceedings of the 26th European Conference on Artificial Intelligence (ECAI ’23) ,volume 372 of Frontiers in Artificial Intelligence and Appli-cations , 3123–3130. IOS Press. Zhou, X.; and Shen, Z. 2023. A Tale of Two Graphs: Freez-ing and Denoising Graph Structures for Multimodal Recom-mendation. In Proceedings of the 31st ACM International Conference on Multimedia (MM ’23) , 935–943. ACM. Zhou, X.; Zhou, H.; Liu, Y.; Zeng, Z.; Miao, C.; Wang, P.; You, Y.; and Jiang, F. 2023c. Bootstrap Latent Representa-tions for Multi-modal Recommendation. In Proceedings of the ACM Web Conference 2023 (WWW ’23) , 845–854. ACM.
