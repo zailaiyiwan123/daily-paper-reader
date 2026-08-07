@@ -1,0 +1,725 @@
+Title: SPEAR: Selection-aware Personalized End-to-end Adaptive Rewriting and Retrieval for Community Search
+
+URL Source: https://arxiv.org/pdf/2608.01738v1
+
+Published Time: Tue, 04 Aug 2026 01:52:11 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# SPEAR: Selection-aware Personalized End-to-end Adaptive Rewriting and Retrieval for Community Search 
+
+# Wenbin Wu ∗
+
+e1554380@u.nus.edu National University of Singapore Singapore, Singapore 
+
+# Yuzhong Wu ∗
+
+wuyuzhong9@gmail.com Shanghai Dewu Information Group Co., Ltd. Shanghai, China 
+
+# Yufan Xu 
+
+xuyufan@dewu.com Shanghai Dewu Information Group Co., Ltd. Shanghai, China 
+
+# Kuan Fang †
+
+fangkuan@dewu.com Shanghai Dewu Information Group Co., Ltd. Shanghai, China 
+
+# Xing Xu 
+
+xuxing02@dewu.com Shanghai Dewu Information Group Co., Ltd. Shanghai, China 
+
+# Cheng Ye 
+
+yecheng02@dewu.com Shanghai Dewu Information Group Co., Ltd. Shanghai, China 
+
+# Xiaobin Hu †
+
+ben0xiaobin0hu1@nus.edu.sg National University of Singapore Singapore, Singapore 
+
+## Abstract 
+
+Query reformulation bridges user intent and retrieval in e-commerce search, yet production systems optimize rewrite quality and re-trieval effectiveness separately, leaving the two stages structurally misaligned. Path-based architectures unify them end-to-end but were designed for personalization, where relevance is not an ex-plicit constraint—search additionally requires the rewrite to remain faithful to the user’s stated query intent. Transplanted directly, these models learn a shortcut we term the generic-word domi-nance effect: they favor generic rewrites that score well on paths but drift from query intent. To address this, we propose SPEAR (Selection-aware Personalized End-to-end Adaptive Rewriting and Retrieval), which integrates three components that each target one failure mode: (1) a dual-embedding backbone with auxiliary loss and gradient isolation that shields recall-side semantics from being eroded by CTR-driven ranking signals; (2) a multiplicative gating aggregator that lets a rewrite score high only when both its confi-dence and item relevance are strong, eliminating the generic-word shortcut; (3) a Dynamic Rewrite Selector that jointly generates request-specific rewrite weights and user-query-conditioned scale and bias terms, allowing both rewrite preference and relevance calibration to adapt to each request. Offline evaluation on 100K  
+
+> ∗Both authors contributed equally to this research. Wenbin Wu conducted this work during an internship at Shanghai Dewu Information Group Co., Ltd., and Yuzhong Wu conducted this work while previously employed at Shanghai Dewu Information Group Co., Ltd.
+> †Corresponding author.
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> RecSys ’26, Minneapolis, MN, USA
+> ©2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2284-4/2026/09 https://doi.org/10.1145/3773078.3831757
+
+held-out industrial search sessions shows that the proposed frame-work improves rewrite semantic similarity@10 by +18 .2% and click recall@10 by +99 .5% over the production baseline. In online A/B testing, SPEAR achieves +0.259% in query-view CTR and +0.733% 
+
+in average reading depth, confirming that improved rewrite selec-tion translates into stronger retrieval and deeper user engagement. The proposed SPEAR system has been fully deployed in Dewu’s community search platform since 2025. Our code is available at https://github.com/mallocagi1-cell/spear. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems ; Information retrieval .
+
+## Keywords 
+
+query reformulation, personalized retrieval, embedding-based re-trieval, rewrite selection, path-based retrieval 
+
+ACM Reference Format: 
+
+Wenbin Wu, Yuzhong Wu, Yufan Xu, Kuan Fang, Xing Xu, Cheng Ye, and Xiaobin Hu. 2026. SPEAR: Selection-aware Personalized End-to-end Adaptive Rewriting and Retrieval for Community Search. In 20th ACM Conference on Recommender Systems (RecSys ’26), September 27-October 02, 2026, Minneapolis, MN, USA. ACM, New York, NY, USA, 11 pages. https: //doi.org/10.1145/3773078.3831757 
+
+## 1 Introduction 
+
+Modern search systems increasingly rely on query reformulation to bridge the gap between what users express and what retrieval mod-els can match. In large-scale systems, reformulation has evolved from simple synonym expansion into a multi-route recall mecha-nism: multiple rewrites may trigger different retrieval routes, whose results are then merged into the final candidate pool. Rewrite selec-tion therefore directly determines which items become available arXiv:2608.01738v1 [cs.IR] 3 Aug 2026 RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA Wu et al. 
+
+Figure 1: Community search results page in the Dewu mobile app. 
+
+to downstream ranking. Unlike recommendation, where behav-ioral preferences can play a dominant role, search must improve downstream engagement without compromising fidelity to the user’s original intent. This tension is particularly pronounced in e-commerce community search. As illustrated in Figure 1, Dewu re-trieves user-authored content by jointly considering explicit queries, user preferences, and commerce intent. Although behavioral sig-nals can improve personalization, overly broad rewrites may attract engagement while discarding important semantic constraints. Ef-fective reformulation must therefore balance semantic fidelity with downstream engagement. Most production systems address this through a two-stage pipeline: a reformulation module generates or selects rewrite candidates, and a downstream retrieval model consumes them. The two stages are optimized with separate objectives — the former targets semantic similarity while the latter targets engagement — creating persistent misalignment between rewrite quality and retrieval effectiveness. A natural response is end-to-end joint optimization. The Path-based Deep Network (PDN) [ 20 ], originally proposed for recommendation matching, aggregates user–trigger–item two-hop paths by jointly modeling trigger selection and trigger–target similarity. Adapt-ing this architecture to search yields query–rewrite–item paths, allowing click-level supervision to flow back into rewrite selec-tion. However, PDN was originally designed for recommendation systems that optimize primarily for engagement, where semantic relevance to an explicit query is not directly constrained. Trans-planted directly into search, it learns a shortcut we term the generic-word dominance effect: the model favors generic, high-frequency rewrites — terms like "phone case" or "women’s dress" — that carry high prior probability and co-occur with many items, but convey little about the specific intent behind a query. Under additive path aggregation, such rewrites inflate the final score through selection confidence alone, even when their semantic match to the target item is weak. This shortcut is difficult to detect through aggregate CTR metrics, since broad rewrites do produce clicks — just not the most relevant ones. In this paper, we propose SPEAR, a unified end-to-end framework that addresses each of the above failure modes with a dedicated component. The framework follows a PDN-style architecture with a shared encoder backbone, but introduces three structural modifi-cations that together enforce the relevance–engagement balance absent in conventional path-based models. A key design principle is that reformulation decisions should be directly supervised by retrieval outcomes while preserving semantic fidelity to the orig-inal query — no component optimizes engagement in isolation. Specifically, the main contributions of this paper are as follows: 
+
+• We design a dual-embedding backbone with auxiliary loss and gradient isolation that decouples recall and ranking branches, preventing CTR-driven gradients from eroding recall-side semantic structure. 
+
+• We propose a multiplicative gating aggregator that replaces additive path scoring, ensuring a rewrite contributes only when both its confidence and item relevance are high, di-rectly eliminating the generic-word shortcut. 
+
+• We introduce a Dynamic Rewrite Selector that jointly gener-ates request-specific rewrite weights and user-query- condi-tioned scale and bias terms for each request, allowing both rewrite preference and relevance calibration to adapt to the current context. We evaluate the proposed framework through extensive offline experiments and online A/B testing on the Dewu community search platform. Results show consistent improvements in both rewrite relevance and click-through rate. 
+
+## 2 Related Work 2.1 Query Reformulation in Search Systems 
+
+Early query reformulation relied on discriminative models using co-occurrence statistics, edit distance, and click logs [ 10 , 11 , 24 ,41 ]. Reinforcement learning has been applied to optimize rewrites against downstream retrieval signals [ 35 ], and generative sequence-to-sequence models later enabled direct rewrite generation [ 47 , 52 ]. In industrial settings, cycle-consistent translation [ 38 ], diversity-driven rewriting for sponsored search [ 31 ], weakly-supervised co-training with semantic matching [ 48 ], and production pipelines at scale [ 21 , 55 ] have shown that personalized rewrite selection must balance semantic relevance, user behavior, and context. Large language models provide a complementary route. Query2doc [ 46 ], HyDE [ 8 ], and related prompting-based ap-proaches [ 15 ] generate pseudo-documents that expand the query; BEQUE [ 36 ] deploys LLM-generated rewrites in Taobao production; recent work adapts LLMs directly into dense retrievers [ 26 , 28 , 45 ]or uses them for reasoning-intensive reranking [ 34 ]. More broadly, recent studies have investigated latent-space computation and activation-level intervention as general mechanisms for improving model representation and reasoning [49, 54]. A limitation shared across these approaches is that rewrite se-lection and retrieval are optimized with separate objectives: the re-formulation module never observes retrieval outcomes and cannot SPEAR RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA 
+
+distinguish linguistically plausible rewrites from those genuinely useful for retrieval. LLM-based components likewise remain loosely coupled to the retrieval training loop. This disconnect motivates our end-to-end approach; LLM-based rewrites are orthogonal to our contribution and can serve as drop-in replacements for the encoder backbone (cf. Section 5). 
+
+## 2.2 Dense Retrieval and End-to-End Matching 
+
+Dual-encoder architectures, originating with DSSM [ 13 ] and pop-ularized by DPR [ 18 ] and BERT-based encoders [ 6], have become the dominant paradigm for first-stage retrieval. Theoretical analy-ses show that expressive dual-encoders can match cross-attention capacity [ 30 ], and distillation further narrows the gap [ 4, 23 ]. Con-trastive objectives and negative sampling have driven embedding quality, from ANCE [ 50 ] and RocketQA [ 39 ] to improved sampling principles [56], pretraining-based methods [7, 32], and robustness techniques [ 14 , 59 ]. At web scale, Facebook EBR [ 12 ] and Taobao MGDSPR [ 22 ] adapt these designs to industrial traffic, with ANN indexing typically realized via GPU-accelerated libraries [ 17 ]. De-spite strong query–item alignment, these methods treat the query as a fixed input, ignoring that in a reformulation-aware system the query representation itself depends on the rewrite decision. Industrial matching systems have long modeled multi-hop sig-nals from user behavior and interacted items [ 5 , 37 , 43 , 58 ], with graph-based [ 51 ], tree-structured [ 60 ], and learned-structure [ 9]retrieval systems as well as production pipelines at Amazon [ 33 ], Walmart [ 29 ], and Facebook [ 25 ] scaling these ideas further. Most relevant to our work, PDN [ 20 ] models user–trigger–item paths and aggregates them additively to enable joint optimization of trigger selection and item matching, and MOPPR [ 57 ] extends this with multi-objective personalization. However, these designs originate from recommendation settings where engagement is the sole objective. Transplanted to search, they exhibit the generic-word dominance effect we identify: under additive aggregation, high-frequency generic rewrites accumulate selector confidence re-gardless of semantic match, while the surrounding CTR-optimized dual-encoder progressively distorts the recall-side representations retrieval depends on. Our Dual-Embedding Isolation is further motivated by work on gradient interference in multi-task optimization. PCGrad [ 53 ]projects conflicting gradients onto non-conflicting directions, while architectural approaches such as MMoE [ 27 ] and PLE [ 44 ] separate shared and task-specific experts, and loss-balancing schemes [ 3 , 19 ]adaptively weight task gradients. Unlike these general-purpose methods, our isolation is specialized to the retrieval–ranking asym-metry: stop-gradient between Rank and Recall branches protects recall-side geometry from CTR-driven distortion while preserving end-to-end personalization. We benchmark against BM25 [ 42 ] and employ SBERT-style [ 40 ] sentence encoders for our offline relevance model, following standard graded-relevance evaluation [ 2 , 16 ] and personalized product search methodology [1]. 
+
+Summary of novelty. Relative to previous work, SPEAR is the first framework to (i) introduce Dual-Embedding Isolation with explicit stop-gradient between recall and ranking branches, preventing the CTR-driven representation degradation documented in prior path-based systems; (ii) replace additive path aggregation with 
+
+Multiplicative Gating , eliminating the generic-rewrite shortcut; and (iii) formulate rewrite choice as a latent decision variable under end-task supervision via a Dynamic Rewrite Selector .
+
+## 3 Method 
+
+We propose SPEAR, an end-to-end framework for personalized query reformulation and dense retrieval, where rewrite selection and query–item matching are optimized under a unified objec-tive. Unlike conventional two-stage pipelines that first optimize rewrite quality and then optimize retrieval quality, SPEAR treats rewrite choice as a latent decision variable that is directly super-vised by downstream click feedback. Architecturally, SPEAR follows a PDN-style design with a shared encoder backbone, task-specific Recall/Rank branches, a dynamic rewrite selector, multiplicative rewrite gating, and a residual direct path from the original query. This design explicitly addresses the objective-misalignment prob-lem in industrial rewrite systems: rewrites are rewarded only when they improve item matching and final ranking outcomes. 
+
+## 3.1 Input Representation and Data Alignment 
+
+3.1.1 Input Feature Alignment. For each training instance, we ob-serve a tuple (𝑢, 𝑞 𝑜 , R, 𝑑, 𝑦 ), where 𝑢 denotes user context, 𝑞 𝑜 is the original query, R = {𝑞 𝑖 𝑟 }𝐾 𝑢  
+
+> 𝑖 =1
+
+is the candidate rewrite set, 𝑑 is an item, and 𝑦 ∈ { 0, 1} is the click label. The key difficulty is heterogene-ity: user signals are typically sparse or statistical, while queries, rewrites, and item descriptors are textual and semi-structured. We first perform feature alignment so that all modalities are projected into a compatible dense representation space. Let x𝑢 and x𝑑 denote raw user and item-side structured features. We compress them via learnable projections: 
+
+h𝑢 = 𝜙 𝑢 (x𝑢 ), h(0) 
+
+> 𝑑
+
+= 𝜙 𝑑 (x𝑑 ), (1) where 𝜙 𝑢 (·) and 𝜙 𝑑 (·) map high-dimensional inputs into fixed-width vectors. The rewrite list is padded to a global maximum 𝐾 for efficient batching; if 𝐾 𝑢 < 𝐾 , empty slots are filled with [PAD] and masked by 𝑚 𝑖 ∈ { 0, 1}. This mask is used consistently in selector normalization and score aggregation so that invalid candidates receive zero probability and zero contribution. The alignment stage is therefore not only an engineering detail for parallelism, but also a prerequisite for stable end-to-end credit assignment across multiple rewrite paths. 
+
+3.1.2 Dual-Encoder Backbone. On top of the aligned inputs, we adopt a dual-encoder backbone for scalable dense retrieval. A single query encoder 𝑓 𝑞 (·) is shared across the original query and all rewrite candidates: 
+
+q𝑜 𝑒𝑚𝑏 = 𝑓 𝑞 (𝑞 𝑜 , 𝑢 ), q𝑖 𝑒𝑚𝑏 = 𝑓 𝑞 (𝑞 𝑖 𝑟 , 𝑢 ), 𝑖 = 1, . . . , 𝐾 𝑢 , (2) 
+
+d𝑒𝑚𝑏 = 𝑓 𝑑 (𝑑 ). (3) Here, 𝑓 𝑞 (·) encodes query text together with user context 𝑢 ,and 𝑓 𝑑 (·) maps item text and attributes into the same latent space. We apply ℓ2 normalization independently to each branch before similarity computation, 
+
+˜q𝑜 = q𝑜 𝑒𝑚𝑏 
+
+∥q𝑜 𝑒𝑚𝑏 ∥2
+
+, ˜q𝑖 = q𝑖 𝑒𝑚𝑏 
+
+∥q𝑖 𝑒𝑚𝑏 ∥2
+
+, ˜d = d𝑒𝑚𝑏 
+
+∥d𝑒𝑚𝑏 ∥2
+
+, (4) RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA Wu et al. Embedding  Layer 
+
+Region  1: 
+
+Input & 
+
+Embedding 
+
+User context  Original query  Rewrite candidates  Item features  Padding mask 
+
+···   
+
+> ∅𝑢 (𝑥 𝑢 )→ℎ𝑢
+
+𝑥 𝑢  𝑞 𝑜  𝑅 = 𝑞 𝑟   
+
+> 𝑘 𝑘 =1
+> 𝐾
+
+𝑥 d    
+
+> ∅𝑑 (𝑥 𝑑 )→ℎ𝑑
+
+## Item -side Encoder Query -side Encoder 
+
+> Shar ed
+
+Region  2:  Dual -
+
+Encoder 
+
+𝑚 𝑘      
+
+> L2norm L2norm L2norm
+
+𝑞 𝑒𝑚𝑏  
+
+> 𝑜
+
+𝑞 𝑒𝑚𝑏  
+
+> 𝑖
+
+𝑑 𝑒𝑚𝑏 
+
+෪𝑞 𝑜  ෩𝑞 𝑖  ሚ𝑑 
+
+Region  3:Rank 
+
+/Recall  Branching  
+
+> Featur e Projection
+
+User context  Original query  Rewrite candidates  Item features 
+
+Region  4.a 
+
+：
+
+Rewrite 
+
+Selector 
+
+## Rank  Head  Recall  Head 
+
+⊘ stop -grad ℎ𝑞 
+
+> 𝑟𝑎𝑛𝑘
+
+/ℎ𝑑  
+
+> 𝑟𝑎𝑛𝑘
+
+ℎ𝑞 
+
+> 𝑟𝑒𝑐
+
+/ℎ𝑑 
+
+> 𝑟𝑒𝑐
+
+ℎ𝑢 
+
+𝑞 𝑒𝑚𝑏 
+
+> 𝑜
+
+𝑞 rank  
+
+> 𝑜
+
+𝑞 rank  
+
+> i
+
+𝑑 𝑟𝑎𝑛𝑘 
+
+𝑞 rec  
+
+> 𝑜
+
+𝑞 rec 
+
+> i
+
+Region  5:Personal 
+
+Scoring System 
+
+## Multi -objective loss:  ℒ = ℒmain + 𝜆 𝑎𝑙𝑖𝑔𝑛 ℒ𝑁𝐶𝐸 + 𝜆 𝑟𝑒𝑔 ℒ𝑟𝑒𝑔 
+
+Region  4.b 
+
+：
+
+Dynamic  factor 
+
+𝛽 (𝑢 ) b(𝑢 )
+
+𝑞 rec  
+
+> 𝑜
+
+𝑞 rec 
+
+> i
+
+## MLP 
+
+## MLP 
+
+𝑞 𝑒𝑚𝑏  
+
+> 𝑜
+
+ℎ𝑢 
+
+> Cross
+> inter action
+
+## c𝑖 
+
+> Semantic
+> similar ity
+
+## 𝑠 𝑖 
+
+𝑠𝑒𝑙 
+
+ℎ𝑢 
+
+𝛼 𝑖 
+
+Rewrite path  Direct path Score 
+
+fusion 
+
+𝑠  (
+
+𝑞 ,
+
+𝑑 ,
+
+𝑢 )
+
+𝑟 𝑖  𝑢 , 𝑑 = 𝑠𝑜𝑓𝑡𝑝𝑙𝑢𝑠 
+
+(𝛽  𝑢 𝑠𝑖𝑚  𝑞 𝑟𝑎𝑛𝑘  
+
+> 𝑖
+
+, 𝑑 𝑟𝑎𝑛𝑘 + 𝑏  𝑢 )
+
+𝑠 𝑟𝑤 (𝑞 , 𝑑 , 𝑢 )
+
+= ෍
+
+> 𝑖 =1
+> 𝐾
+
+𝛼 𝑖 𝑟 𝑖 (𝑢 , 𝑑 ) 𝑠 𝑑𝑖𝑟  𝑞 𝑜 , 𝑑 , 𝑢 = 𝑠𝑜𝑓𝑡𝑝𝑙𝑢𝑠 
+
+(𝛽  𝑢 𝑠𝑖𝑚 (𝑞 𝑟𝑎𝑛𝑘  
+
+> 𝑜
+
+, 𝑑 𝑟𝑎𝑛𝑘 ) + 𝑏  𝑢 )
+
+𝑞 emb  
+
+> 𝑜
+
+𝑞 emb 
+
+> i
+
+Figure 2: Overview of SPEAR. The framework integrates a Dual-Encoder backbone with gradient-isolated Rank/Recall branching (Regions 1–3), a Dynamic Rewrite Selector (Region 4), and a Personalized Scoring System with multiplicative rewrite gating and a residual direct path (Region 5). The red cross denotes stop-gradient between the Rank and Recall branches. 
+
+so that dot-product similarity is numerically stable and equal to cosine similarity. Parameter sharing ensures that the original query and all rewrites are represented on a common semantic scale, avoiding encoder-induced discrepancies in query–item matching. Although produced by the same encoder, the outputs play distinct down-stream roles: q𝑜 𝑒𝑚𝑏 is routed to the residual Direct path in §3.3, while 
+
+{q𝑖 𝑒𝑚𝑏 }𝐾 𝑢  
+
+> 𝑖 =1
+
+are routed to the rewrite selector in §3.2 to form a person-alized weighted mixture. This shared-encoder, split-output design couples end-to-end rewrite optimization with a stable original-query fallback. 
+
+3.1.3 Task-Specific Embedding Branching and Gradient Isolation. 
+
+When retrieval and click prediction share a single embedding space, objective interference often arises: retrieval favors broad semantic coverage, while CTR optimization favors short-term discrimina-tive signals. To decouple these pressures, we branch the shared representations into Recall and Rank domains through dedicated projection MLPs: 
+
+q𝑜  
+
+> rec
+
+= ℎrec  
+
+> 𝑞
+
+(q𝑜 
+
+> emb
+
+), q𝑖  
+
+> rec
+
+= ℎrec  
+
+> 𝑞
+
+(q𝑖 
+
+> emb
+
+), drec = ℎrec  
+
+> 𝑑
+
+(demb ), (5) 
+
+q𝑜  
+
+> rank
+
+= ℎrank  
+
+> 𝑞
+
+(q𝑜 
+
+> emb
+
+), q𝑖  
+
+> rank
+
+= ℎrank  
+
+> 𝑞
+
+(q𝑖 
+
+> emb
+
+), drank = ℎrank  
+
+> 𝑑
+
+(demb ),
+
+(6) where each ℎ(·) denotes a lightweight MLP. The Recall and Rank projection heads share parameters across the original query and all rewrite candidates, but their outputs are routed to different down-stream modules: Recall-domain representations feed the InfoNCE semantic alignment loss (§3.4), while Rank-domain representations feed the scoring system (§3.3) and rewrite selector (§3.2). The Recall branch is trained to preserve semantic alignment and coverage; the Rank branch is trained for click discrimination. We further impose stop-gradient control from the CTR path to recall-specific parameters, 
+
+∇𝜃 rec Lmain = 0. (7) This prevents ranking gradients from over-optimizing frequent generic rewrites at the expense of semantic fidelity, maintaining robust recall-space geometry for long-tail and ambiguous queries while still allowing the Rank branch to capture behavior-specific patterns. SPEAR RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA 
+
+## 3.2 Dynamic Rewrite Selector 
+
+Given 𝐾 rewrite candidates, the selector predicts a personalized distribution over candidates instead of committing to hard top-1 selection. We first construct an interaction-aware representation by jointly encoding the user context and the original query, and then explicitly interacting it with each rewrite candidate: 
+
+c𝑖 = ℎ𝑖𝑛𝑡 ([ h𝑢 ; q𝑜 
+
+> emb
+
+]) ⊙ q𝑖 
+
+> emb
+
+, 𝑠 sel  
+
+> 𝑖
+
+= sim (q𝑜 
+
+> rec
+
+, q𝑖 
+
+> rec
+
+), (8) where ℎint (·) denotes a lightweight MLP that projects the con-catenated user and original-query representations into the same dimensional space as the rewrite representation, [· ; ·] denotes vec-tor concatenation, and ⊙ denotes element-wise multiplication. The cross term c𝑖 fuses user context with the original query intent be-fore interacting with each rewrite candidate, so that the selector is aware of who is searching and what they originally asked. The compatibility score 𝑠 sel  
+
+> 𝑖
+
+provides a lightweight check on whether the rewrite stays faithful to the original intent, discouraging candidates that drift into unrelated topics. The selector logit is then 
+
+𝑧 𝑖 = 𝑔 ([ c𝑖 ; 𝑆𝐺 (𝑠 sel  
+
+> 𝑖
+
+)]) , (9) where 𝑔 (·) is an MLP scoring head and [· ; ·] denotes concatena-tion and 𝑆𝐺 represents stop gradient here. A mask-aware softmax converts the logits into a valid probability distribution over the 𝐾 
+
+candidates: 
+
+𝛼 𝑖 = 𝑚 𝑖 exp (𝑧 𝑖 /𝜏 Í𝐾 𝑗 =1 𝑚 𝑗 exp (𝑧 𝑗 /𝜏  ,
+
+> 𝐾
+
+∑︁ 
+
+> 𝑖 =1
+
+𝛼 𝑖 = 1, (10) where the binary mask 𝑚 𝑖 zeros out padded slots so that invalid candidates receive exactly zero weight and 𝜏 is a temperature pa-rameter. Besides the candidate weights 𝛼 𝑖 , the selector uses a light-weight MLP head conditioned on the current user representation 
+
+h𝑢 and original-query embedding q𝑜  
+
+> emb
+
+to dynamically generate the request-specific scale 𝛽 (𝑢 ) and bias 𝑏 (𝑢 ):
+
+𝛽 (𝑢 ) = ℎ𝛽 (h𝑢 ; q𝑜 
+
+> emb
+
+), 𝑏 (𝑢 ) = ℎ𝑏 (h𝑢 ; q𝑜 
+
+> emb
+
+). (11) The key innovation is that, for each request, the selector jointly generates candidate weights 𝛼 𝑖 and user-query-conditioned calibra-tion terms 𝛽 (𝑢 ) and 𝑏 (𝑢 ). Since these outputs directly modulate the final click score (Section 3.3), the binary cross-entropy objective jointly supervises rewrite selection and score calibration, allowing the model to learn rewrites and calibration patterns that improve retrieval and ranking. This contrasts with conventional pipeline systems that rely on lexical-overlap or language-model-perplexity proxies, which may correlate poorly with actual user engagement. 
+
+## 3.3 Personalized Scoring System 
+
+Given the request-specific rewrite weights 𝛼 𝑖 and calibration terms 
+
+𝛽 (𝑢 ) and 𝑏 (𝑢 ) generated by the Dynamic Rewrite Selector, the final score combines a multiplicatively gated rewrite path with a residual original-query path. 
+
+Rewrite path. For each rewrite candidate 𝑖 , we first compute a calibrated relevance score and then apply a softplus activation to ensure non-negativity: 
+
+𝑟 𝑖 (𝑢, 𝑑 ) = softplus 
+
+
+
+𝛽 (𝑢 ) sim (q𝑖 
+
+> rank
+
+, drank ) + 𝑏 (𝑢 )
+
+
+
+. (12) The rewrite-path score is a weighted sum over all candidates: 
+
+𝑠 𝑟 𝑤 (𝑞, 𝑑, 𝑢 ) =
+
+> 𝐾
+
+∑︁ 
+
+> 𝑖 =1
+
+𝛼 𝑖 𝑟 𝑖 (𝑢, 𝑑 ). (13) The non-negativity constraint introduced by softplus is essential: it ensures that 𝛼 𝑖 and 𝑟 𝑖 interact multiplicatively . A rewrite can contribute a large score only when both the selector confidence 𝛼 𝑖 
+
+and the item relevance 𝑟 𝑖 are high. High confidence paired with weak relevance, or vice versa, produces a near-zero contribution. This eliminates the generic-rewrite shortcut in which frequent but semantically shallow rewrites accumulate high scores through selector confidence alone. 
+
+Direct path. To ensure robustness when rewrite candidates are noisy or weak, we retain a residual path from the original query: 
+
+𝑠 𝑑𝑖𝑟 (𝑞 𝑜 , 𝑑, 𝑢 ) = softplus 
+
+
+
+𝛽 (𝑢 ) sim (q𝑜 
+
+> rank
+
+, drank ) + 𝑏 (𝑢 )
+
+
+
+. (14) 
+
+Score fusion. The final ranking score is the sum of both paths: 
+
+𝑠 (𝑞, 𝑑, 𝑢 ) = 𝑠 𝑑𝑖𝑟 (𝑞 𝑜 , 𝑑, 𝑢 ) + 𝑠 𝑟 𝑤 (𝑞, 𝑑, 𝑢 ). (15) The direct path acts as a safety fallback: when all rewrite candidates are suboptimal for a given query intent, the system retains strong baseline matching from the original query. 
+
+## 3.4 Training Objective 
+
+3.4.1 Main Training Loss. The primary objective is CTR prediction. Given score 𝑠 (𝑞, 𝑑, 𝑢 ), click probability is 
+
+𝑃 (𝑦 =1 | 𝑞, 𝑑, 𝑢 ) = 1 − exp  − clip (𝑠 (𝑞, 𝑑, 𝑢 )) , (16) where clip (·) clamps the input to a safe numerical range. This monotonic mapping converts the non-negative score into a valid probability. Over a mini-batch B, we optimize binary cross-entropy: 
+
+Lmain = − 1
+
+|B| ∑︁ (𝑞,𝑑,𝑢,𝑦 ) ∈ B 
+
+h
+
+𝑦 log 𝑃 + ( 1−𝑦 ) log (1−𝑃 )
+
+i
+
+. (17) Importantly, Lmain supervises not only the ranking head but also rewrite selection, because 𝛼 𝑖 directly controls 𝑠 𝑟 𝑤 . This is the mech-anism that turns rewrite selection from a detached preprocessing step into a trainable decision module with end-task feedback. 
+
+3.4.2 Auxiliary Losses. To stabilize retrieval-oriented representa-tion learning, we add recall-domain semantic alignment via In-foNCE. We first form a recall-domain rewrite mixture: 
+
+q𝑟 𝑤  
+
+> rec
+
+=
+
+> 𝐾
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑆𝐺 (𝛼 𝑖 ) q𝑖 
+
+> rec
+
+, (18) which aggregates the recall-space rewrite embeddings using the same selector weights. For a recall-space query representation qrec 
+
+(either the original-query view q𝑜  
+
+> rec
+
+or the rewrite-aggregated view 
+
+q𝑟 𝑤 
+
+> rec
+
+), one positive item 𝑑 +, and negatives {𝑑 − 
+
+> 𝑗
+
+}, the contrastive loss is 
+
+LNCE (qrec ) = − log exp  sim (qrec , d+
+
+> rec
+
+)/ 𝜏 
+
+𝐷 (qrec ) , (19) where 𝜏 is a temperature parameter and 
+
+𝐷 (qrec ) = exp  sim (qrec , d+
+
+> rec
+
+)/ 𝜏  +∑︁ 
+
+> 𝑗
+
+exp  sim (qrec , d−
+
+> 𝑗, rec
+
+)/ 𝜏 
+
+(20) RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA Wu et al. 
+
+is the partition function over positive and negative items. We apply this loss to both q𝑜  
+
+> rec
+
+and q𝑟 𝑤  
+
+> rec
+
+so that the recall space remains faithful to both the original intent and its selected reformulation. Together with standard parameter regularization, this auxiliary supervision mitigates representation drift and improves retrieval stability under distribution shift. 
+
+## 3.5 Optimization and Backpropagation 
+
+Training is multi-objective with explicit gradient routing. Let 𝜃 shared ,
+
+𝜃 rank , 𝜃 rec , and 𝜃 𝛼 denote parameters of shared encoder, rank branch, recall branch, and rewrite selector, respectively. The CTR objective updates 𝜃 shared , 𝜃 rank , and 𝜃 𝛼 ; semantic alignment updates 𝜃 shared 
+
+and 𝜃 rec ; stop-gradient enforces that CTR does not directly update recall-specific parameters: 
+
+∇𝜃 rank ,𝜃 𝛼 L = ∇𝜃 rank ,𝜃 𝛼 Lmain , ∇𝜃 rec L = 𝜆 align ∇𝜃 rec LNCE . (21) The final objective is 
+
+L = Lmain + 𝜆 align LNCE + 𝜆 reg Lreg , (22) where 𝜆 align and 𝜆 reg control the trade-off between ranking discrim-ination and semantic consistency. Overall, SPEAR introduces a coherent set of innovations that work jointly: end-task-supervised rewrite selection, user-aware dynamic gating, multiplicative rewrite-item coupling with residual fallback, and representation decoupling via branch-specific opti-mization. Their combination yields a system that is both effective in CTR optimization and robust in semantic retrieval quality. 
+
+## 4 Experiments 
+
+Throughout all experiments, Baseline refers to the original PDN-based community search system deployed in production prior to this work, which serves as the control group for all offline ablations, online A/B testing, and human evaluation. We select PDN because it is our strongest deployed production baseline and the closest prior system we are aware of that couples query reformulation and downstream retrieval within a single pipeline. Other related methods address only partially aligned components of this end-to-end problem and are therefore less directly comparable. 
+
+## 4.1 Offline Experiments 
+
+4.1.1 Experimental Setup. We evaluate all models on an industrial dataset collected from the Dewu community search platform. The training corpus is constructed from a query-item bipartite graph built over 180-day search click logs, yielding approximately 960 million query-query pairs per day via swing-based similarity min-ing and an additional 108 million pairs per day via semantic ANN retrieval. All model variants are trained on data from 2026-03-08 to 2026-03-14 and evaluated on 100K held-out sessions from 2026-03-15. We report three complementary offline metrics: Exposure Recall@K measures the fraction of items the user was exposed to that are recovered when the top-𝐾 rewrite candidates are used for retrieval; Click Recall@K (𝐾 ∈ { 5, 10 , 30 }) measures the fraction of actually clicked items recovered; and Semantic Similarity@K 
+
+measures average cosine similarity between the original query and top-𝐾 rewrite embeddings as a proxy for intent faithfulness. Unless otherwise specified, we set 𝜆 align = 0.1, 𝜏 NCE = 0.07 , and 
+
+𝜆 reg = 10 −6; for the Dynamic Rewrite Selector, the temperature is initialized as 𝜏 init = 0.8 and lower-bounded by 𝜏 floor = 0.6. All ablation variants are independent additions on top of Baseline: Mul-tiplicative Gating adds the multiplicative gating aggregator only; 
+
+Dual-Embedding Isolation adds the dual-embedding backbone with gradient isolation only; Dynamic Rewrite Selector adds the query selection network with calibration only; and SPEAR 
+
+combines all three components. The additional serving overhead is negligible: rewrite selection costs only 25 ms per request, and it runs in parallel with other query-understanding modules within the existing 30-ms stage, resulting in no increase in end-to-end latency. 
+
+Table 1: Ablation study on click recall. Each variant adds a single component on top of Baseline independently. SPEAR combines all three. 
+
+Model R@5 R@10 R@30 Baseline 0.0958 0.1694 0.3699 +Multiplicative Gating 0.1132 0.1972 0.4572 +Dual-Embedding Isolation 0.1490 0.2286 0.4371 +Dynamic Rewrite Selector 0.2035 0.3167 0.5415 SPEAR (full) 0.2223 0.3380 0.5519 
+
+4.1.2 Components Ablation Results and Analysis. SPEAR achieves the best click recall across all 𝐾 values, as shown in Table 1. Click Recall@10 improves from 0.1694 (Baseline) to 0.3380 (SPEAR), a relative gain of +99 .5% . The Dynamic Rewrite Selector contributes the largest single-component gain ( +86 .9% on R@10), confirming that end-task-supervised rewrite selection is the primary driver of retrieval coverage. Dual-Embedding Isolation adds +34 .9% on R@10 by decoupling recall-side semantics from CTR-driven rank-ing gradients, while Multiplicative Gating contributes +16 .4% by eliminating the generic-word shortcut. All three components in-teract constructively: SPEAR outperforms every single-component variant. 
+
+Figure 3: Exposure Recall@5/10/30 across model vari-ants (B=Baseline, MG=+Multiplicative Gating, DEI=+Dual-Embedding Isolation, DRS=+Dynamic Rewrite Selector). The annotated arrow marks the Exp@10 gain from B to SPEAR (+110 .2% ). SPEAR RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA 
+
+Exposure recall reveals a consistent pattern. As shown in Fig-ure 3, Exp@10 improves from 0.1403 (Baseline) to 0.2949 (SPEAR), a gain of +110 .2% , outpacing the click recall improvement and indi-cating that SPEAR expands the retrievable item pool beyond what click signals alone would suggest. The component-level ordering mirrors the click recall results: Dynamic Rewrite Selector again contributes the largest gain (Exp@10: +93 .4% ), followed by Dual-Embedding Isolation ( +37 .0% ) and Multiplicative Gating ( +16 .5% ). The alignment between exposure and click recall gains across all variants validates that improvements in rewrite selection translate consistently from exposure coverage to actual user engagement. 
+
+Table 2: Average cosine similarity between original query and top-𝐾 rewrite queries. 
+
+Model Top-5 Top-10 Top-30 Baseline 0.7038 0.6986 0.6975 +Multiplicative Gating 0.7919 0.7822 0.7607 +Dual-Embedding Isolation 0.7487 0.7518 0.7344 +Dynamic Rewrite Selector 0.6899 0.6949 0.7020 SPEAR (full) 0.8443 0.8258 0.7855 
+
+4.1.3 Semantic Similarity Analysis. Semantic similarity between the original query and each rewrite is computed by a production-grade relevance model trained offline on query–item pairs with human-labeled relevance, producing a dense embedding for each query whose cosine similarity serves as our similarity metric. Ta-ble 2 shows that SPEAR achieves the highest semantic similarity across all 𝐾 values (top-10: 0.8258, +18 .2% over Baseline), con-firming that stronger retrieval coverage does not come at the cost of intent faithfulness. Multiplicative Gating produces the second-largest similarity gain among single components (top-10: +11 .9% ), reflecting its design goal of penalizing rewrites that drift from the original query intent while inflating scores through selector con-fidence alone. Dual-Embedding Isolation improves similarity by 
+
++7.6% at top-10, consistent with the interpretation that gradient interference from CTR optimization was degrading recall-space semantic geometry. The Dynamic Rewrite Selector, trained purely on click feedback, produces a marginal similarity decrease ( −0.5% 
+
+at top-10): without explicit relevance supervision, the selector occa-sionally favors rewrites that improve retrieval coverage at a small cost to surface-level semantic proximity. SPEAR resolves this ten-sion — the Multiplicative Gating and Dual-Embedding Isolation components correct the semantic drift, yielding a full model that leads on both retrieval and faithfulness simultaneously. 
+
+## 4.2 Online Experiments 
+
+4.2.1 Experimental Setup. SPEAR was evaluated via live A/B test-ing on the Dewu community search platform. The combined SPEAR system — integrating the multiplicative gating aggregator, dual-embedding backbone, and query selection network — was deployed against Baseline, the original PDN-based production system. All reported online metrics represent the cumulative improvement of SPEAR over Baseline, aggregated across the full experiment period. Evaluation covers three categories of metrics: search efficiency (QVCTR, UVCTR), user engagement (ReadVV, TabDur), and reten-tion (D1 Ret, D7 Ret). Statistical significance is assessed at 𝑝 < 0.05 
+
+using two-sided tests on per-user daily observations. 
+
+Figure 4: Online A/B test: relative improvements of SPEAR over Baseline across six metrics. Blue bars denote statistically significant gains ( ★, 𝑝 < 0.05 ); gray bars denote positive but non-significant trends. QVCTR: content search query-view CTR; UVCTR: double-column UV CTR; ReadVV: search UV average reading depth; TabDur: average content tab duration; D1 Ret / D7 Ret: next-day and 7-day retention. 
+
+4.2.2 Overall Performance. As shown in Figure 4, SPEAR deliv-ers consistent positive improvements across all six metrics. Four reach statistical significance: QVCTR ( +0.259% ), UVCTR ( +0.337% ), ReadVV ( +0.733% ), and TabDur ( +0.467% ). The joint improvement in click-through and reading depth is particularly informative: a system that inflates CTR by surfacing clickbait content typically depresses reading time, whereas the simultaneous gain in both sig-nals indicates that SPEAR delivers results users find more relevant and engaging. Retention metrics show positive but non-significant trends (D1 Ret: +0.328% ; D7 Ret: +0.216% ), consistent with the known latency of retention effects, which typically require longer observation windows to stabilize. The alignment between offline recall improvements and online engagement gains validates Expo-sure Recall@K and Click Recall@K as reliable offline proxies for production performance. 
+
+Table 3: GSB human evaluation results on 150 queries. Satis-faction lift measures the fraction of queries where SPEAR is preferred under a weighted scoring scheme ( 2× strong pref-erence +1× mild preference). 
+
+Metric SPEAR vs. Baseline Satisfaction DCG ( Δpp) +0.67 
+
+Relevance DCG ( Δpp) +0.38 
+
+Relevance bad-case rate ( Δpp) −0.46 
+
+Satisfaction lift +4.6% (★)
+
+4.2.3 Human Evaluation. To complement the A/B metrics, we con-ducted a GSB (Good–Same–Bad) evaluation on 150 diff queries RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA Wu et al. 
+
+Figure 5: t-SNE visualization of item embeddings from the Recall, Rank, and Shared spaces ( 𝑁 = 7,997 ), colored by first-level product category (cate_l1). Recall embeddings exhibit the clearest category separation; Rank embeddings show diffuse within-category spread; Shared embeddings collapse category boundaries almost entirely. 
+
+collected over multiple sampling rounds from online traffic. For each request, the production baseline and SPEAR returned their respective top-6 results, and requests with different result lists were retained as diff queries. Annotators scored each returned item, and the item-level scores were aggregated into a DCG score for each result list. Each query was then categorized as Good, Same, or Bad based on the difference between SPEAR’s and the baseline’s query-level DCG scores. As this routine production protocol re-quires manual inspection of both result lists, it serves as targeted diagnostic evidence alongside the large-scale online A/B test. As reported in Table 3, SPEAR improves Satisfaction DCG by +0.67 pp and Relevance DCG by +0.38 pp over Baseline, alongside a −0.46 pp reduction in relevance bad-case rate. The satisfaction lift — defined as the net fraction of queries for which annotators prefer SPEAR results under a weighted scheme — reaches +4.6% , a statistically significant gain. The simultaneous improvement in satisfaction, rel-evance, and bad-case reduction confirms that the observed online engagement gains are driven by genuinely better retrieval qual-ity rather than by surface-level behavioral shifts: annotators find SPEAR results both more satisfying overall and more semantically aligned with the query intent. 
+
+## 4.3 Interpretability Analysis 
+
+4.3.1 Embedding Space Analysis. We visualize the embedding spaces by randomly sampling 𝑁 = 7,997 items from the largest first-level categories (cate_l1), ensuring balanced category coverage, and projecting their embeddings to 2D via t-SNE. Figure 5 visual-izes item embeddings from the three spaces, colored by first-level product category. The Recall embedding (left) displays the clear-est category separation: each category forms tight, independent clusters with large inter-cluster gaps, consistent with the category-level semantic neighborhoods ANN retrieval requires. The Rank embedding (middle) retains visible cluster structure but exhibits more diffuse boundaries and some inter-category overlap, reflecting its role in fine-grained within-category discrimination rather than coarse category separation. The Shared embedding (right) collapses category boundaries almost entirely, producing a highly mixed distribution in which category identity is nearly unreadable. This visual contrast directly motivates the Dual-Embedding Isolation design: a single shared space cannot simultaneously satisfy the geo-metric requirements of broad retrieval coverage and fine-grained ranking. 
+
+Table 4: Quantitative comparison of Recall, Rank, and Shared embedding spaces. Purity@ 𝐾 measures category clustering quality. Eff. Rank Ratio measures effective dimensional-ity utilization. Inter/Intra Ratio measures inter-class versus intra-class distance separation. Higher is better for all met-rics ( ↑). 
+
+Metric Recall Rank Shared Purity@10 ↑ 0.740 0.698 0.229 Purity@50 ↑ 0.676 0.619 0.189 Eff. Rank Ratio ↑ 0.288 0.442 0.428 Intra Spread ↑ 0.235 0.251 0.397 Inter/Intra Ratio ↑ 1.753 1.658 1.039 Table 4 formalizes these observations. The Recall space achieves the highest Purity@10 (0.740) and Purity@50 (0.676), confirming that items of the same category are most consistently co-located. It also achieves the highest Inter/Intra Ratio (1.753), meaning inter-category distance is largest relative to within-category spread — a property critical for preventing cross-category retrieval noise. The Shared embedding collapses to near-random category structure (Pu-rity@10: 0.229, Inter/Intra: 1.039), quantitatively confirming that mixing retrieval and ranking objectives causes severe representa-tion degradation in both directions. The Rank space presents a complementary profile: it achieves the highest Effective Rank Ratio (0.442), distributing information SPEAR RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA 
+
+Table 5: Representative rewrite cases. Drift terms are classified into three categories: overly generic terms (orange) that lose intent specificity, unrelated terms (red) that drift to off-category items, and wrong-brand terms (brown) that leak to competitor or unrelated brands. A small number of the most representative intent-faithful SPEAR rewrites are highlighted in teal; all other rewrites remain in default black.         
+
+> Query Baseline top-10 rewrites SPEAR top-10 rewrites
+> Q1: handbag women’s handbag rec., handbag rec., schoolbag for girls, Hello Kitty, women’s fashion bag, dual-chain bag, women’s bag, sw1480x, Hello Kitty women’s backpack, Kapa large-capacity women’s bag, entry-level luxury niche bag, niche women’s bag rec., handbag as birthday gift, champagne-color bag, women’s shoulder bag, birthday gift bag, women’s handheld bag, women’s crossbody bag, women’s underarm bag Q2: men’s winter paja-mas for sleeping
+> pajamas, Astro Lab, Camel outdoor jacket, Astro Lab shirt, Li-Ning down jacket, men’s clothing, homewear, sleeping pajamas, inner layer, Sawenyu pants men’s fall-winter pajamas, winter cotton men’s pajamas, winter men’s pajamas as gift, men’s winter pajamas for sleep, winter cotton pajamas for men, thick men’s pa-jamas, winter men’s pajamas, men’s homewear, men’s fall-winter pajamas, men’s fall-winter pajamas (variant) Q3: 361 °Feiran run-ning shoes
+> running shoes, Feiran, 361, Li-Ning, badminton shoes, shoes, cotton shoes, running shoe rec., carbon-plate run-ning shoes, Li-Ning Chitu 9 361 Feiran 4mix, 361 Feiran 45, 361 Feiran 3, 361 Feiran (enhanced), 361 Feiran 45 (variant), 361 Feiran 25, running shoe 361 Feiran, 361 °Feiran, 361 Feiran 5, shoe 361 Feiran
+
+across more active dimensions than Recall (0.288), and the highest Intra Spread (0.251), reflecting richer within-category variation that supports fine-grained item discrimination. It is important to note that the Shared embedding’s higher Intra Spread (0.397) does not reflect genuine discriminative capacity: its low Purity scores confirm this spread arises from inter-category confusion rather than meaningful within-category differentiation. Together, these results validate that Recall and Rank embeddings learn structurally complementary representations, and that collapsing them into a shared space degrades both tasks simultaneously. 
+
+4.3.2 Rewrite Quality Analysis. Cross-referencing the similarity and recall results illuminates how the three components address distinct and complementary aspects of the rewrite quality–retrieval effectiveness trade-off. Dual-Embedding Isolation improves both metrics simultaneously (Exp@10: +37 .0% , top-10 similarity: +7.6% ), indicating that gradient interference was previously suppressing both retrieval coverage and rewrite faithfulness. Dynamic Rewrite Selector, by contrast, delivers the largest recall gains (Exp@10: 
+
++93 .4% ) while trading marginal surface similarity, reflecting its role in expanding retrieval coverage under end-task supervision. Mul-tiplicative Gating then reinforces intent faithfulness by requiring both selector confidence and item relevance to be high before a rewrite contributes, closing the semantic drift that an unconstrained selector would otherwise introduce. The three components thus form a coherent system in which coverage, representation quality, and intent faithfulness are jointly optimized. 
+
+## 4.4 Case Study 
+
+To illustrate how SPEAR addresses the generic-word dominance ef-fect in practice, Table 5 compares the top-10 rewrites from Baseline and SPEAR across three representative queries that together cap-ture the system’s main failure modes. For the short query handbag ,Baseline drifts into generic terms (“women’s bag”), off-category items (“schoolbag”), and unrelated brands (“Kapa”, “sw1480x”), while SPEAR stays within the handbag category and expands along meaningful intent dimensions such as capacity, style, color, and gift scenario. For the multi-attribute query men’s winter pajamas for sleeping , Baseline frequently drops one or more of the three essential attributes (men’s / winter / pajamas) and leaks into unrelated brands and categories, whereas SPEAR preserves all three attributes across the top-10 and further enriches them with relevant qualifiers. For the branded query 361 ° Feiran , Baseline leaks to competitor brands (“Li-Ning”, “Li-Ning Chitu 9”) and off-category items, while SPEAR locks onto the exact brand-model and enumerates fine-grained vari-ants. These patterns confirm the complementary roles of SPEAR’s three components: Multiplicative Gating suppresses generic-word shortcuts, the Dynamic Rewrite Selector improves end-task-aligned retrieval coverage, and Dual-Embedding Isolation maintains tight brand-level neighborhoods that prevent cross-brand drift. 
+
+## 5 Conclusion 
+
+SPEAR demonstrates that the rewrite–retrieval trade-off, long viewed as a structural limitation of path-based systems, can be resolved through careful architectural decoupling, relevance-aware aggregation, and end-task-supervised selection. Importantly, SPEAR is a framework rather than a specific model instantiation: its three components — gradient-isolated dual-embedding routing, multiplicative path aggregation, and dynamic end-task-supervised selection — are backbone-agnostic and compatible with any dense-encoder architecture. A natural direction for future work is to replace the current encoder and projection heads with LLM-based dense retrievers, enabling the framework to leverage the stronger semantic representations and long-tail coverage that large language models provide while preserving SPEAR’s core architectural bene-fits. We will also explore reinforcement-learning supervision and extend SPEAR to multimodal and cross-domain search. RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA Wu et al. 
+
+## References 
+
+[1] Qingyao Ai, Daniel N. Hill, S. V. N. Vishwanathan, and W. Bruce Croft. 2019. A Zero Attention Model for Personalized Product Search. In Proceedings of the 28th ACM International Conference on Information and Knowledge Management (CIKM ’19) . ACM, New York, NY, USA, 379–388. doi:10.1145/3357384.3357980 [2] Olivier Chapelle, Donald Metlzer, Ya Zhang, and Pierre Grinspan. 2009. Expected Reciprocal Rank for Graded Relevance. In Proceedings of the 18th ACM Conference on Information and Knowledge Management (CIKM ’09) . ACM, New York, NY, USA, 621–630. doi:10.1145/1645953.1646033 [3] Zhao Chen, Vijay Badrinarayanan, Chen-Yu Lee, and Andrew Rabinovich. 2018. GradNorm: Gradient Normalization for Adaptive Loss Balancing in Deep Mul-titask Networks. In Proceedings of the 35th International Conference on Machine Learning (ICML ’18) (Proceedings of Machine Learning Research, Vol. 80) . PMLR, Brookline, MA, USA, 794–803. [4] Jaekeol Choi, Euna Jung, Jangwon Suh, and Wonjong Rhee. 2021. Improving Bi-Encoder Document Ranking Models with Two Rankers and Multi-Teacher Distillation. In Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’21) . ACM, New York, NY, USA, 2192–2196. arXiv:2103.06523 [5] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep Neural Networks for YouTube Recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems (RecSys ’16) . ACM, New York, NY, USA, 191–198. doi:10. 1145/2959100.2959190 [6] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-Training of Deep Bidirectional Transformers for Language Understanding. In Proceedings of the 2019 Conference of the North American Chapter of the Associ-ation for Computational Linguistics: Human Language Technologies (NAACL ’19) .Association for Computational Linguistics, Stroudsburg, PA, USA, 4171–4186. doi:10.18653/v1/N19-1423 [7] Luyu Gao and Jamie Callan. 2021. Condenser: a Pre-Training Architecture for Dense Retrieval. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP ’21) . Association for Computational Linguistics, Stroudsburg, PA, USA, 981–993. doi:10.18653/v1/2021.emnlp-main.75 [8] Luyu Gao, Xueguang Ma, Jimmy Lin, and Jamie Callan. 2023. Precise Zero-Shot Dense Retrieval without Relevance Labels. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (ACL ’23) . Association for Computational Linguistics, Toronto, Canada, 1762–1777. doi:10.18653/v1/ 2023.acl-long.99 [9] Weihao Gao, Xiangjun Fan, Jiankai Sun, Kai Jia, Wenzhi Xiao, Chong Ding, and Bo Long. 2021. Deep Retrieval: Learning A Retrievable Structure for Large-Scale Recommendations. In Proceedings of the 30th ACM International Conference on Information and Knowledge Management (CIKM ’21) . ACM, New York, NY, USA, 524–533. arXiv:2007.07203 doi:10.1145/3459637.3482362 [10] Jiafeng Guo, Gu Xu, Xueqi Cheng, and Hang Li. 2009. Named Entity Recognition in Query. In Proceedings of the 32nd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’09) . ACM, New York, NY, USA, 267–274. doi:10.1145/1571941.1571989 [11] Yunlong He, Jiliang Tang, Hua Ouyang, Changsung Kang, Dawei Yin, and Yi Chang. 2016. Learning to Rewrite Queries. In Proceedings of the 25th ACM International Conference on Information and Knowledge Management (CIKM ’16) .ACM, Indianapolis, IN, USA, 1443–1452. doi:10.1145/2983323.2983835 [12] Jui-Ting Huang, Ashish Sharma, Shuying Sun, Li Xia, David Zhang, Philip Pronin, Janani Padmanabhan, Giuseppe Ottaviano, and Linjun Yang. 2020. Embedding-Based Retrieval in Facebook Search. In Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD ’20) . ACM, New York, NY, USA, 2553–2561. doi:10.1145/3394486.3403305 [13] Po-Sen Huang, Xiaodong He, Jianfeng Gao, Li Deng, Alex Acero, and Larry Heck. 2013. Learning Deep Structured Semantic Models for Web Search using Clickthrough Data. In Proceedings of the 22nd ACM International Conference on Information & Knowledge Management (CIKM ’13) . ACM, New York, NY, USA, 2333–2338. doi:10.1145/2505515.2505665 [14] Gautier Izacard, Mathilde Caron, Lucas Hosseini, Sebastian Riedel, Piotr Bo-janowski, Armand Joulin, and Edouard Grave. 2022. Unsupervised Dense Infor-mation Retrieval with Contrastive Learning. Transactions on Machine Learning Research. arXiv:2112.09118 [15] Rolf Jagerman, Honglei Zhuang, Zhen Qin, Xuanhui Wang, and Michael Ben-dersky. 2023. Query Expansion by Prompting Large Language Models. arXiv preprint arXiv:2305.03653. arXiv:2305.03653 [16] Kalervo Järvelin and Jaana Kekäläinen. 2002. Cumulated Gain-Based Evaluation of IR Techniques. ACM Transactions on Information Systems 20, 4 (2002), 422–446. doi:10.1145/582415.582418 [17] Jeff Johnson, Matthijs Douze, and Hervé Jégou. 2019. Billion-Scale Similarity Search with GPUs. IEEE Transactions on Big Data 7, 3 (2019), 535–547. doi:10. 1109/TBDATA.2019.2921572 [18] Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. Dense Passage Retrieval for Open-Domain Question Answering. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP ’20) . Association for Computa-tional Linguistics, Online, 6769–6781. doi:10.18653/v1/2020.emnlp-main.550 [19] Alex Kendall, Yarin Gal, and Roberto Cipolla. 2018. Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR ’18) .IEEE Computer Society, Los Alamitos, CA, USA, 7482–7491. doi:10.1109/CVPR. 2018.00781 [20] Houyi Li, Zhihong Chen, Chenliang Li, Rong Xiao, Hongbo Deng, Peng Zhang, Yongchao Liu, and Haihong Tang. 2021. Path-Based Deep Network for Candidate Item Matching in Recommenders. In Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’21) .ACM, New York, NY, USA, 1493–1502. doi:10.1145/3404835.3462878 [21] Sen Li, Fuyu Lv, Taiwei Jin, Guiyang Li, Yukun Zheng, Tao Zhuang, Qingwen Liu, Xiaoyi Zeng, James T. Kwok, and Qianli Ma. 2022. Query Rewriting in TaoBao Search. In Proceedings of the 31st ACM International Conference on Information and Knowledge Management (CIKM ’22) . ACM, Atlanta, GA, USA, 3262–3271. doi:10.1145/3511808.3557068 [22] Sen Li, Fuyu Lv, Taiwei Jin, Guli Lin, Keping Yang, Xiaoyi Zeng, Xiao-Ming Wu, and Qianli Ma. 2021. Embedding-Based Product Retrieval in Taobao Search. In 
+
+Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery & Data Mining (KDD ’21) . ACM, New York, NY, USA, 3181–3189. doi:10.1145/3447548. 3467101 [23] Sheng-Chieh Lin, Jheng-Hong Yang, and Jimmy Lin. 2021. In-Batch Negatives for Knowledge Distillation with Tightly-Coupled Teachers for Dense Retrieval. In Proceedings of the 6th Workshop on Representation Learning for NLP (RepL4NLP-2021) . Association for Computational Linguistics, Stroudsburg, PA, USA, 163–173. doi:10.18653/v1/2021.repl4nlp-1.17 [24] Sheng-Chieh Lin, Jheng-Hong Yang, and Jimmy Lin. 2021. Multi-Stage Conver-sational Passage Retrieval: An Approach to Fusing Term Importance Estimation and Neural Query Rewriting. ACM Transactions on Information Systems 39, 4 (2021), 1–29. doi:10.1145/3446426 [25] Yiqun Liu, Kaushik Rangadurai, Yunzhong He, Siddarth Malreddy, Xunlong Gui, Xiaoyi Liu, and Fedor Borisyuk. 2021. Que2Search: Fast and Accurate Query and Document Understanding for Search at Facebook. In Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery & Data Mining (KDD ’21) . ACM, New York, NY, USA, 3376–3384. doi:10.1145/3447548.3467127 [26] Zheng Liu, Chaofan Li, Shitao Xiao, Yingxia Shao, and Defu Lian. 2024. Llama2Vec: Unsupervised Adaptation of Large Language Models for Dense Retrieval. In 
+
+Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL ’24) . Association for Computational Linguistics, Stroudsburg, PA, USA, 3490–3500. arXiv:2312.15503 doi:10.18653/v1/2024.acl-long.191 [27] Jiaqi Ma, Zhe Zhao, Xinyang Yi, Jilin Chen, Lichan Hong, and Ed H. Chi. 2018. Modeling Task Relationships in Multi-Task Learning with Multi-Gate Mixture-of-Experts. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD ’18) . ACM, New York, NY, USA, 1930–1939. doi:10.1145/3219819.3220007 [28] Xueguang Ma, Liang Wang, Nan Yang, Furu Wei, and Jimmy Lin. 2024. Fine-Tuning LLaMA for Multi-Stage Text Retrieval. In Proceedings of the 47th Inter-national ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’24) . ACM, New York, NY, USA, 2421–2425. arXiv:2310.08319 doi:10.1145/3626772.3657951 [29] Alessandro Magnani, Feng Liu, Suthee Chaidaroon, Sachin Yadav, Praveen Reddy Suram, Ajit Puthenputhussery, Sijie Chen, Min Xie, Anirudh Kashi, Tony Lee, and Ciya Liao. 2022. Semantic Retrieval at Walmart. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery & Data Mining (KDD ’22) . ACM, New York, NY, USA, 3495–3503. doi:10.1145/3534678.3539164 [30] Aditya Krishna Menon, Sadeep Jayasumana, Ankit Singh Rawat, Seungyeon Kim, Sashank Reddi, and Sanjiv Kumar. 2022. In Defense of Dual-Encoders for Neural Ranking. In Proceedings of the 39th International Conference on Machine Learning (ICML ’22) (Proceedings of Machine Learning Research, Vol. 162) . PMLR, Brookline, MA, USA, 15376–15400. [31] Akash Kumar Mohankumar, Nikit Begwani, and Amit Singh. 2021. Diversity Driven Query Rewriting in Search Advertising. In Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery & Data Mining (KDD ’21) . ACM, New York, NY, USA, 3423–3431. doi:10.1145/3447548.3467204 [32] Jianmo Ni, Chen Qu, Jing Lu, Zhuyun Dai, Gustavo Hernandez Abrego, Ji Ma, Vincent Zhao, Yi Luan, Keith Hall, Ming-Wei Chang, and Yinfei Yang. 2022. Large Dual Encoders Are Generalizable Retrievers. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing (EMNLP ’22) .Association for Computational Linguistics, Stroudsburg, PA, USA, 9844–9855. doi:10.18653/v1/2022.emnlp-main.669 [33] Priyanka Nigam, Yiwei Song, Vijai Mohan, Vihan Lakshman, Weitian Ding, Ankit Shingavi, Choon Hui Teo, Hao Gu, and Bing Yin. 2019. Semantic Product Search. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD ’19) . ACM, New York, NY, USA, 2876–2885. doi:10.1145/3292500.3330759 [34] Tong Niu, Shafiq Joty, Ye Liu, Caiming Xiong, Yingbo Zhou, and Semih Yavuz. 2024. JudgeRank: Leveraging Large Language Models for Reasoning-Intensive SPEAR RecSys ’26, September 27-October 02, 2026, Minneapolis, MN, USA 
+
+Reranking. arXiv preprint arXiv:2411.00142. arXiv:2411.00142 [35] Rodrigo Nogueira and Kyunghyun Cho. 2017. Task-Oriented Query Reformula-tion with Reinforcement Learning. In Proceedings of the 2017 Conference on Empir-ical Methods in Natural Language Processing (EMNLP ’17) . Association for Compu-tational Linguistics, Copenhagen, Denmark, 574–583. doi:10.18653/v1/D17-1061 [36] Wenjun Peng, Guiyang Li, Yue Jiang, Zilong Wang, Dan Ou, Xiaoyi Zeng, and Enhong Chen. 2024. Large Language Model Based Long-Tail Query Rewriting in Taobao Search. In Companion Proceedings of the ACM Web Conference 2024 (WWW ’24 Companion) . ACM, New York, NY, USA, 20–28. arXiv:2311.03758 doi:10.1145/3589335.3648298 [37] Qi Pi, Guorui Zhou, Yujing Zhang, Zhe Wang, Lejian Ren, Ying Fan, Xiaoqiang Zhu, and Kun Gai. 2020. Search-Based User Interest Modeling with Lifelong Sequential Behavior Data for Click-Through Rate Prediction. In Proceedings of the 29th ACM International Conference on Information & Knowledge Management (CIKM ’20) . ACM, New York, NY, USA, 2685–2692. doi:10.1145/3340531.3412744 [38] Yiming Qiu, Kang Zhang, Han Zhang, Songlin Wang, Sulong Xu, Yun Xiao, Bo Long, and Wen-Yun Yang. 2021. Query Rewriting via Cycle-Consistent Transla-tion for E-Commerce Search. In 2021 IEEE 37th International Conference on Data Engineering (ICDE) . IEEE, Piscataway, NJ, USA, 2435–2446. [39] Yingqi Qu, Yuchen Ding, Jing Liu, Kai Liu, Ruiyang Ren, Wayne Xin Zhao, Daxi-ang Dong, Hua Wu, and Haifeng Wang. 2021. RocketQA: An Optimized Training Approach to Dense Passage Retrieval for Open-Domain Question Answering. In 
+
+Proceedings of the 2021 Conference of the North American Chapter of the Associa-tion for Computational Linguistics: Human Language Technologies (NAACL ’21) .Association for Computational Linguistics, Stroudsburg, PA, USA, 5835–5847. doi:10.18653/v1/2021.naacl-main.466 [40] Nils Reimers and Iryna Gurevych. 2019. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP ’19) . Association for Computa-tional Linguistics, Hong Kong, China, 3982–3992. doi:10.18653/v1/D19-1410 [41] Stefan Riezler and Yi Liu. 2010. Query Rewriting Using Monolingual Statistical Machine Translation. Computational Linguistics 36, 3 (2010), 569–582. doi:10. 1162/coli_a_00010 [42] Stephen Robertson and Hugo Zaragoza. 2009. The Probabilistic Relevance Frame-work: BM25 and Beyond. Foundations and Trends in Information Retrieval 3, 4 (2009), 333–389. doi:10.1561/1500000019 [43] Parikshit Sondhi, Mohit Sharma, Pranam Kolari, and ChengXiang Zhai. 2018. A Taxonomy of Queries for E-Commerce Search. In Proceedings of the 41st Interna-tional ACM SIGIR Conference on Research & Development in Information Retrieval (SIGIR ’18) . ACM, New York, NY, USA, 1245–1248. doi:10.1145/3209978.3210152 [44] Hongyan Tang, Junning Liu, Ming Zhao, and Xudong Gong. 2020. Progres-sive Layered Extraction (PLE): A Novel Multi-Task Learning (MTL) Model for Personalized Recommendations. In Proceedings of the 14th ACM Conference on Recommender Systems (RecSys ’20) . ACM, New York, NY, USA, 269–278. doi:10.1145/3383313.3412236 [45] Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan Majumder, and Furu Wei. 2024. Improving Text Embeddings with Large Language Models. In 
+
+Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL ’24) . Association for Computational Linguistics, Stroudsburg, PA, USA, 11897–11916. arXiv:2401.00368 doi:10.18653/v1/2024.acl-long.642 [46] Liang Wang, Nan Yang, and Furu Wei. 2023. Query2doc: Query Expansion with Large Language Models. In Proceedings of the 2023 Conference on Empirical Meth-ods in Natural Language Processing (EMNLP ’23) . Association for Computational Linguistics, Singapore, 9414–9423. doi:10.18653/v1/2023.emnlp-main.585 [47] Xiao Wang, Sean MacAvaney, Craig Macdonald, and Iadh Ounis. 2023. Genera-tive Query Reformulation for Effective Adhoc Search. The First Workshop on Generative Information Retrieval (Gen-IR@SIGIR ’23). arXiv:2308.00415 [48] Rong Xiao, Jianhui Ji, Baoliang Cui, Haihong Tang, Wenwu Ou, Yanghua Xiao, Jiwei Tan, and Xuan Ju. 2019. Weakly Supervised Co-Training of Query Rewrit-ing and Semantic Matching for E-Commerce. In Proceedings of the 12th ACM International Conference on Web Search and Data Mining (WSDM ’19) . ACM, New York, NY, USA, 402–410. doi:10.1145/3289600.3291039 [49] Yun Xing, Xiaobin Hu, Qingdong He, Jiangning Zhang, Shuicheng Yan, Shijian Lu, and Yu-Gang Jiang. 2026. Boosting Reasoning in Large Multimodal Models via Activation Replay. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . IEEE Computer Society, Los Alamitos, CA, USA, 19229–19240. [50] Lee Xiong, Chenyan Xiong, Ye Li, Kwok-Fung Tang, Jialin Liu, Paul Bennett, Junaid Ahmed, and Arnold Overwijk. 2021. Approximate Nearest Neighbor Negative Contrastive Learning for Dense Text Retrieval. International Conference on Learning Representations (ICLR ’21). arXiv:2007.00808 [51] Rex Ying, Ruining He, Kaifeng Chen, Pong Eksombatchai, William L. Hamilton, and Jure Leskovec. 2018. Graph Convolutional Neural Networks for Web-Scale Recommender Systems. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD ’18) . ACM, New York, NY, USA, 974–983. doi:10.1145/3219819.3219890 [52] Shi Yu, Jiahua Liu, Jingqin Yang, Chenyan Xiong, Paul Bennett, Jianfeng Gao, and Zhiyuan Liu. 2020. Few-Shot Generative Conversational Query Rewriting. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’20) . ACM, New York, NY, USA, 1933–1936. [53] Tianhe Yu, Saurabh Kumar, Abhishek Gupta, Sergey Levine, Karol Hausman, and Chelsea Finn. 2020. Gradient Surgery for Multi-Task Learning. In Advances in Neural Information Processing Systems 33 (NeurIPS ’20) . Curran Associates, Inc., Red Hook, NY, USA, 5824–5836. [54] Xinlei Yu, Zhangquan Chen, Yongbo He, Tianyu Fu, Cheng Yang, Chengming Xu, Yue Ma, Xiaobin Hu, Zhe Cao, Jie Xu, Guibin Zhang, Jiale Tao, Jiayi Zhang, Siyuan Ma, Kaituo Feng, Haojie Huang, Youxing Li, Ronghao Chen, Huacan Wang, Chenglin Wu, Zikun Su, Xiaogang Xu, Kelu Yao, Kun Wang, Chen Gao, Yue Liao, Ruqi Huang, Tao Jin, Cheng Tan, Jiangning Zhang, Wenqi Ren, Yanwei Fu, Yong Liu, Yu Wang, Xiangyu Yue, Yu-Gang Jiang, and Shuicheng Yan. 2026. The Latent Space: Foundation, Evolution, Mechanism, Ability, and Outlook. arXiv preprint arXiv:2604.02029. arXiv:2604.02029 [cs.AI] [55] Han Zhang, Songlin Wang, Kang Zhang, Zhiling Tang, Yunjiang Jiang, Yun Xiao, Weipeng Yan, and Wen-Yun Yang. 2020. Towards Personalized and Semantic Retrieval: An End-to-End Solution for E-Commerce Search via Embedding Learn-ing. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’20) . ACM, New York, NY, USA, 2407–2416. doi:10.1145/3397271.3401446 [56] Haonan Zhang, Yanzhao Zhang, Dingkun Long, and Pengjun Xie. 2024. TriSam-pler: A Better Negative Sampling Principle for Dense Retrieval. In Proceedings of the 38th AAAI Conference on Artificial Intelligence (AAAI ’24) . AAAI Press, Palo Alto, CA, USA, 9269–9277. doi:10.1609/aaai.v38i8.28779 [57] Yukun Zheng, Jiang Fan, Yitian Zhang, Xiao Jin, Yue Liu, Shuchang Xu, Keping Yang, Hao Xu, and Xiaoyi Zeng. 2022. Multi-Objective Personalized Product Retrieval in Taobao Search. arXiv preprint arXiv:2210.04170. arXiv:2210.04170 [58] Guorui Zhou, Xiaoqiang Zhu, Chenru Song, Ying Fan, Han Zhu, Xiao Ma, Yanghui Yan, Junqi Jin, Han Li, and Kun Gai. 2018. Deep Interest Network for Click-Through Rate Prediction. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD ’18) . ACM, New York, NY, USA, 1059–1068. doi:10.1145/3219819.3219823 [59] Chuanqi Zhu, Ming Gao, Bin Zhu, and Jindong Chen. 2021. More Robust Dense Retrieval with Contrastive Dual Learning. arXiv preprint arXiv:2107.07773. arXiv:2107.07773 [60] Han Zhu, Xiang Li, Pengye Zhang, Guozheng Li, Jie He, Han Li, and Kun Gai. 2018. Learning Tree-Based Deep Model for Recommender Systems. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD ’18) . ACM, New York, NY, USA, 1079–1088. doi:10.1145/3219819. 3219826

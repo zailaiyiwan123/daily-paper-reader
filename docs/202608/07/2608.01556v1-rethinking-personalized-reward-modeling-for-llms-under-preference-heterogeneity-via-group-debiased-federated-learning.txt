@@ -1,0 +1,1955 @@
+Title: Rethinking Personalized Reward Modeling for LLMs under Preference Heterogeneity via Group-Debiased Federated Learning
+
+URL Source: https://arxiv.org/pdf/2608.01556v1
+
+Published Time: Tue, 04 Aug 2026 01:40:15 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Rethinking Personalized Reward Modeling for LLMs under Preference Heterogeneity via Group-Debiased Federated Learning 
+
+# Seongyoon Kim 
+
+Institute of Engineering Research, Korea University Seoul, Republic of Korea curisam@korea.ac.kr 
+
+# Boryeong Cho 
+
+Kim Jaechul Graduate School of AI, KAIST Seoul, Republic of Korea venntum@kaist.ac.kr 
+
+# Jihwan Oh 
+
+Kim Jaechul Graduate School of AI, KAIST Seoul, Republic of Korea ericoh929@kaist.ac.kr 
+
+# Seokhyun Chung †
+
+Industrial Management Engineering, Korea University Seoul, Republic of Korea csh8901@korea.ac.kr 
+
+# Se-Young Yun †
+
+Kim Jaechul Graduate School of AI, KAIST Seoul, Republic of Korea yunseyoung@kaist.ac.kr 
+
+## ABSTRACT 
+
+Large language models are increasingly aligned to human prefer-ences via reward modeling, but user preference data are sensitive and often cannot be centralized. Federated learning keeps such data local while learning a shared initial reward model, which is later per-sonalized for each client through local fine-tuning. Because users often assign opposite labels to the same pair of responses, existing federated methods address preference heterogeneity by clustering similar clients and training one reward model per group, assuming that each group requires its own initialization. We show that this assumption is unnecessary. Under balanced preference groups, a single FedAvg model, despite starting at nearly random accuracy, surpasses reward models trained separately for each ground-truth group after only a few local optimization steps. We attribute this phenomenon to the flatness of the shared initialization: averaging across all clients learns richer shared representations that distin-guish responses while canceling conflicting preference directions, leaving the model near a decision boundary that can be rapidly adapted. Group imbalance breaks this effect as the cancellation becomes asymmetric and leaves minority clients too far from the boundary to recover. Motivated by this observation, we propose 
+
+FedGD (Fed erated Learning with Group Debiasing), which discov-ers latent preference groups during federated training and learns a single reward model using group-debiased client sampling. By counteracting the effect of group imbalance, FedGD learns an ini-tialization that remains highly adaptable, enabling effective person-alization without prior knowledge of the underlying groups. 
+
+## 1 INTRODUCTION 
+
+Large language models (LLMs) are increasingly deployed in human-facing systems, where alignment with human preferences is crucial to user safety and satisfaction [ 1–3 ]. A standard alignment pipeline typically trains a reward model to predict human preferences and then optimizes the LLM through RLHF methods [ 32 , 39 ]. However, preference data are highly sensitive and often cannot be centralized due to data-protection regulations [ 17 , 36 ] and cross-jurisdictional 
+
+> †Corresponding authors.
+
+sharing constraints [ 23 ]. Federated learning (FL) [ 20 , 25 , 29 ] offers a practical alternative: data remain local while a coordinating server aggregates model updates from decentralized clients. Existing FL-based preference alignment methods [ 12 , 49 ] strug-gle with preference heterogeneity because they ultimately produce a single global LLM. For instance, FedRLHF [ 12 ] shows clear per-formance degradation under severe heterogeneity. Even FedBis-cuit [ 49 ], which uses multiple server-side reward models to label unlabeled response pairs, aggregates these signals into a single consensus to train one LLM via DPO [ 34 ]. Consequently, existing methods fail to represent individual user preferences, underscoring the need for personalized reward models tailored to each client. Recent personalized FL (PFL) methods [ 10 , 21 , 22 , 30 ] widely adopt a two-stage strategy: pre-training a single shared model glob-ally and fine-tuning it locally per client. While effective under stan-dard data heterogeneity, where clients share label consensus despite input distribution shifts, this approach struggles under preference heterogeneity, where different clients may assign opposing labels to the same response pair. This fundamental conflict raises a question about whether a single shared initialization can still provide an effective starting point for personalized reward modeling. Existing federated methods that explicitly address conflicting preferences or tasks instead avoid this question by clustering similar clients and training one single model per group. For example, Fed-Biscuit [ 49 ] groups clients according to preference similarity, while FedLEASE [ 48 ] clusters clients across related tasks, so that each client is initialized from a model that never averages over conflicting objectives. However, whether these group-specific initializations actually lead to better personalized reward models than a single shared initialization remains unknown. We therefore ask: what makes a good initialization for personalized reward modeling under preference heterogeneity? 
+
+We find that a group-specific initialization is not the answer. Un-der balanced preference groups, a single global model trained with FedAvg [ 29 ] performs at the level of random guessing before adap-tation, yet within a few local steps for personalization, it quickly surpasses both centralized training (CL) and a separate centralized model per ground-truth preference group (Multi-CL). arXiv:2608.01556v1 [cs.LG] 3 Aug 2026 Figure 1: Overview of FedGD . Phase 1 discovers the preference groups, which can differ in size. Phase 2 trains a single reward model over them with group-debiased client sampling, which compensates for group-size imbalance during client selection. The resulting model serves as a shared initialization for personalization. Phase 3 personalizes the initial model for each client through a few local optimization steps, yielding FedGD-FT .
+
+Our key hypothesis is that preference learning contains two distinct components. The first is shared knowledge : identifying the latent feature that distinguishes the two responses. All clients agree on this distinction, so collaborative FL reinforces a common rep-resentation of it. The second is client-specific knowledge : deciding which side of the latent feature should be preferred. Since this pref-erence differs across clients, no single decision boundary can be optimal for everyone, explaining the poor pre-adaptation accuracy of the global model trained by FL. Consequently, the goal of feder-ated learning should not be to produce the final personalized model, but rather an initialization that captures the shared knowledge while remaining readily adaptable to each client’s preference. To diagnose such an initialization, we adopt the Gradient Quotient 
+
+(𝐺𝑄 ) [ 7 ], which measures how rapidly the local gradient changes. A small 𝐺𝑄 indicates that local optimization remains stable, allowing successive personalization steps to reinforce one another. Such an initialization is therefore well suited for rapidly adapting to each client’s local preferences. In our experiments, FedAvg converges to initializations with substantially lower 𝐺𝑄 than CL or Multi-CL, which explains why it serves as a better starting point for personalization despite its low start accuracy. However, when preference groups are imbalanced, the cancel-lation becomes asymmetric, causing the shared model to become biased toward the majority preferences and reducing its ability to serve as a good initialization for minority clients. We find that bal-ancing client sampling across preference groups during federated training restores the personalization capability of the resulting ini-tialization. By this key observation, we propose FedGD (Fed erated Learning with Group Debiasing), which first discovers the prefer-ence groups during FL and then trains a single reward model under group-debiased sampling over the discovered partition (Figure 1). 
+
+Our contributions are as follows: 
+
+• We introduce an optimization-based perspective on what makes a good initialization for efficient personalization in reward modeling: an initialization adapts well when the loss around it is flat, so that successive local steps reinforce one another. We measure this flatness with 𝐺𝑄 , which tracks how much the local gradient changes after a single step. 
+
+• We construct a synthetic benchmark with configurable pref-erence groups and group-size imbalance, enabling controlled analysis for personalized reward modeling under federated settings. 
+
+• We show that, under balanced preference groups, a single FedAvg model provides a better initialization for person-alization than both CL and Multi-CL despite its poor pre-adaptation accuracy, and identify group imbalance as the condition under which this advantage weakens. 
+
+• We propose FedGD , which discovers latent preference groups during federated learning and performs group-debiased client sampling to recover high-quality initializations without re-quiring prior knowledge of the true preference groups. 
+
+## 2 PRELIMINARIES 
+
+We study federated personalized reward modeling, where clients collaboratively train initial global reward models on decentralized pairwise preferences and then fine-tune them locally. We first for-malize this workflow (Section 2.1) and then propose two key metrics 
+
+> 2
+
+to evaluate the personalization potential of initial global models (Section 2.2). Finally, Section 2.3 details the experimental setup. 
+
+## 2.1 Federated Reward Modeling and Personalization 
+
+We study FL [ 29 ] over 𝐶 clients with pairwise preference data. Each client 𝑐 holds a local dataset 𝐷 𝑐  
+
+> train
+
+= {( 𝑥 𝑐 𝑖 , 𝑦 𝑐, + 
+
+> 𝑖
+
+, 𝑦 𝑐, − 
+
+> 𝑖
+
+)} 𝑁 𝑐 
+
+> 𝑖 =1
+
+, where 𝑥 𝑐 𝑖 
+
+is a prompt, 𝑦 𝑐, + 
+
+> 𝑖
+
+the preferred response, and 𝑦 𝑐, − 
+
+> 𝑖
+
+the less-preferred one. Let 𝑟 𝜃 (𝑥, 𝑦 ) denote the reward the model assigns to response 
+
+𝑦 for prompt 𝑥 . For a preference (𝑥, 𝑦 +, 𝑦 − ), the reward margin 
+
+𝑚 𝜃 (𝑥, 𝑦 +, 𝑦 − ) = 𝑟 𝜃 (𝑥, 𝑦 +) − 𝑟 𝜃 (𝑥, 𝑦 − ) is the signed gap between the two responses, so the prediction is correct when 𝑚 𝜃 > 0 and incorrect when 𝑚 𝜃 ≤ 0. Clients minimize the pairwise preference loss ℓ𝜃 = − log 𝜎 (𝑚 𝜃 ), which drives the margin positive, giving the full-batch training loss L𝑐 (𝜃 ) = 1
+
+> 𝑁 𝑐
+
+Í𝑖 ℓ𝜃 (𝑥 𝑐 𝑖 , 𝑦 𝑐, + 
+
+> 𝑖
+
+, 𝑦 𝑐, − 
+
+> 𝑖
+
+) of client 𝑐 .FL proceeds over 𝑅 communication rounds. At the beginning of round 𝑟 , the server broadcasts the current global parameters 𝜃 (𝑟 −1)
+
+to a sampled subset of clients 𝑆 𝑟 ⊂ [ 𝐶 ]. Each selected client 𝑐 ∈ 𝑆 𝑟 
+
+performs 𝜏 local training iterations on 𝐷 𝑐  
+
+> train
+
+with batch size 𝐵 , and returns updated parameters 𝜃 (𝑟 ) 
+
+> 𝑐
+
+. The server aggregates these local updates via weighted averaging [ 26 , 49 ] to obtain the new global parameters 𝜃 (𝑟 ) . The description above corresponds to a single-global design in which the server maintains a single parameter vector 𝜃 (𝑟 ) . Some of the designs we compare instead maintain 𝐾 
+
+global models {𝜃 (𝑟 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 on the server and apply the same broadcast– update–aggregate procedure independently to each model over its associated subset of clients. After 𝑅 training rounds in the global phase, we run a separate 
+
+personalization phase. Each client 𝑐 receives a single initialization 
+
+𝜃 init  
+
+> 𝑐
+
+, fine-tunes it on its own preference data 𝐷 𝑐  
+
+> train
+
+without further communication, and obtains a personalized reward model 𝜃 PFL  
+
+> 𝑐
+
+.Since local adaptation runs on the client, where compute is limited, the number of local steps an initialization requires is itself a cost. We therefore report accuracy after a small number of local steps alongside the accuracy eventually reached. How 𝜃 init  
+
+> 𝑐
+
+is constructed is the design choice we study, and we specify it for each method in Sections 3 and 5. Throughout the paper, we refer to the models that serve as initializations for personalization as global models and to 
+
+𝜃 PFL  
+
+> 𝑐
+
+as the resulting personalized reward model for client 𝑐 .
+
+## 2.2 Quantifying Personalization Capability 
+
+Given a reward model 𝜃 as the initialization for personalization, we characterize its personalization capability by estimating how effectively a small number of local updates can improve it. For this, we introduce two diagnostics: (i) Gradient Quotient (𝐺𝑄 ) [ 7 ], a model-level measure of flatness that assesses whether consecutive local steps reinforce one another, and (ii) Headroom (𝐻 ), a per-sample measure that we propose to assess whether a local update moves an individual sample toward its correct preference. Both quantities are computed using each client’s local preference data. 
+
+Gradient Quotient ( 𝐺𝑄 ): flatness of the initialization. Agood initialization should be one from which local updates con-sistently move toward the client’s optimum rather than changing gradient dramatically after one update. We measure this property using the 𝐺𝑄 [7], which quantifies how much the gradient changes after a single optimization step. Let 𝑔 𝑐 (𝜃 ) = ∇L 𝑐 (𝜃 ) be the gradient of client 𝑐 ’s full-batch train-ing loss and 𝑔 𝑐,𝑙 its restriction to the LoRA parameters 𝜃 𝑙 of layer 𝑙 .The layer-wise 𝐺𝑄 is 
+
+𝐺𝑄 (𝑐, 𝑙 ) = 1#𝜃 𝑙 
+
+𝑔 𝑐,𝑙  𝜃 − 𝜂 𝑔 𝑐 (𝜃 )
+
+𝑔 𝑐,𝑙 (𝜃 ) − 1
+
+> 1
+
+≈ 𝜂 
+
+#𝜃 𝑙 
+
+[∇ 2 L𝑐 (𝜃 ) 𝑔 𝑐 (𝜃 )] 𝑙 
+
+𝑔 𝑐,𝑙 (𝜃 ) 1
+
+,
+
+where #𝜃 𝑙 is the number of LoRA parameters in layer 𝑙 . The first-order approximation shows that 𝐺𝑄 is determined by the Hes-sian–gradient product, which captures the local curvature along the update direction. Consequently, 𝐺𝑄 increases with the curva-ture encountered by gradient descent. A small 𝐺𝑄 indicates that the gradient remains nearly unchanged in both direction and mag-nitude, allowing successive local updates to remain aligned and accumulate toward the client’s optimum. In contrast, a large 𝐺𝑄 
+
+indicates that the gradient is rapidly distorted after a single step, causing subsequent steps to deviate from the original descent di-rection and partially cancel earlier progress, thereby reducing the effectiveness of local personalization. We obtain a layer-wise statistic by averaging over clients, 𝐺𝑄 (𝑙 ) =
+
+> 1
+> 𝐶
+
+Í𝑐 𝐺𝑄 (𝑐, 𝑙 ) over the 24 LoRA-adapted layers of Qwen2-0.5B [ 50 ], our base model (Section 5). Studies of few-step adaptation com-monly separate a shared representation body from task-specific upper layers, both in meta-learning [ 31 ] and in personalized FL [ 30 ], so we report a Body average 𝐺𝑄 B over the front 16 layers and a Head average 𝐺𝑄 H over the back 8.
+
+Headroom ( 𝐻 ): one-step correctability of a sample. 𝐺𝑄 mea-sures whether local updates are stable, not whether they lead to the right direction. We define Headroom to answer the latter for a single sample. Starting from the initialization under evaluation, 
+
+𝜃 0 = 𝜃 init  
+
+> 𝑐
+
+, we take one full-batch training step on client 𝑐 ’s data, 
+
+𝜃 1 = 𝜃 0 − 𝜂 𝑔 𝑐 (𝜃 0), and define the Headroom as the first-order effect of this step on the margin of a held-out test sample (𝑥, 𝑦 +, 𝑦 − ) of the same client: 
+
+𝐻 (𝑥, 𝑦 +, 𝑦 − ) = −𝜂 ∇𝜃 𝑚 𝜃 𝜃 0 , 𝑔 𝑐 (𝜃 0) ≈ Δ𝑚, 
+
+where Δ𝑚 = 𝑚 𝜃 1 − 𝑚 𝜃 0 is the true margin change. A positive 𝐻 
+
+means one training step moves the held-out sample toward its correct preference, and a larger 𝐻 indicates more room to move it. We compute 𝐻 for every sample in the client’s held-out test split. Since correctability depends on whether a sample is already correct, we partition the test set at 𝜃 0 into the retention set R = {𝑚 𝜃 0 > 0}
+
+and the correction set W = {𝑚 𝜃 0 ≤ 0}, and report for each set the mean Headroom 𝐻 0 and the fraction of samples with positive Headroom 𝐻 +, averaged over clients. 
+
+## 2.3 Datasets and Preference Groups 
+
+We evaluate on two datasets: a real-world set with natural annotator preferences, and a synthetic set with controlled style heterogeneity. For each client, we reserve 50 samples each for validation and testing, and use the rest for training. 
+
+Real-world dataset. We use the Reddit TL;DR summarization dataset [ 43 , 46 ], which contains human preference annotations along with client IDs. We filter 144,502 samples for 34 clients who participate in all three train/valid1/valid2 splits with at least 100 
+
+> 3
+
+Table 1: Diagnostics and personalized accuracy under balanced settings. 𝐺𝑄 (𝑙 ): mean ±std over the 24 layers, with Body/Head averages 𝐺𝑄 B, 𝐺𝑄 H . R / W: test samples initially correct / wrong at 𝜃 0. 𝑚 0: mean reward margin at 𝜃 0. 𝐻 +: fraction with positive Headroom. 𝑃 10 : fraction correct after 10 local steps. acc 0 in parentheses. Highlighting the best acc 10 and bold the best per column.                                                            
+
+> Flatness ( ↓)Margin ( 𝑚 0)Retention ( R, %, ↑)Correction ( W, %, ↑)Accuracy (%, ↑)method 𝐺𝑄 (𝑙 )𝐺𝑄 B𝐺𝑄 H𝑚 0
+> R𝑚 0
+> W𝐻 +R𝑃 10
+> R𝐻 +W𝑃 10
+> Wacc 10 (acc 0)
+> CL 1.14 ±0.24 1.29 0.84 +16 .00 −15 .77 34.18 82.32 62.02 21.49 52.15 (50.45) Multi CL 0.86 ±0.23 1.00 0.56 +22 .88 −12 .39 13.01 97.28 59.51 25.77 91.45 (92.20) FL 0.10 ±0.01 0.11 0.09 +2.38 −2.34 56.94 94.01 96.00 91.99 93.45 (50.40)
+
+samples each. Each client corresponds to an actual human annotator, and the dataset inherently exhibits natural data imbalance and genuine preference heterogeneity, with the underlying preference groups being unknown .
+
+Synthetic dataset. We gather prompts by combining UltraFeed-back [ 6] and p-Soups [ 19 ], resulting in 52K unique prompts. Using GPT-4o-mini, 1we generate two candidate responses per prompt along two style axes—(1) Elementary vs. PhD-level and (2) Humor-ous vs. Non-humorous —allocating 26K prompts per axis. We then simulate 40 clients (650 samples per axis), grouped into the four pref-erence groups formed by the two axes: (G1) Elementary/Humorous, (G2) Elementary/Non-humorous, (G3) PhD/Humorous, and (G4) PhD/Non-humorous. Clients are indexed by group, starting with G1 and progressing through G4 in sequence. 
+
+Group-size balance. Using the synthetic dataset, we evaluate how effectively the initial shared model adapts to individual clients under varying group-size distributions. We consider two group-size configurations across G1, G2, G3, and G4: 
+
+• Balanced (10/10/10/10): 10 clients per group, maintaining an equal balance across both preference axes. 
+
+• Imbalanced (15/15/5/5): the Elementary-dominant groups (G1, G2) are overrepresented while the PhD-dominant groups (G3, G4) are underrepresented, naturally biasing the shared model toward the majority preference. 
+
+## 3 A SINGLE FEDERATED MODEL SUFFICES, UNTIL GROUP IMBALANCE 
+
+In this section, we compare three initializations in terms of the per-sonalization capability of the resulting models. Interestingly, our finding indicates that FL provides a stronger initialization when preference groups are well balanced. Results show that this advan-tage arises because the local training loss is relatively flat around the initialization, while most test samples retain positive Headroom toward the correct preference. However, this benefit weakens under group imbalance, where FL becomes increasingly biased toward majority preferences and adaptation slows sharply. These findings motivate FedGD , our proposed approach. 
+
+Compared initializations. We compare 3 ways of producing the reward model that each client fine-tunes locally, trained for 200 communication rounds with the same number of updates. 
+
+• CL: pools all preference data on one server and trains a single centralized model, so conflicting preferences are mixed 
+
+within every batch .          
+
+> 1https://platform.openai.com/docs/models/gpt-4o-mini 60
+> 80
+> Group G1
+> 25
+> 50
+> 75
+> Group G2
+> 020 40 60 80
+> Fine-tuning steps
+> 60
+> 80
+> Group G3
+> 020 40 60 80
+> Fine-tuning steps
+> 40
+> 60
+> 80
+> Group G4
+> Accuracy (%)
+> CL Multi CL FL
+
+Figure 2: Group-wise personalized accuracy under the bal-anced setting, evaluated every 10 steps up to 80 local fine-tuning steps. 
+
+• FL: trains a single global model with FedAvg [ 29 ], so the conflict is concentrated at aggregation .
+
+• Multi-CL: trains one centralized model per ground-truth preference group, so no conflict arises within a model . Each client is initialized from its own group’s model. Since the true groups are unknown in practice, Multi-CL is a reference point rather than a deployable method. 
+
+## 3.1 FL Suffices Under Balanced Groups 
+
+Under the balanced setting, FL shows the best initialization for personalization. Let acc 0 denote the accuracy of an initialization before any local update and acc 10 the accuracy after 10 local fine-tuning steps, both averaged over clients. Before fine-tuning, Multi-CL reaches acc 0 = 92 .20 , while CL and FL reach only 50 .45 and 
+
+50 .40 , the accuracy of random guessing on binary preference pairs (Table 1). Figure 2 shows that this average hides a wide spread for FL, whose initial accuracy ranges from about 20% on G2 to about 
+
+80% on G3. However, just 10 local steps change the picture: FL reaches acc 10 = 93 .45 and overtakes Multi-CL, which ends at 91 .45 ,slightly below where it started, while CL improves only to 52 .15 .The same pattern appears in every group: FL gains almost all of its improvement within 10 steps, whereas CL improves only gradually over 80 steps and Multi-CL changes little or slightly declines. FL gains the most from a few local steps despite its low initial accuracy, and Table 1 attributes this to a loss that is flat across all 
+
+> 4
+
+Table 2: Diagnostics and personalized accuracy under the imbalanced setting (15/15/5/5); the first row repeats balanced FL for reference. 𝐺𝑄 (𝑙 ): mean ±std over the 24 LoRA layers, with Body/Head averages 𝐺𝑄 B, 𝐺𝑄 H . R / W: test samples initially correct / wrong at 𝜃 0. 𝑚 0: mean reward margin at 𝜃 0. 𝐻 +: fraction with positive headroom. 𝑃 10 : fraction correct after 10 local steps. Highlighting marks the best acc 10 ; bold the best per column among the imbalanced rows.                                                                                    
+
+> Flatness ( ↓)Margin ( 𝑚 0)Retention ( R, %, ↑)Correction ( W, %, ↑)Accuracy (%, ↑)method 𝐺𝑄 (𝑙 )𝐺𝑄 B𝐺𝑄 H𝑚 0
+> R𝑚 0
+> W𝐻 +R𝑃 10
+> R𝐻 +W𝑃 10
+> Wacc 10 (acc 0)
+> FL (balanced) 0.10 ±0.01 0.11 0.09 +2.38 −2.34 56.94 94.01 96.00 91.99 93.45 (50.40) CL 1.09 ±0.28 1.25 0.76 +20 .41 −19 .42 25.72 86.50 69.61 20.14 60.50 (59.85) Multi CL 0.95 ±0.25 1.11 0.63 +23 .96 −11 .79 10.44 97.60 58.42 26.14 91.50 (92.10) FL 0.72 ±0.25 0.88 0.39 +27 .90 −27 .02 3.08 99.11 96.74 2.09 61.75 (61.80) FL_target 0.27 ±0.02 0.28 0.24 +3.59 −3.65 75.78 93.42 93.44 90.62 92.35 (54.95)
+
+layers around the FL model. The flatness follows from how far each initialization has already committed. Every client must detect what distinguishes the two responses—here the style axis—to fit its own labels, and what differs is only which side it prefers, so averaging the locally trained models reinforces the shared detection while the opposing side choices offset one another. The resulting model therefore sits close to the decision boundary, with initial margins of only 𝑚 0 
+
+> R
+
+= +2.38 and 𝑚 0 
+
+> W
+
+= −2.34 , where the loss − log 𝜎 (𝑚 )
+
+is far from saturation and its gradient changes slowly. CL cannot separate detecting the axis from choosing a side, since conflicting preferences enter the same batch, and Multi-CL removes the conflict entirely by training each model on a quarter of the clients that share one direction; both commit to a side and reach 𝑚 0 
+
+> R
+
+= +16 .00 and 
+
++22 .88 , deep in the saturated regime where a single step distorts the gradient. This is reflected in the diagnostics: FL is an order of magnitude flatter than both baselines at every layer ( 𝐺𝑄 B = 0.11 
+
+vs. 1.29 and 1.00 ; 𝐺𝑄 H = 0.09 vs. 0.84 and 0.56 ), and the gap is largest in the Body, the layers that detect the axis. On the flat FL initialization, fine-tuning corrects wrong predic-tions without sacrificing the correct ones. For FL, 96 .00% of the wrong set W carries positive headroom ( 𝐻 +W ), and after 10 steps 
+
+91 .99% of W is answered correctly ( 𝑃 10  
+
+> W
+
+), while 94 .01% of the right set R stays correct ( 𝑃 10  
+
+> R
+
+). CL and Multi-CL start with less headroom on W (62 .02% and 59 .51% ) and correct only 21 .49% and 25 .77% of it, even though Multi-CL keeps slightly more of R than FL ( 97 .28% ). 
+
+## 3.2 Group-Debiased Sampling Restores FL Under Imbalance 
+
+Under group imbalance, FL adapts more slowly. Although FL begins with a substantially higher accuracy than in the balanced case, 10 local steps leave it essentially unchanged. FL starts in acc 0 =
+
+61 .80 , compared with 50 .40 under balanced groups, yet reaches only 
+
+acc 10 = 61 .75 (Table 2). Figure 3 shows that the initial accuracy again varies widely across groups, from near 10% on G4 to 98% on G1, but the gains from fine-tuning are smaller than under balanced groups, where every group rose above 90% within 10 steps. G2, G3, and G4 instead climb slowly and stay below G1 even after 80 steps. To test the hypothesis that the degradation in personalization is caused by group imbalance rather than the FL procedure itself, we consider a group-debiased sampling strategy that prevents any preference group from being underrepresented in a communica-tion round. Specifically, we modify FL only in the client sampling step while leaving the rest of the training procedure unchanged, de-noted by FL_target. In our experiments, each round samples |𝑆 𝑟 | = 580            
+
+> 90
+> Group G1
+> 40
+> 60
+> 80
+> Group G2
+> 020 40 60 80
+> Fine-tuning steps
+> 50
+> 60
+> 70
+> 80
+> 90
+> Group G3
+> 020 40 60 80
+> Fine-tuning steps
+> 20
+> 40
+> 60
+> 80
+> Group G4
+> Accuracy (%)
+> CL Multi CL FL FL_target
+
+Figure 3: Group-wise PFL accuracy under the imbalanced setting for the four methods (CL, Multi CL, FL, and FL_target), evaluated every 10 steps up to 80 fine-tuning steps. 
+
+clients: one from each of the four groups and one additional client chosen uniformly at random from all groups. This simple modi-fication lifts accuracy from acc 0 = 54 .95 to acc 10 = 92 .35 , a level standard FL does not reach within the same number of local steps (acc 0 = 61 .80 to acc 10 = 61 .75 ) (Table 2). Figure 3 shows FL_target exceeding 90% on every group within 10 local steps, a behavior FL showed only in the balanced setting. On this dataset, FedGD with 
+
+𝐾 = 4 recovers the four ground-truth groups exactly, so FL_target coincides with FedGD (Section 4). Group-debiased sampling works by keeping the loss uniformly flat across layers, unlike uniform sampling. Under FL, the Body degrades far more than the Head, with 𝐺𝑄 B rising from 0.11 in the balanced setting to 0.88 and 𝐺𝑄 H from 0.09 to 0.39 (Table 2). Correction suffers as well: 96 .74% of the wrong set W still carries positive headroom, yet only 2.09% of W is answered correctly after 10 steps, against 91 .99% in the balanced setting. The direction of the update is therefore right but its reach is not: imbalanced FL commits to the majority side and starts at 𝑚 0 
+
+> W
+
+= −27 .02 , an order of magnitude beyond the balanced case ( −2.34 ), so ten steps cannot close the gap. The right set R changes little instead, with 
+
+99 .11% staying correct but only 3.08% carrying positive headroom. 
+
+> 5
+
+FL_target starts lower than FL at acc 0 = 54 .95 , yet keeps the Body and the Head close ( 𝐺𝑄 B = 0.28 , 𝐺𝑄 H = 0.24 ) and stays near the decision boundary ( 𝑚 0 
+
+> W
+
+= −3.65 against −27 .02 for FL), raises 𝐻 +R
+
+from 3.08% to 75 .78% , and recovers correction to 𝑃 10  
+
+> W
+
+= 90 .62% .Group-debiased sampling is therefore what lets FL adapt within a few local steps under group imbalance. However, FL_target assumes access to the true preference groups, which are unknown in practice. This naturally raises the following question: “Can group debiasing be achieved without knowing the true preference groups?” 
+
+## 4 FEDERATED LEARNING WITH GROUP DEBIASING 
+
+In this section, we propose FedGD , which applies group debias-ing when the true groups are unknown. FedGD proceeds in two phases: (1) discovering the groups during federated learning, and (2) training a single reward model with group-debiased sampling over the discovered groups. Each client then fine-tunes the resulting model following the personalization phase of Section 2.1, yielding the personalized reward models we denote by FedGD-FT . The full algorithm is given in Appendix B.1. 
+
+## 4.1 Phase 1: Discovering the Groups 
+
+We discover the groups with clustered FL [ 14 , 38 ], which partitions clients by training several models and letting each client join the one that fits its data best. Over the first 𝑅 /2 rounds, the server maintains 𝐾 expert models {𝜃 𝑘 }𝐾 𝑘 =1 together with a reference model 
+
+𝜃 𝑔 , and each client is assigned to one expert, forming the groups 
+
+{A 𝑘 }𝐾 𝑘 =1. Every 𝑇 rounds the clients are reassigned, and in the rounds between two reassignments the experts are trained on the clients currently assigned to them. After round 𝑅 /2 the clients are reassigned once more, and the resulting groups {A ★ 
+
+> 𝑘
+
+}𝐾 𝑘 =1 are frozen; empty clusters are discarded, so 𝐾 denotes the number of discovered groups. Neither the experts nor 𝜃 𝑔 is used as an initialization for personalization; they serve only to discover the groups. 
+
+Reassigning clients ( 𝜋 (𝑐 )). Clients start from a uniform random assignment. Every 𝑇 rounds each client evaluates all 𝐾 experts on its own validation split and is reassigned to the expert with the lowest validation loss [49], 
+
+𝜋 (𝑐 ) ← arg min  
+
+> 𝑘
+
+ValLoss (𝜃 𝑘 , 𝐷 𝑐 
+
+> val
+
+), A𝑘 = {𝑐 : 𝜋 (𝑐 ) = 𝑘 },
+
+where 𝜋 (𝑐 ) denotes the expert assigned to client 𝑐 . Each reas-signment also resets every expert to the current reference model, 
+
+𝜃 𝑘 ← 𝜃 𝑔 , so that the experts do not inherit what they learned from the clients they had before. 
+
+Updating the reference model ( 𝜃 𝑔 ). Each round draws clients with group-debiased sampling over the current groups {A 𝑘 }𝐾 𝑘 =1.Specifically, clients are sampled from each group with probabil-ity inversely proportional to the group’s cardinality, so that the resulting client set has a uniform group composition regardless of group size. We denote the resulting participating set 𝐺 𝑟 , the 
+
+group-debiased counterpart of the sampled set 𝑆 𝑟 of Section 2.1. The reference model averages the returned models uniformly, 
+
+𝜃 (𝑟 ) 
+
+> 𝑔
+
+= 1
+
+|𝐺 𝑟 |∑︁ 𝑐 ∈𝐺 𝑟 
+
+𝜃 (𝑟 )   
+
+> 𝜋 (𝑐 ),𝑐
+
+.
+
+Here 𝜃 𝑔 serves as a neutral point to which the experts are reset rather than as a loss minimizer, and every client takes the same 𝜏 
+
+local steps, so weighting by dataset size would bias the discovered partition toward data volume rather than preference. 
+
+Training the experts ( 𝜃 𝑘 ). Every selected client 𝑐 ∈ 𝐺 𝑟 receives the expert 𝜃 (𝑟 −1)   
+
+> 𝜋 (𝑐 )
+
+of its own group, trains it on its local data, and returns the updated model 𝜃 (𝑟 )   
+
+> 𝜋 (𝑐 ),𝑐
+
+to the server. To estimate each expert from more than the clients of a single round, the server ac-cumulates the returned models and takes their cumulative average, 
+
+𝑠 𝑘 = 1
+
+𝑛 𝑘 𝑟 ∑︁  
+
+> 𝑟 ′=𝑟 0
+
+∑︁ 𝑐 ∈𝐺 𝑟 ′ ∩A 𝑘 
+
+𝜃 (𝑟 ′ ) 
+
+> 𝑘,𝑐
+
+, 𝑛 𝑘 =
+
+> 𝑟
+
+∑︁  
+
+> 𝑟 ′=𝑟 0
+
+|𝐺 𝑟 ′ ∩ A 𝑘 |,
+
+where 𝑟 0 is the round of the last reassignment. The expert is then updated as a moving average of its previous value and 𝑠 𝑘 ,
+
+𝜃 (𝑟 ) 
+
+> 𝑘
+
+= (1 − 𝑤 ) 𝜃 (𝑟 −1) 
+
+> 𝑘
+
++ 𝑤 𝑠 𝑘 .
+
+## 4.2 Phase 2: Training the Reward Model 
+
+The remaining 𝑅 /2 rounds train a single reward model 𝜙 over the frozen groups {A ★ 
+
+> 𝑘
+
+}𝐾 𝑘 =1, starting from a randomly initialized 𝜙 (𝑅 /2) .Each round draws clients with group-debiased sampling and each selected client trains 𝜙 (𝑟 ) on its local data, returning 𝜙 (𝑟 +1) 
+
+> 𝑐
+
+. Write 
+
+𝐺 ★ 
+
+> 𝑟,𝑘
+
+for the clients of group 𝑘 that participate in round 𝑟 .Aggregation is hierarchical : size-weighted within a group, uni-form across groups: 
+
+¯𝜙 (𝑟 +1) 
+
+> 𝑘
+
+=∑︁  
+
+> 𝑐 ∈𝐺 ★
+> 𝑟,𝑘
+
+𝑁 𝑐 
+
+Í𝑐 ′ ∈𝐺 ★ 
+
+> 𝑟,𝑘
+
+𝑁 𝑐 ′
+
+𝜙 (𝑟 +1) 
+
+> 𝑐
+
+, 𝜙 (𝑟 +1) = 1
+
+|K 𝑟 |∑︁ 𝑘 ∈ K 𝑟 
+
+¯𝜙 (𝑟 +1) 
+
+> 𝑘
+
+,
+
+where K𝑟 indexes the groups reached in round 𝑟 . Each group con-tributes one model regardless of its size, so the debiasing applied at sampling is preserved at aggregation. The resulting 𝜙 (𝑅 ) is the initial global model from which every client personalizes using its own local preference data. 
+
+## 5 EXPERIMENTS AND RESULTS 
+
+We first evaluate the overall personalization performance of FedGD 
+
+on synthetic and real-world datasets. After we verify the proposed mechanism through the diagnostic metrics and examine the robust-ness of FedGD with respect to the number of clusters 𝐾 . Additional ablation studies and optimization sensitivity analyses are provided in Appendix C. 
+
+Implementation Details. Unless explicitly mentioned, all exper-iments follow the configuration. We run 400 communication rounds of FL, sampling five clients per round ( |𝑆 𝑟 | = 5, |𝐺 𝑟 | = 5 for our methods), and each selected client performs exactly 30 local train-ing iterations per round with a batch size of 16, using AdamW [ 28 ]with (𝛽 1, 𝛽 2) = (0.9, 0.95 ) and a constant learning rate of 1 × 10 −5.In configurations with multiple global models and dynamic client– model assignment, the assignments are refreshed every 𝑇 = 20 
+
+rounds, and FedGD uses a mixing coefficient of 𝑤 = 0.6. Meth-ods that maintain multiple server-side models use 𝐾 = 4 unless stated otherwise. Qwen2-0.5B [ 50 ] is used as the base model, and LoRA-based parameter-efficient tuning [ 15 , 16 ] is applied with rank 
+
+𝑟 = 8, scaling factor 𝛼 = 16 , and dropout rate 0.05 . Following the standard Transformer architecture [ 45 ], LoRA is injected into the attention projection layers ( q_proj , k_proj , v_proj , o_proj )
+
+> 6
+
+Table 3: PFL accuracy comparison over clients from a single seed. acc 𝑡 is the accuracy after 𝑡 local fine-tuning steps, reported as mean ±std ; acc 0 is given as the mean only. Multi CL requires known groups and is not deployable on real annotators (“–”). Bold marks the best value in each post-adaptation column. 
+
+Balanced (Synthetic) Imbalanced (Synthetic) Real-world Algorithm acc 0 acc 10 acc 80 acc 0 acc 10 acc 80 acc 0 acc 80 acc 240 
+
+Local 49.20 49 .95 ±7.26 58 .05 ±7.69 50.25 51 .30 ±7.44 58 .70 ±7.07 51.24 52 .12 ±6.65 54 .59 ±7.66 
+
+CL 51.80 53 .70 ±7.15 55 .40 ±5.99 56.00 56 .90 ±10 .89 62 .60 ±7.93 58.06 57 .06 ±9.08 61 .00 ±6.69 
+
+Multi CL 92.10 92 .15 ±3.88 91 .60 ±4.29 92.30 91 .70 ±3.63 91 .60 ±3.67 – – –FL [29] 50.35 92 .45 ±3.76 94 .70 ±2.92 55.60 90 .55 ±5.20 93 .80 ±3.40 60.82 61 .53 ±7.70 63 .00 ±9.10 
+
+FedBiscuit [49] 68.80 66 .90 ±6.18 71 .45 ±10 .35 78.45 77 .85 ±9.85 80 .80 ±8.46 59.12 58 .53 ±6.76 57 .06 ±5.77 
+
+Soft-FL 51.70 62 .40 ±7.51 71 .30 ±6.09 56.50 75 .95 ±9.81 86 .20 ±7.41 60.88 58 .71 ±7.45 57 .00 ±9.07 
+
+FedGD (ours) 49.15 94 .55 ±3.58 94 .30 ±3.86 54.95 92 .35 ±4.02 93 .75 ±3.89 60.59 61 .71 ±5.98 64 .41 ±6.79 
+
+and the MLP projection layers ( gate_proj , up_proj ) of all 24 Transformer blocks, yielding 24 LoRA-adapted layers over which we compute our layer-wise diagnostics. All experiments are imple-mented on top of the FedBiscuit [49] codebase. 
+
+Baselines. Beyond CL, FL, and Multi-CL of Section 3, we compare three deployable methods that do not assume known groups. 
+
+• Local: fine-tunes the frozen backbone with LoRA on each client, without a global phase. 
+
+• FedBiscuit [ 49 ]: maintains 𝐾 expert models on the server. At each communication round, every client receives its as-signed expert model, performs local training, and uploads the updated model only to that expert for expert-specific aggregation. Every 𝑇 communication rounds, clients are re-assigned to the expert with the lowest validation loss. 
+
+• Soft-FL: replaces the hard client-to-expert assignment in FedBiscuit with validation-based soft weights over the 𝐾 
+
+experts. At each communication round, every client receives a weighted fusion of the 𝐾 expert models for local training, and the resulting local model contributes to every expert-specific aggregation according to the client’s validation-based weights. See Appendix B for details. 
+
+## 5.1 Main Results 
+
+Table 3 compares the deployable methods after 400 communica-tion rounds. FedGD attains the highest post-adaptation accuracy in every setting: acc 10 = 94 .55 under balanced groups, 92 .35 under imbalance, and acc 240 = 64 .41 in the real-world setting. FedGD does so from the weakest starting point among all federated methods— 
+
+49 .15 and 54 .95 on the synthetic datasets, close to random guessing. The federated phase therefore learns an initialization optimized for rapid personalization rather than high pre-adaptation accuracy. Group-specific initializations do not necessarily improve person-alization and can even degrade real-world performance. Even with ground-truth preference groups, Multi-CL gains only marginally (92 .10% → 92 .15% at step 10) and eventually degrades ( 91 .60% after 80 steps). Similarly, in the balanced synthetic setting, FedBiscuit achieves an accuracy of only 66 .90% after 10 adaptation steps, far behind standard FedAvg ( 92 .45% ). On the real-world dataset, both FedBiscuit ( 59 .12% → 57 .06% ) and Soft-FL ( 60 .88% → 57 .00% ) expe-rience performance degradation during personalization, ultimately 
+
+Table 4: Real-world results across different models. acc 240 is reported as mean ±std over clients, marked with Bold for the best one, and acc 0 as the mean before personalization.                       
+
+> Qwen-1.5B Gemma-2B Method acc 0acc 240 acc 0acc 240
+> Local 49.59 61 .12 ±8.25 58.53 67 .71 ±7.69
+> CL 63.71 64 .53 ±7.44 64.65 66 .41 ±7.14
+> FL 67.88 68 .53 ±7.86 71.29 71 .47 ±6.98
+> FedGD (ours) 68.65 70 .29 ±8.35 70.29 72 .35 ±7.44
+
+finishing below single-model CL ( 61 .00% ). These results demon-strate that learning separate initializations is ineffective when pref-erence groups are unknown or imperfectly defined. Longer federated training substantially reduces the effect of group imbalance. Under the 200-round budget of Section 3, FL reaches only acc 10 = 61 .75 under the imbalanced setting (Table 2), whereas extending training to 400 rounds improves it to 90 .55 , indi-cating that group imbalance slows rather than prevents federated optimization. Nevertheless, FedGD still achieves the highest accu-racy after only 𝑅 /2 = 200 rounds of federated training. On the synthetic datasets, FL eventually catches up after sufficient per-sonalization ( 93 .75 vs. 93 .80 under imbalance and 94 .30 vs. 94 .70 
+
+under balanced groups), indicating that the benefit of the debi-ased initialization lies in faster adaptation rather than a better final optimum.  
+
+> FedGD
+
+outperforms the baselines across larger models (Table 4). On both Qwen 1.5B [ 50 ] and Gemma-2B [ 44 ], FedGD achieves the best post-adaptation accuracy, and the gain comes from personal-ization rather than from a stronger starting point. On Gemma-2B,  
+
+> FedGD
+
+improves from 70 .29 to 72 .35 while starting below FL, which gains only 0.18 points ( 71 .29 → 71 .47 ). On Qwen-1.5B, FedGD 
+
+improves by 1.64 points against FL’s 0.65 .
+
+## 5.2 Robustness to the Choice of 𝐾  
+
+> FedGD
+
+does not require identifying the true preference groups. Sec-tion 3 showed that the degradation under imbalance originates from 
+
+> 7
+
+Table 5: Effect of the number of clusters 𝐾 on FedGD under the imbalanced setting. 𝐺𝑄 (𝑙 ) is the mean ±std over the 24 LoRA layers. 𝑚 0 denotes the mean reward margin at 𝜃 0. 𝑃 10 is the fraction of samples correctly classified after 10 local steps. Accuracy is reported with the initial accuracy in parentheses. 
+
+Flatness ( ↓) Init. margin ( 𝜃 0) Retention (%, ↑) Correction (%, ↑) Accuracy (%, ↑)Method 𝐺𝑄 (𝑙 ) 𝐺𝑄 B 𝐺𝑄 H 𝑚 0 
+
+> R
+
+𝑚 0 
+
+> W
+
+𝑃 10  
+
+> R
+
+𝑃 10  
+
+> W
+
+acc 10 (acc 0) 
+
+> FedGD
+
+(𝐾 = 2) 0.18 ± 0.02 0.19 0.16 +3.76 −2.94 94.70 85.42 91.00 (60.90)  
+
+> FedGD
+
+(𝐾 = 3) 0.29 ± 0.03 0.31 0.26 +4.23 −4.18 95.20 89.72 92.80 (55.80)  
+
+> FedGD
+
+(𝐾 = 4) 0.27 ± 0.02 0.28 0.24 +3.59 −3.65 93.42 90.62 92.35 (54.95) G1 G2 G3 G4        
+
+> K=2
+> K=3
+> 110 20 30 40
+> Client Index
+> K=4
+> Expert 1 Expert 2 Expert 3 Expert 4
+
+Figure 4: Phase 1 clustering results under the synthetic im-balance setting for different numbers of experts ( 𝐾 ). Clients are colored by their assigned expert (lowest validation loss). 
+
+biased client sampling rather than an incorrect partition. Accord-ingly, FedGD only requires a partition that removes the sampling bias, rather than exactly recovering the preference groups. Figure 4 illustrates this mechanism. With ground-truth groups G1 (Elementary & Humorous), G2 (Elementary & Non-Humorous), G3 (PhD & Humorous), and G4 (PhD & Non-Humorous), FedGD 
+
+forms the partitions {𝐺 1, 𝐺 2} and {𝐺 3, 𝐺 4} for 𝐾 = 2, preserving the shared education attribute while balancing the humor attribute within each partition. Increasing 𝐾 to three further separates G1 and G2, resulting in the partitions {𝐺 1}, {𝐺 2}, and {𝐺 3, 𝐺 4}. This preserves both education and humor information for the Elemen-tary clients, while the PhD partition continues to average over the humor attribute. Only 𝐾 = 4 produces the partitions {𝐺 1}, {𝐺 2},
+
+{𝐺 3}, and {𝐺 4}, preserving both attributes for every group. Despite these different partitions, Table 5 demonstrates that the results retain robust optimization. Across all three values of 𝐾 , the learned models maintain low curvature ( 𝐺𝑄 (𝑙 ) ≤ 0.29 ), remain near the decision boundary with narrow initial margins, and achieve high correction rates just 10 local steps. As a result, the accuracy varies marginally, within a range of 91 .0% to 92 .8% .These results indicate that recovering the exact preference groups is not necessary. Once the discovered partition sufficiently removes the biased client sampling, the resulting initialization retains the flatness and under-confident margins enabling rapid local adapta-tion, making FedGD largely insensitive to the choice of 𝐾 .
+
+## 6 RELATED WORK 
+
+Reward modeling under preference heterogeneity. Reward models trained on preference data are central to alignment pipelines [32 , 43 ], alongside alternatives such as DPO [ 34 ] and RRHF [ 54 ]. To accommodate diverse users, recent methods absorb the variation into the structure of one centralized model, including group-wise robust objectives [ 35 ], multi-objective reward heads [ 47 ], routing over latent subgroups [ 42 ], latent user variables [ 33 ], and post-hoc merging of objective-specific policies [ 19 ], so that a single deployed model can be steered per user. All of these approaches assume centralized access to preference data, which privacy regulation of-ten precludes [ 17 , 23 , 36 ]. Federated preference alignment removes this assumption by aggregating locally computed alignment up-dates [ 12 , 49 , 51 ], but returning a single consensus policy limits its ability to serve heterogeneous clients, underscoring the need to leverage federated learning for local personalization. 
+
+Multiple global models under heterogeneity. When clients disagree in preference signals, a common method is to train multi-ple global models, one per group of similar clients. FedBiscuit [ 49 ]clusters clients by preference similarity and trains one reward model per cluster, the design our experiments compare against. FedLEASE [ 48 ], IFCA [ 14 ], CFL [ 38 ], and FeSEM [ 27 ] likewise par-tition clients by preference or domain similarity, while soft mem-bership [ 37 ] and mixture-of-experts approaches [ 52 ] offer more flexible combinations. These designs rest on the premise that a client is better served by a model that never averaged over con-flicting objectives. A complementary line of personalized federated learning instead keeps one global model. It defers personalization to local adaptation, either by training the global model as an initial-ization for a few local gradient steps [ 9, 11 , 30 ] or by sharing a com-mon representation while keeping heads or lightweight adapters client-specific [ 5, 24 , 40 , 53 ], and biased client participation in this setting can be corrected through clustered or importance-based sampling [ 4 , 13 ]. However, prior work evaluates models primarily at the global level, so a deeper analysis is needed to examine per-formance trends after local fine-tuning, thereby clarifying the true role of client grouping. 
+
+## 7 CONCLUSION 
+
+We examined what constitutes a good initialization for personalized reward modeling under conflicting preferences. The prevailing response to such conflict is to partition clients and train one model 
+
+> 8
+
+per group, on the premise that a client is better served by a model that never averaged over opposing labels. Our results do not support this premise. A single federated model performs at chance before adaptation, yet a few local steps carry it past a centralized model trained on the client’s own ground-truth group. Averaging cancels the opposing label choices while retaining the distinction clients agree on, leaving the initialization in a flat region from which successive local steps remain aligned. When the preference groups differ in size the cancellation becomes asymmetric: the shared model commits to the majority side and leaves minority clients too far from the decision boundary for a few local steps to recover. FedGD 
+
+restores the symmetry by discovering the groups during federated training and debiasing the client sampling over them. 
+
+## REFERENCES 
+
+[1] Amanda Askell, Yuntao Bai, Anna Chen, Dawn Drain, Deep Ganguli, Tom Henighan, Andy Jones, Nicholas Joseph, Ben Mann, Nova DasSarma, Nelson Elhage, Zac Hatfield-Dodds, Danny Hernandez, Jackson Kernion, Kamal Ndousse, Catherine Olsson, Dario Amodei, Tom Brown, Jack Clark, Sam McCandlish, Chris Olah, and Jared Kaplan. 2021. A General Language Assistant as a Laboratory for Alignment. arXiv:2112.00861 [cs.CL] https://arxiv.org/abs/2112.00861 [2] Yuntao Bai, Saurav Kadavath, Sandipan Kundu, Amanda Askell, Jackson Kernion, Andy Jones, Anna Chen, Anna Goldie, Azalia Mirhoseini, Cameron McKinnon, Carol Chen, Catherine Olsson, Christopher Olah, Danny Hernandez, Dawn Drain, Deep Ganguli, Dustin Li, Eli Tran-Johnson, Ethan Perez, Jamie Kerr, Jared Mueller, Jeffrey Ladish, Joshua Landau, Kamal Ndousse, Kamile Luko-suite, Liane Lovitt, Michael Sellitto, Nelson Elhage, Nicholas Schiefer, Noemi Mercado, Nova DasSarma, Robert Lasenby, Robin Larson, Sam Ringer, Scott John-ston, Shauna Kravec, Sheer El Showk, Stanislav Fort, Tamera Lanham, Timothy Telleen-Lawton, Tom Conerly, Tom Henighan, Tristan Hume, Samuel R. Bowman, Zac Hatfield-Dodds, Ben Mann, Dario Amodei, Nicholas Joseph, Sam McCandlish, Tom Brown, and Jared Kaplan. 2022. Constitutional AI: Harmlessness from AI Feedback. arXiv:2212.08073 [cs.CL] https://arxiv.org/abs/2212.08073 [3] Stephen Casper, Xander Davies, Claudia Shi, Thomas Krendl Gilbert, Jérémy Scheurer, Javier Rando, Rachel Freedman, Tomek Korbak, David Lindner, Pedro Freire, Tony Tong Wang, Samuel Marks, Charbel-Raphael Segerie, Micah Carroll, Andi Peng, Phillip J.K. Christoffersen, Mehul Damani, Stewart Slocum, Usman Anwar, Anand Siththaranjan, Max Nadeau, Eric J Michaud, Jacob Pfau, Dmitrii Krasheninnikov, Xin Chen, Lauro Langosco, Peter Hase, Erdem Biyik, Anca Dragan, David Krueger, Dorsa Sadigh, and Dylan Hadfield-Menell. 2023. Open Problems and Fundamental Limitations of Reinforcement Learning from Human Feedback. Transactions on Machine Learning Research (2023). https://openreview. net/forum?id=bx24KpJ4Eb Survey Certification, Featured Certification. [4] Wenlin Chen, Samuel Horváth, and Peter Richtárik. 2022. Optimal Client Sam-pling for Federated Learning. Transactions on Machine Learning Research (2022). https://openreview.net/forum?id=8GvRCWKHIL [5] Liam Collins, Hamed Hassani, Aryan Mokhtari, and Sanjay Shakkottai. 2021. Exploiting Shared Representations for Personalized Federated Learning. In Pro-ceedings of the 38th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 139) , Marina Meila and Tong Zhang (Eds.). PMLR, 2089–2099. https://proceedings.mlr.press/v139/collins21a.html [6] Ganqu Cui, Lifan Yuan, Ning Ding, Guanming Yao, Bingxiang He, Wei Zhu, Yuan Ni, Guotong Xie, Ruobing Xie, Yankai Lin, Zhiyuan Liu, and Maosong Sun. 2024. ULTRAFEEDBACK: boosting language models with scaled AI feedback. In Proceedings of the 41st International Conference on Machine Learning (Vienna, Austria) (ICML’24) . JMLR.org, Article 384, 23 pages. [7] Yann N Dauphin and Samuel Schoenholz. 2019. MetaInit: Initializing learning by learning to initialize. In Advances in Neural Information Processing Systems ,H. Wallach, H. Larochelle, A. Beygelzimer, F. d 'Alché-Buc, E. Fox, and R. Garnett (Eds.), Vol. 32. Curran Associates, Inc. https://proceedings.neurips.cc/paper_ files/paper/2019/file/876e8108f87eb61877c6263228b67256-Paper.pdf [8] A. P. Dempster, N. M. Laird, and D. B. Rubin. 1977. Maximum likelihood from incomplete data via the EM algorithm. Journal of the Royal Statistical Society: Series B 39 (1977), 1–38. http://web.mit.edu/6.435/www/Dempster77.pdf [9] Canh T. Dinh, Nguyen H. Tran, and Tuan Dung Nguyen. 2020. Personalized federated learning with moreau envelopes. In Proceedings of the 34th International Conference on Neural Information Processing Systems (Vancouver, BC, Canada) 
+
+(NIPS ’20) . Curran Associates Inc., Red Hook, NY, USA, Article 1796, 12 pages. [10] Xin Dong, Sai Qian Zhang, Ang Li, and H.T. Kung. 2022. SphereFed: Hyper-spherical Federated Learning. In Computer Vision – ECCV 2022: 17th European Conference, Tel Aviv, Israel, October 23–27, 2022, Proceedings, Part XXVI (Tel Aviv, Israel). Springer-Verlag, Berlin, Heidelberg, 165–184. https://doi.org/10.1007/978-3-031-19809-0_10 [11] Alireza Fallah, Aryan Mokhtari, and Asuman Ozdaglar. 2020. Personalized fed-erated learning with theoretical guarantees: a model-agnostic meta-learning approach. In Proceedings of the 34th International Conference on Neural Informa-tion Processing Systems (Vancouver, BC, Canada) (NIPS ’20) . Curran Associates Inc., Red Hook, NY, USA, Article 300, 12 pages. [12] Flint Xiaofeng Fan, Cheston Tan, Yew-Soon Ong, Roger Wattenhofer, and Wei-Tsang Ooi. 2025. FedRLHF: A Convergence-Guaranteed Federated Framework for Privacy-Preserving and Personalized RLHF. In Proceedings of the 24th International Conference on Autonomous Agents and Multiagent Systems (Detroit, MI, USA) 
+
+(AAMAS ’25) . International Foundation for Autonomous Agents and Multiagent Systems, Richland, SC, 713–721. [13] Yann Fraboni, Richard Vidal, Laetitia Kameni, and Marco Lorenzi. 2021. Clustered Sampling: Low-Variance and Improved Representativity for Clients Selection in Federated Learning. In Proceedings of the 38th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 139) , Marina Meila and Tong Zhang (Eds.). PMLR, 3407–3416. https://proceedings.mlr.press/ v139/fraboni21a.html [14] Avishek Ghosh, Jichan Chung, Dong Yin, and Kannan Ramchandran. 2020. An efficient framework for clustered federated learning. In Proceedings of the 34th International Conference on Neural Information Processing Systems (Vancouver, BC, Canada) (NIPS ’20) . Curran Associates Inc., Red Hook, NY, USA, Article 1643, 12 pages. [15] Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna Morrone, Quentin De Laroussilhe, Andrea Gesmundo, Mona Attariyan, and Sylvain Gelly. 2019. Parameter-Efficient Transfer Learning for NLP. In Proceedings of the 36th Interna-tional Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 97) , Kamalika Chaudhuri and Ruslan Salakhutdinov (Eds.). PMLR, 2790–2799. https://proceedings.mlr.press/v97/houlsby19a.html [16] Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations . https: //openreview.net/forum?id=nZeVKeeFYf9 [17] Erin Illman and Paul Temple. 2019. California consumer privacy act. The Business Lawyer 75, 1 (2019), 1637–1646. [18] Robert A. Jacobs, Michael I. Jordan, Steven J. Nowlan, and Geoffrey E. Hinton. 1991. Adaptive Mixtures of Local Experts. Neural Computation 3, 1 (1991), 79–87. https://doi.org/10.1162/neco.1991.3.1.79 [19] Joel Jang, Seungone Kim, Bill Yuchen Lin, Yizhong Wang, Jack Hessel, Luke Zettlemoyer, Hannaneh Hajishirzi, Yejin Choi, and Prithviraj Ammanabrolu. 2024. Personalized Soups: Personalized Large Language Model Alignment via Post-hoc Parameter Merging. In Adaptive Foundation Models: Evolving AI for Personalized and Efficient Learning . https://openreview.net/forum?id=EMrnoPRvxe [20] Peter Kairouz, H Brendan McMahan, Brendan Avent, Aurélien Bellet, Mehdi Ben-nis, Arjun Nitin Bhagoji, Kallista Bonawitz, Zachary Charles, Graham Cormode, Rachel Cummings, et al . 2021. Advances and open problems in federated learning. 
+
+Foundations and trends ® in machine learning 14, 1–2 (2021), 1–210. [21] Seongyoon Kim, Minchan Jeong, Sungnyun Kim, Sungwoo Cho, Sumyeong Ahn, and Se-Young Yun. 2025. FedDr+: Stabilizing Dot-regression with Global Feature Distillation for Federated Learning. Transactions on Machine Learning Research 
+
+(2025). https://openreview.net/forum?id=a6WthNFhL2 [22] Seongyoon Kim, Gihun Lee, Jaehoon Oh, and Se-Young Yun. 2023. FedFN: Feature Normalization for Alleviating Data Heterogeneity Problem in Federated Learning. In International Workshop on Federated Learning in the Age of Foundation Models in Conjunction with NeurIPS 2023 . https://openreview.net/forum?id=4apX9Kcxie [23] Andreas Köpf, Yannic Kilcher, Dimitri Von Rütte, Sotiris Anagnostidis, Zhi Rui Tam, Keith Stevens, Abdullah Barhoum, Duc Nguyen, Oliver Stanley, Richárd Nagyfi, et al . 2023. Openassistant conversations-democratizing large language model alignment. Advances in neural information processing systems 36 (2023), 47669–47681. [24] Tian Li, Shengyuan Hu, Ahmad Beirami, and Virginia Smith. 2021. Ditto: Fair and Robust Federated Learning Through Personalization. In Proceedings of the 38th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 139) , Marina Meila and Tong Zhang (Eds.). PMLR, 6357–6368. https://proceedings.mlr.press/v139/li21h.html [25] Tian Li, Anit Kumar Sahu, Manzil Zaheer, Maziar Sanjabi, Ameet Talwalkar, and Virginia Smith. 2020. Federated Optimization in Heterogeneous Networks. In 
+
+Proceedings of Machine Learning and Systems , I. Dhillon, D. Papailiopoulos, and V. Sze (Eds.), Vol. 2. 429–450. https://proceedings.mlsys.org/paper_files/paper/ 2020/file/1f5fe83998a09396ebe6477d9475ba0c-Paper.pdf [26] Xiang Li, Kaixuan Huang, Wenhao Yang, Shusen Wang, and Zhihua Zhang. 2020. On the Convergence of FedAvg on Non-IID Data. In International Conference on Learning Representations . https://openreview.net/forum?id=HJxNAnVtDS [27] Guodong Long, Ming Xie, Tao Shen, Tianyi Zhou, Xianzhi Wang, and Jing Jiang. 2023. Multi-center federated learning: clients clustering for better personalization. 
+
+World Wide Web 26, 1 (2023), 481–500. [28] Ilya Loshchilov and Frank Hutter. 2019. Decoupled Weight Decay Regularization. In International Conference on Learning Representations . https://openreview.net/ 
+
+> 9
+
+forum?id=Bkg6RiCqY7 [29] Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Arcas. 2017. Communication-efficient learning of deep net-works from decentralized data. In Artificial intelligence and statistics . PMLR, 1273–1282. [30] Jaehoon Oh, SangMook Kim, and Se-Young Yun. 2022. FedBABU: Toward Enhanced Representation for Federated Image Classification. In International Conference on Learning Representations . https://openreview.net/forum?id= HuaYQfggn5u [31] Jaehoon Oh, Hyungjun Yoo, ChangHwan Kim, and Se-Young Yun. 2021. {BOIL}: Towards Representation Change for Few-shot Learning. In Interna-tional Conference on Learning Representations . https://openreview.net/forum?id= umIdUL8rMH [32] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al . 2022. Training language models to follow instructions with human feedback. Advances in neural information processing systems 35 (2022), 27730–27744. [33] Sriyash Poddar, Yanming Wan, Hamish Ivison, Abhishek Gupta, and Natasha Jaques. 2024. Personalizing reinforcement learning from human feedback with variational preference learning. Advances in Neural Information Processing Sys-tems 37 (2024), 52516–52544. [34] Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems 36 (2023), 53728–53741. [35] Shyam Sundhar Ramesh, Yifan Hu, Iason Chaimalas, Viraj Mehta, Pier Giuseppe Sessa, Haitham Bou Ammar, and Ilija Bogunovic. 2024. Group robust preference optimization in reward-free rlhf. Advances in Neural Information Processing Systems 37 (2024), 37100–37137. [36] Protection Regulation. 2016. Regulation (EU) 2016/679 of the European Parliament and of the Council. Regulation (eu) 679, 2016 (2016), 10–13. [37] Yichen Ruan and Carlee Joe-Wong. 2022. Fedsoft: Soft clustered federated learning with proximal local updating. In Proceedings of the AAAI conference on artificial intelligence , Vol. 36. 8124–8131. [38] Felix Sattler, Klaus-Robert Müller, and Wojciech Samek. 2021. Clustered Federated Learning: Model-Agnostic Distributed Multitask Optimization Under Privacy Constraints. IEEE Transactions on Neural Networks and Learning Systems 32, 8 (2021), 3710–3722. https://doi.org/10.1109/TNNLS.2020.3015958 [39] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Proximal Policy Optimization Algorithms. arXiv:1707.06347 [cs.LG] https://arxiv.org/abs/1707.06347 [40] Jonathan Scott, Hossein Zakerinia, and Christoph H Lampert. 2024. PeFLL: Personalized Federated Learning by Learning to Learn. In The Twelfth Interna-tional Conference on Learning Representations . https://openreview.net/forum?id= MrYiwlDRQO [41] Noam Shazeer, *Azalia Mirhoseini, *Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. 2017. Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer. In International Conference on Learning Representations . https://openreview.net/forum?id=B1ckMDqlg [42] Jingyan Shen, Jiarui Yao, Rui Yang, Yifan Sun, Feng Luo, Rui Pan, Tong Zhang, and Han Zhao. 2025. MiCRo: Mixture Modeling and Context-aware Routing for Personalized Preference Learning. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , Christos Christodoulopoulos, Tanmoy Chakraborty, Carolyn Rose, and Violet Peng (Eds.). Association for Computational Linguistics, Suzhou, China, 17447–17463. https://doi.org/10. 18653/v1/2025.emnlp-main.882 [43] Nisan Stiennon, Long Ouyang, Jeff Wu, Daniel M. Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul Christiano. 2020. Learning to sum-marize from human feedback. In Proceedings of the 34th International Conference on Neural Information Processing Systems (Vancouver, BC, Canada) (NIPS ’20) .Curran Associates Inc., Red Hook, NY, USA, Article 253, 14 pages. [44] Gemma Team, Thomas Mesnard, Cassidy Hardin, Robert Dadashi, Surya Bhupati-raju, Shreya Pathak, Laurent Sifre, Morgane Rivière, Mihir Sanjay Kale, Juli-ette Love, Pouya Tafti, Léonard Hussenot, Pier Giuseppe Sessa, Aakanksha Chowdhery, Adam Roberts, Aditya Barua, Alex Botev, Alex Castro-Ros, Am-brose Slone, Amélie Héliou, Andrea Tacchetti, Anna Bulanova, Antonia Paterson, Beth Tsai, Bobak Shahriari, Charline Le Lan, Christopher A. Choquette-Choo, Clément Crepy, Daniel Cer, Daphne Ippolito, David Reid, Elena Buchatskaya, Eric Ni, Eric Noland, Geng Yan, George Tucker, George-Christian Muraru, Grigory Rozhdestvenskiy, Henryk Michalewski, Ian Tenney, Ivan Grishchenko, Jacob Austin, James Keeling, Jane Labanowski, Jean-Baptiste Lespiau, Jeff Stanway, Jenny Brennan, Jeremy Chen, Johan Ferret, Justin Chiu, Justin Mao-Jones, Kather-ine Lee, Kathy Yu, Katie Millican, Lars Lowe Sjoesund, Lisa Lee, Lucas Dixon, Machel Reid, Maciej Mikuła, Mateo Wirth, Michael Sharman, Nikolai Chinaev, Nithum Thain, Olivier Bachem, Oscar Chang, Oscar Wahltinez, Paige Bailey, Paul Michel, Petko Yotov, Rahma Chaabouni, Ramona Comanescu, Reena Jana, Rohan Anil, Ross McIlroy, Ruibo Liu, Ryan Mullins, Samuel L Smith, Sebastian Borgeaud, Sertan Girgin, Sholto Douglas, Shree Pandya, Siamak Shakeri, So-ham De, Ted Klimenko, Tom Hennigan, Vlad Feinberg, Wojciech Stokowiec, Yu hui Chen, Zafarali Ahmed, Zhitao Gong, Tris Warkentin, Ludovic Peran, Minh Giang, Clément Farabet, Oriol Vinyals, Jeff Dean, Koray Kavukcuoglu, Demis Hassabis, Zoubin Ghahramani, Douglas Eck, Joelle Barral, Fernando Pereira, Eli Collins, Armand Joulin, Noah Fiedel, Evan Senter, Alek Andreev, and Kathleen Kenealy. 2024. Gemma: Open Models Based on Gemini Research and Technology. arXiv:2403.08295 [cs.CL] https://arxiv.org/abs/2403.08295 [45] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Proceedings of the 31st International Conference on Neural Information Processing Systems (Long Beach, California, USA) (NIPS’17) . Curran Associates Inc., Red Hook, NY, USA, 6000–6010. [46] Michael Völske, Martin Potthast, Shahbaz Syed, and Benno Stein. 2017. TL;DR: Mining Reddit to Learn Automatic Summarization. In Proceedings of the Workshop on New Frontiers in Summarization , Lu Wang, Jackie Chi Kit Cheung, Giuseppe Carenini, and Fei Liu (Eds.). Association for Computational Linguistics, Copen-hagen, Denmark, 59–63. https://doi.org/10.18653/v1/W17-4508 [47] Haoxiang Wang, Yong Lin, Wei Xiong, Rui Yang, Shizhe Diao, Shuang Qiu, Han Zhao, and Tong Zhang. 2024. Arithmetic Control of LLMs for Diverse User Preferences: Directional Preference Alignment with Multi-Objective Rewards. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , Lun-Wei Ku, Andre Martins, and Vivek Srikumar (Eds.). Association for Computational Linguistics, Bangkok, Thailand, 8642–8655. https://doi.org/10.18653/v1/2024.acl-long.468 [48] Lei Wang, Jieming Bian, Letian Zhang, and Jie Xu. 2025. Adaptive LoRA Experts Allocation and Selection for Federated Fine-Tuning. In The Thirty-ninth Annual Conference on Neural Information Processing Systems . https://openreview.net/ forum?id=es4TTVGJ9x [49] Feijie Wu, Xiaoze Liu, Haoyu Wang, Xingchen Wang, Lu Su, and Jing Gao. 2025. Towards Federated RLHF with Aggregated Client Preference for LLMs. In The Thirteenth International Conference on Learning Representations . https: //openreview.net/forum?id=mqNKiEB6pd [50] An Yang, Baosong Yang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Zhou, Cheng-peng Li, Chengyuan Li, Dayiheng Liu, Fei Huang, Guanting Dong, Haoran Wei, Huan Lin, Jialong Tang, Jialin Wang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Ma, Jianxin Yang, Jin Xu, Jingren Zhou, Jinze Bai, Jinzheng He, Jun-yang Lin, Kai Dang, Keming Lu, Keqin Chen, Kexin Yang, Mei Li, Mingfeng Xue, Na Ni, Pei Zhang, Peng Wang, Ru Peng, Rui Men, Ruize Gao, Runji Lin, Shijie Wang, Shuai Bai, Sinan Tan, Tianhang Zhu, Tianhao Li, Tianyu Liu, Wenbin Ge, Xiaodong Deng, Xiaohuan Zhou, Xingzhang Ren, Xinyu Zhang, Xipin Wei, Xuancheng Ren, Xuejing Liu, Yang Fan, Yang Yao, Yichang Zhang, Yu Wan, Yunfei Chu, Yuqiong Liu, Zeyu Cui, Zhenru Zhang, Zhifang Guo, and Zhihao Fan. 2024. Qwen2 Technical Report. arXiv:2407.10671 [cs.CL] https://arxiv.org/abs/2407.10671 [51] Rui Ye, Wenhao Wang, Jingyi Chai, Dihan Li, Zexi Li, Yinda Xu, Yaxin Du, Yanfeng Wang, and Siheng Chen. 2024. OpenFedLLM: Training Large Language Models on Decentralized Private Data via Federated Learning. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (Barcelona, Spain) (KDD ’24) . Association for Computing Machinery, New York, NY, USA, 6137–6147. https://doi.org/10.1145/3637528.3671582 [52] Liping Yi, Han Yu, Gang Wang, Xiaoguang Liu, and Qinghua Hu. 2026. pFedMoE: Data-Level Personalization With Mixture of Experts in Model-Heterogeneous Personalized Federated Learning. IEEE Transactions on Knowledge and Data Engineering 38, 3 (2026), 1905–1918. https://doi.org/10.1109/TKDE.2026.3656194 [53] Liping Yi, Han Yu, Gang Wang, Xiaoguang Liu, and Xiaoxiao Li. 2024. pFed-LoRA: Model-Heterogeneous Personalized Federated Learning with LoRA Tuning. arXiv:2310.13283 [cs.LG] https://arxiv.org/abs/2310.13283 [54] Hongyi Yuan, Zheng Yuan, Chuanqi Tan, Wei Wang, Songfang Huang, and Fei Huang. 2023. RRHF: Rank Responses to Align Language Models with Human Feedback. In Thirty-seventh Conference on Neural Information Processing Systems .https://openreview.net/forum?id=EdIGMCHk4l 
+
+> 10
+
+- Appendix -
+
+## Rethinking Personalized Reward Modeling for LLMs under Preference Heterogeneity via Group-Debiased Federated Learning 
+
+This appendix provides additional details omitted from the main paper. Appendix A describes the experimental setup, Appendix B presents the complete training procedures of FedGD and the compared methods, and Appendix C provides additional experimental analyses. 
+
+## A EXPERIMENTAL SETUP A.1 Computing Environment 
+
+Synthetic experiments are conducted on NVIDIA RTX 3090 and RTX A5000 GPUs using Python 3.9, PyTorch 2.1.0, and CUDA 12.1. Real-world experiments are performed on NVIDIA RTX 5090 GPUs using Python 3.12, PyTorch 2.12.0, and CUDA 13.0. Both environments use the same implementation with Transformers 4.49.0, PEFT 0.17.1, and Accelerate 1.10.1 under bfloat16 mixed precision. 
+
+## A.2 Implementation Details 
+
+Unless explicitly mentioned otherwise, all experiments share the following implementation. 
+
+• Training configuration. We run 400 communication rounds of federated learning, sampling five clients per round ( |𝑆 𝑟 | = 5; |𝐺 𝑟 | = 5
+
+for group-debiased methods). Each selected client performs 30 local optimization steps with a batch size of 16 using AdamW [ 28 ]with (𝛽 1, 𝛽 2) = (0.9, 0.95 ) and a constant learning rate of 1 × 10 −5. Client assignments are refreshed every 𝑇 = 20 communication rounds for methods with dynamic grouping. Unless otherwise specified, multi-global methods use 𝐾 = 4, and FedGD uses a mixing coefficient of 𝑤 = 0.6.
+
+• Backbone models and LoRA. We use Qwen2-0.5B [ 50 ] for the synthetic experiments. For the real-world evaluation, we use the Hugging Face checkpoints Qwen/Qwen2.5-1.5B and google/gemma-2-2b-it . Across all backbones, LoRA fine-tuning [ 15 , 16 ] is performed with rank 𝑟 = 8, scaling factor 𝛼 = 16 , and dropout rate 0.05. LoRA adapters are inserted into q_proj , k_proj , v_proj ,
+
+> o_proj
+
+, gate_proj , and up_proj , while all backbone parameters remain frozen. 
+
+• Reward model implementation. Our implementation is built upon the official FedBiscuit repository (https://github.com/HarliWu/ FedBiscuit). We directly reuse its binary-selector reward model and training pipeline without architectural modification, interpreting the resulting two logits as the reward scores 𝑟 𝜃 (𝑥, 𝑦 +) and 𝑟 𝜃 (𝑥, 𝑦 − ) throughout the paper. 
+
+• Baseline implementations. – CL. A single reward model is trained on the centralized dataset. 
+
+– FL. Standard FedAvg [29] is used to optimize a single global reward model. 
+
+– Multi-CL. Oracle multi-global training is performed using the ground-truth preference groups, where one centralized reward model is trained for each group. 
+
+– Local. Each client independently fine-tunes a LoRA adapter without any global training or communication. 
+
+– FedBiscuit. The server maintains multiple cluster-specific global models and periodically reassigns each client to the model with the lowest validation loss. 
+
+– Soft-FL. Each client receives a validation-weighted fusion of all global models and contributes to every global model according to the same validation-based weights. The complete training procedures of FedGD , FedBiscuit, and Soft-FL are provided in Appendix B. 
+
+> 11
+
+## B ALGORITHMIC DETAILS 
+
+This appendix presents the complete pseudocode for FedGD together with the FedBiscuit [ 49 ] and Soft-FL baselines used in our experiments. Section B.1 details the proposed method, while Sections B.2 and B.3 describe the FedBiscuit and Soft-FL implementations used for comparison. 
+
+## B.1 FedGD 
+
+Algorithm 1: FedGD: Federated Learning with Group Debiasing and Final Personalization 
+
+Input: experts 𝐾 ; total rounds 𝑅 ; reassignment period 𝑇 ; local steps 𝜏 ; sampling size |𝐺 |; mixing coefficient 𝑤 ; client set [𝐶 ]; dataset sizes {𝑁 𝑐 }𝐶 𝑐 =1
+
+Result: single reward model 𝜙 (𝑅 ) and personalized models {𝜃 PFL  
+
+> 𝑐
+
+}𝐶 𝑐 =1 
+
+> 1
+
+Init: 𝜃 (0) 
+
+> 𝑔
+
+, {𝜃 (0) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 ← LoRA default init; 𝜋 (𝑐 ) ← Uniform {1, . . . , 𝐾 } ∀ 𝑐 ; A𝑘 ← { 𝑐 : 𝜋 (𝑐 ) = 𝑘 } ∀ 𝑘 ; 
+
+> 2
+
+Phase 1: Discovering the Groups ( 𝑟 = 0, . . . , 𝑅 /2 − 1); 
+
+> 3
+
+for 𝑟 = 0, 1, . . . , 𝑅 /2 − 1 do  
+
+> 4
+
+if 𝑟 > 0 and 𝑟 mod 𝑇 ≡ 0 then // reassign clients and reset experts  
+
+> 5
+
+𝜋 (𝑐 ) ← arg min 𝑘 ValLoss (𝜃 (𝑟 −1) 
+
+> 𝑘
+
+, 𝐷 𝑐  
+
+> val
+
+) ∀ 𝑐 ; 
+
+> 6
+
+A𝑘 ← { 𝑐 : 𝜋 (𝑐 ) = 𝑘 } ∀ 𝑘 ; 𝑊 𝑘 ← 0, 𝑛 𝑘 ← 0 ∀𝑘 ; 
+
+> 7
+
+𝜃 (𝑟 −1) 
+
+> 𝑘
+
+← 𝜃 (𝑟 −1) 
+
+> 𝑔
+
+∀𝑘 ; // reset experts to reference  
+
+> 8
+
+end  
+
+> 9
+
+𝐺 𝑟 ← GroupDebiasedSample ( | 𝐺 |, { A 𝑘 } ) ; 
+
+> 10
+
+foreach 𝑐 ∈ 𝐺 𝑟 in parallel do  
+
+> 11
+
+𝜃 (𝑟 )   
+
+> 𝜋 (𝑐 ),𝑐
+
+← LocalTrain (𝜃 (𝑟 −1)   
+
+> 𝜋 (𝑐 )
+
+; 𝐷 𝑐  
+
+> train
+
+); 
+
+> 12
+
+end         
+
+> // expert update: cumulative average +moving average
+> 13
+
+for 𝑘 = 1, . . . , 𝐾 do  
+
+> 14
+
+𝐺 𝑟,𝑘 ← 𝐺 𝑟 ∩ A 𝑘 ; if 𝐺 𝑟,𝑘 = ∅ then continue ; 
+
+> 15
+
+¯𝜃 (𝑟 ) 
+
+> 𝑘
+
+← 1 
+
+> |𝐺 𝑟,𝑘 |
+
+Í𝑐 ∈𝐺 𝑟,𝑘 𝜃 (𝑟 ) 
+
+> 𝑘,𝑐
+
+; 
+
+> 16
+
+𝑊 𝑘 ← 𝑊 𝑘 + | 𝐺 𝑟,𝑘 | · ¯𝜃 (𝑟 ) 
+
+> 𝑘
+
+; 𝑛 𝑘 ← 𝑛 𝑘 + | 𝐺 𝑟,𝑘 |; 𝑠 𝑘 ← 𝑊 𝑘 /𝑛 𝑘 ; 
+
+> 17
+
+𝜃 (𝑟 ) 
+
+> 𝑘
+
+← ( 1 − 𝑤 ) 𝜃 (𝑟 −1) 
+
+> 𝑘
+
++ 𝑤 𝑠 𝑘 ; 
+
+> 18
+
+end  
+
+> 19
+
+𝜃 (𝑟 ) 
+
+> 𝑔
+
+← 1 
+
+> |𝐺 𝑟 |
+
+Í𝑐 ∈𝐺 𝑟 𝜃 (𝑟 )   
+
+> 𝜋 (𝑐 ),𝑐
+
+; // reference: uniform average  
+
+> 20
+
+end            
+
+> // freeze the discovered groups at the end of Phase 1
+> 21
+
+𝜋 (𝑐 ) ← arg min 𝑘 ValLoss (𝜃 (𝑅 /2−1) 
+
+> 𝑘
+
+, 𝐷 𝑐  
+
+> val
+
+) ∀ 𝑐 ; 
+
+> 22
+
+A★ 
+
+> 𝑘
+
+← { 𝑐 : 𝜋 (𝑐 ) = 𝑘 } ∀ 𝑘 ; discard empty clusters and reindex 𝑘 = 1, . . . , 𝐾 ; 
+
+> 23
+
+Phase 2: Training the Reward Model ( 𝑟 = 𝑅 /2, . . . , 𝑅 − 1); 
+
+> 24
+
+Initialize 𝜙 (𝑅 /2) ← LoRA default init;  
+
+> 25
+
+for 𝑟 = 𝑅 /2, 𝑅 /2 + 1, . . . , 𝑅 − 1 do  
+
+> 26
+
+𝐺 𝑟 ← GroupDebiasedSample ( | 𝐺 |, { A ★ 
+
+> 𝑘
+
+} ) ; broadcast 𝜙 (𝑟 ) to 𝐺 𝑟 ; 
+
+> 27
+
+foreach 𝑐 ∈ 𝐺 𝑟 in parallel do  
+
+> 28
+
+𝜙 (𝑟 +1) 
+
+> 𝑐
+
+← LocalTrain (𝜙 (𝑟 ) ; 𝐷 𝑐  
+
+> train
+
+); 
+
+> 29
+
+end          
+
+> // hierarchical: size-weighted within agroup, uniform across groups
+> 30
+
+𝐺 ★ 
+
+> 𝑟,𝑘
+
+← 𝐺 𝑟 ∩ A ★ 
+
+> 𝑘
+
+∀𝑘 ; K𝑟 ← { 𝑘 : 𝐺 ★ 
+
+> 𝑟,𝑘
+
+≠ ∅}; 
+
+> 31
+
+for 𝑘 ∈ K 𝑟 do  
+
+> 32
+
+¯𝜙 (𝑟 +1) 
+
+> 𝑘
+
+← Í𝑐 ∈𝐺 ★ 
+
+> 𝑟,𝑘
+> 𝑁 𝑐 Í
+> 𝑐 ′ ∈𝐺 ★
+> 𝑟,𝑘
+> 𝑁 𝑐 ′
+
+𝜙 (𝑟 +1) 
+
+> 𝑐
+
+; 
+
+> 33
+
+end  
+
+> 34
+
+𝜙 (𝑟 +1) ← 1 
+
+> |K 𝑟 |
+
+Í𝑘 ∈K 𝑟 ¯𝜙 (𝑟 +1) 
+
+> 𝑘
+
+; 
+
+> 35
+
+end  
+
+> 36
+
+Final Personalization ; 
+
+> 37
+
+Server broadcasts 𝜙 (𝑅 ) to all clients;  
+
+> 38
+
+foreach 𝑐 ∈ [ 𝐶 ] in parallel do  
+
+> 39
+
+𝜃 (PFL ,0) 
+
+> 𝑐
+
+← 𝜙 (𝑅 ) ; fine-tune on 𝐷 𝑐  
+
+> train
+
+to obtain 𝜃 PFL  
+
+> 𝑐
+
+; 
+
+> 40
+
+end  
+
+> 41
+
+return 𝜙 (𝑅 ) , {𝜃 PFL  
+
+> 𝑐
+
+}𝐶 𝑐 =1;
+
+> 12
+
+Description. Algorithm 1 implements FedGD , which applies group debiasing when the true preference groups are unknown. Unlike the multi-global designs of FedBiscuit [ 49 ], the 𝐾 expert models are not the object of training: they exist only to discover a partition of the clients, and the model that clients ultimately personalize is a single reward model 𝜙 trained afterwards. Like the single-global design of Section 2.1, each client receives exactly one model per round, so the per-round communication cost is matched. 
+
+Phase 1 (rounds 0 to 𝑅 /2 − 1). The server maintains 𝐾 experts {𝜃 𝑘 }𝐾 𝑘 =1 together with a reference model 𝜃 𝑔 . Clients start from a uniform random assignment, and every 𝑇 rounds each client evaluates all 𝐾 experts on its own validation split and joins the one with the lowest validation loss [ 49 ], giving the groups {A 𝑘 }𝐾 𝑘 =1. Each reassignment also resets every expert to the current reference model, 𝜃 𝑘 ← 𝜃 𝑔 , so that an expert does not carry over what it learned from the clients it held before the reassignment. In the rounds between two reassignments, the server draws the participating set 𝐺 𝑟 with group-debiased sampling over the current groups, sends each selected client the expert of its own group, and receives the locally trained model. Because a single round contributes only |𝐺 𝑟 |/ 𝐾 clients to a given expert on average, the server accumulates the returned models since the last reassignment and takes their cumulative average 𝑠 𝑘 , then updates the expert as a moving average 𝜃 (𝑟 ) 
+
+> 𝑘
+
+= (1 − 𝑤 )𝜃 (𝑟 −1) 
+
+> 𝑘
+
++ 𝑤 𝑠 𝑘 ; this estimates each expert from more clients than a single round provides and damps the round-to-round variance of the estimate. The reference model is updated by a uniform average over 𝐺 𝑟 : it serves as a neutral point to which the experts are reset rather than as a loss minimizer, and since every client takes the same 𝜏 local steps, weighting by dataset size here would let the discovered partition follow data volume rather than preference. At the end of Phase 1 the clients are reassigned once more, empty clusters are discarded, and the resulting groups {A ★ 
+
+> 𝑘
+
+} are frozen. 
+
+Phase 2 (rounds 𝑅 /2 to 𝑅 − 1). The remaining half of the budget trains a single reward model 𝜙 from a fresh LoRA initialization, with group-debiased sampling over the frozen groups and hierarchical aggregation: the returned models are averaged in proportion to 𝑁 𝑐 within each group, and the resulting group models are then averaged uniformly. Debiasing the sampling equalizes how often a group is heard, and aggregating hierarchically keeps that equality at the server, where weighting every client by 𝑁 𝑐 would otherwise let a group with larger clients dominate a round it shares with a smaller one. Starting from a fresh initialization rather than from 𝜃 𝑔 isolates 𝜙 from the intermediate, unstable partitions that Phase 1 passes through; we compare the two choices empirically in Appendix C.3. Note that 𝜙 therefore receives only 𝑅 /2 rounds of training, half the budget given to the single-global and multi-global baselines. 
+
+Final personalization. The server broadcasts 𝜙 (𝑅 ) to all clients, and each client fine-tunes it on 𝐷 𝑐  
+
+> train
+
+without further communication to obtain 𝜃 PFL  
+
+> 𝑐
+
+. In the notation of Section 2.1, FedGD is a single-global design with 𝜃 init  
+
+> 𝑐
+
+= 𝜙 (𝑅 ) for every client; the 𝐾 experts and the reference model are discarded after Phase 1. When the discovered partition coincides with the true preference groups, this reduces exactly to the FL_target oracle of Section 3.2. 
+
+## B.2 FedBiscuit [49] 
+
+Description. Algorithm 2 is the federated counterpart of Multi-CL: it trains one global model per preference group while discovering the groups from decentralized data instead of assuming them. We follow FedBiscuit [ 49 ] and reinterpret it in an EM-style manner [ 8 ] for our personalized reward modeling setting. The server maintains 𝐾 cluster-specific global models but sends only one of them to each client per round, so the per-round communication cost matches the single-global design of Section 2.1. Cluster assignments are refreshed every 𝑇 
+
+rounds: the E-step assigns each client to the model with the lowest validation loss on 𝐷 𝑐 
+
+> val
+
+, and the M-step performs 𝑇 rounds of clustered federated learning, where each cluster updates only its assigned model. Phase 1 warms up each model independently with FedAvg for 𝑇 rounds so that the first E-step does not operate on 𝐾 identical models. Without this warm-up, every client would observe identical validation losses for all cluster-specific models, making the initial assignment arbitrary. Phase 2 then alternates between the E-step and M-step. Since assignments based solely on validation loss may produce highly imbalanced clusters, each reassignment is followed by the original size-balancing heuristic, which iteratively moves clients from the largest cluster to the smallest until the cluster sizes differ by at most one while minimizing the increase in validation loss. Aggregation follows the original FedBiscuit rule [49], 
+
+𝜃 (𝑟 ) 
+
+> 𝑘
+
+=
+
+
+
+1 −∑︁  
+
+> 𝑐 ∈𝑆 𝑟,𝑘
+
+𝑝 𝑐 
+
+
+
+𝜃 (𝑟 −1) 
+
+> 𝑘
+
++∑︁  
+
+> 𝑐 ∈𝑆 𝑟,𝑘
+
+𝑝 𝑐 𝜃 (𝑟 ) 
+
+> 𝑘,𝑐
+
+, 𝑝 𝑐 = 𝑁 𝑐 
+
+Í𝑗 ∈ [ 𝐶 ] 𝑁 𝑗 
+
+, (1) where 𝑆 𝑟,𝑘 denotes the sampled clients assigned to model 𝑘 at round 𝑟 . Since clients are sampled uniformly from [𝐶 ] rather than from each cluster, the total weight Í𝑐 ∈𝑆 𝑟,𝑘 𝑝 𝑐 varies substantially across rounds. Directly averaging only the participating clients would therefore produce unstable updates when few clients from a cluster are sampled. The residual term preserves a (1 − Í𝑐 ∈𝑆 𝑟,𝑘 𝑝 𝑐 ) fraction of the previous model, stabilizing the optimization under sparse cluster participation. In Phase 3, each client selects the model among {𝜃 (𝑅 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 with the lowest validation loss on its validation split and fine-tunes it locally, yielding 𝜃 init  
+
+> 𝑐
+
+= 𝜃 (𝑅 )
+
+> 𝜋 ★
+> 𝑐
+
+in the notation of Section 2.1. Unlike FedGD , which discards the auxiliary experts after Phase 1 and deploys a single reward model, FedBiscuit retains all 𝐾 cluster-specific models at deployment, requiring each client to evaluate all 𝐾 models before personalization. 
+
+> 13
+
+Algorithm 2: FedBiscuit: Federated Training with Size-Balanced Hard-Clustered Global Models and Final Personalization 
+
+Input: number of global models 𝐾 ; total rounds 𝑅 ; reassignment period 𝑇 ; local steps 𝜏 ; client set [𝐶 ]; dataset sizes {𝑁 𝑐 }𝐶 𝑐 =1; initial parameters 
+
+{𝜃 (0) 
+
+> 𝑘
+
+}𝐾 𝑘 =1
+
+Result: clustered global models {𝜃 (𝑅 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 and personalized models {𝜃 PFL  
+
+> 𝑐
+
+}𝐶 𝑐 =1 
+
+> 1
+
+𝑝 𝑐 ← 𝑁 𝑐 /Í𝑗 ∈ [ 𝐶 ] 𝑁 𝑗 ∀𝑐 ; 
+
+> 2
+
+Phase 1: Warm-up (independent FedAvg for each model) ; 
+
+> 3
+
+for 𝑘 = 1, 2, . . . , 𝐾 do  
+
+> 4
+
+for 𝑡 = 1, 2, . . . ,𝑇 do  
+
+> 5
+
+Sample a client subset 𝑆 𝑡,𝑘 ⊆ [ 𝐶 ]; 
+
+> 6
+
+foreach 𝑐 ∈ 𝑆 𝑡,𝑘 in parallel do  
+
+> 7
+
+Client 𝑐 receives 𝜃 (𝑡 −1) 
+
+> 𝑘
+
+; 
+
+> 8
+
+Run 𝜏 local update steps on 𝐷 𝑐  
+
+> train
+
+and send 𝜃 (𝑡 ) 
+
+> 𝑘,𝑐
+
+to the server;  
+
+> 9
+
+end  
+
+> 10
+
+𝜃 (𝑡 ) 
+
+> 𝑘
+
+← 1 
+
+> |𝑆 𝑡,𝑘 |
+
+Í𝑐 ∈𝑆 𝑡,𝑘 𝜃 (𝑡 ) 
+
+> 𝑘,𝑐
+
+; // FedAvg update for model 𝑘  
+
+> 11
+
+end  
+
+> 12
+
+end  
+
+> 13
+
+Phase 2: Size-balanced hard assignment ; 
+
+> 14
+
+for 𝑟 = 𝑇 + 1,𝑇 + 2, . . . , 𝑅 do  
+
+> 15
+
+if 𝑟 − 1 ≡ 0 ( mod 𝑇 ) then        
+
+> // (1) Client-driven reassignment by validation loss
+> 16
+
+Server broadcasts {𝜃 (𝑟 −1) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 to all clients;  
+
+> 17
+
+foreach 𝑐 ∈ [ 𝐶 ] do  
+
+> 18
+
+ℓ𝑐,𝑘 ← ValLoss (𝜃 (𝑟 −1) 
+
+> 𝑘
+
+, 𝐷 𝑐  
+
+> val
+
+) ∀𝑘 ; 𝜋 (𝑐 ) ← arg min 𝑘 ℓ𝑐,𝑘 ; 
+
+> 19
+
+end  
+
+> 20
+
+A𝑘 ← { 𝑐 : 𝜋 (𝑐 ) = 𝑘 } ∀ 𝑘 ;    
+
+> // (2) Size balancing
+> 21
+
+while max 𝑘 | A 𝑘 | − min 𝑘 | A 𝑘 | > 1 do  
+
+> 22
+
+𝑘 + ← arg max 𝑘 | A 𝑘 |; 𝑘 − ← arg min 𝑘 | A 𝑘 |; 
+
+> 23
+
+𝑐 ★ ← arg min 𝑐 ∈A 𝑘 +
+
+ ℓ𝑐,𝑘 − − ℓ𝑐,𝑘 +
+
+ ; // least-cost move  
+
+> 24
+
+A𝑘 + ← A 𝑘 + \ { 𝑐 ★ }; A𝑘 − ← A 𝑘 − ∪ { 𝑐 ★ }; 𝜋 (𝑐 ★ ) ← 𝑘 − ; 
+
+> 25
+
+end  
+
+> 26
+
+end        
+
+> // (3) Uniform sampling and cluster-wise training
+> 27
+
+Sample a subset of participating clients 𝑆 𝑟 ⊆ [ 𝐶 ]; 
+
+> 28
+
+for 𝑘 = 1, 2, . . . , 𝐾 do  
+
+> 29
+
+𝑆 𝑟,𝑘 ← 𝑆 𝑟 ∩ A 𝑘 ; // {𝑆 𝑟,𝑘 }𝐾 𝑘 =1 partitions 𝑆 𝑟  
+
+> 30
+
+if 𝑆 𝑟,𝑘 ≠ ∅ then  
+
+> 31
+
+Server sends 𝜃 (𝑟 −1) 
+
+> 𝑘
+
+to all 𝑐 ∈ 𝑆 𝑟,𝑘 ; 
+
+> 32
+
+foreach 𝑐 ∈ 𝑆 𝑟,𝑘 in parallel do  
+
+> 33
+
+Client 𝑐 runs 𝜏 local update steps on 𝐷 𝑐  
+
+> train
+
+and sends 𝜃 (𝑟 ) 
+
+> 𝑘,𝑐
+
+to the server;  
+
+> 34
+
+end  
+
+> 35
+
+𝜃 (𝑟 ) 
+
+> 𝑘
+
+←  1 − Í𝑐 ∈𝑆 𝑟,𝑘 𝑝 𝑐 
+
+𝜃 (𝑟 −1) 
+
+> 𝑘
+
++ Í𝑐 ∈𝑆 𝑟,𝑘 𝑝 𝑐 𝜃 (𝑟 ) 
+
+> 𝑘,𝑐
+
+; // weighted aggregation with residual  
+
+> 36
+
+end  
+
+> 37
+
+end  
+
+> 38
+
+end  
+
+> 39
+
+Phase 3: Final personalization ; 
+
+> 40
+
+Server broadcasts {𝜃 (𝑅 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 to all clients;  
+
+> 41
+
+foreach 𝑐 ∈ [ 𝐶 ] do  
+
+> 42
+
+𝜋 ★ 
+
+> 𝑐
+
+← arg min 𝑘 ValLoss (𝜃 (𝑅 ) 
+
+> 𝑘
+
+, 𝐷 𝑐  
+
+> val
+
+); 
+
+> 43
+
+end  
+
+> 44
+
+foreach 𝑐 ∈ [ 𝐶 ] in parallel do  
+
+> 45
+
+𝜃 (PFL ,0) 
+
+> 𝑐
+
+← 𝜃 (𝑅 )
+
+> 𝜋 ★
+> 𝑐
+
+; fine-tune on 𝐷 𝑐  
+
+> train
+
+to obtain 𝜃 PFL  
+
+> 𝑐
+
+; 
+
+> 46
+
+end  
+
+> 47
+
+return {𝜃 (𝑅 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1, {𝜃 PFL  
+
+> 𝑐
+
+}𝐶 𝑐 =1;
+
+> 14
+
+## B.3 Soft-Clustered Multi-Global Models (Soft-FL) 
+
+Algorithm 3: Soft-FL: Federated Training with Soft-Clustered Global Models and Final Personalization 
+
+Input: number of global models 𝐾 ; total rounds 𝑅 ; refresh period 𝑇 ; local steps 𝜏 ; client set [𝐶 ]; initial global parameters {𝜃 (0) 
+
+> 𝑘
+
+}𝐾 𝑘 =1
+
+Result: global models {𝜃 (𝑅 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1 and personalized models {𝜃 PFL  
+
+> 𝑐
+
+}𝐶 𝑐 =1 
+
+> 1
+
+{𝑤 (0) 
+
+> 𝑘,𝑐
+
+}𝑘,𝑐 ← UpdateSoftWeights( {𝜃 (0) 
+
+> 𝑘
+
+}𝐾 𝑘 =1) ; // initial soft assignments  
+
+> 2
+
+Phase 1: Federated multi-global training ; 
+
+> 3
+
+for 𝑟 = 1, 2, . . . , 𝑅 do  
+
+> 4
+
+Sample participating clients 𝑆 𝑟 ⊆ [ 𝐶 ];   
+
+> // (1) Server
+
+→ clients: fused initialization  
+
+> 5
+
+foreach 𝑐 ∈ 𝑆 𝑟 do  
+
+> 6
+
+𝜃 fuse ,(𝑟 −1) 
+
+> 𝑐
+
+← Í𝐾 𝑘 =1 𝑤 (𝑟 −1) 
+
+> 𝑘,𝑐
+
+𝜃 (𝑟 −1) 
+
+> 𝑘
+
+; send 𝜃 fuse ,(𝑟 −1) 
+
+> 𝑐
+
+to client 𝑐 ; 
+
+> 7
+
+end       
+
+> // (2) Local training at clients
+> 8
+
+foreach 𝑐 ∈ 𝑆 𝑟 in parallel do  
+
+> 9
+
+Run 𝜏 local update steps on 𝐷 𝑐  
+
+> train
+
+from 𝜃 fuse ,(𝑟 −1) 
+
+> 𝑐
+
+and send 𝜃 +,(𝑟 ) 
+
+> 𝑐
+
+to the server;  
+
+> 10
+
+end        
+
+> // (3) Expert-wise aggregation at the server
+> 11
+
+for 𝑘 = 1, 2, . . . , 𝐾 do  
+
+> 12
+
+𝜃 (𝑟 ) 
+
+> 𝑘
+
+← 1  
+
+> 𝑍 (𝑟 )
+> 𝑘
+
+Í𝑐 ∈𝑆 𝑟 𝑤 (𝑟 −1) 
+
+> 𝑘,𝑐
+
+𝜃 +,(𝑟 ) 
+
+> 𝑐
+
+, 𝑍 (𝑟 ) 
+
+> 𝑘
+
+= Í𝑐 ∈𝑆 𝑟 𝑤 (𝑟 −1) 
+
+> 𝑘,𝑐
+
+; 
+
+> 13
+
+end       
+
+> // (4) Refresh soft weights every
+
+𝑇 rounds and at 𝑟 =𝑅  
+
+> 14
+
+if (𝑟 mod 𝑇 = 0) or 𝑟 = 𝑅 then  
+
+> 15
+
+{𝑤 (𝑟 ) 
+
+> 𝑘,𝑐
+
+}𝑘,𝑐 ← UpdateSoftWeights( {𝜃 (𝑟 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1); 
+
+> 16
+
+end  
+
+> 17
+
+end  
+
+> 18
+
+Phase 2: Final personalization ; 
+
+> 19
+
+foreach 𝑐 ∈ [ 𝐶 ] do  
+
+> 20
+
+𝜃 init  
+
+> 𝑐
+
+← Í𝐾 𝑘 =1 𝑤 (𝑅 ) 
+
+> 𝑘,𝑐
+
+𝜃 (𝑅 ) 
+
+> 𝑘
+
+; send 𝜃 init  
+
+> 𝑐
+
+to client 𝑐 ; 
+
+> 21
+
+end  
+
+> 22
+
+foreach 𝑐 ∈ [ 𝐶 ] in parallel do  
+
+> 23
+
+𝜃 (PFL ,0) 
+
+> 𝑐
+
+← 𝜃 init  
+
+> 𝑐
+
+; fine-tune on 𝐷 𝑐  
+
+> train
+
+to obtain 𝜃 PFL  
+
+> 𝑐
+
+; 
+
+> 24
+
+end  
+
+> 25
+
+Function UpdateSoftWeights( {𝜃 𝑘 }𝐾 𝑘 =1): 
+
+> 26
+
+Server broadcasts {𝜃 𝑘 }𝐾 𝑘 =1 to all clients;  
+
+> 27
+
+foreach 𝑐 ∈ [ 𝐶 ] in parallel do  
+
+> 28
+
+𝑎 𝑘,𝑐 ← ValAcc (𝜃 𝑘 , 𝐷 𝑐  
+
+> val
+
+) ∀𝑘 ; 
+
+> 29
+
+𝑤 𝑘,𝑐 ← 𝑎 𝑘,𝑐 /Í𝐾 𝑗 =1 𝑎 𝑗,𝑐 ∀𝑘 ; send {𝑤 𝑘,𝑐 }𝐾 𝑘 =1 to the server;  
+
+> 30
+
+end  
+
+> 31
+
+return {𝑤 𝑘,𝑐 }𝑘 ∈ [ 𝐾 ], 𝑐 ∈ [ 𝐶 ] ; 
+
+> 32
+
+return {𝜃 (𝑅 ) 
+
+> 𝑘
+
+}𝐾 𝑘 =1, {𝜃 PFL  
+
+> 𝑐
+
+}𝐶 𝑐 =1;
+
+Description. Algorithm 3 replaces the hard cluster assignment of FedBiscuit (Algorithm 2) with a soft one. Each client 𝑐 holds a weight vector {𝑤 𝑘,𝑐 }𝐾 𝑘 =1 over the 𝐾 global models, obtained by normalizing its validation accuracies, so every model is updated by every client in proportion to how well it fits that client. This is a mixture-of-experts style soft assignment [ 18 , 41 ], but the communication pattern is unchanged: a client still receives exactly one model per round, namely the fused model 𝜃 fuse ,(𝑟 −1) 
+
+> 𝑐
+
+= Í𝑘 𝑤 (𝑟 −1) 
+
+> 𝑘,𝑐
+
+𝜃 (𝑟 −1) 
+
+> 𝑘
+
+formed at the server. After local training the client returns a single model 𝜃 +,(𝑟 ) 
+
+> 𝑐
+
+, from which all 𝐾 experts must be updated. We assign it to each expert with that client’s weight, which amounts to solving 
+
+𝜃 (𝑟 ) 
+
+> 𝑘
+
+= arg min 
+
+> 𝜃
+
+∑︁ 𝑐 ∈𝑆 𝑟 
+
+𝑤 (𝑟 −1) 
+
+> 𝑘,𝑐
+
+𝜃 − 𝜃 +,(𝑟 )
+
+> 𝑐
+> 22
+
+,
+
+whose closed form is the weighted average in Algorithm 3. The weights are refreshed every 𝑇 rounds by broadcasting all 𝐾 models for validation, the soft counterpart of the E-step in FedBiscuit. In Phase 2, client 𝑐 is initialized from its own fused model 𝜃 init  
+
+> 𝑐
+
+= Í𝑘 𝑤 (𝑅 ) 
+
+> 𝑘,𝑐
+
+𝜃 (𝑅 ) 
+
+> 𝑘
+
+and fine-tunes it locally without further communication. 
+
+> 15
+
+Adapter initialization. Soft-FL requires the 𝐾 models to differ at 𝑟 = 0, which the standard LoRA initialization does not provide. There, the down-projection 𝐴 is random and the up-projection 𝐵 is zero, so 𝐵𝐴 = 0 and every model is functionally identical to the frozen base model; all validation accuracies coincide, the weights 𝑤 𝑘,𝑐 are uniform in 𝑘 , and both the fusion and the expert-wise aggregation collapse to the single-global design of Section 2.1. We cannot break this tie with a warm-up phase as FedBiscuit does, since warming up 𝐾 models for 𝑇 
+
+rounds each would cost 𝑇 𝐾 additional rounds and break the matched communication budget. We instead initialize the 𝐾 adapters as small, mutually orthogonal perturbations of the base weights. For a LoRA module with output dimension 𝑑 out , input dimension 𝑑 in , and rank 𝑟 , we draw Gaussian random matrices and take their QR decompositions to obtain orthonormal 
+
+𝑈 big ∈ R𝑑 out ×𝐾𝑟 and 𝑉 big ∈ R𝑑 in ×𝐾𝑟 . Adapter 𝑘 takes the 𝑘 -th contiguous column block 𝑈 𝑘 , 𝑉 𝑘 and is set to 
+
+𝐴 𝑘 ← 𝑉 ⊤ 
+
+> 𝑘
+
+, 𝐵 𝑘 ← 𝜀 layer (1 + jitter · 𝑘 ) 𝑈 𝑘 ,
+
+so that the 𝐾 updates 𝐵 𝑘 𝐴 𝑘 span mutually orthogonal subspaces. Here 𝜀 layer scales with the Frobenius norm of the corresponding base weight (a fan-in heuristic when unavailable) and jitter adds a small per-adapter offset; we use 𝜀 layer = 0.005 and jitter = 0.01 , and apply the same procedure to LoRA embedding modules when present. Each model is thus a slightly different perturbation of the base model, which makes the initial validation accuracies and hence the soft weights non-uniform while keeping all updates in a small neighborhood of the base weights. 
+
+> 16
+
+Table 6: Effect of the number of clusters 𝐾 on personalized accuracy, averaged over clients.                              
+
+> Imbalanced ( acc 80 )Real-world ( acc 240 )Method 234234
+> FedBiscuit 73.50 76.95 80.80 58.94 57.52 57.06 Soft-FL 84.45 86.30 86.20 57.23 56.77 57.00
+> FedGD (ours) 93.50 93.65 93.75 64.47 64.77 64.41 1515 30
+> 49
+> 50
+> 51
+> 52
+> Accuracy (%)
+
+Before Personalization     
+
+> 1515 30
+> 50
+> 60
+> 70
+> 80
+> 90
+> 100
+
+After Personalization    
+
+> 1515 30
+
+Local iteration steps    
+
+> 49
+> 50
+> 51
+> 52
+> 53
+> Accuracy (%)
+> 1515 30
+
+Local iteration steps 
+
+> 50
+> 60
+> 70
+> 80
+> 90
+> 100
+> FL (original lr)
+> FL (smaller lr)
+> CL (original lr)
+> CL (smaller lr)
+
+Figure 5: Sensitivity to the local optimization budget and learning rate on the balanced synthetic dataset. We compare FL and CL by varying the number of local optimization steps before aggregation ( 𝜏 ∈ { 1, 5, 15 , 30 }) and using either the default learning rate or a learning rate that is 10 × smaller. The left and right columns report the global accuracy before and after personalization, respectively. 
+
+## C ADDITIONAL EXPERIMENTAL RESULTS 
+
+This section provides additional experimental analyses that complement the main results. We first evaluate the sensitivity of FedGD to the number of experts. We then analyze the optimization behavior of FL under different local optimization budgets and learning rates. Next, we evaluate the effect of the Phase 2 initialization strategy. 
+
+## C.1 Sensitivity to the Number of Experts 
+
+Table 6 reports the personalized performance under different numbers of experts ( 𝐾 ∈ { 2, 3, 4}). Across both the imbalanced synthetic and real-world datasets, FedGD consistently maintains stable performance across different choices of 𝐾 , indicating that its performance is not sensitive to the exact number of experts. 
+
+## C.2 Optimization Sensitivity 
+
+Figure 5 further studies the effect of the local optimization budget and learning rate on FL and centralized learning (CL). The top row shows the results with the default learning rate, whereas the bottom row uses a learning rate that is 10 × smaller. The left and right columns report the global accuracy before personalization ( acc 0) and the personalized accuracy after 10 local adaptation steps ( acc 10 ), respectively. We vary the number of local optimization steps before aggregation ( 𝜏 ∈ { 1, 5, 15 , 30 }). With the default learning rate, FL and CL achieve similar global accuracies before personalization, whereas FL yields increasingly higher personalized accuracies after 10 local adaptation steps as the local optimization budget grows. In contrast, this trend is largely diminished with the smaller learning rate, suggesting that sufficient local adaptation before aggregation, rather than simply increasing the optimization budget, is essential for obtaining a better initialization for personalization. 
+
+> 17
+
+## C.3 Phase 2 Initialization 
+
+Table 7: Effect of the Phase 2 initialization strategy for the target reward model 𝜙 . Continue warm-starts 𝜙 from the Phase 1 global model 𝜃 𝑔 , whereas Random initializes only 𝜙 from scratch while preserving the expert assignments obtained in Phase 1. Entries report personalized accuracies (%) averaged over clients, where acc 𝑡 denotes the accuracy after 𝑡 local fine-tuning steps. Bold indicates the better result in each column. 
+
+Imbalanced Balanced Phase 2 init acc 0 acc 10 acc 80 acc 0 acc 10 acc 80 
+
+Continue 50.20 91.00 92.45 49.00 87.95 90.10 Random (ours) 54.95 92.35 93.75 49.15 94.55 94.30 
+
+During Phase 1, the client-to-expert assignments gradually converge to the underlying preference groups, but they remain noisy for a substantial number of rounds before stabilizing. The reference model 𝜃 𝑔 is updated throughout this period, so it may already encode optimization bias accumulated under unreliable partitions. To evaluate this effect, we compare two initialization strategies for the target reward model 𝜙 in Phase 2: Continue , which warm-starts 𝜙 from 𝜃 𝑔 , and Random , which initializes only 𝜙 from scratch while preserving the expert assignments learned in Phase 1. As shown in Table 7, random initialization consistently achieves higher personalized accuracy after local adaptation. 1                                                 
+
+> 2
+> 3
+> 4
+> R20
+> G1 (15) G2 (15) G3 (5) G4 (5) G1 (10) G2 (10) G3 (10) G4 (10)
+> 1
+> 2
+> 3
+> 4
+> R40
+> 1
+> 2
+> 3
+> 4
+> R60
+> 1
+> 2
+> 3
+> 4
+> R80
+> 1
+> 2
+> 3
+> 4
+> R100
+> 1
+> 2
+> 3
+> 4
+> R120
+> 1
+> 2
+> 3
+> 4
+> R140
+> 1
+> 2
+> 3
+> 4
+> R160
+> 1
+> 2
+> 3
+> 4
+> R180
+> 1357911 13 15 17 19 21 23 25 27 29 31 33 35 37 39
+> Client index
+> 1
+> 2
+> 3
+> 4
+> R200
+> 1357911 13 15 17 19 21 23 25 27 29 31 33 35 37 39
+> Client index
+> (a) Imbalanced (b) Balanced
+> Expert 1 Expert 2 Expert 3 Expert 4
+
+Figure 6: Evolution of client-to-expert assignments during Phase 1 on the synthetic dataset. Each marker denotes the expert assigned to a client at the corresponding communication round. The left and right columns show the imbalanced and balanced settings, respectively. 
+
+> 18
+
+Figure 6 explains why this gap is wider under balanced groups. The assignments settle by round 100 in the imbalanced setting, whereas the balanced setting continues to reassign clients until round 140. 𝜃 𝑔 is therefore updated under unreliable partitions for a longer portion of Phase 1 in the balanced setting, and warm-starting 𝜙 from it costs 6.60 points of acc 10 (87.95 vs. 94.55) against 1.35 points under imbalance. Random initialization removes this inherited bias while retaining the converged grouping structure, and we adopt it for Phase 2 in all experiments.
