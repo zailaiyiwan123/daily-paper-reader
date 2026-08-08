@@ -1,0 +1,989 @@
+Title: PGMem: Tightly Coupled Persona-Memory Graph for Lifelong Personalized Agents
+
+URL Source: https://arxiv.org/pdf/2608.01708v1
+
+Published Time: Tue, 04 Aug 2026 01:50:05 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# PGMem: Tightly Coupled Persona–Memory Graph for Lifelong Personalized Agents 
+
+Wonjun Choi 1, Yerim Kim 1, Yukyung Lee 2, †, and Susik Yoon 1, †
+
+> 1
+
+Korea University, Seoul, Korea 
+
+> 2
+
+Boston University, Boston, USA 
+
+{migreeni, dpfla274, susik}@korea.ac.kr , ylee5@bu.edu 
+
+Abstract 
+
+Long-term personalized dialogue agents must track user preferences as their personas evolve. Existing memory systems organize past events well, but store personas as flat profiles de-tached from the events that justify them. This loose coupling leads to the memory–persona validity gap and the persona-aware retrieval gap. We propose PGMem, a heterogeneous persona-memory graph that connects event and persona nodes through typed provenance and evidence edges, keeping each persona sig-nal traceable to the events that support or re-vise it. At retrieval time, PGMem expands from query-relevant seeds and ranks signals by evidential validity. Across three benchmarks with small language model backbones, PG-Mem consistently outperforms summary-based, persona-aware, graph-structured, and agentic memory baselines, and improves performance as the context grows. The source code of PG-Mem is available at https://github.com/ wonjunchoi23/pgmem .
+
+1 Introduction 
+
+Lifelong AI agents are increasingly expected to provide personalized interactions as large language models (LLMs) continue to advance (Zheng et al., 2026). Building such agents requires a memory module that organizes historical interactions and tracks the evolution of user personas (Zhang et al., 2025b). This dependence on explicit memory be-comes even more pronounced for agents on small language models (SLMs) (Wang et al., 2025a), whose limited context windows and reasoning ca-pabilities restrict their ability to recover such infor-mation directly from raw dialogue. One primary line of relevant work has advanced by improving memory construction and retrieval for long-term dialogue. Early methods stored past 
+
+> †Corresponding authors.
+
+conversations as summaries or compressed memo-ries (Zhong et al., 2024; Wang et al., 2025b; Chen et al., 2025). Subsequent work moved beyond flat compression by introducing hierarchical context management (Packer et al., 2023), segment-level memory (Pan et al., 2025), and agentic memory organization (Xu et al., 2025). More recent graph-based memory frameworks (Ong et al., 2025; Yue et al., 2026; Ke et al., 2025) make relations among these event-centric units explicit, capturing related memories beyond isolated top-k similarity retrieval. While they employ structurally richer memories, the units they organize remain mere records of what was said and what happened, leaving the user’s evolving persona outside the formal structure. In parallel, personalization-oriented approaches introduce user profiles or portraits (Zhong et al., 2022, 2024) or dedicated persona modules (Xu et al., 2022b; Li et al., 2025a) to incorporate user-level representations into response generation. However, these methods keep the persona as a con-densed user description or a separate persona bank, leaving it structurally detached from the event mem-ories. Even when updated, such flat stores fail to track whether a persona signal still remains valid when later interactions conflict with it. Taken together, existing approaches treat mem-ory and persona as loosely coupled components, enabling partial personalization but falling short of truly personalized lifelong interaction. Conse-quently, neither line of work explicitly models how events and persona signals ground one another. This structural decoupling drives a common failure mode, attributed to two fundamental gaps. As illustrated in Figure 1, consider a scenario where a user first expresses a preference for lively pubs with beer, later states that they have stopped drinking, and subsequently reports that visiting a pub made this change harder. This final utterance carries a persona signal only implicitly. In this con-text, the difficult pub visit becomes informative 1arXiv:2608.01708v1 [cs.CL] 3 Aug 2026 Long-term Dialogues        
+
+> I’m not drinking anymore.
+> Today I went to a pub, but the mood made it harder.
+> Timeline
+> ... ...
+> Current Query
+> “Where should I hang out with my friends tonight?”
+> Like lively pubs with beer
+> !
+> .
+> ...
+> PGMem (proposed) :
+> SUPPORT Episode
+> Pub mood made not drinking hard
+> Persona State
+> Not to drink alcohol.
+> Since you are avoiding alcohol,
+> how about a lively café instead?
+> ①Memory-Persona Validity Gap Simple extraction :
+> The pub mood made it harder.
+> ②Persona-aware Retrieval Gap Simple retrieval :
+> Try a lively pub or beer bar .
+
+## ✗
+
+✓Figure 1: A motivating example of personalization fail-ures with shifted user persona across sessions. 
+
+only in light of the earlier shift, as the user is now trying to abstain. If stored merely as a surface-level episode, this evidence fails to validate the user’s current non-drinking state. Specifically, the two gaps inherent in existing approaches are summarized as: • The memory–persona validity gap at memory construction time. Existing methods rarely store episodic memories and persona signals as cou-pled evidence, leaving them unable to represent why a persona signal emerged, how later events support it, or whether a newer signal revises an earlier preference. • The persona-aware retrieval gap at query time. Existing methods rely heavily on surface-level query–memory similarity, omitting latent per-sona states from the retrieval step. Consequently, they surface highly similar historical episodes that answer the literal query but directly conflict with the user’s updated persona, failing to cap-ture implicit, weakly matched contexts that are essential for persona-consistent generation. To address these gaps, we propose PGMem ,a heterogeneous persona-memory graph for long-term personalized dialogue. The core idea of PG-Mem is to tightly couple memory and persona by framing them as multiple layers of a single graph linked by explicit evidential relations. Lifelong per-sonalization thus shifts from mere profile accumu-lation to proactive evidence management: a persona signal guides response generation only when it is grounded in dialogue evidence and remains consis-tent with subsequent interactions. PGMem implements this idea as a heterogeneous graph with two coupled levels of nodes and typed edges. The event-level contains Context nodes for raw utterance pairs and Episode nodes for episodic summaries. The persona-level contains State nodes for transient persona signals and Trait nodes for stable dispositions. Simultaneously, these nodes are interconnected by two distinct edge families. Source edges encode provenance across abstraction levels, whereas Evidence edges encode evidential relations between memory and persona: support, contradiction, and temporal shift. This structure fundamentally reshapes retrieval. PGMem starts from query-relevant seed nodes and expands along evidence edges, reaching persona signals that the query barely matches on the surface. PGMem then scores each retrieved signal by its evidential va-lidity. Outdated or contradicted signals are down-weighted, while currently valid persona evidence is prioritized for response generation. Revisiting Figure 1, this tightly coupled frame-work resolves both gaps. During memory construc-tion, the difficult pub visit is linked to the newly up-dated non-drinking state as supporting evidence. At retrieval time, expansion along evidence edges sur-faces the validated non-drinking state and prevents the outdated pub preference from influencing the re-sponse. Finally, the agent suggests an alcohol-free venue rather than a lively bar, enabling persona-consistent generation. Our contributions are summarized as follows: • To our knowledge, this is the first work to for-mulate lifelong personalized dialogue as a prob-lem of evidence-grounded persona management, moving beyond merely accumulated user pro-files and characterizing two structural gaps: the memory–persona validity gap and the persona-aware retrieval gap. • We propose PGMem, a heterogeneous persona-memory graph that tightly couples event mem-ory with persona signals. Typed edges ground persona signals in dialogue evidence and enable validity-aware retrieval. • We evaluate PGMem on three long-term personal-ized dialogue benchmarks under SLM backbones. PGMem outperforms memory- and persona-based baselines, and its advantage widens as dia-logue context grows. Ablations confirm the con-tribution of persona nodes, evidence edges, and validity-aware retrieval. 22 Related Work 
+
+Memory construction and management. Prior work on long-term dialogue memory represents dialogue history as summaries or compact mem-ory states, focusing on how past interactions can be compressed and maintained over time (Zhong et al., 2024; Wang et al., 2025b; Chen et al., 2025). Subsequent work further shows that memory gran-ularity matters, motivating segment-level or multi-granularity designs (Pan et al., 2025; Tan et al., 2025). Another thread addresses memory mainte-nance through hierarchical management, offline consolidation, and agentic evolution (Packer et al., 2023; Chhikara et al., 2025; Fang et al., 2026; Salama et al., 2025; Xu et al., 2025). These meth-ods advance memory organization yet leave per-sona signals outside the structure. PGMem instead links them to their episodic evidence through typed provenance and evidential edges. 
+
+Graph-based memory. Graph-based memory systems connect memories through temporal, causal, semantic, or event-centric relations and re-trieve evidence through graph connectivity rather than independent similarity ranking (Ong et al., 2025; Zhang et al., 2025a; Wu et al., 2025; Jiang et al., 2026). FraCom (Ke et al., 2025) decomposes dialogue into proposition fragments for graph-based composition at retrieval time, while Hyper-Mem (Yue et al., 2026) introduces a topic-episode-fact hypergraph to capture higher-order associa-tions beyond pairwise edges. Existing graph mem-ories use edges mainly to expand retrieval over related events or content units. PGMem instead uses evidence paths to assess which persona sig-nals remain valid for generation. 
+
+Personalization. Personalization-oriented sys-tems explicitly maintain user-level representations for long-term dialogue. Some systems maintain user portraits or user–bot dynamics as part of mem-ory representations (Zhong et al., 2024; Chen et al., 2025), while others introduce dedicated persona extraction modules alongside event memory (Li et al., 2025a) or heterogeneous memory designs for personalized assistant settings (Huang et al., 2026). Yet persona is typically stored as profile-like summaries or descriptor banks, detached from its episodic evidence. PGMem replaces flat persona profiles with individual signals whose validity is assessed against accumulating dialogue evidence. 
+
+3 Problem Setting 
+
+We consider long-term personalized dialogue, in which an assistant interacts with a single user over an extended sequence of utterances. Let uρt 
+
+> t
+
+denote the t-th utterance, where ut is the utterance content and ρt ∈ { user , assistant } indicates the speaker role. The utterance-level dialogue history up to step 
+
+t is denoted as: 
+
+H≤t = ( uρ1 
+
+> 1
+
+, u ρ2 
+
+> 2
+
+, . . . , u ρt 
+
+> t
+
+). (1) The system maintains an external memory state 
+
+M(t) that organizes user-relevant information de-rived from H≤t, including a user persona state 
+
+P(t) ⊆ M (t). Given a user query qt at response time t, the system first retrieves relevant memories from the previous memory state, conditioned on the user’s persona state: 
+
+ˆMqt = R(qt, M(t−1) ; P(t−1) ). (2) The retrieved memory set ˆMqt then conditions response generation, again together with the per-sona state: 
+
+rt = fLM (qt, ˆMqt ; P(t−1) ). (3) The memory M(t) is updated incrementally as the dialogue unfolds, evolving P(t) along with it: 
+
+M(t) = U(M(t−1) , u ρt 
+
+> t
+
+), M(0) = ∅. (4) In this work, we instantiate M as a heteroge-neous persona-memory graph (section 4.1), U as incremental graph construction (section 4.2), and 
+
+R as evidence-guided graph retrieval (section 4.3). 
+
+4 The Proposed Framework PGMem 
+
+As illustrated in Figure 2, PGMem employs a het-erogeneous persona-memory graph for long-term personalized dialogue that tightly couples event records with persona signals through explicit evi-dential relations. 
+
+4.1 Heterogeneous Persona-Memory Graph 
+
+PGMem structures dialogue history as a heteroge-neous persona-memory graph G = ( V, E). Specifi-cally, the node set V comprises two complementary families: event-level nodes which capture episodic contexts, and persona-level nodes which track the user’s evolving state and traits. While these two families remain structurally distinct, explicit cross-type relations E keep persona signals traceable to the underlying source and evidence that validates or revises them. 3Like lively pubs with beer    
+
+> !
+> .
+> I’m not drinking
+> !
+> anymore.
+> … the mood made it harder.
+
+... “Where should I hang out with my friends tonight?”          
+
+> No more drinking Health-conscious Likes to drink
+> Conversation Timeline
+> Since you are avoiding alcohol, how about a lively café instead?
+> CON 2 SFT 1
+> validity score = 0.0 SUP 2 CON 1
+> validity score = 0.7 SUP 1 CON 1
+> validity score = 0.5
+> SUP 1 SFT 1
+> validity score = 1.0
+> ✗
+
+✓✓ ✓     
+
+> Memory Retrieval Memory Construction
+> Persona level Event level
+> Retrieved!
+> (1) Seed retrieval (2) Evidence-Guided Graph Expansion (3) Validity-Aware Final Assembly
+> Node types
+> SUPPORT CONTRADICT SHIFT_TO SOURCE
+> Edge types
+> TTrait
+> SState
+> EEpisode
+> CContext
+
+Figure 2: Overview of PGMem. Memory Construction builds a heterogeneous persona-memory graph from dialogue, with event-level and persona-level nodes connected by SOURCE edges and typed evidence edges. Memory Retrieval 
+
+answers a query in three stages: (1) seed retrieval selects query-aligned anchors, (2) evidence-guided graph expansion traverses typed edges to recover indirectly relevant evidence, and (3) validity-aware final assembly ranks the expanded pool by query relevance and evidential validity. 
+
+4.1.1 Heterogeneous Nodes 
+
+The node set V is organized along two complemen-tary levels. The event-level (Vc, Ve) preserves what was said and what happened, while the persona-level (Vs, Vt) maintains hypotheses about who the user is, mirroring the cognitive distinction between episodic memory (Tulving, 1972) and state–trait personality representations (Fleeson, 2001; John and Srivastava, 1999). 
+
+Event-level: Context and Episode. A Context 
+
+node vc ∈ V c stores the raw utterance at each dia-logue turn. An Episode node ve ∈ V e summarizes a chunk of consecutive dialogue turns into an event-level representation of the local conversation. 
+
+Persona-level: State and Trait. A State node 
+
+vs ∈ Vs captures a short-term persona signal expressed or implied at a specific point in dia-logue, such as a current preference, constraint, goal, stance, or situational condition. A Trait node 
+
+vt ∈ V t represents a more abstract persona hy-pothesis generalized from accumulated dialogues, capturing persistent regularities such as enduring preferences, values, habits, or behavioral tenden-cies. 
+
+Node attributes. A node v ∈ V is annotated with a keyword set K(v) and a domain-label set D(v),providing surface-level and abstract topical cues, respectively. Categorical attributes SCOPE and RE -
+
+CALL _PRIORITY further qualify State nodes. 
+
+4.1.2 Provenance and Evidence Edges Source edges. Esrc encodes provenance across abstraction levels. Each source edge vi ↠ vj de-notes that the higher-level node vj is constructed from the lower-level node vi.
+
+Evidence edges. Eevi encodes typed evidential re-lations among nodes. Each edge (vi, r, v j ) carries a label r ∈ R evi = { ⊕ , ⊖, ⇝, ∅ }, correspond-ing to S UPPORT , C ONTRADICT , S HIFT _T O, and IRRELEVANT relations, respectively. Each label simultaneously specifies the edge’s evidential po-larity and the path sign it contributes during graph expansion. For instance, consider a base State node 
+
+vs 
+
+> 0
+
+representing “the user likes coffee” :• vi ⊕
+
+−→ vj (S UP ): compatible co-active evidence reinforcing vj (e.g., a Trait node “prefers strong espresso” ⊕
+
+−→ vs
+
+> 0
+
+). • vi ⊖
+
+−→ vj (C ON ): conflicting co-active evidence marking vj as challenged (e.g., a co-active State node “trying to cut caffeine” ⊖
+
+−→ vs
+
+> 0
+
+). • vi ⇝ vj (S FT ): a temporally ordered, directional update with vj ≻t vi, in which the newer signal 
+
+vj supersedes vi (e.g., vs 
+
+> 0
+
+⇝ “switched to tea” ). • vi ∅
+
+↮ vj (I RR ): a judged but unrelated pair; car-ries no retrieval evidence but prevents repeated relation judgments during construction. 44.2 Memory Graph Construction 
+
+PGMem instantiates the update operator U intro-duced in Section 3. Given a new utterance ut,the graph is updated by adding newly derived nodes and linking them to existing memory through provenance and evidence relations. 
+
+Node construction. Node construction follows the temporal granularity and abstraction level of each node type. Each dialogue turn yields a Context node for the raw user–assistant exchange. When the utterance carries a persona-relevant signal, a State node is also extracted. At chunk boundaries, recent Context nodes are summarized into an Episode node that captures the local conversational event. Every B chunks, accumulated Context, State, and Episode nodes are used to extract Trait nodes, which represent persistent persona hypotheses sup-ported by repeated or stable evidence. During ex-traction, each node is additionally annotated with retrieval attributes—a keyword set K(v), a domain-label set D(v), and, for State nodes, categorical at-tributes SCOPE and RECALL _PRIORITY —that later guide memory retrieval. 
+
+Evidence edge extraction. In the local update stage, newly created nodes are paired with recent and previously stored candidates, and each pair is assigned a relation label from Revi . The offline update stage extends this coverage by detecting long-range relations between distant, previously unconnected nodes. Together, these locally and globally established edges form evidential paths that allow the retrieval stage to trace multi-hop evi-dential patterns across sparsely connected regions of the graph. See Algorithm 1 in Appendix B.1 for details. The classification prompt applies a fixed de-cision priority that resolves uncertain pairs to IRR, so ambiguity contributes no retrieval evidence (Fig-ure 15). Appendix D.2 reports the resulting edge statistics, a human validation of the assigned labels, and representative labeling cases. 
+
+4.3 Memory Retrieval 
+
+Given a user query q, PGMem retrieves a com-pact evidence set from the memory graph. Seed retrieval scores all candidate nodes across all four node types against q by combining semantic and lexical similarity, selecting budgeted entry points per type. PGMem then expands this pool along typed evidence edges to recover supporting, con-flicting, and shift-related evidence beyond direct query–memory relevance. Final assembly ranks the expanded memory pool by query relevance and evi-dential validity, returning a validity-ranked persona-memory set. 
+
+4.3.1 Stage 1: Seed Retrieval 
+
+Seed retrieval selects a pool of query-aligned an-chors from the full node set, providing a controlled starting point for subsequent evidence-guided ex-pansion. Given a query q, PGMem extracts a nor-malized keyword set K(q) at retrieval time. The lexical overlap between the query and a node v is 
+
+ov( q, v ) = |K (q) ∩ (K(v) ∪ D (v)) |
+
+max( |K (q)|, 1) , (5) where both query keywords and node labels are normalized to single-word forms, making this a strict word-level match. Each candidate node is scored by combining embedding cosine similarity sem( q, v ) and lexical overlap ov( q, v ):
+
+ϕ(q, v ) = wsem · sem( q, v ) + wov · ov( q, v ). (6) The weights wsem and wov depend on SCOPE (v) ∈{BROAD , NARROW }; B ROAD nodes cover broader topical scope, so their lexical overlap is down-weighted to avoid spurious matches. Using ϕ(q, v ),PGMem selects the top-kseed nodes from each of the four node types as seeds. As a complementary signal, PGMem main-tains an Active Persona Set (APS): the top-kaps 
+
+State nodes marked with high RECALL _PRIORITY ,ranked by ϕ(q, v ), which helps retain salient per-sona signals in the pool despite low query relevance. The initial retrieval pool W0 is formed by combin-ing the top-kseed seeds per node type with the kaps 
+
+APS nodes. 
+
+4.3.2 Stage 2: Evidence-Guided Expansion 
+
+Direct query relevance alone fails to surface evi-dence that is structurally linked to retrieved persona signals but lacks topical overlap with the query. PGMem addresses this by tracing evidence edges outward from each seed, accumulating evidence signs along each path so that the expanded pool re-flects not only query relevance but also the validity structure surrounding each retrieved signal. 
+
+Signed evidence traversal. Context seeds anchor query relevance but do not participate in expan-sion directly. They are replaced in the pool by their 5Source-linked Episode, State, and Trait nodes, com-pleting the expansion origin. Each evidence edge (vi, r, v j ) is mapped to a path sign σ ∈ { s+, s −} before traversal: ⊕ (SUP )and forward ⇝ (SFT ) edges carry s+; ⊖ (CON ) and backward ⇝ (SFT ) edges carry s−; ∅ (IRR ) edges are excluded. Signs compose multiplicatively along each path: 
+
+s+ ◦ s+ = s+, s+ ◦ s− = s−. (7) A s+ edge adds compatible evidence and allows continued traversal, whereas a s− edge terminates the path, and in either case traversal stops once a path reaches the hop cap H.
+
+Expanded pool. The expanded pool is 
+
+W1 = W0 ∪ V exp , (8) where Vexp denotes nodes discovered during evi-dence traversal. After deduplication, W1 is passed to final assembly. 
+
+4.3.3 Stage 3: Validity-Aware Final Assembly 
+
+Given W1, PGMem assembles a compact final evidence set by combining query relevance with evidential validity. Superseded ⇝ (SFT ) sources whose targets also appear in W1 are first removed. For each remaining node v ∈ W 1, let S(v) denote the set of pool nodes from which a path with cu-mulative sign s+ reaches v, and C(v) the set from which a path with cumulative sign s− reaches v.The validity score with a smoothing constant α is 
+
+val( v) = |S (v)| + α
+
+|S (v)| + |C (v)| + 2 α . (9) The final ranking score is 
+
+ψ(q, v ) = λval( v) + (1 − λ)ϕ(q, v ), (10) where λ is set to 0.5 by default. The score uses only path counts, so a single mislabeled edge shifts 
+
+|S(v)| or |C(v)| by one rather than flipping a deci-sion (Appendix D.2). PGMem selects the top-ranked nodes under a fixed budget. The resulting evidence set—seeded by query relevance, expanded along evidential structure, and filtered by validity—is serialized by type and status into the generation prompt. See Algorithm 2 in Appendix B.1 for details. 
+
+5 Experiments 
+
+5.1 Experimental Setup Benchmarks. We evaluate PGMem on three long-term personalized dialogue benchmarks. The 
+
+opposed subset of ImplexConv (Li et al., 2025b) is our primary stress test for implicit persona-aware retrieval, which requires reasoning over persona signals semantically distant from the query. PrefE-val (Zhao et al., 2025) targets a multi-persona set-ting; sessions from distinct personas are interleaved, testing whether the agent can correctly retrieve persona-specific knowledge at query time. Person-aMem (Jiang et al., 2025) evaluates dynamic user profiling across temporally ordered sessions, in-cluding preference evolution and personalized rec-ommendation. The three benchmarks stress differ-ent axes of personalization. Together, they evaluate whether memory mechanisms can capture tempo-rally valid, user-specific, and persona-critical evi-dence beyond surface semantic relevance. 
+
+Baselines. We compare our method with repre-sentative long-term dialogue memory baselines. A Full-History baseline feeds all prior dialogue turns directly into the language model without ex-ternal memory. The remaining baselines are Mem-oryBank (Zhong et al., 2024), a summary-based long-term memory framework; LD-Agent (Li et al., 2025a), a persona-aware personalized dialogue agent; THEANINE (Ong et al., 2025), a temporal graph-structured memory model; and A-MEM (Xu et al., 2025), an agentic note-based evolving mem-ory system. These baselines cover full-context, summary-based, persona-aware, graph-structured, and agentic memory paradigms. We additionally evaluate SeCom (Pan et al., 2025), a segment-level memory with compression-based denoising, and H2Memory (Huang et al., 2026), a hierarchical het-erogeneous memory framework, in Appendix E.1. 
+
+Implementation Details. We evaluate all meth-ods using Qwen3-1.7B (Yang et al., 2025) and Gemma-3-1B (Kamath et al., 2025) as backbone SLMs. We use all-MiniLM-L6-v2 1 as the sentence embedding model for embedding-based memory operations and evaluation. All baselines and PG-Mem are run under the same backbone and embed-ding settings. 
+
+> 1https://huggingface.co/sentence-transformers/ all-MiniLM-L6-v2
+
+6Method ImplexConv PrefEval PersonaMem                                                  
+
+> 32k 128k
+> Qwen3-1.7B  Full history 0.99 1.32 40.58 34.14 MemoryBank 1.03 1.21 41.26 36.56 LD-Agent 0.92 1.14 40.58 36.23 A-MEM 0.94 1.39 45.33 43.23 THEANINE 0.98 1.25 40.41 35.42
+> PGMem 1.33 2.21 45.50 46.35 Gemma-3-1B  Full history 0.86 1.44 24.62 28.31 MemoryBank 1.09 1.79 24.96 28.60 LD-Agent 0.89 1.61 27.50 29.85 A-MEM 0.57 1.60 24.11 29.48 THEANINE 0.98 1.55 26.99 29.59
+> PGMem 1.41 2.03 30.39 34.18
+
+Table 1: Comparison results on long-term personalized dialogue benchmarks. ImplexConv and PrefEval report LLM-as-a-judge scores for personalized response qual-ity on a 5-point scale (0–4), while PersonaMem reports accuracy (%) on user persona QAs. Bold and underline denote the best and second-best results, respectively. 
+
+Figure 3: Long-term consistency evaluation results. On ImplexConv (left), avg score is grouped by the number of accumulated dialogue turns. On PrefEval (right), avg score is tracked as the number of interleaved persona sessions m grows. 
+
+Evaluation metrics. Evaluation follows the pro-tocol suited to each benchmark’s answer for-mat. ImplexConv responses are evaluated with a four-dimensional binary checklist adapted from CheckEval (Lee et al., 2025), a checklist-based LLM-as-a-judge method. We further report human validation of the adapted ImplexConv checklist in Appendix C.2. PrefEval uses the LLM-as-a-judge framework provided by the original bench-mark (Zhao et al., 2025). Both ImplexConv and PrefEval are thus scored on a 0-4 (5-point) scale, obtained by summing four binary dimension judg-ments. PersonaMem is formulated as four-way mul-tiple choice and evaluated by exact-match accuracy. We use gpt-4o-mini (OpenAI et al., 2024) as the judge model at temperature 0.
+
+5.2 Overall Performance 
+
+Table 1 shows the results across three benchmarks under two backbone SLMs. PGMem achieves the strongest personalization across all long-term dia-logue settings. 
+
+Persona-aware retrieval. On ImplexConv, PG-Mem shows the highest overall score, improving over the best baseline by up to 29%, with partic-ularly high scores on the persona-adaptation di-mensions. On PrefEval, PGMem shows the highest score under both backbone SLMs (2.21 on Qwen3-1.7B and 2.03 on Gemma-3-1B), up to 59% above the strongest baselines. Baselines retrieve by query similarity alone, so they miss persona signals that the query depends on but does not topically overlap with. PGMem recov-ers these signals through evidence-edge expansion, which its persona-adaptation scores directly reflect. The judge dimensions and per-dimension scores for both benchmarks are summarized in Appen-dices A.4 and C.1. 
+
+Long-term validity and consistency. In long-term dialogue the user’s persona evolves over time, and the memory has to follow those shifts instead of letting stale signals pile up. The long-horizon results from Figure 3 indicate that PGMem does this most consistently among the compared meth-ods. Across accumulating turns on ImplexConv and across interleaved persona sessions on PrefEval, PGMem sustains a large and steady margin over the baselines. On PersonaMem, PGMem’s accuracy improves as the context window grows from 32k to 128k (45.5 →46.4 on Qwen3-1.7B, 30.4 →34.2 on Gemma-3-1B). On Qwen3-1.7B it is the only method to improve at all, while every baseline de-grades. PGMem achieves this with typed edges that tie each persona signal to its grounding events and a validity score that down-weights signals later interactions have superseded. 
+
+5.3 Ablation Study 
+
+We analyze the individual contributions of PG-Mem’s components at two levels, covering its three main components (persona-level nodes, event-level nodes, and graph expansion) and its evidence rela-tion types ( ⊕ (SUP ), ⊖ (CON ), ⇝ (SFT )), under the same Qwen3-1.7B backbone. Table 2 (top) shows that persona nodes are the most critical compo-nent: their removal yields the largest drop on every benchmark, confirming that persona-level repre-7Model ImplexConv PrefEval PersonaMem 32k 128k PGMem 1.33 2.21 45.50 46.35                                                       
+
+> Component
+> w/o Persona-level 1.21 ↓0.12 2.02 ↓0.19 41.09 ↓4.41 38.80 ↓7.55
+> w/o Event-level 1.29 ↓0.04 2.24 ↑0.03 43.80 ↓1.70 42.28 ↓4.07
+> w/o Graph 1.27 ↓0.05 2.21 ↓0.01 44.99 ↓0.51 43.53 ↓2.82
+> Edge type
+> w/o ⊕(SUP )1.33 ↓0.00 2.21 ↓0.00 45.84 ↑0.34 43.53 ↓2.82
+> w/o ⊖(CON )1.29 ↓0.04 2.20 ↓0.01 44.99 ↓0.51 44.37 ↓1.98
+> w/o ⇝(SFT )1.31 ↓0.02 2.17 ↓0.04 45.33 ↓0.17 44.44 ↓1.91
+
+Table 2: Ablation study of PGMem on model compo-nents (top) and evidence edge types (bottom). Subscripts in red and blue indicate performance degradation and improvement relative to the full PGMem, respectively. 
+
+sentation drives PGMem’s retrieval. Event nodes contribute more modestly, with their removal even yielding a slight gain on PrefEval, indicating that Episode/Context nodes can occasionally introduce mild noise. Removing graph expansion causes a degradation that widens sharply as dialogue his-tory grows, confirming that the graph structure is what lets PGMem surface valid persona evi-dence under long-term context. Table 2 (bottom) further ablates each evidence relation individually, where removing ⊖ (CON ) or ⇝ (SFT ) consistently degrades performance on the benchmarks that test persona conflict and evolution, with the largest drops on PersonaMem-128k ( −1.98 and −1.91, re-spectively), while ⊕ (SUP ) matters primarily under the longest horizon. 
+
+5.4 In-Depth Analysis of PGMem Sensitivity Analysis. We analyze PGMem’s sen-sitivity to its retrieval budget and to the ranking weight λ in Eq. (10). The budget jointly controls the seed retrieval set before graph expansion and the final memory set passed to the generator. The default budget is set to match PGMem’s final mem-ory size with the other baselines (full configuration in Appendix B.2). We scale every budget parame-ter together by a common factor across five levels from 0.3× to 1.7×. As shown in Figure 4, PGMem remains stable across the entire range. ImplexConv and PrefEval peak at the lower budget levels and decline mildly as the budget grows, while Person-aMem peaks at the default budget on both context lengths, making the default a reasonable compro-mise across all three benchmarks. This matches our design rationale, in which graph expansion al-
+
+Figure 4: Sensitivity to the retrieval budget, scaling the seed counts and final assembly sizes together around the default. 
+
+λ ImplexConv PrefEval PersonaMem 32k 128k 
+
+0.00 1.20 2.14 47.03 42.57 0.25 1.28 2.22 46.35 43.34 
+
+0.50 (default) 1.33 2.21 45.50 46.35 0.75 1.31 2.22 44.99 42.90 1.00 1.34 2.23 43.97 43.12 
+
+Table 3: Sensitivity to the ranking weight λ in Eq. (10), which balances evidential validity and query relevance. 
+
+ready recovers persona-relevant evidence beyond the seed set, so that a compact seed budget suf-fices and additional memories only introduce noise rather than useful evidence. For λ, we sweep from 0 to 1 in steps of 0.25, with 0.5 as the default, and report results in Ta-ble 3. Removing validity from the ranking ( λ = 0 )is weakest on ImplexConv and PrefEval, so ev-idential validity contributes beyond query rele-vance. PersonaMem-32k favors query relevance and PersonaMem-128k peaks at the default, mak-ing λ = 0 .5 a stable choice across all benchmarks. The weight is also an interpretable control over how strongly retrieval reflects the evolving persona. 
+
+Efficiency Analysis. Token consumption largely determines how a memory mechanism scales as di-alogues grow longer. For ImplexConv, we measure token usage at the memory-construction stage, ac-cumulated over a full session, and at the QA stage, 8Method Construction (10 3 tok.) QA (tok.)                     
+
+> Input Output Input
+> MemoryBank 342.3 37.4 2,875 LD-Agent 443.7 14.0 1,371 A-MEM 2,265.7 633.4 5,124 THEANINE 3,564.7 118.6 1,461 Full History ––27,391
+> PGMem 2,254.0 271.0 1,847
+> Table 4: Token consumption on ImplexConv. Construc-tion is the total tokens to build memory over a full ses-sion. QA is the average per query at inference. Dashes denote no construction stage (Full History).
+
+incurred per query during inference. As shown in Table 4, at construction time, PGMem builds a typed evidence graph yet incurs a lower total token cost than the other structure-building baselines, A-MEM and THEANINE. At query time, PGMem remains lightweight, staying well below the agen-tic and full-history baselines and only modestly above the cheapest ones. Summary-based methods are cheaper to construct but spend more per query. Token count alone does not capture the operational cost of graph maintenance. In Appendix D.1, we report LLM calls and wall-clock latency for mem-ory construction, together with the number of LLM calls per query, for PGMem and the two structure-building baselines. Overall, PGMem keeps both costs moderate, supporting its scalability to longer-term dialogue. 
+
+6 Conclusion 
+
+In this work, we addressed a blind spot in long-term personalized dialogue: existing memory mech-anisms organize past interactions well but leave the user’s evolving persona detached from the events that ground it. We traced this to two fundamen-tal gaps—the memory–persona validity gap and the persona-aware retrieval gap . To close these gaps, we proposed PGMem, an evidence-guided heterogeneous persona-memory graph that con-nects event and persona-level nodes through typed evidence edges. Rather than accumulating personas as a static profile, PGMem keeps every persona signal traceable to the evidence that supports or revises it, and at retrieval time expands from query-relevant seeds along evidence edges to recover persona-critical evidence that direct query–memory similarity misses. Across three long-term person-alized dialogue benchmarks, PGMem consistently outperforms full-history, summary-based, persona-aware, graph-structured, and agentic memory base-lines. We believe that organizing persona memory as an evidence graph offers a practical path toward reliable personalization, especially for resource-constrained SLM backbones, where personaliza-tion must be carried by memory structure rather than backbone capacity. 
+
+Limitations 
+
+Although PGMem demonstrates the value of rela-tional graph structure for persona-aware memory modules, several limitations remain. The current ev-idence edge taxonomy captures core evidential po-larities, but not finer-grained cognitive dimensions. Grounding it in cognitive models of belief revision could enable more nuanced validity reasoning be-yond the current binary sign composition (Hwang et al., 2021). Our experiments are confined to synthetic datasets, since authentic long-term dialogues with organic persona evolution are rarely public and re-main proprietary due to privacy constraints (Xu et al., 2022a). Constructing privacy-preserving benchmarks that better approximate real-world per-sona dynamics is an important direction for fu-ture evaluation. Furthermore, interactions spanning months or years would accumulate far more nodes and edges than the contexts we evaluate, so effi-cient lifecycle policies for pruning, consolidation, and decay become necessary in these lifelong sce-narios. User data rights raise the same requirement, particularly in sensitive domains such as healthcare. Because persona signals are stored as individual, human-readable State and Trait nodes rather than a condensed profile, a user can delete a specific signal without discarding the rest, and low validity and S HIFT _TO (⇝) supersession already identify stale and superseded nodes as candidates for au-tomatic pruning. We expect these policies to be simple additions rather than a redesign and leave them to future work. 
+
+Acknowledgments 
+
+This work was supported by the Institute of In-formation & Communications Technology Plan-ning & Evaluation (IITP) grant funded by the Korea government(MSIT) (IITP-2026-RS-2026-25507543 (40%), IITP-2026-RS-2025-02304828 (40%), IITP-2026-RS-2020-II201819 (10%), and IITP-2026-RS-2026-25585074 (10%)). 9References 
+
+Nuo Chen, Hongguang Li, Jianhui Chang, Juhua Huang, Baoyuan Wang, and Jia Li. 2025. Compress to impress: Unleashing the potential of compressive memory in real-world long-term conversations. In 
+
+Proceedings of the 31st International Conference on Computational Linguistics , pages 755–773, Abu Dhabi, UAE. Association for Computational Linguis-tics. Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj Yadav. 2025. Mem0: Building production-ready ai agents with scalable long-term memory. In European Conference on Artificial Intel-ligence .Jizhan Fang, Xinle Deng, Haoming Xu, Ziyan Jiang, Yuqi Tang, Ziwen Xu, Shumin Deng, Yunzhi Yao, Mengru Wang, Shuofei Qiao, Huajun Chen, and Ningyu Zhang. 2026. LightMem: Lightweight and ef-ficient memory-augmented generation. In The Four-teenth International Conference on Learning Repre-sentations .William Fleeson. 2001. Toward a structure-and process-integrated view of personality: Traits as density dis-tributions of states. Journal of personality and social psychology , 80(6):1011. Zhaopei Huang, Qifeng Dai, Guozheng Wu, Xiaopeng Wu, Xubin Li, Tiezheng Ge, Wenxuan Wang, and Qin Jin. 2026. Mem-PAL: Towards memory-based personalized dialogue assistants for long-term user-agent interaction. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 40, pages 31229–31237. Jena D Hwang, Chandra Bhagavatula, Ronan Le Bras, Jeff Da, Keisuke Sakaguchi, Antoine Bosselut, and Yejin Choi. 2021. Comet-Atomic 2020: On sym-bolic and neural commonsense knowledge graphs. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pages 6384–6392. Associ-ation for the Advancement of Artificial Intelligence (AAAI). Bowen Jiang, Zhuoqun Hao, Young Min Cho, Bryan Li, Yuan Yuan, Sihao Chen, Lyle Ungar, Camillo Jose Taylor, and Dan Roth. 2025. Know me, respond to me: Benchmarking LLMs for dynamic user profil-ing and personalized responses at scale. In Second Conference on Language Modeling .Dongming Jiang, Yi Li, Guanpeng Li, and Bingzhe Li. 2026. MAGMA: A multi-graph based agentic memory architecture for AI agents. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 36848–36865, San Diego, California, United States. Association for Computational Linguistics. Oliver P John and Sanjay Srivastava. 1999. The big five trait taxonomy: History, measurement, and theoreti-cal perspective. Hand Book of Personality: Theory and Research .Aishwarya Kamath, Johan Ferret, Shreya Pathak, Nino Vieillard, Ramona Merhej, Sarah Perrin, Tatiana Matejovicova, Alexandre Ramé, Morgane Rivière, Louis Rouillard, and 1 others. 2025. Gemma 3 tech-nical report. Preprint , arXiv:2503.19786. Cai Ke, Yiming Du, Bin Liang, Yifan Xiang, Lin Gui, Zhongyang Li, Baojun Wang, Yue Yu, Hui Wang, Kam-Fai Wong, and Ruifeng Xu. 2025. Flexibly utilize memory for long-term conversation via a fragment-then-compose framework. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pages 21119–21136, Suzhou, China. Association for Computational Lin-guistics. Yukyung Lee, JoongHoon Kim, Jaehee Kim, Hyowon Cho, Jaewook Kang, Pilsung Kang, and Najoung Kim. 2025. CheckEval: A reliable LLM-as-a-judge framework for evaluating text generation using check-lists. In Proceedings of the 2025 Conference on Em-pirical Methods in Natural Language Processing ,pages 15771–15798, Suzhou, China. Association for Computational Linguistics. Hao Li, Chenghao Yang, An Zhang, Yang Deng, Xiang Wang, and Tat-Seng Chua. 2025a. Hello again! LLM-powered personalized agent for long-term dialogue. In Proceedings of the 2025 Conference of the Na-tions of the Americas Chapter of the Association for Computational Linguistics: Human Language Tech-nologies (Volume 1: Long Papers) , pages 5259–5276, Albuquerque, New Mexico. Association for Compu-tational Linguistics. Xintong Li, Jalend Bantupalli, Ria Dharmani, Yuwei Zhang, and Jingbo Shang. 2025b. Toward multi-session personalized conversation: A large-scale dataset and hierarchical tree framework for implicit reasoning. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing ,pages 11493–11506, Suzhou, China. Association for Computational Linguistics. Kai Tzu-iunn Ong, Namyoung Kim, Minju Gwak, Hyungjoo Chae, Taeyoon Kwon, Yohan Jo, Seung-won Hwang, Dongha Lee, and Jinyoung Yeo. 2025. Towards lifelong dialogue agents via timeline-based memory management. In Proceedings of the 2025 Conference of the Nations of the Americas Chap-ter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Pa-pers) , pages 8631–8661, Albuquerque, New Mexico. Association for Computational Linguistics. OpenAI, Josh Achiam, Steven Adler, Sandhini Agar-wal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, and 1 others. 2024. GPT-4 Technical Report. 
+
+Preprint , arXiv:2303.08774. Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang, Shishir G. Patil, Ion Stoica, and Joseph E. Gonzalez. 2023. MemGPT: Towards LLMs as operating sys-tems. arXiv preprint arXiv:2310.08560 .
+
+10 Zhuoshi Pan, Qianhui Wu, Huiqiang Jiang, Xufang Luo, Hao Cheng, Dongsheng Li, Yuqing Yang, Chin-Yew Lin, H. Vicky Zhao, Lili Qiu, and Jianfeng Gao. 2025. SeCom: On memory construction and retrieval for personalized conversational agents. In The Thir-teenth International Conference on Learning Rep-resentations .Rana Salama, Jason Cai, Michelle Yuan, Anna Currey, Monica Sunkara, Yi Zhang, and Yassine Benajiba. 2025. MemInsight: Autonomous memory augmenta-tion for LLM agents. In Proceedings of the 2025 Con-ference on Empirical Methods in Natural Language Processing , pages 33136–33152, Suzhou, China. As-sociation for Computational Linguistics. Zhen Tan, Jun Yan, I-Hung Hsu, Rujun Han, Zifeng Wang, Long Le, Yiwen Song, Yanfei Chen, Hamid Palangi, George Lee, Anand Rajan Iyer, Tianlong Chen, Huan Liu, Chen-Yu Lee, and Tomas Pfister. 2025. In prospect and retrospect: Reflective mem-ory management for long-term personalized dialogue agents. In Proceedings of the 63rd Annual Meet-ing of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 8416–8439, Vienna, Austria. Association for Computational Linguistics. Endel Tulving. 1972. Episodic and semantic memory. 
+
+Organization of memory .Fali Wang, Zhiwei Zhang, Xianren Zhang, Zongyu Wu, TzuHao Mo, Qiuhao Lu, Wanjing Wang, Rui Li, Jun-jie Xu, Xianfeng Tang, Qi He, Yao Ma, Ming Huang, and Suhang Wang. 2025a. A comprehensive sur-vey of small language models in the era of large language models: Techniques, enhancements, appli-cations, collaboration with llms, and trustworthiness. 
+
+ACM Trans. Intell. Syst. Technol. , 16(6). Qingyue Wang, Yanhe Fu, Yanan Cao, Shuai Wang, Zhiliang Tian, and Liang Ding. 2025b. Recur-sively summarizing enables long-term dialogue mem-ory in large language models. Neurocomputing ,639:130193. Yaxiong Wu, Yongyue Zhang, Sheng Liang, and Yong Liu. 2025. SGMem: Sentence graph mem-ory for long-term conversational agents. Preprint ,arXiv:2509.21212. Jing Xu, Arthur Szlam, and Jason Weston. 2022a. Be-yond goldfish memory: Long-term open-domain con-versation. In Proceedings of the 60th Annual Meet-ing of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 5180–5197, Dublin, Ireland. Association for Computational Linguistics. Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao Tan, and Yongfeng Zhang. 2025. A-Mem: Agentic memory for LLM agents. In The Thirty-ninth An-nual Conference on Neural Information Processing Systems .Xinchao Xu, Zhibin Gou, Wenquan Wu, Zheng-Yu Niu, Hua Wu, Haifeng Wang, and Shihang Wang. 2022b. Long time no see! open-domain conversation with long-term persona memory. In Findings of the As-sociation for Computational Linguistics: ACL 2022 ,pages 2639–2650, Dublin, Ireland. Association for Computational Linguistics. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Day-iheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, and 41 others. 2025. Qwen3 technical report. Preprint ,arXiv:2505.09388. Juwei Yue, Chuanrui Hu, Jiawei Sheng, Zuyi Zhou, Wenyuan Zhang, Tingwen Liu, Li Guo, and Yafeng Deng. 2026. HyperMem: Hypergraph memory for long-term conversations. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 35237– 35254, San Diego, California, United States. Associ-ation for Computational Linguistics. Yujie Zhang, Weikang Yuan, and Zhuoren Jiang. 2025a. Bridging intuitive associations and deliberate recall: Empowering LLM personal assistant with graph-structured long-term memory. In Findings of the As-sociation for Computational Linguistics: ACL 2025 ,pages 17533–17547, Vienna, Austria. Association for Computational Linguistics. Zeyu Zhang, Quanyu Dai, Xiaohe Bo, Chen Ma, Rui Li, Xu Chen, Jieming Zhu, Zhenhua Dong, and Ji-Rong Wen. 2025b. A survey on the memory mechanism of large language model-based agents. ACM Transac-tions on Information Systems , 43(6):1–47. Siyan Zhao, Mingyi Hong, Yang Liu, Devamanyu Haz-arika, and Kaixiang Lin. 2025. Do LLMs recognize your preferences? evaluating personalized preference following in LLMs. In The Thirteenth International Conference on Learning Representations .Junhao Zheng, Chengming Shi, Xidi Cai, Qiuke Li, Duzhen Zhang, Chenxing Li, Dong Yu, and Qianli Ma. 2026. Lifelong learning of large language model based agents: A roadmap. IEEE Transactions on Pat-tern Analysis and Machine Intelligence , 48(5):5552– 5571. Hanxun Zhong, Zhicheng Dou, Yutao Zhu, Hongjin Qian, and Ji-Rong Wen. 2022. Less is more: Learn-ing to refine dialogue history for personalized di-alogue generation. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies , pages 5808–5820, Seattle, United States. Association for Computational Lin-guistics. Wanjun Zhong, Lianghong Guo, Qiqi Gao, He Ye, and Yanlin Wang. 2024. MemoryBank: Enhancing large language models with long-term memory. In Pro-ceedings of the AAAI conference on artificial intelli-gence , volume 38, pages 19724–19731. 
+
+11 Appendix A Detailed Experiment Settings 
+
+A.1 Datasets 
+
+Table 5 summarizes the statistics of the three bench-marks under our evaluation setup. 
+
+ImplexConv. ImplexConv (Li et al., 2025b) stud-ies implicit reasoning , where persona-relevant evi-dence is semantically distant from the query rather than explicitly stated. It provides opposed and sup-portive subsets, and we use the opposed subset. An opposed scenario introduces a situation that con-tradicts a previously established trait, so a correct answer must reason over conflicting and supersed-ing evidence. We evaluate on 300 conversation in-stances, yielding 1,259 QA queries. 
+
+PersonaMem. PersonaMem (Jiang et al., 2025) targets dynamic user profiling : whether a model tracks how user preferences evolve across tempo-rally ordered, multi-topic sessions, including pref-erence evolution and recommendation in unseen scenarios. We use the 32 k- and 128 k-token history settings, which let us examine how each method behaves as conversational history accumulates. 
+
+PrefEval. PrefEval (Zhao et al., 2025) evaluates whether LLMs infer, retain, and follow user pref-erences in long context. We adapt PrefEval into a multi-persona discrimination setting: we treat each preference–query pair as an independent single-session persona and concatenate N such sessions into one evolving conversation. After appending the k-th session, we evaluate the queries associated with all sessions observed up to k. This cumulative querying protocol yields N (N + 1) /2 QA queries. 
+
+A.2 Baselines 
+
+We compare PGMem with six representative agent memory baselines and a full-history reference base-line. • Full History. This baseline directly provides the entire available dialogue history to the backbone LLM without an explicit memory module. We include it as a memory-free refer-ence point, testing whether structured memory provides benefits beyond naively conditioning on all past interactions. • MemoryBank (Zhong et al., 2024). Memo-ryBank is a summary-based long-term mem-ory framework that compresses past dialogue                 
+
+> Sessions Turns/sess. QAs
+> ImplexConv 300 656 .21,259
+> PrefEval 100 530 5,050
+> P.Mem-32k 37 90 .9589
+> P.Mem-128k 60 406 .42,727
+> Table 5: Dataset statistics under our evaluation setup. For ImplexConv, Sessions counts conversation in-stances; for PrefEval and PersonaMem, concatenated persona-sessions and sessions per history, respectively. PrefEval QAs exceed turns due to cumulative re-querying.
+
+into memory states while maintaining a user portrait. It represents a compact memory ap-proach that combines efficient history com-pression with user-level personalization. • LD-Agent (Li et al., 2025a). A persona-aware personalized dialogue agent that pairs event memory with a dedicated persona module. Its persona module is modeled separately and captures agent and user personas jointly, mak-ing it our representative for explicitly persona-conditioned memory. • THEANINE (Ong et al., 2025). A tempo-ral graph-structured memory model that links memories through typed relations and re-trieves relevant memory timelines. It provides a graph-based baseline for modeling memory evolution over long-term interactions. • A-MEM (Xu et al., 2025). An agentic note-based memory system whose memory units autonomously link and evolve over time. It is included as a recent and competitive instantia-tion of the agentic memory paradigm. • SeCom (Pan et al., 2025). A segment-level memory framework that constructs memory at the conversation-segment granularity and denoises retrieval through prompt compres-sion with an external module (LLMLingua-2). As it relies heavily on an external compression module, we report it as a separate additional baseline in Appendix E.1. • H2Memory (Huang et al., 2026). A hierarchi-cal and heterogeneous memory framework for long-term personalized assistance. We include it as a recent structured-memory comparison in Appendix E.1. 12 Model Parameters License Public Link                
+
+> Qwen3-1.7B 1.7B Apache License 2.0 huggingface.co/Qwen/Qwen3-1.7B
+> Gemma-3-1B 1B Gemma License huggingface.co/google/gemma-3-1b-it
+> Qwen3.5-4B 4B Apache License 2.0 huggingface.co/Qwen/Qwen3.5-4B
+> Gemma-3-4B 4B Gemma License huggingface.co/google/gemma-3-4b-it
+> all-MiniLM-L6-v2 22M Apache License 2.0 huggingface.co/sentence-transformers/all-MiniLM-L6-v2
+
+Table 6: Licenses and sources of the model artifacts used in our experiments. All artifacts are publicly available and used in a manner consistent with their intended research use.                             
+
+> Dimension Sub-dimension Seed Questions Provided Information Question Gen. Ans. Persona Factor Ref. Conv. GT Ans. Response Competence Question Addressing Does the generated answer directly address what the question is asking?
+> ✓✓––✓
+> Persona Adaptation
+> Persona Recognition Is the implicit persona factor reflected in the gen-erated answer?
+> ✓✓✓✓–Generic Distinctness Does the answer read as tailored to a specific individual rather than as a generic answer?
+> ✓✓–––Substantive Integration Is the persona integrated into the answer’s sub-stantive content choices, beyond a surface-level mention?
+> ✓✓✓✓✓
+
+Table 7: ImplexConv LLM-as-a-judge dimensions, adapted from CheckEval (Lee et al., 2025). A checkmark indicates that the corresponding information is provided to the judge prompt for that sub-dimension. 
+
+A.3 Implementation Details Backbone LLMs. All methods use Qwen3-1.7B (Yang et al., 2025) and Gemma-3-1B (Ka-math et al., 2025) as SLM backbones. As personal-ized agents move toward on-device and privacy-preserving deployment, SLMs are the practical backbone as personalized agents move toward on-device and privacy-preserving deployment. Their limited context leaves little room to recover an evolving persona from raw dialogue alone, so any gain reflects the memory structure rather than back-bone capacity. In our additional experiments (sec-tion E), we further evaluate PGMem with the larger Qwen3.5-4B (Yang et al., 2025) and Gemma-3-4B (Kamath et al., 2025) backbones. 
+
+Embedding model. For all embedding-based op-erations such as seed retrieval, semantic similarity scoring, and embedding-based evaluation, we use all-MiniLM-L6-v2 as the sentence encoder. The same encoder is applied identically across PGMem and all baselines. All backbone LLMs and the embedding model are publicly released research artifacts. Their li-censes and sources are listed in Table 6, and our use is consistent with their intended research use. 
+
+Temporal normalization. None of the three benchmarks defines an explicit temporal axis over its conversations, though the relative order of per-sona signals is native to all of them. Since several methods consume timestamps during memory con-struction and retrieval, we impose one normaliza-tion scheme applied uniformly to all methods. We map one unit of conversational structure to a calen-dar day, namely a conversation cluster for Implex-Conv, a system-prompt-delimited segment for Per-sonaMem, and a session for PrefEval. Within a day, every turn is assigned a fixed 10-minute increment. Absolute values are immaterial, and the scheme is identical for every method, so it introduces no relative bias. PGMem reads these timestamps only as an ordering. A S HIFT _T O edge encodes the rela-tive relation vi ⇝ vj (section 4.1.2), and the signed traversal (section 4.3.2) and validity score (eq. (9)) are defined over these relations rather than abso-lute time. Genuinely timestamped histories would additionally support elapsed-time signals such as recency decay, which the order-based sign compo-sition does not model. 
+
+Hardware. All experiments are run on a hetero-geneous GPU cluster of four node types, namely NVIDIA A100 (80 GB), A6000 (48 GB), RTX 4090 (24 GB), and RTX PRO 6000 Blackwell (96 GB), with four nodes each. Node type does not af-fect the reported scores. The latency measurements in Appendix D.1 are the exception, so all compared methods are timed on a single NVIDIA H100 (80 GB) node. 13 Dimension Sub-dimension Seed Questions Provided Information Preference Question Generated Answer Preference Consistency              
+
+> Preference Violation Does the response avoid recommendations that violate the user’s stated preference?
+> ✓✓✓
+> Preference Awareness
+> Preference Acknowledgement Does the response explicitly or implicitly acknowledge a user preference when answering the query? –✓✓
+> Preference Grounding
+> Preference Hallucination Does the response avoid misstating, contradicting, or fabricating the user’s stated preference?
+> ✓–✓
+> Response Utility Helpful Response Does the response provide substantive, query-relevant help without merely apologizing or asking for more information? –✓✓
+
+Table 8: PrefEval LLM-as-a-judge criteria, following Zhao et al. (2025). A checkmark indicates that the corre-sponding information is provided to the judge prompt. Scores are normalized so that higher values indicate better preference following. 
+
+A.4 Evaluation details LLM-as-a-judge. We evaluate model outputs with an LLM-as-a-judge for ImplexConv and PrefEval, as both benchmarks require free-form generation. For ImplexConv, we adopt CheckE-val (Lee et al., 2025), which reports strong agree-ment with human judgments in its original eval-uation ( ρ ≈ 0.72 ) and decomposes evaluation into a binary checklist: each response is scored along two dimensions—response competence and persona adaptation—comprising four binary sub-dimensions in total (Table 7). The full ImplexConv judge prompts are provided in Figures 7–10. For PrefEval, we follow the four-criterion judge pro-tocol of Zhao et al. (2025)—violation, acknowl-edgment, hallucination, and helpfulness—each a binary check (Table 8). Every sub-dimension is judged independently and normalized so that 1 de-notes the desirable outcome; the per-response score is the sum of its checks, giving a 0–4 scale for both benchmarks. We use gpt-4o-mini as the judge model with the temperature set to 0.
+
+Exact-match accuracy. PersonaMem (Jiang et al., 2025) casts each query as a four-way multiple-choice question with a single correct op-tion. We evaluate it with exact-match accuracy. 
+
+B Details of PGMem 
+
+B.1 Algorithms 
+
+We provide the detailed procedures for memory construction (section 4.2) and memory retrieval (section 4.3) in Algorithm 1 and Algorithm 2, re-spectively. 
+
+B.2 Hyperparameters 
+
+We report hyperparameters referenced but not fully specified in the main text; all values are shared across the three benchmarks and both backbones. For the seed score ϕ(q, v ) in section 4.3.1, Con-text nodes use a fixed weight pair (wsem , w ov ) = (0 .65 , 0.35) , while State, Episode, and Trait nodes use a scope-dependent pair: (0 .60 , 0.40) for N AR - 
+
+> ROW
+
+and (0 .85 , 0.15) for B ROAD , down-weighting lexical overlap for broader-scope nodes. The base retrieval budget uses per-type seed counts kseed =20 , 6, 17 , 6 for Context, Episode, State, and Trait nodes with kaps = 6 APS slots, and final assembly keeps 5 traits, 18 states, and 4 episodes, chosen so that the total number of retrieved memories is comparable to that of the other memory baselines. Multi-hop sign propagation is bounded by a hop cap H = 10 .
+
+B.3 Prompt 
+
+Figure 11 summarizes the shared prompt compo-nents reused across extraction, relation classifica-tion, and QA generation. Figures 12–14 present the prompts for extracting State, Episode, and Trait nodes. Figure 15 presents the evidence relation clas-sification prompt, which determines whether two memory nodes support, contradict, shift to, or are irrelevant to each other. Although the figure illus-trates the Trait-centered case, the similar prompt-ing scheme is applied to other State–Episode–Trait pairs by changing the input node types and direc-tion rules. Figure 16 presents the ImplexConv QA prompt, where retrieved States, Traits, Episodes, and Challenged Traits are used as candidate evi-dence for personalized answer generation. 14 Algorithm 1 Memory Graph Construction. 
+
+Require: utterance stream {uρt 
+
+> t
+
+}, chunk size C, trait interval 
+
+B
+
+Ensure: persona-memory graph G = ( V, E)
+
+1: G ← (∅, ∅)
+
+2: for each dialogue turn t do 
+
+3: ▷ Event and persona node extraction 
+
+4: vc ← CONTEXT (uρt 
+
+> t
+
+); add vc to Vc
+
+5: vs ← EXTRACT STATE (uρt 
+
+> t
+
+)
+
+6: if vs̸ = ∅ then 
+
+7: add vs to Vs; add vc ↠ vs to Esrc 
+
+8: Eevi ← E evi ∪ JUDGE 
+
+ PAIRS (vs, V)
+
+9: end if 
+
+10: ▷ Chunk boundary: episode summary 
+
+11: if t closes a chunk then 
+
+12: ve ← EXTRACT EPISODE (chunk contexts )
+
+13: add ve to Ve; add {vc ↠ ve} to Esrc 
+
+14: Eevi ← E evi ∪ JUDGE 
+
+ PAIRS (ve, V)
+
+15: end if 
+
+16: ▷ Every B chunks: trait abstraction 
+
+17: if B chunks elapsed then 
+
+18: vt ← EXTRACT TRAIT (recent Vc, Vs, Ve)
+
+19: if vt̸ = ∅ then 
+
+20: add vt to Vt; add {vc, v s, v e} ↠ vt to Esrc 
+
+21: Eevi ← E evi ∪ JUDGE 
+
+ PAIRS (vt, V)
+
+22: end if 
+
+23: end if 
+
+24: ▷ Offline update: long-range relations 
+
+25: if B chunks elapsed then 
+
+26: Eevi ← E evi ∪ JUDGE 
+
+ DISTANT PAIRS (V)
+
+27: end if 
+
+28: end for 
+
+29: return G
+
+C Detailed Experimental Results 
+
+C.1 LLM-as-a-judge Results 
+
+This subsection reports the per-dimension break-down of the LLM-judge scores summarized in the main results (table 1). Table 9 and Table 10 give the dimension-level scores for ImplexConv and PrefE-val, respectively; the definition of each dimension follows the evaluation protocol described in sec-tion A.4. On ImplexConv (Table 9), all methods reach comparable response-competence scores (rc_question_addressing ), while diverging sharply on the persona-adaptation dimensions: PGMem attains the highest pa_generic_distinctness and 
+
+pa_substantive_integration , indicating that its gains come from persona-aware retrieval rather than general answer quality. On PrefEval (Ta-ble 10), PGMem reaches the highest persona acknowledgement under both backbones ( 0.94 
+
+and 0.98 ) while keeping helpfulness on par with baselines. 
+
+Algorithm 2 Memory Retrieval. 
+
+Require: query q, graph G = ( V, E), hop cap H
+
+Ensure: validity-ranked evidence set F
+
+1: ▷ Stage 1: Seed retrieval 
+
+2: W0 ← S  
+
+> τ∈{ c,e,s,t }
+
+TOP Kτ
+
+ ϕ(q, ·) ∪ APS (q)
+
+3: ▷ Stage 2: Evidence-guided expansion 
+
+4: replace each vc ∈ W 0 by its Source-linked e, s, t nodes 5: O ← W 0 \ APS( Q) ▷ expansion origins 6: Vexp ← ∅ 
+
+7: for each origin o ∈ O do 
+
+8: for each path o ⇝ v within H hops do 
+
+9: σ ← composed sign along the path 10: if σ = s+ then 
+
+11: add v to Vexp ; continue traversal 12: else 
+
+13: add v to Vexp ; terminate path 14: end if 
+
+15: end for 
+
+16: end for 
+
+17: W1 ← DEDUP (W0 ∪ V exp )
+
+18: ▷ Stage 3: Validity-aware assembly 
+
+19: drop superseded ( ⇝) sources whose targets are in W1
+
+20: for each v ∈ W 1 do 
+
+21: val( v) ← |S (v)| + α
+
+|S (v)| + |C (v)| + 2 α
+
+22: ψ(q, v ) ← λ val( v) + (1 − λ) ϕ(q, v )
+
+23: end for 
+
+24: F ← top-ranked nodes per type under ψ, serialized by type and validity status 25: return F
+
+C.2 Human Validation Results 
+
+We conduct a human validation on ImplexConv to verify that our LLM-as-a-judge scores faithfully reflect human judgment. Two of the authors inde-pendently score the responses of PGMem, Memo-ryBank, and A-MEM on 30 sampled queries, ap-plying the same four-dimension checklist used by the LLM judge (section A.4). Results are reported in Table 11. The human evaluation yields the same method ranking as the LLM judge, with PGMem scoring highest. The per-dimension pattern is also consis-tent. Question addressing is saturated across all methods, so the separation arises almost entirely from the persona-adaptation dimensions, on which PGMem attains the highest score. This agreement indicates that the LLM-judge scores reported in the main results faithfully reflect human judgment. 
+
+D Analysis of Memory Construction 
+
+D.1 LLM Calls and Latency 
+
+Table 4 measures efficiency in tokens. We com-plement it with the number of LLM calls and the wall-clock latency of memory construction. We compare A-MEM, THEANINE, and PGMem, all 15 Base LLM Method Total RC-QA PA-Rec PA-Dist PA-Int Qwen3-1.7B                                                             
+
+> Full History 0.99 0.96 0.01 0.00 0.01 MemoryBank 1.03 0.96 0.03 0.01 0.03 LD-Agent 0.92 0.89 0.01 0.01 0.01 A-MEM 0.94 0.91 0.01 0.00 0.02 THEANINE 0.98 0.95 0.01 0.01 0.02
+> PGMem 1.33 0.95 0.02 0.29 0.06
+> Gemma-3-1B
+> Full History 0.86 0.80 0.01 0.02 0.03 MemoryBank 1.09 0.91 0.04 0.05 0.09 LD-Agent 0.89 0.80 0.01 0.07 0.02 A-MEM 0.57 0.48 0.01 0.06 0.02 THEANINE 0.98 0.87 0.02 0.07 0.03
+> PGMem 1.41 0.77 0.03 0.52 0.09
+
+Table 9: Per-dimension LLM-judge scores on Implex-Conv. RC-QA: question addressing; PA-Rec: persona recognition; PA-Dist: generic distinctness; PA-Int: sub-stantive integration.                                                               
+
+> Base LLM Method Total Viol. Ack. Halluc. Helpful Qwen3-1.7B
+> Full History 1.32 0.14 0.26 0.00 0.91 MemoryBank 1.21 0.05 0.16 0.00 1.00 LD-Agent 1.14 0.05 0.10 0.00 0.99 A-MEM 1.39 0.19 0.23 0.00 0.97 THEANINE 1.25 0.06 0.18 0.00 1.00
+> PGMem 2.21 0.25 0.94 0.02 1.00
+> Gemma-3-1B
+> Full History 1.44 0.06 0.40 0.00 0.97 MemoryBank 1.79 0.05 0.75 0.00 0.99 LD-Agent 1.61 0.07 0.55 0.00 0.99 A-MEM 1.60 0.21 0.57 0.00 0.82 THEANINE 1.55 0.05 0.51 0.00 1.00
+> PGMem 2.03 0.07 0.98 0.00 0.98
+
+Table 10: Per-dimension LLM-judge scores on PrefEval. Viol.: preference violation; Ack.: preference acknowl-edgement; Halluc.: hallucination; Helpful: helpfulness. 
+
+of which construct memory through repeated LLM calls. Table 12 reports the results on ImplexConv with Qwen3-1.7B, measured on a single NVIDIA H100 (80 GB) node. Construction is incremental, and each utterance updates the graph as the dialogue unfolds (Sec-tion 4.2). PGMem spends 1,441 s over an average 656.2-turn session (Table 5), which is 2.2 s per turn. A-MEM spends 2.4 s per turn under the same ac-counting. PGMem also issues fewer construction calls than A-MEM, 1,804 vs 2,596, or 2.8 vs 4.0 per turn. THEANINE is the cheapest to construct at 341 s. At query time, PGMem and A-MEM issue a single generation call. THEANINE issues 6 calls per query for timeline refinement. Read together with the QA token counts in Table 4, PGMem is lighter than A-MEM in tokens (1,847 vs 5,124) and lighter than THEANINE in calls (1 vs 6). 
+
+Method RC-QA PA-Rec PA-Dist PA-Int Score 
+
+MemoryBank 1.00 0.27 0.37 0.40 2.03 A-MEM 1.00 0.13 0.10 0.23 1.47 
+
+PGMem 1.00 0.23 0.80 0.23 2.27 
+
+Table 11: Human validation results on 30 ImplexConv samples. Dimensions follow the binary checklist of Ta-ble 7. 
+
+Method Construction QA Calls (#) Lat. (s) Calls (#) A-MEM 2,596 1,584 1THEANINE 1,254 341 6PGMem 1,804 1,441 1
+
+Table 12: LLM calls and latency on ImplexConv with Qwen3-1.7B. Construction is the total over a full ses-sion. QA Calls is the number of LLM calls per query at inference. 
+
+D.2 Reliability of Evidence Relation Labeling 
+
+PGMem performs on average 7.2k relation judg-ments per session, over 2.1M pairs across the 300 ImplexConv sessions. This subsection examines what this labeling step produces and how reliable its output is. Table 13 reports per-session edge counts on ImplexConv with Qwen3-1.7B. S UP (⊕)edges dominate and consolidate a stable persona. CON (⊖) and S FT (⇝) edges are far rarer. They connect opposing signals and temporal changes, capturing how the persona is challenged or revised over time. I RR (∅) absorbs pairs without clear ev-idential force, following the decision priority in Figure 15. 
+
+Human validation. We randomly sample 25 edges per relation type from the constructed graphs, 100 edges in total. Two of the authors indepen-dently judge each edge against the label definitions of Figure 15. Each judgment is binary, and we report accuracy as the percentage judged correct. Accuracy is high on S UP (⊕) and I RR (∅) and low on C ON (⊖) and S FT (⇝). Separating a genuine conflict or a genuine supersession from an unre-lated pair requires tracking which persona signal is still active. SLM backbones often fail at this, so the two relations that carry persona change are also the two they label least reliably. The sample draws equally from the four types. C ON (⊖) and S FT (⇝)are far rarer in the graph than the other two, so their accuracies apply to a small portion of all edges. 16 SUP (⊕) CON (⊖) SFT (⇝) IRR (∅)Edges per session 5259.9 49.3 125.2 1722.9 Human validation (%) 80.0 36.0 52.0 84.0 
+
+> Table 13: Per-session evidence edge statistics and hu-man validation on ImplexConv with Qwen3-1.7B. Vali-dation reports binary accuracy over 25 sampled edges per relation type.
+
+Representative cases. We show correct and mis-labeled edges for the two hardest relation types ([s] State, [t] Trait, [e] Episode). • Correct CON . [s] struggling to stay motivated during workouts ⊖
+
+−→ [t] a dedicated, moti-vated individual committed to consistent, pro-gressive training. The two co-active signals are in direct tension. • Correct SFT . [s] interested in golf, has never tried it ⇝ [s] has participated in local tour-naments and wants to use their skills for a greater purpose. The newer signal supersedes the older one. • Mislabeled CON . [e] overwhelmed by a family member’s personal crisis ⊖
+
+−→ [t] highly con-cerned with finding quality educational apps for their kids. The pair carries no evidential tension, so the correct label is I RR .• Mislabeled SFT . [s] overwhelmed today, needs someone to talk to ⇝ [s] feels proud after reaching the top of the ladder. Two tran-sient states are linked as an update although neither supersedes the other. Both mislabels assign evidential force where none exists. Removing C ON (⊖) or S FT (⇝) entirely costs 1.98 and 1.91 points on PersonaMem-128k (Table 2), which bounds what unreliable labeling can cost. 
+
+E Additional Experiments 
+
+E.1 Additional Structured-Memory Baselines 
+
+We compare PGMem with SeCom (Pan et al., 2025) and H 2Memory (Huang et al., 2026) under the main SLM backbones, keeping all benchmarks, splits, re-trieval budgets, and evaluation protocols identical to Section 5. Results are reported in Table 14. PG-Mem achieves the strongest results on ImplexConv                                
+
+> Method ImplexConv PrefEval PersonaMem
+> 32k 128k
+> Qwen3-1.7B  H2Memory 0.90 1.93 34.97 35.46 SeCom 0.83 1.81 38.88 37.15
+> PGMem 1.33 2.21 45.50 46.35 Gemma-3-1B
+> H2Memory 0.98 2.12 24.45 29.08 SeCom 0.76 2.06 24.11 29.08
+> PGMem 1.41 2.03 30.39 34.18
+> Table 14: Comparison with additional structured-memory baselines under the main SLM backbones. Met-rics follow Table 1. Bold and underline denote the best and second-best results, respectively.
+
+and PersonaMem under both backbones. On PrefE-val, PGMem is strongest under Qwen3-1.7B, while H2Memory and SeCom score slightly higher under Gemma-3-1B. Neither method links memory and persona entries through typed evidential relations, so persona signals superseded by later interactions are not down-weighted at retrieval time. 
+
+E.2 Generalization to Larger Backbones 
+
+Our main experiments (Section 5) evaluate PG-Mem under SLM backbones, where limited con-text length and reasoning capacity make an ex-plicit persona-memory structure most impactful. We re-run PGMem and all baselines with Qwen3.5-4B (Yang et al., 2025) and Gemma-3-4B (Kamath et al., 2025), keeping all benchmarks, splits, re-trieval budgets, and evaluation protocols identical to the main experiments (section A). Results are reported in Table 15. PGMem continues to achieve the strongest re-sults on ImplexConv and PrefEval across both backbones, mirroring the ranking observed under SLMs. On PersonaMem, A-MEM instead obtains the highest accuracy. We attribute this to its con-struction procedure, which depends substantially on the backbone model for memory organization and summarization and therefore benefits more directly from increased model capacity. Conse-quently, A-MEM exhibits a larger relative gain at the 4B scale than under SLMs. The gain is confined to this benchmark format. PersonaMem scores 4-way multiple-choice exact match (section A), so an item is answered by recalling a single past episode with no conflicting signal to reconcile. ImplexConv and PrefEval instead require superseded or conflict-ing signals to constrain a free-form response. Under 17 Method ImplexConv PrefEval PersonaMem                                                    
+
+> 32k 128k
+> Qwen3.5-4B  Full history 0.46 1.00 65.37 46.17 MemoryBank 2.31 2.40 61.12 49.28 LD-Agent 0.65 1.90 53.14 39.79 A-MEM 0.77 1.74 68.42 61.57
+> THEANINE 1.29 2.46 60.61 52.73
+> PGMem 2.41 2.57 62.65 56.07
+> Gemma-3-4B  Full history 1.12 1.96 52.97 46.75 MemoryBank 2.10 1.92 50.25 47.08 LD-Agent 1.09 2.11 49.58 45.32 A-MEM 0.90 1.93 53.48 53.21
+> THEANINE 1.59 2.15 52.63 47.05
+> PGMem 2.21 2.21 51.78 49.21
+> Table 15: Comparison results on long-term personal-ized dialogue benchmarks under larger backbone LLMs. ImplexConv and PrefEval use LLM-as-a-judge scores for personalized response quality on a 5-point scale, while PersonaMem evaluates user persona QAs with accuracy (%). Bold and underline denote the best and second-best results, respectively.
+
+the 4B backbones A-MEM scores 0.77 and 0.90 on ImplexConv with Qwen and Gemma, against 2.41 and 2.21 for PGMem. PGMem improves on every benchmark under both backbones when moving from the SLM to the 4B scale. With Qwen it rises from 1.33 to 2.41 on ImplexConv and from 45.50 to 62.65 on PersonaMem-32k (Tables 1 and 15). Its rela-tive advantage is nonetheless largest in resource-constrained settings, where personalization is driven by memory structure rather than backbone capacity. Refining how nodes, edges, and relations are extracted for stronger backbones is a natural extension, and we expect it to widen the margin at larger scales. We leave this direction to future work. 
+
+F Case Study 
+
+We present case studies of PGMem, covering both success and failure cases. 
+
+F.1 Success Cases 
+
+We first inspect two cases where the query is topi-cally far from the persona signal the correct answer depends on. In Figures 5 and 6, the baselines miss the user’s vocal cord injury and herniated disc, re-turning generic or even harmful advice. PGMem expands along evidence edges, recovers these State nodes, and generates personalized answers. 
+
+F.2 Failure Cases 
+
+We observe two failure modes, with one example of each. In near-miss cases the persona signal is re-trieved but not reflected in substance. In complete-failure cases neither seed retrieval nor graph expan-sion surfaces the signal. 
+
+Near-miss. This case arises from the query “How can I maintain a flawless complexion as a model for upcoming photoshoots and runway events?” • Retrieved memory. [s] acne and dark spots. [s] visiting dermatologists for skin conditions. [s] persistent skin issues with no long-term solution. [e] low self-confidence related to skin issues. • Generated. “...consistent skincare routine... ad-dress your acne and dark spots by consulting der-matologists... maintain a polished appearance.” • Gold. “...a flawless complexion can be challeng-ing due to a skin condition causing acne and hyperpigmentation... prioritizing skin health over flawless appearance can be a vital approach.” The signal is retrieved and even mentioned, but the substantive stance is not adopted. The response keeps a flawless-is-achievable framing while the gold reframes the goal toward skin health. This is a generation-side limitation rather than a retrieval failure. 
+
+Complete-failure. This case arises from the query “What steps should I take to secure a car loan for buying my first car?” • Retrieved memory. No node about the user’s credit history is surfaced. • Generated. “...compare interest rates. Ensure you have a good credit score and a stable in-come...” • Gold. “...to secure a car loan despite a low credit score caused by missed student-loan payments, consider improving your credit first... immediate approval may be challenging.” The persona signal is not recovered, so generation defaults to generic advice assuming good credit. 
+
+G AI assistant usage acknowledgments 
+
+Generative AI (Claude, ChatGPT) was used solely for grammar correction and language polishing of the manuscript. All content, analyses, results, and conclusions were developed and verified by the authors. 18 History Session …Assistant: It's great that you have a foundation in singing. What made you stop singing, if you don't mind me asking? User: I just haven't had the time, and to be honest, it's been a bit of a struggle lately. Assistant: Struggling with singing can be frustrating, Is there something specific that's been challenging for you? User: Well, it's just that...I don't know if I can sing like I used to. My voice doesn't feel the same. Assistant: If you're concerned about your vocal health, it's always a good idea to consult a professional… User: To be honest, I've been experiencing some pain when I sing . It's been really discouraging. User: Actually, I recently found out that I'm suffering from a vocal cord injury … Current query How can I improve my singing skills to become a professional singer like my idols someday? 
+
+PGMem Answer Since you're passionate about music and want to pursue a career, consider taking music production classes to enhance your craft. Prioritize rest and avoid vocal strain, as you're currently experiencing pain. Engage with operatic performances to deepen your understanding of vocal techniques. Your dedication and passion are key to achieving your goals as a professional singer. LD-Agent Answer Practice regularly, maintain a healthy lifestyle, and stay inspired by your idols. Learn from their techniques and stay passionate about your craft. Consistent training and dedication will help you improve over time. MemoryBank Answer Improving your singing skills requires consistent practice, proper technique, and emotional expression. Start with warm-ups, proper breath control, and vocal exercises. AMEM Answer To improve singing skills, practice regularly, warm up before singing, stay hydrated, and focus on vocal exercises like lip trills, scales, and breathing techniques. Explore different genres, seek feedback, and maintain good posture and vocal health. 
+
+# ✗✗✗
+
+# ✓Figure 5: Success case where the persona-critical signal, a vocal cord injury, is semantically distant from the query about becoming a professional singer. Baselines return generic or harmful advice, while PGMem recovers the signal through evidence-guided expansion. 
+
+19 History Session …User: Honestly, I think it's just because I'm not feeling as comfortable as I used to. I'm not sure what's going on, but I just don't feel like myself. Assistant: It sounds like there might be a physical component to what you're experiencing. Have you noticed any specific areas of discomfort or pain in your body? User: My lower back has been bothering me a bit . But I'm not sure if that's related to anything else. Assistant: Have you talked to a doctor about this, or is this something you've been dealing with on your own? User: they recommended some physical therapy and stretching exercises, but to be honest, I haven't been doing them as regularly as I should be... User: ... I think I need to make some changes to my daily routine to accommodate my back pain. Do you have any other suggestions for managing herniated disc pain? ... Current query How can I carry multiple books from the library shelves without straining myself as a regular library visitor? 
+
+PGMem Answer Given your herniated disc and chronic back pain, it's important to prioritize comfort. Use a lightweight rolling cart or a book cart to carry books, which reduces strain. Consider using a bookshelf organizer or a small box to carry books instead of heavy items. Since you enjoy browsing and reading, try carrying books in batches and focus on comfortable, manageable weights. … LD-Agent Answer Use a library cart or backpack to carry multiple books comfortably. Many libraries offer carts for free or at a low cost. Alternatively, carry books in your arms if space is limited. MemoryBank Answer You can carry multiple books from the library shelves by using a library bag or backpack, and carrying only the books you need. If you're carrying a large number of books, consider using a library's designated cart.. THEANINE Answer To carry multiple books from the library shelves without straining yourself, use a backpack or a satchel with multiple compartments. This allows you to carry several books comfortably. Additionally, use a library's designated carrying bag or a lightweight tote provided for this purpose… 
+
+# ✗✗✗
+
+# ✓Figure 6: Success case where the persona-critical signal, a herniated disc, is semantically distant from the query about carrying library books. Baselines overlook the injury, while PGMem surfaces it and adapts the answer. 
+
+20 Question Addressing Judge Prompt (Response Competence) 
+
+Your task is to evaluate one specific aspect of response competence at a time. 
+
+# Task Description 
+
+A dialogue system has generated an answer to a user’s question. Your job: judge whether the generated answer directly addresses what the question is asking .
+
+# Evaluation Target 
+
+Question: {query} 
+
+Reference Answer: {gt_answer} 
+
+Generated Answer: {generated_answer} 
+
+# Scoring Rubric — Question Addressing (0 / 1) 
+
+• 1 — Addressed: The generated answer directly responds to what the question asks. It engages with the actual request rather than deflecting, changing topic, or restating the question. • 0 — Not Addressed: The answer is off-topic, fails to engage with the question, or provides a response so general it could apply to any question. 
+
+Answer: 
+
+Figure 7: Judge prompt for the Question Addressing sub-dimension (Response competence). 
+
+Persona Recognition Judge Prompt (Persona Adaptation) 
+
+You are an expert evaluator for a personalized conversational AI system. Your task is to assess one specific aspect of persona adaptation at a time. Focus only on the requested aspect. 
+
+# Task Description 
+
+A memory-augmented dialogue system has generated an answer for a user with a hidden implicit persona factor — a state, preference, constraint, or circumstance that should shape the response. Your job: judge whether the implicit persona factor is reflected in the generated answer .
+
+# Implicit Persona Factor 
+
+{reason} 
+
+# Supporting Evidence (relevant past conversations) 
+
+{reference_conversation} 
+
+# Evaluation Target 
+
+Question: {query} 
+
+Generated Answer: {generated_answer} 
+
+# Scoring Rubric — Persona Recognition (0 / 1) 
+
+• 1 — Recognized: The generated answer either acknowledges the implicit persona factor or makes a clear response choice because of it. • 0 — Not Recognized: The answer shows no evidence that the persona factor motivated any content choice. It reads as a generic response to the question alone. 
+
+Answer: 
+
+Figure 8: Judge prompt for the Persona Recognition sub-dimension (Persona adaptation). 
+
+21 Generic Distinctness Judge Prompt (Persona Adaptation) 
+
+You are an expert evaluator for a personalized conversational AI system. Your task is to assess one specific aspect of persona adaptation at a time. Focus only on the requested aspect. 
+
+# Task Description 
+
+A memory-augmented dialogue system has generated an answer for a user who has hidden persona context (state, preference, constraint, or circumstance not visible to you). Your job: judge whether the answer reads as tailored to a specific individual or as a generic answer that could be given to anyone asking the same question. 
+
+# Evaluation Target 
+
+Question: {query} 
+
+Generated Answer: {generated_answer} 
+
+# Scoring Rubric — Generic Distinctness (0 / 1) 
+
+• 1 — Distinct: The answer reads as personalized to a specific user. It references or builds on user-specific details (situation, preferences, constraints, prior choices, context), adapts its recommendation/framing to the individual, or makes choices that only make sense for this asker rather than the general public. • 0 — Generic: The answer reads as a stock response that could be addressed to almost any user asking the same question. It treats the asker as anonymous — no reference to their specifics, no individualized framing, no user-conditional reasoning. 
+
+Answer: 
+
+Figure 9: Judge prompt for the Generic Distinctness sub-dimension (Persona adaptation). 
+
+Substantive Integration Judge Prompt (Persona Adaptation) 
+
+You are an expert evaluator for a personalized conversational AI system. Your task is to assess one specific aspect of persona adaptation at a time. Focus only on the requested aspect. 
+
+# Task Description 
+
+A memory-augmented dialogue system has generated an answer for a user with a hidden implicit persona factor .Your job: judge whether the persona is integrated into the answer’s substance (recommendations, alterna-tives, caveats, framing, stance) — beyond a mere surface-level word borrow. 
+
+# Implicit Persona Factor 
+
+{reason} 
+
+# Supporting Evidence (relevant past conversations) 
+
+{reference_conversation} 
+
+# Reference Answer 
+
+{gt_answer} 
+
+# Evaluation Target 
+
+Question: {query} 
+
+Generated Answer: {generated_answer} 
+
+# Scoring Rubric — Substantive Integration (0 / 1) 
+
+• 1 — Integrated: The implicit persona factor shapes at least one substantive content choice in the answer, such as what is recommended, what alternative is offered, what caveat is raised, how the issue is framed, or what stance is taken. • 0 — Surface-only or absent: The factor is ignored or only mentioned at the wording/tone level. For example, the answer may say “given your situation” or repeat persona-related words, but still give the same recommendation, alternatives, caveats, framing, or stance it would give to any user. 
+
+Answer: 
+
+Figure 10: Judge prompt for the Substantive Integration sub-dimension (Persona adaptation). 
+
+22 Shared Prompt Components 
+
+# Node Type Rules State : A user condition true at the time it is expressed but subject to change, such as a current stance, goal, active constraint, present situation, or preference. 
+
+Trait : A generalized user characteristic that tends to persist across situations and time, such as a stable preference, value, or habitual tendency. 
+
+Episode : A summary of what happened in a past conversation, including concrete events, topics, and actions at a particular time. 
+
+# Metadata Rules scope : BROAD if the node may affect decisions across multiple future tasks or topics; NARROW if it is mainly tied to the current task, topic, or short-term situation. 
+
+recall_priority : For State nodes, HIGH if ignoring the state would make a response clearly wrong, unsafe, inconsistent with an explicit constraint, or noticeably frustrating; otherwise LOW. 
+
+# Label Rules keywords : Specific one-word terms from the source text or close variants. 
+
+domain_label : Broader topical categories that group the node with related nodes. Each item must be one continuous word with no whitespace. The same string cannot appear in both fields. 
+
+# Evidence Relation Rules SUPPORT : The two pieces of information are consistent or mutually reinforcing. 
+
+CONTRADICT : The two pieces of information are in clear tension or conflict. 
+
+SHIFT_TO : Older information changes into newer information and is no longer currently valid. 
+
+IRRELEVANT : The pair is unrelated or only weakly associated. 
+
+Figure 11: Shared prompt components reused by extraction, relation classification, and QA generation prompts. 
+
+State Extraction Prompt 
+
+You are a persona state extraction assistant. Extract user states from the current user turn. Respond in strict JSON. 
+
+{Node Type Rules} 
+
+# Task Description 
+
+Extract up to {STATE_MAX_COUNT} persona State node(s) from the CURRENT USER UTTERANCE only. If none, return an empty states list. Extract useful persona-relevant signals as States when they are not stable enough to be Traits. Do not invent or speculate. 
+
+# Context Usage 
+
+Use prior context and the assistant response only to resolve references. Do not extract information stated only outside the current user utterance. 
+
+# Output Format 
+
+Each State must begin with “The user”, be one concise sentence, and express a currently valid condition, constraint, goal, stance, or preference. Rewrite episodic descriptions as implied current States, not raw narration. Use placeholder ids new_0 , new_1 , . . . in extraction order. 
+
+{Metadata Rules} {Label Rules} 
+
+# Required Fields 
+
+id , content , keywords , domain_label , scope , recall_priority 
+
+# Input 
+
+[PRIOR CONTEXT — disambiguation only; do not extract from here] {prior_context} [ASSISTANT RESPONSE — read-only context; do not extract from here] {assistant_response} [CURRENT USER UTTERANCE — extract from here only] {current_user_utterance} 
+
+Figure 12: Prompt used to extract time-bounded persona State nodes from the current user utterance. 
+
+23 Episode Extraction Prompt 
+
+You are an episode extraction assistant. Summarize the recent conversation into one episode. Respond in strict JSON. 
+
+{Node Type Rules} 
+
+# Task Description 
+
+Create exactly one Episode from the RECENT CONVERSATION . Summarize what happened in the conversation. Do not invent or speculate. 
+
+# Extraction Rule 
+
+Do not extract generalized persona traits or separate State nodes. Include user traits, preferences, or conditions only when they are part of the concrete episode being summarized. 
+
+# Output Format 
+
+Each Episode must: • begin with “The user”; • be 1–2 sentences; • summarize concrete events, discussed topics, actions, and developments; • describe the episode itself, not generalized persona traits. 
+
+{Metadata Rules} {Label Rules} 
+
+# Required Fields 
+
+id , content , keywords , domain_label , scope 
+
+# Input 
+
+[RECENT CONVERSATION] {recent_conversation} 
+
+Figure 13: Prompt used to summarize a recent dialogue chunk into a concrete Episode node. 
+
+Trait Extraction Prompt 
+
+You are a persona trait extraction assistant. Infer at most one new long-term trait from the accumulated recent evidence. Respond in strict JSON. 
+
+{Node Type Rules} 
+
+# Task Description 
+
+Infer at most {TRAIT_MAX_COUNT} persona Trait node(s) from the recent conversations below. If the recent conversations do not reveal a clear new persistent pattern, return an empty traits list. Do not invent or speculate. 
+
+# Trait Criterion 
+
+Use the “in general” test: a Trait should still be true if the user is asked about themselves “in general” with no specific time, place, or context attached. 
+
+# Output Format 
+
+Each Trait must: • begin with “The user”; • be 2–3 complete sentences; • be inferable as a likely persistent pattern; • not merely describe a one-time event or momentary feeling. 
+
+{Metadata Rules} {Label Rules} 
+
+# Required Fields 
+
+id , content , keywords , domain_label , scope 
+
+# Input 
+
+[Recent conversations] {recent_conversations} 
+
+Figure 14: Prompt used to infer persistent persona Trait nodes from accumulated recent conversations. 
+
+24 Trait–State Evidence Relation Extraction Prompt 
+
+You are an evidence classification assistant. Classify direct relationships involving a newly extracted Trait and listed State, Episode, and Trait nodes. Respond in strict JSON. 
+
+# Shared Rules 
+
+{Node Type Rules} {Evidence Relation Rules} 
+
+# Task Description 
+
+Judge direct evidence relationships involving the newly extracted Trait. Index 0 is the new Trait. Listed State nodes, Episode nodes, and the previous Trait are compared against this new Trait. 
+
+# Pair Types 
+
+Judge each listed State–new Trait pair, each listed Episode–new Trait pair, and the previous Trait–new Trait pair when a previous Trait exists. 
+
+# Direction Rule 
+
+• For State/Episode ↔ new Trait pairs: source_id is the listed State or Episode index, and target_id = 0 .• For previous Trait ↔ new Trait with SHIFT_TO : source_id is the previous Trait index and target_id = 0, following older information → newer replacement. • For cross-type SHIFT_TO , the source State or Episode provides evidence that updates, replaces, or invalidates the new Trait. • SUPPORT , CONTRADICT , and IRRELEVANT are semantically symmetric, but the specified source–target direc-tion is preserved. 
+
+# Decision Priority 
+
+• First choose IRRELEVANT if the pair has no clear evidential force. • If related, choose SHIFT_TO only when the source clearly updates, replaces, or invalidates the target. • If not replacement but clearly in tension, choose CONTRADICT .• If the source grounds, confirms, generalizes into, or reinforces the new Trait, choose SUPPORT .• When uncertain, choose IRRELEVANT .
+
+# Input 
+
+[New Trait] {new_trait} [Recent States] {recent_states} [Recent Episodes] {recent_episodes} [Previous Trait] {previous_trait} 
+
+# Output 
+
+Output exactly {N} judgments, one for each listed pair in the listed order. Use JSON with source_id ,
+
+target_id , and relation .
+
+Figure 15: Prompt used to classify evidence relations between a newly extracted Trait and related State, Episode, and previous Trait nodes. 
+
+25 QA Prompt for Implexconv 
+
+You are an assistant providing personalized help based on prior conversations with this user. 
+
+# Shared Rules 
+
+{Node Type Rules} 
+
+# Response Rule 
+
+When such a factor applies, reflect it concretely: acknowledge the user’s goal, name the relevant factor, and adjust the recommendation accordingly. Otherwise, answer the question normally without forcing personalization. 
+
+# Conflict Rule 
+
+If the current user message or recent conversation clearly conflicts with, updates, or overrides a retrieved Episode item, the current message takes precedence. 
+
+# Input 
+
+[Retrieved States] {retrieved_states} [Retrieved Traits] {retrieved_traits} [Retrieved Episodes] {retrieved_episodes} [Challenged Traits] {challenged_traits} [Question] {question} 
+
+Answer :
+
+Figure 16: Prompt used for ImplexConv opposed-subset QA, where retrieved episodes may modify the answer through implicit personalization constraints. 
+
+26

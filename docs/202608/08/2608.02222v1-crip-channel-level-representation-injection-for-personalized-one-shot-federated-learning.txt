@@ -1,0 +1,611 @@
+Title: CRIP: Channel Level Representation Injection for Personalized One-Shot Federated Learning
+
+URL Source: https://arxiv.org/pdf/2608.02222v1
+
+Published Time: Tue, 04 Aug 2026 02:26:19 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+> JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 1
+
+# CRIP: Channel Level Representation Injection for Personalized One-Shot Federated Learning 
+
+Zijian Jiang, Chaoli Sun, Handing Wang, and Xilu Wang 
+
+Abstract —One-shot federated learning (OSFL) has emerged as a promising collaborative model learning framework with only a single round of communication, offering significant advantages in communication efficiency and privacy preservation. However, OSFL often faces inherent limitations under severe domain heterogeneity across clients due to the lack of iterative knowledge exchange. Most existing OSFL methods require an auxiliary public dataset for knowledge distillation or leverage statistical information for parameter-level aggregation, overlooking feature shift caused by domain heterogeneity. To address these challenges, we propose CRIP, a personalized OSFL framework that operates in the representation space via channel-level feature alignment. To achieve this, each client uploads its feature extractor to the server, which broadcasts all extractors back to every client. Since not all source clients share compatible feature distribu-tions with the target client, indiscriminate fusion of cross-client features would introduce domain-specific noise. Therefore, CRIP effectively measures the channel-wise representational similarity between the target client and each source client on a small local mini-batch, and selectively fuses only the most compatible features. Extensive experiments on domain-heterogeneous bench-marks such as DomainNet, PACS, and Office-Home demonstrate that CRIP consistently outperforms local models and state-of-the-art baselines, validating the effectiveness of representation-space personalization under extreme domain heterogeneity. 
+
+Index Terms —One-shot Federated Learning, Representation learning, Personalized Federated Learning, Domain Heterogene-ity. 
+
+I. I NTRODUCTION 
+
+# FEDERATED learning (FL) is a widely used decentral-ized machine learning (ML) paradigm. It allows multiple clients to collaboratively train models without exposing their local private data [1]. In general, this is achieved through iterative parameter exchange across multiple communication rounds. A central server coordinates this process, as shown in Fig. 1 1⃝. However, iterative communication introduces sub-stantial overhead. It also increases the risk of privacy leakage and attacks. In addition, it requires strict transmission syn-chronization [2]–[4]. One-shot federated learning (OSFL) has emerged as an alternative paradigm. It enables collaborative learning with only a single communication round, as shown in Fig. 1 2 ⃝. This design substantially reduces communication overhead and privacy-related costs [5]. In OSFL, each client independently trains a local model and sends it to the server. 
+
+Zijian Jiang is with the School of Computer Science and Electronic Engineering, University of Surrey, Guildford, Surrey GU2 7XH, U.K. Chaoli Sun is with the School of Computer Science and Technology, Taiyuan University of Science and Technology, Taiyuan 030024, China. Handing Wang is with the School of Artificial Intelligence, Xidian Univer-sity, Xi’an 710071, China. Xilu Wang is with the Department of Computer Science, University of Surrey, Guildford, U.K. (e-mail: xiluwang@surrey.ac.uk). Corresponding author: Xilu Wang. 
+
+Fig. 1. FL settings and representation vs. parameter space alignment. The upper row illustrates three FL scenarios: (i) Multi-round FL with homogeneous domains across clients, (ii) One-shot FL with homogeneous domains, and (iii) One-shot FL with heterogeneous domains (ours). The lower panel compares local model performance, parameter-space alignment, and representation-space alignment under domain-heterogeneous OSFL. 
+
+The server then aggregates these local models into a global model. No iterative updates or feedback are required [6]–[8]. Existing OSFL methods can be broadly categorized into three groups: (i) knowledge distillation methods using a public auxiliary dataset, such as FedD3 [9], Co-Boosting [10], and FOL [11]; (ii) generative methods by leveraging genera-tive models (e.g., diffusion models) to synthesize data for knowledge transfer, including FedBiP [12], FedDEO [13], and FGL [14]; and (iii) approaches that extract and aggre-gate statistical quantities from local models directly in the parameter space, such as FedLPA [15], FedFisher [16], and FuseFL [17]. Although these methods reduce communication cost to a single round, they face a fundamental challenge. With limited communication, models cannot adequately align or ex-change information across clients, which undermines effective knowledge transfer. Furthermore, many existing approaches rely on impractical assumptions, such as access to public or high-quality synthetic data tailored to each client’s domain. Meanwhile, methods based on parameter-space alignment be-comes unreliable under strong client heterogeneity, leading to degraded accuracy compared with iterative FL [18]. These challenges become more pronounced when client data are domain-heterogeneous. Here, domain heterogeneity refers to the variation in data style and distribution across clients, arXiv:2608.02222v1 [cs.LG] 3 Aug 2026 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 2
+
+which is often caused by differences in acquisition devices, collection protocols, or preprocessing pipelines. As illustrated in Fig. 1 3⃝, medical institutions may use different scan-ners and acquisition protocols, inducing significant domain shifts [19]. In such settings, independently trained models can drift far apart in parameter space. This makes parameter-space alignment inherently unreliable [20]. Moreover, with only a single aggregation step, OSFL may fail to correct mismatches in cross-client transfer, as no later rounds are available for refinement. We conduct an empirical study on DomainNet [21], com-paring parameter-based and feature-based model aggregation (see the lower panel of Fig. 1). We observe that, interestingly, representation-space alignment yields substantially more ef-fective cross-domain knowledge transfer than parameter-space methods [20]. We hypothesize that parameters become entan-gled with domain-specific information after independent local training. In contrast, representations retain more transferable semantic structure. As a result, representation alignment is less sensitive to domain shifts. See Section IV for further analysis. These observations motivate us to tackle domain-heterogeneous OSFL from a representation-space perspective. Several studies have explored representation-space infor-mation in FL, including Fed 2 [20], pFedAFM [22], and Fe-dRDA [23]. However, these methods generally require multi-round iterative updates to gradually align or stabilize repre-sentations. This makes them incompatible with the one-shot setting. To address this gap, we propose CRIP, a channel-level representation injection framework for personalized OSFL. CRIP uses feature extractors from other client models to process the target client’s local data. It then aligns the source features with the target features. After that, it fuses the aligned source features with the target client’s own features through residual injection. Without iterative communication or param-eter updates, this process supports personalized adaptation for each local domain by improving performance on the target client domain. Our contributions are summarized as follows:  
+
+> •
+
+We identify domain heterogeneity as a critical yet under-explored challenge in OSFL, and reveal through empirical analysis that feature-space aggregation yields superior cross-client generalization compared to parameter-space counterparts under domain heterogeneity. Motivated by this, we propose CRIP, a personalized OSFL frame-work that exploits channel-level representations to cap-ture transferable feature information across clients with heterogeneous domains.  
+
+> •
+
+To achieve representation-level aggregation, we introduce a channel-level representation injection mechanism for cross-client knowledge transfer. It works in representation space instead of parameter space by injecting semanti-cally aligned source features as residuals while keeping local parameters unchanged.  
+
+> •
+
+We demonstrate state-of-the-art performance on multiple domain-heterogeneous benchmarks, consistently outper-forming competing OSFL and personalized FL baselines. We further show both empirically and theoretically that CRIP outperforms parameter-space methods under do-main heterogeneity. II. R ELATED WORKS 
+
+A. One-Shot Federated Learning 
+
+Existing OSFL methods generally integrate information by updating model weights (e.g., via distillation objectives) or aggregating parameter-space statistics. Prior methods can be grouped into three classes based on how cross-client informa-tion is introduced under this constraint. Knowledge distillation methods introduce a public or aux-iliary dataset and perform parameter-level or output-level dis-tillation of multiple local models on this data. Representative approaches include FedD3 [9], FedSD2C [24], DOSFL [25], Co-Boosting [10], and FOL [11]. While effective, these meth-ods explicitly depend on public data, and their performance is highly sensitive to the quality and representativeness of such data. Generative methods leverage powerful generative models, such as diffusion models, to synthesize data that replaces real public datasets for knowledge distillation, including Fed-BiP [12], XorMixFL [26], FedPFT [27], OSGAN [28], Fed-DEO [13], FedSD2C [24], and FGL [14]. Although this strategy alleviates the need for real auxiliary data, knowledge transfer is still realized through parameter updates or distil-lation objectives and often incurs substantial computational overhead. Statistical methods do not rely on explicit data. Instead, they infer statistical quantities or structural information from local model parameters and aggregate them once on the server side. Typical examples include FedLPA [15], FedFisher [16], and FuseFL [17]. These methods are fully data-free. However, they work only in the parameter space. As a result, they generally struggle to explicitly model feature distribution shifts across domain-heterogeneous clients. Despite promising results, existing OSFL methods face sig-nificant challenges under domain heterogeneity. When clients train on data from different domains, their models diverge sharply in parameter space. This makes parameter-based align-ment or aggregation fundamentally limited. To our knowledge, no prior work integrates knowledge directly in representation space. This space may preserve more meaningful semantic cor-respondences across domains, despite divergence in parameter space. 
+
+B. Representation Based Federated Learning 
+
+Representation-based FL has been widely studied as asolution to mitigate heterogeneity by aligning feature spaces across clients. Most of them are proposed for the standard multi-round FL setting, where repeated communication en-ables representations to be progressively calibrated through iterative local optimization and global aggregation [29]–[31]. For example, Fed 2 [20] enforces feature alignment via grouped convolutions and gradient redirection, but requires architec-tural uniformity across clients and iterative updates to stabi-lize alignment. FedFA [32] and FedFM [33] introduce class anchors in the feature space and guide local learning through JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 3 
+
+> Fig. 2. Overview of CRIP. The target local model (in green) and client models (in other colors) perform feature extraction to obtain feature maps. In the representation space, we compute channel-level similarity using CKA to establish channel correspondences across models. Aligned channel outputs from source models are integrated into the local model’s activations via residual injection, enabling knowledge transfer without parameter modification.
+
+multi-round iterations. Subspace projection methods quantify representation discrepancies through geometric transforma-tions. FedFed [34] distills feature information to encourage consistency across clients, relying on repeated rounds for distilled signals to accumulate and stabilize. FedRDA [23] projects local features onto a global principal feature subspace, using the orthogonal residual as a measure of deviation. While offering geometric interpretability, this approach depends on iterative updates to jointly minimize distribution shift. Feature-mixing methods dynamically fuse global and local knowledge. GPFL [30] simultaneously learns global and per-sonalized feature information to balance generalization and personalization. pFedAFM [22] adaptively mixes represen-tations from a global feature extractor and heterogeneous local models using learnable weight vectors. However, such mixing is typically applied at a coarse granularity (e.g., batch- or sample-level), which can miss finer channel-level semantic mismatches between domains. Recent work improves representation robustness under more challenging regimes by introducing stronger priors or augmentation strategies. CLIP-guided federated learning leverages vision–language priors to cope with heterogeneous and long-tailed distributions [29]. FRAug addresses non-IID features through representation aug-mentation [31]. Despite their effectiveness, these methods are designed for multi-round training and require learning additional compo-nents or parameter updates to achieve representation align-ment. They are fundamentally incompatible with one-shot settings, where iterative calibration is unavailable. III. M ETHODOLOGY 
+
+A. Problem formulation 
+
+We consider OSFL with K clients under domain hetero-geneity. Each client k ∈ { 1, . . . , K } communicates only once and holds local data Dk from a distinct domain with a distri-bution Pk(x, y ), where x denotes the input and y the label. Domain heterogeneity is denoted by Pk(x, y )̸ = Pk′ (x, y )
+
+for k̸ = k′. Each client k trains a model f (·; θk) on Dk,decomposed into a feature extractor and a prediction head: 
+
+f (x; θk) = hk(gk(x; θk)) , (1) where gk(·; θk) denotes the feature extractor and hk(·) the prediction head. Our goal is to perform personalized OSFL to improve each client’s local model performance by leveraging knowledge from other clients under the one-shot constraint. Instead of aggregating or updating parameters, we formulate personalization as a representation-space transformation ap-plied to intermediate features. For an input x, each local model k produces an intermediate representation at layer ℓ,
+
+Z(ℓ) 
+
+> k
+
+(x) = gk(x; θk). (2) Given representations {Z k(x)}Kk=1 from all clients, we seek a client-specific operator T (ℓ) 
+
+> k
+
+that constructs a personalized feature map 
+
+ˆz(ℓ) 
+
+> k
+
+(x) = T (ℓ)
+
+> k
+
+
+
+{z(ℓ) 
+
+> i
+
+(x)}Ki=1 
+
+
+
+, (3) subject to: (i) T (ℓ) 
+
+> k
+
+operates only on representations, (ii) introduces no learnable parameters, and (iii) performs no JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 4
+
+updates to {θk}Kk=1 . The personalized prediction for client k
+
+is obtained by applying its original head: 
+
+ˆyk = hk
+
+
+
+ˆz(ℓ) 
+
+> k
+
+(x)
+
+
+
+, (4) which remains fixed throughout. In the following section, we construct T (ℓ) 
+
+> k
+
+via training-free channel-level feature align-ment. 
+
+B. Residual Injection via Feature Alignment 
+
+The proposed CRIP is a representation-space OSFL frame-work that transfers cross-client knowledge through channel-level feature alignment and residual injection. It does not aggregate model parameters. Motivated by privacy concerns, in CRIP, each client uploads only the feature extractor of its locally trained model to the server in a single communication round, rather than the entire model. The server then broadcasts the collected feature extractors back to all clients. As illus-trated in Fig. 2, each client then personalizes its model through three steps: feature extraction, channel alignment, and residual injection. We describe this personalization process for a target client k. Each client independently applies this procedure to construct its own personalized model. 
+
+a) Feature extraction: Given an input x, let z(ℓ) 
+
+> k
+
+(x)
+
+denote the feature map at layer ℓ that consists of feature maps from different channels: 
+
+z(ℓ) 
+
+> k
+
+(x) = { z(ℓ)
+
+> k,c
+
+(x) }Cℓ
+
+> c=1
+
+, (5) where z(ℓ)
+
+> k,c
+
+(x) denotes the feature map of the c-th channel. To extract channel level representations, we perform a mini batch forward pass using B = {x1, . . . , x B } sampled from the local data of the target client k. All remaining client feature extractors forward the same mini batch B during calibration. For each channel c and sample xb ∈ B , we flatten the spatial response: 
+
+ϕ(ℓ)
+
+> k,c
+
+(xb) = vec 
+
+
+
+z(ℓ)
+
+> k,c
+
+(xb)
+
+
+
+, (6) where vec( ·) denotes vectorization over the spatial dimensions. We then concatenate the flattened responses across samples to obtain a channel specific representation: 
+
+ψ(ℓ)
+
+> k,c
+
+(B) = Concat  ϕ(ℓ)
+
+> k,c
+
+(x1), . . . , ϕ (ℓ)
+
+> k,c
+
+(xB ). (7) Collecting all channels yields the set of channel wise repre-sentations 
+
+Z(ℓ) 
+
+> k
+
+(B) = {ψ(ℓ)
+
+> k,c
+
+(B)}Cℓ
+
+> c=1
+
+, (8) which serves as channel level representations in the subsequent alignment stage. 
+
+b) Feature alignment: Given the channel wise repre-sentations Z(ℓ) 
+
+> k
+
+(B), CRIP identifies transferable channels via channel-level alignment across clients. For a target client k and another source client i ∈ N k with Nk = {1, . . . , K } \ { k}
+
+denoting all source clients, we measure the channel-wise representation similarity between client k and client i at layer 
+
+ℓ using centered kernel alignment (CKA) [35]. Specifically, for channel c of client k and channel c′ of client 
+
+i, the alignment score is defined as 
+
+s(ℓ)
+
+> k,i
+
+(c, c ′) = CKA 
+
+
+
+ψ(ℓ)
+
+> k,c
+
+(B), ψ (ℓ) 
+
+> i,c ′
+
+(B)
+
+
+
+. (9) For each target channel c, we select the most similar channel from each source client i by maximizing the alignment score. For each source client i ∈ N k, let c∗ 
+
+> i
+
+denote its aligned channel for the target channel c (as determined in the alignment step). This establishes a channel correspondence between each target channel and one channel from each source client, forming the aligned channel set A(ℓ) 
+
+> k,c
+
+= {(i, c ∗ 
+
+> i
+
+) | i ∈ Nk} that captures channels with consistent activation patterns across heterogeneous domains. 
+
+c) Residual injection: The aligned channel set A(ℓ) 
+
+> k,c
+
+is determined once using the calibration batch B and remains fixed thereafter. Based on this established correspondence, residual injection is performed independently for each input during inference. For an arbitrary input x, let z(ℓ)
+
+> k,c
+
+(x) denote the original feature map of channel c at layer ℓ in client k. For each source client i ∈ N k, we forward x through client i and obtain the feature map of its aligned channel z(ℓ)
+
+> i,c ∗
+> i
+
+(x), where c∗ 
+
+> i
+
+is the channel from client i aligned to target channel c as determined in the alignment step. The aligned feature maps from source clients are aggregated as: 
+
+¯z(ℓ)
+
+> k,c
+
+(x) = 1
+
+|N k|
+
+X
+
+> i∈N k
+
+z(ℓ)
+
+> i,c ∗
+> i
+
+(x), (10) where aggregation involves no learnable parameters. The per-sonalized feature map for client k is then obtained via residual injection: 
+
+ˆz(ℓ)
+
+> k,c
+
+(x) = z(ℓ)
+
+> k,c
+
+(x) + α ¯z(ℓ)
+
+> k,c
+
+(x), (11) where α controls the injection strength. Together, feature alignment and residual injection instantiate the representation-space operator T (ℓ) 
+
+> k
+
+(·) from Section III-A. This preserves the target model’s original representation while incorporat-ing aligned cross-domain knowledge. Importantly, the entire process operates in representation space without parameter modification or training. IV. T HEORETICAL JUSTIFICATION 
+
+This section explains why representation-space alignment enables semantic-preserving and noise-reducing fusion in one-shot federated learning, by decomposing learned features into semantic components shared across domains and residual components induced by domain-specific and nuisance factors. 
+
+A. Decomposition in Representation Space 
+
+We assume that each data sample observed by client k is generated as: 
+
+(Y, U ) ∼ P, Xk = γ⋆(Y, D k, U ) (12) where Y denotes a semantic variable encoding task-relevant information, Dk is a client-specific domain factor, and U rep-resents nuisance randomness. The prediction target T satisfies 
+
+T ⊥ Dk | Y , implying that Y is sufficient to determine the task semantics across domains. Let f (·; θk) denote the model trained on the local dataset of client k. For a random input Xk, the feature extractor produces a random representation Zk. We define the semantic JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 5
+
+component of the representation as the L2-projection of Zk
+
+onto the space of σ(Y )-measurable functions: 
+
+Sk = E[Zk | Y ] (13) The remaining part of the representation is captured by the residual component: 
+
+Rk = Zk − S k (14) By the orthogonality property of conditional expectation, Rk
+
+satisfies: 
+
+E[⟨R k, ϕ (Y )⟩] = 0 , ∀ ϕ(Y ) ∈ L2(σ(Y )) , (15) where ϕ(·) denotes any arbitrary function of the semantic variable Y . Thus, Rk represents the part of the learned repre-sentation that cannot be explained solely by the task semantics encoded in Y . This component may arise from domain-specific factors associated with Dk, optimization noise, or other nuisance variations. 
+
+B. From Semantic Alignment to Denoising Fusion 
+
+We emphasize that client k forwards its own local inputs through the feature extractors of other clients. Specifically, for an input Xk, client k leverages each source model i ∈ N k to compute 
+
+Zi(Xk) = g(Xk; θi), i̸ = k (16) without exposing raw data or labels and without updating any model parameters. Since representations Zi(Xk) are computed on the same target-domain input, their differences reflect both semantic dis-crepancies and domain-induced residual variations. Using the Eq. (14), the representation distance naturally mixes semantic and residual components. Therefore, representation alignment alone does not guarantee semantic consistency. Channels selected only from the high-alignment region, where s ≥ τ . We do not require the alignment score to serve as a globally exact semantic distance metric over all channel pairs. Instead, we assume local sufficient condition within the candidate region used for channel selection. Higher alignment scores are associated with smaller expected seman-tic discrepancy. Empirical results supporting this assumption are provided in Section V-C: 
+
+E∥S i − S k∥22 | score( Zi, Zk) = s ≤ b − as, s ≥ τ. 
+
+(17) Our fusion process is implemented as follows, 
+
+˜Zk = (1 − α)Zk + αm
+
+X
+
+> i̸=k
+
+Zi, (18) where m denotes the number of source representations se-lected according to the alignment criterion in Eq. (9). Using Eqs. (13)-(15), we decompose ˜Zk = ˜Sk + ˜Rk. We have 
+
+˜Sk − S k = α(( 1
+
+m
+
+X
+
+> i̸=k
+
+Si) − S k
+
+, (19) hence by Jensen’s inequality, 
+
+E∥ ˜Sk − S k∥22 ≤ α2
+
+m
+
+X
+
+> i̸=k
+
+E∥S i − S k∥22 (20)  
+
+> Fig. 3. Illustration of domain heterogeneity in DomainNet. Each row corre-sponds to one semantic class, while each column represents a different domain. Although samples in the same row share the same class label, their visual appearances vary substantially across domains, including clipart, infograph, painting, quickdraw, real, and sketch. This highlights the severe cross-domain variation in style, texture, and visual abstraction, which makes parameter-space aggregation difficult and motivates representation-space personalization.
+
+Under the sufficient condition in Eq. (17), higher alignment scores imply smaller expected semantic discrepancy, and thus the fused semantic component remains close to Sk in expec-tation. We can similarly analyze the residual component Rk,where 
+
+E[∥ ˜Rk∥22 | Y ] = (1 − α)2E[∥R k∥22 | Y ]+ α2
+
+m2 E
+
+h X
+
+> i̸=k
+
+Ri
+
+> 22
+
+| Y
+
+i
+
+. (21) where the cross term vanishes since E[Ri | Y ] = 0. If residuals across clients are not perfectly correlated given 
+
+Y , then averaging strictly reduces the residual energy; in particular, ˜Rk has smaller conditional energy than individual residuals, implying a denoising effect. 
+
+C. Limitations of Parameter-Space Alignment 
+
+The above analysis relies on the ability to establish se-mantic consistency across models through their responses to the same input. In contrast, naive parameter-space similarity (e.g., Euclidean distance or direct averaging) is generally an unreliable proxy for semantic similarity due to permutation and scaling symmetries in neural network parametrizations. As a result, parameter-space aggregation lacks a well-defined mechanism to isolate semantic components from domain-specific or noisy variations, and therefore cannot replicate the denoising behavior enabled by representation-space alignment and fusion. V. E XPERIMENTS AND ANALYSES 
+
+A. Experimental Setup a) Domain-Heterogeneous Datasets: We study the ef-fectiveness of the proposed CRIP on three widely adopted domain-heterogeneous benchmarks, i.e., DomainNet [21], PACS [36], and Office-Home [37]. Example images from the JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 6       
+
+> TABLE I COMPARISON OF DIFFERENT METHODS UNDER THE FEW -SHOT SETTING ON DOMAIN NET , PACS, AND OFFICE -H OME . C LASSIFICATION ACCURACY (%)
+> IS REPORTED AS MEAN ±STANDARD DEVIATION OVER THREE INDEPENDENT RUNS WHERE AVAILABLE ,AND THE BEST RESULTS ARE HIGHLIGHTED IN BOLD .
+
+Dataset Domain Non-OSFL Methods OSFL Methods FedAvg FDRL VQCFL DENSE FOL FedBiP FedDEO FedPFT CRIP DomainNet C 73.12 ±1.54 81.49 ±0.56 79.11 ±1.79 63.84 ±2.51 60.06 ±25.01 77.52 ±0.67 72.33 ±1.26 74.68 ±0.56 86.90 ±5.53 
+
+I 59.85 ±1.51 55.56 ±0.88 54.98 ±1.85 52.87 ±0.38 52.30 ±6.05 60.94 ±2.08 57.39 ±0.84 58.62 ±2.07 67.82 ±2.07 
+
+P 63.77 ±1.12 74.98 ±3.07 73.90 ±1.61 62.07 ±0.97 46.87 ±9.45 65.20 ±0.78 63.17 ±1.05 76.49 ±0.07 84.61 ±1.01 
+
+Q 16.26 ±2.60 72.62 ±1.30 26.53 ±4.30 29.92 ±1.62 54.11 ±17.26 51.85 ±3.24 37.86 ±2.47 49.49 ±1.32 92.00 ±3.57 
+
+R 87.90 ±0.09 96.99 ±0.72 94.90 ±1.08 81.69 ±1.14 42.27 ±13.20 83.16 ±0.60 81.51 ±1.03 93.16 ±0.66 96.41 ±2.08 S 68.07 ±4.67 76.35 ±1.36 77.55 ±4.67 59.20 ±2.12 31.07 ±3.81 68.24 ±0.78 62.86 ±1.61 75.60 ±1.43 78.99 ±7.60 
+
+Avg 61.49 ±0.58 76.33 ±0.59 67.83 ±0.84 58.26 ±1.33 47.78 ±4.93 67.82 ±0.56 62.52 ±1.56 71.34 ±0.38 84.46 ±1.77 
+
+PACS A 52.68 ±3.22 72.30 ±1.32 64.76 ±1.99 44.64 ±0.14 80.83 ±0.64 53.26 ±2.54 49.89 ±0.91 66.47 ±1.47 93.68 ±0.92 
+
+C 68.27 ±4.22 73.61 ±4.50 69.51 ±3.46 63.10 ±1.47 80.36 ±0.67 70.90 ±2.97 68.31 ±1.41 65.29 ±1.72 92.88 ±0.75 
+
+P 86.31 ±1.03 95.03 ±0.42 87.01 ±1.14 74.70 ±0.81 97.15 ±0.88 74.85 ±1.36 71.96 ±0.56 94.13 ±0.63 93.38 ±0.43 S 31.25 ±9.94 63.06 ±1.32 42.95 ±9.75 31.40 ±2.06 76.61 ±2.64 51.70 ±1.69 48.95 ±1.34 57.17 ±0.42 92.01 ±4.08 
+
+Avg 59.63 ±3.13 76.00 ±1.24 66.06 ±3.58 53.46 ±1.62 83.74 ±0.63 62.67 ±0.45 59.78 ±1.07 70.77 ±0.49 94.24 ±1.05 
+
+OfficeHome A 54.48 ±1.60 62.41 ±2.03 58.57 ±1.32 52.37 ±0.96 65.29 ±1.56 55.41 ±0.55 49.37 ±2.06 61.18 ±1.04 62.55 ±2.06 C 47.63 ±1.08 64.68 ±0.83 66.06 ±1.43 46.24 ±1.74 73.01 ±1.26 48.62 ±0.42 42.92 ±0.81 56.35 ±0.26 60.86 ±1.74 P 73.94 ±1.27 84.01 ±0.68 81.98 ±1.13 73.76 ±2.07 85.66 ±0.34 76.63 ±0.20 73.81 ±0.46 77.33 ±0.34 81.01 ±1.24 R 63.94 ±0.56 76.38 ±0.61 75.69 ±0.46 61.86 ±1.45 80.96 ±1.83 65.43 ±0.96 61.77 ±0.51 76.83 ±1.00 78.67 ±1.19 Avg 60.00 ±0.88 71.87 ±0.50 70.57 ±0.32 58.55 ±1.35 76.23 ±0.51 61.52 ±0.39 56.96 ±1.71 67.92 ±0.43 70.77 ±1.14 
+
+domain-heterogeneous datasets are shown in Fig. 3. Specifi-cally, DomainNet consists of six domains, Clipart (C), Info-graph (I), Painting (P), Quickdraw (Q), Real (R), and Sketch (S), from which we select 10 categories. PACS includes four domains, namely Art (A), Cartoon (C), Photo (P), and Sketch (S), covering a total of 7 categories. Office-Home contains four domains, Art (A), Clipart (C), Product (P), and Real (R), with 65 categories selected for evaluation. In all experiments involving our proposed method, each client corresponds to one domain, and the learning process is constrained to a single round of communication, which strictly follows the OSFL setting. We also simulate local data scarcity under heterogeneous data distributions. We follow FedBiP and adopt a few-shot setting, where each client is trained with 16 samples per class for DomainNet and PACS, and 8 samples per class for Office-Home. 
+
+b) Baselines: We compare CRIP with representative Muti-round federated learning methods and state-of-the-art OSFL approaches. For Muti-round methods, we include the FedAvg baseline and two recent representation learning methods, FDRL [38] and VQCFL [39]. Following a unified experimental protocol, all multi-round FL methods are trained for 100 communication rounds. For OSFL methods, we compare with DENSE, a data-free one-shot model distillation method; FOL, a one-shot person-alized federated learning method; FedBiP and FedDEO, two diffusion-based OSFL methods; and FedPFT, a foundation-model-based one-shot federated learning method based on parametric feature transfer. These methods represent recent OSFL approaches based on model distillation, personalized learning, diffusion-based data generation, and foundation-model feature transfer. Consistent with FedBiP, we adopt ResNet-18 pretrained on ImageNet as the backbone model. No public data or auxiliary labeled datasets are introduced for CRIP. All methods are evaluated independently on each target domain, and the average accuracy across domains is reported for each dataset. Unless otherwise specified, all results are reported as the mean 
+
+± standard deviation over three independent runs with random seeds 42, 123, and 456. 
+
+B. Main Results 
+
+Table I summarizes the performance of different methods under the few-shot setting on DomainNet, PACS, and Office-Home. Overall, CRIP achieves the best average performance on DomainNet and PACS, reaching 84.46% and 94.24%, respectively, outperforming the strongest competing methods by 8.13 and 10.50 percentage points. On DomainNet, CRIP achieves the best performance on five out of six domains, with a particularly substantial gain on the highly shifted Quickdraw (Q) domain, where its accuracy reaches 92.00%, compared with 72.62% for the strongest baseline. Similarly, on PACS, CRIP obtains the best results on three out of four domains and demonstrates particularly strong performance on challenging domains such as Sketch (S). Although FOL achieves the best average performance on Office-Home, its performance on DomainNet is considerably less stable across independent runs, exhibiting large standard deviations on sev-eral domains. In contrast, CRIP demonstrates a more favorable overall performance profile across the three heterogeneous benchmarks. These results indicate that directly operating in the representation space enables CRIP to effectively mitigate JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 7                      
+
+> TABLE II ACCURACY IMPROVEMENT ON PACS-C ARTOON UNDER DIFFERENT αVALUES .
+> α0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+> ∆Acc. +0.0000 -0.0026 +0.0026 +0.0004 -0.0043 -0.0175 -0.0303 -0.0516 -0.0836
+
+domain heterogeneity, particularly under substantial cross-domain distribution shifts. We additionally evaluated the Cartoon domain under dif-ferent values of α in Eq. (11). As shown in Table. II, after adjusting the injection strength, the method does not suffer from severe degradation on this domain. In fact, the performance remains close to the baseline for smaller α values, and even shows slight improvement at α = 0.3 and α = 0.4 .These results suggest that the observed drop mainly comes from the mismatch between a globally fixed α and the domain-specific optimum for Cartoon , rather than from an inherent failure of the proposed alignment-injection mechanism. 
+
+C. Validation of CKA-Based Alignment Assumption 
+
+To validate the assumptions proposed in our theoretical analysis, we examine the relationship between CKA similarity and semantic correspondence in this section. The channels exhibit different activations for data from dif-ferent classes. Therefore, we use the class profile of a channel, defined as the distribution of its activation levels between classes, to characterize its class-level semantic preference. Let ac(x) ∈ RH×W denote the feature map of channel c
+
+for input x. We first obtain a scalar response Ac by applying global average pooling to the feature map ac:
+
+Ac(x) = 1
+
+HW 
+
+> H
+
+X
+
+> h=1
+> W
+
+X
+
+> w=1
+
+ach,w (x). (22) For a dataset containing Y classes, the class profile Dc of channel c is defined as 
+
+Dc = [ μc
+
+> 1
+
+, μ c
+
+> 2
+
+, . . . , μ cY ] , (23) where 
+
+μcj = 1
+
+|X j |
+
+X
+
+> x∈X j
+
+Ac(x) (24) denotes the mean response of the channel c to samples from class j.Given a source model channel c and a target model channel 
+
+c′, we quantify their semantic correspondence by Pearson correlation between their Dc and Dc′
+
+:
+
+Sim( c, c ′) = 
+
+PYy=1 
+
+ μcy − ¯μc 
+
+μc′ 
+
+> y
+
+− ¯μc′ qPYy=1 
+
+ μcy − ¯μc2qPYy=1 
+
+ μc′ 
+
+> y
+
+− ¯μc′ 2 ,
+
+(25) where ¯μc = 1
+
+> Y
+
+PYy=1 μcy and ¯μc′
+
+= 1
+
+> Y
+
+PYy=1 μc′ 
+
+> y
+
+denote the mean class-wise responses of channels c and c′, respectively. Unlike CKA( c, c ′), which is computed only from feature representations, Sim( c, c ′) relies on the ground-truth labels of the samples, therefore, provides a proxy based on label for class level semantic correspondence. A higher positive value indicates a stronger class-level semantic correspondence, whereas values near zero or negative values indicate weak or opposing correspondence, respectively. If the CKA metric can capture the semantic correspondence between channels, then channel pairs with higher CKA( c, c ′)
+
+similarity should also exhibit higher Sim( c, c ′) values. To ver-ify this assumption, we compute the complete CKA similarity matrix between the channels of the target model and those of the source model, and rank all channel pairs according to their 
+
+CKA scores. For a given selection ratio q, let Tq and Bq denote the sets containing the top q% and bottom q% of all pair of channels ranked according to their scores CKA , respectively. we compute the average Sim value over all included channel pairs. We also report Pearson r and Spearman ρ within each selected region. Pearson r measures the linear associ-ation between CKA similarity and semantic correspondence, whereas Spearman ρ measures their rank-order association. The reported mean and standard deviation of each metric are calculated across different experimental units. Finally, the p-value is obtained from a one-sided paired test over experimental units, testing whether the mean paired difference 
+
+M (Tq ) − M (Bq ) is significantly greater than zero. The results in Table III provide consistent empirical support for our theoretical assumption. Across all three datasets, the high-CKA region T1% consistently achieves larger profile similarity than the low-CKA region B1% . This indicates that channel pairs with the highest CKA scores are much more likely to share similar semantic preference. The same trend is also observed for both correlation metrics. Compared with the low-CKA region, the high-CKA region consistently shows larger Pearson r and Spearman ρ, suggest-ing that within high-CKA regions, CKA similarity is more positively associated with semantic profile similarity. Importantly, this phenomenon is not limited to the most extreme Top 1% channel pairs. As the selection ratio is progressively increased to 50% , the high-CKA regions still outperform the corresponding low-CKA regions across all datasets and metrics, with all paired tests yielding highly significant p-values. We report the experimental results under additional selection ratios in Table I of the supplementary material. These results demonstrate that higher CKA scores are systematically associated with stronger semantic alignment between source and target channels. We further visualize the relationship between CKA and class-profile similarity among channel pairs in the Top-1% 
+
+CKA region. The detailed results are presented in Figs.1-3 of the supplementary material. The results show that the degree of semantic correspondence tends to increase as CKA similarity increases. This indicates that CKA similarity not only reflects similarity in the activation JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 8                                                                                                            
+
+> TABLE III COMPARISON BETWEEN THE BOTTOM 1% AND TOP 1% CKA REGIONS . F OR EACH EXPERIMENTAL UNIT ,CHANNEL PAIRS ARE RANKED ACCORDING TO THEIR CKA SCORES . R ESULTS ARE REPORTED AS MEAN ±STANDARD DEVIATION ACROSS EXPERIMENTAL UNITS . M ORE DETAILED RESULTS UNDER ADDITIONAL SELECTION RATIOS ARE PROVIDED IN THE SUPPLEMENTARY MATERIAL .
+> Dataset Metric B1% T1% T1% − B 1% p-value DomainNet Sim −0.0035 ±0.0094 0.1631 ±0.0990 0.1666 1.09 ×10 −27
+> r−0.0017 ±0.0181 0.1665 ±0.1094 0.1682 1.08 ×10 −25
+> ρ−0.0018 ±0.0191 0.1710 ±0.1259 0.1728 9.52 ×10 −23
+> PACS Sim 0.0045 ±0.0136 0.1456 ±0.1085 0.1411 3.85 ×10 −9
+> r0.0039 ±0.0217 0.2036 ±0.1643 0.1996 6.37 ×10 −9
+> ρ0.0043 ±0.0235 0.1922 ±0.1612 0.1879 2.34 ×10 −8
+> Office-Home Sim −0.0066 ±0.0033 0.3954 ±0.0495 0.4020 6.16 ×10 −34
+> r0.0056 ±0.0191 0.4907 ±0.0197 0.4852 5.97 ×10 −45
+> ρ0.0060 ±0.0206 0.6466 ±0.0398 0.6406 4.98 ×10 −41
+
+space, but is also associated with consistency in class-level semantic preferences. Although the strength of this relationship varies across different domain pairs, the overall results support the theoret-ical assumption: CKA-based channel matching increases the likelihood of selecting semantically aligned channels. 
+
+D. Ablation Study  
+
+> Fig. 4. Ablation study on DomainNet comparing CRIP with and without the feature alignment module. CRIP-noA denotes the variant without representa-tion alignment.
+
+We compare CRIP with its variant CRIP-noA , which removes the alignment step, to evaluate the contribution of feature alignment. In CRIP-noA, residual injection directly averages representations from all clients without CKA-based channel selection. Fig. 4 presents the classification accuracy per domain on DomainNet. The results show that removing the alignment module degrades performance in all domains. These results are consistent with our theoretical analysis. In particular, statistical correlation alone does not necessarily imply semantic consistency. Our framework explicitly distin-guishes the semantic component from the residual component. The latter captures domain-specific factors and nuisance vari-ations. Therefore, the role of CKA in CRIP is not to guarantee perfect semantic equivalence. Instead, it serves as an alignment criterion for identifying channels that are more likely to be se-mantically transferable. As discussed in Section IV, alignment by itself is insufficient to ensure semantic consistency; rather, under the sufficient condition in Eq. (17), higher alignment scores correspond to smaller expected semantic discrepancy. From this perspective, the performance drop of CRIP-noA can be attributed to the lack of an alignment mechanism. This suggests that directly averaging unaligned representations is ineffective. The reason is that semantically mismatched channels and residual noise may be mixed across clients, thereby introducing representation interference. In contrast, after the alignment step selects more transferable channels, the averaging operation in Eq. (10) acts as a denoising operator: when residual components across clients are not perfectly correlated, averaging suppresses non-semantic statistical noise and reduces residual variance. Therefore, the proposed feature alignment is essential for enabling reliable residual injection and effective cross-client knowledge transfer under domain heterogeneity. 
+
+E. Sensitivity Analysis 
+
+We analyze two key factors that may affect the behavior of the proposed method. The first is the residual injection strength parameter α, which controls the influence of cross-client aligned features in the personalized representation. The second is the choice of domain-specific samples B used during calibration, which determines the channel-wise CKA matching across clients. Larger values of α increase influence from aligned features of other clients, and α = 0 corresponds to using only the target local model for prediction. Fig. 5 illustrates the changes in per-domain classification accuracy improvements on DomainNet as α increases from 0 to 1 under three different alignment strategies. Overall, moderate to large values of α consistently improve performance across most domains. These results validate the effectiveness of cross-client residual injection as a means of knowledge integration in representation space. Although different domains exhibit varying sensitivity to 
+
+α, CRIP maintains stable performance over a wide range of 
+
+α values without noticeable degradation. In contrast, the OT-based alignment strategy becomes less stable at larger α val-ues. This suggests that effective cross-domain representation information is often concentrated in a subset of key chan-nels. By comparison, overly balanced feature allocation may introduce noise. Taken together, these results indicate that the JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 9       
+
+> Fig. 5. Sensitivity analysis of the residual injection strength αon DomainNet. The figure shows classification accuracy per domain as αvaries from 0to 1.
+
+proposed feature alignment mechanism can effectively control the quality of injected features. By doing so, it enhances robustness in the presence of domain heterogeneity. Hence, in all experiments, we set α = 0 .8 to provide a favorable trade-off between leveraging cross-client knowledge and preserving the discriminative power of local representations. We further analyze the effect of the calibration batch size used to construct the domain-specific calibration set B. Fig. 6 shows the per-domain accuracy improvement on DomainNet as the calibration batch size increases from 5 to 200. For each calibration batch size, we independently sample the calibration set five times and report the averaged results. Overall, a clear trend can be observed: increasing the calibration batch size generally leads to more reliable channel matching and larger performance gains across most domains. The gains tend to saturate once the batch size becomes suf-ficiently large. For painting, the best performance is achieved around 50, followed by a slight decline at 100 and 200; similarly, real and sketch exhibit only marginal changes af-ter 50. This indicates that once channel matching becomes sufficiently stable, further increasing the calibration batch size brings limited additional benefit. Overall, these results show that CLIP is sensitive to the quality of calibration data, but remains robust once a moderate        
+
+> Fig. 6. Sensitivity analysis of domain-specific samples Bon DomainNet. The figure shows accuracy improvement per domain as Bvaries from 5to
+> 200 . Colors in the legend progress from light to dark, indicating increasing calibration sample size.
+
+number of domain-specific samples is available. To justify the use of CRIP-K , we analyzed the quantile statistics of the CKA similarity matrix. The distribution is highly skewed, where qp denotes the p-th quantile of the distribution of all pairwise CKA scores: q0 = 0.031653 ,
+
+q0.25 = 0.235313 , q0.5 = 0.314525 , q0.75 = 0.409844 ,
+
+q0.9 = 0 .507017 , q0.95 = 0 .568667 , q0.99 = 0 .684875 , and the maximum value is 0.953321 . This indicates that most channel pairs fall into a moderate similarity range, while only a relatively small subset reaches clearly higher CKA scores. Based on this observation, we introduced the CRIP-K 
+
+variant to make use of these stronger statistical signals and to further examine the robustness of the method with respect to the number of selected channels. The sensitivity analysis shows that, after incorporating these high-ranking candidate channels, the model performance does not differ noticeably from using only the top-1 matched channel. This suggests that the method is reasonably robust to the channel-selection width within a certain range. 
+
+F. Scalability Analysis    
+
+> Fig. 7. Scalability analysis of the proposed method on DomainNet. The bar plots show the average accuracy improvement achieved by CRIP over local models for clients within each domain. Here, ndenotes the number of clients assigned to each domain.
+
+We conduct this scalability experiment to examine whether increasing the number of participating clients would introduce JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 10 
+
+excessive feature mixing. Such mixing may potentially de-grade performance in representation-space personalization. We vary the number of clients per domain n ∈ 1, 3, 5 (i.e., up to 30 clients in total on DomainNet). As the number of clients per domain increases, a naive feature fusion strategy could suffer from noise accumulation and negative transfer. However, the results in Fig. 7 show that CRIP consistently yields positive accuracy gains across all domains even when more clients are involved. This indicates that CRIP is robust to client scale and does not suffer from performance degradation caused by mixing representations. 
+
+G. Privacy Risk Evaluation 
+
+To assess the residual privacy risk associated with sharing feature extractors, we evaluate CRIP using shadow model membership inference attacks. The attacker uses auxiliary data drawn from the same domain distribution to train shadow models and an attack classifier based on intermediate repre-sentations. 
+
+1) Shadow Model Training: Both shadow model and client’s model are initialized from ImageNet pretrained ResNet-18 weights. The attacker replicates the client’s training pipeline using a disjoint subset from the target domain. The training configuration is kept identical to that of the target client: SGD is used with a learning rate of 0.001 , momentum of 0.9, and weight decay of 5 × 10 −4; the loss function is cross-entropy loss. The shadow model is trained for a fixed number of 40 epochs. For each domain in each dataset, we train a separate shadow model. All experiments are repeated using three random seeds. 
+
+2) Representation Extraction: The attacker extracts feature maps from layer4.1.conv2 of both the shadow and target models using forward hooks, and applies global average pooling to obtain feature vectors. Features from the shadow model are used to train the attack classifier, whereas features from the target model are used for evaluation. 
+
+3) Attack Classifier Training: A binary classifier, denoted as AttackMLP , is trained using the feature vectors extracted from the shadow model. The input features are first standard-ized using z-score normalization, and the model is optimized using binary cross-entropy loss. The attack model relies only on intermediate representations. 
+
+4) Membership Inference: The attack model trained on the shadow model data is directly applied to the features extracted from the target model. It predicts a membership confidence score for each sample. We report attack accuracy, AUC, TPR@1%FPR, and at-tack advantage. Attack accuracy measures overall membership classification performance using a threshold of 0.5, whereas AUC evaluates the ability to distinguish members from non-members across all thresholds. TPR@1%FPR measures attack success under a strict low-false-positive setting. Attack ad-vantage is defined as max τ [TPR( τ ) − FPR( τ )] , with higher values indicating greater privacy leakage. As shown in Table IV, the attack accuracy and AUC remain close to the random guessing baseline overall. DomainNet and PACS produce values close to 0.5. Although Office-Home exhibits a moderately higher attack accuracy, its AUC                                           
+
+> TABLE IV MEMBERSHIP INFERENCE ATTACK RESULTS . R ESULTS ARE REPORTED AS MEAN ±STANDARD DEVIATION .
+> Dataset Attack Acc. AUC TPR@1% FPR Adv. DomainNet 0.50 ±0.03 0.50 ±0.03 0.01 ±0.01 0.06 ±0.03
+> Office-Home 0.58 ±0.04 0.53 ±0.01 0.02 ±0.01 0.06 ±0.02
+> PACS 0.51 ±0.04 0.51 ±0.05 0.02 ±0.01 0.09 ±0.05
+
+remains only 0.53 , indicating limited discriminative ability across decision thresholds. Moreover, TPR@1%FPR remains low across all three datasets, ranging from 0.0108 to 0.0231 ,and the attack advantage remains below 0.10 in all settings. Detailed results for each domain are reported in Tabel II of the supplementary material. These results indicate that no substantial membership leakage is detected under the evaluated representation-level attack setting. However, they should not be interpreted as a guarantee of absolute privacy against all possible attacks. 
+
+H. Denoising Effects      
+
+> TABLE V AVERAGE PERFORMANCE IMPROVEMENTS (%) UNDER DIFFERENT DOMAIN COMBINATIONS . F OR EACH TARGET DOMAIN ,THE VALUE IS AVERAGED OVER FUSION RESULTS OBTAINED BY INCORPORATING ANOTHER SINGLE DOMAIN ;All DENOTES FUSION WITH REPRESENTATIONS FROM ALL REMAINING DOMAINS .
+
+C I P Q R S All Avg 7.1% 7.3% 7.5% 6.8% 7.8% 7.4% 8.0% 
+
+To validate the theoretical justification in Section IV, we compare fusion settings that incorporate either a single aux-iliary domain or all remaining domains. The experimental results in Table V show that multi-domain fusion consistently achieves the largest average performance improvement across all settings. This finding is highly consistent with our theo-retical analysis. Introducing a broader set of aligned represen-tations in the representation space significantly enhances the denoising effect of the fusion process. 
+
+I. Inference Efficiency Analysis 
+
+We evaluate the inference efficiency of CRIP on an NVIDIA GeForce RTX 4060 Laptop GPU with a batch size of 1.The complete measurement protocol, component-wise runtime breakdown, and results for all values of K are provided in Tables III and IV of the supplementary material. Under the current sequential implementation, both latency and FLOPs increase approximately linearly with the number of source models. Each additional source model introduces approximately 3.63 GFLOPs and 2.7–3.5 ms of latency. The component wise analysis further shows that most of the additional latency arises from feature extraction, whereas the target model forward pass with residual injection remains relatively stable. Because the source model forward passes are independent, their latency can potentially be reduced through parallel execution or source model selection. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 11 
+
+VI. C ONCLUSION 
+
+We propose CRIP, a feature-level framework for personal-ized OSFL. In the future, CRIP can be extended to heteroge-neous model architectures and multimodal settings. REFERENCES [1] J. Wen, Z. Zhang, Y. Lan, Z. Cui, J. Cai, and W. Zhang, “A survey on federated learning: challenges and applications,” International journal of machine learning and cybernetics , vol. 14, no. 2, pp. 513–535, 2023. [2] J. Talpini, M. Savi, and G. Neglia, “Fedbens: One-shot federated learning based on bayesian ensemble,” in Forty-second International Conference on Machine Learning .[3] S. H. S. Qi, J. Chauhan, G. V. Merrett, and J. Hare, “Fedtmos: Efficient one-shot federated learning with tsetlin machine,” in The Thirteenth International Conference on Learning Representations , 2025. [4] Y. Allouah, A. Dhasade, R. Guerraoui, N. Gupta, A.-M. Kermarrec, R. Pinot, R. Pires, and R. Sharma, “Revisiting ensembling in one-shot federated learning,” Advances in Neural Information Processing Systems ,vol. 37, pp. 68 500–68 527, 2024. [5] S. Salehkaleybar, A. Sharifnassab, and S. J. Golestani, “One-shot feder-ated learning: theoretical limits and algorithms to achieve them,” Journal of Machine Learning Research , vol. 22, no. 189, pp. 1–47, 2021. [6] J. Zhang, C. Chen, B. Li, L. Lyu, S. Wu, S. Ding, C. Shen, and C. Wu, “Dense: Data-free one-shot federated learning,” Advances in Neural Information Processing Systems , vol. 35, pp. 21 414–21 428, 2022. [7] C. E. Heinbaugh, E. Luz-Ricca, and H. Shao, “Data-free one-shot federated learning under very high statistical heterogeneity,” in The Eleventh International Conference on Learning Representations , 2023. [8] Z. Guan, Y. Zhou, and X. Gu, “Capture global feature statistics for one-shot federated learning,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 39, no. 16, 2025, pp. 16 942–16 950. [9] R. Song, D. Liu, D. Z. Chen, A. Festag, C. Trinitis, M. Schulz, and A. Knoll, “Federated learning via decentralized dataset distillation in resource-constrained edge environments,” in 2023 International Joint Conference on Neural Networks (IJCNN) , 2023, pp. 1–10. [10] R. Dai, Y. Zhang, A. Li, T. Liu, X. Yang, and B. Han, “Enhancing one-shot federated learning through data and ensemble co-boosting,” in The Twelfth International Conference on Learning Representations , 2024. [Online]. Available: https://openreview.net/forum?id=tm8s3696Ox [11] G. Huang and T. Shu, “Federated oriented learning: A practical one-shot personalized federated learning framework,” in Forty-second International Conference on Machine Learning , 2025. [Online]. Available: https://openreview.net/forum?id=jwjvkWsePB [12] H. Chen, H. Li, Y. Zhang, G. Zhang, J. Bi, P. Torr, J. Gu, D. Krompass, and V. Tresp, “Fedbip: Heterogeneous one-shot federated learning with personalized latent diffusion models,” CoRR , vol. abs/2410.04810, 2024. [Online]. Available: https://doi.org/10.48550/arXiv.2410.04810 [13] M. Yang, S. Su, B. Li, and X. Xue, “Feddeo: Description-enhanced one-shot federated learning with diffusion models,” in Proceedings of the 32nd ACM International Conference on Multimedia , 2024, pp. 6666– 6675. [14] J. Zhang, X. hua Qi, S. Pang, S. Pan, X. Tu, P. Wan, and B. Zhao, “Federated generative learning with foundation models.” [15] X. Liu, L. Liu, F. Ye, Y. Shen, X. Li, L. Jiang, and J. Li, “Fedlpa: One-shot federated learning with layer-wise posterior aggregation,” Advances in Neural Information Processing Systems , vol. 37, pp. 81 510–81 548, 2024. [16] D. Jhunjhunwala, S. Wang, and G. Joshi, “Fedfisher: Leveraging fisher information for one-shot federated learning,” in International Conference on Artificial Intelligence and Statistics . PMLR, 2024, pp. 1612–1620. [17] Z. Tang, Y. Zhang, P. Dong, Y.-m. Cheung, A. Zhou, B. Han, and X. Chu, “Fusefl: One-shot federated learning through the lens of causality with progressive model fusion,” Advances in Neural Information Processing Systems , vol. 37, pp. 28 393–28 429, 2024. [18] H. Zeng, W. Huang, T. Zhou, X. Wu, G. Wan, Y. Chen, and Z. Cai, “Does one-shot give the best shot? mitigating model inconsistency in one-shot federated learning,” in Forty-second International Conference on Machine Learning .[19] D. Wang, Y. Cui, Z. Wu, H. Xi, and J. Zhu, “A frequency-based approach for federated domain generalization in heterogeneous medical imaging,” in Proceedings of the 2025 International Conference on Multimedia Retrieval , ser. ICMR ’25. New York, NY, USA: Association for Computing Machinery, 2025, p. 1313–1321. [Online]. Available: https://doi.org/10.1145/3731715.3733260 [20] F. Yu, W. Zhang, Z. Qin, Z. Xu, D. Wang, C. Liu, Z. Tian, and X. Chen, “Fed2: Feature-aligned federated learning,” in Proceedings of the 27th ACM SIGKDD conference on knowledge discovery & data mining , 2021, pp. 2066–2074. [21] X. Peng, Q. Bai, X. Xia, Z. Huang, K. Saenko, and B. Wang, “Moment matching for multi-source domain adaptation,” in Proceedings of the IEEE International Conference on Computer Vision , 2019, pp. 1406– 1415. [22] L. Yi, H. Yu, C. Ren, H. Zhang, G. Wang, X. Liu, and X. Li, “pfedafm: Adaptive feature mixture for batch-level personalization in heterogeneous federated learning,” CoRR , 2024. [23] W. Yao, G. Sun, S. Zhu, R. Wang, X. Zhu, H. Xu, and X. Wei, “Fedrda: Representation deviation alignment in heterogeneous federated learning,” IEEE Transactions on Industrial Informatics , 2025. [24] J. Zhang, S. Liu, and X. Wang, “One-shot federated learning via synthetic distiller-distillate communication,” Advances in Neural Infor-mation Processing Systems , vol. 37, pp. 102 611–102 633, 2024. [25] Y. Zhou, G. Pu, X. Ma, X. Li, and D. Wu, “Distilled one-shot federated learning,” arXiv preprint arXiv:2009.07999 , 2020. [26] M. Shin, C. Hwang, J. Kim, J. Park, M. Bennis, and S.-L. Kim, “Xor mixup: Privacy-preserving data augmentation for one-shot federated learning,” arXiv preprint arXiv:2006.05148 , 2020. [27] M. Beitollahi, A. Bie, S. Hemati, L. M. Brunswic, X. Li, X. Chen, and G. Zhang, “Parametric feature transfer: One-shot federated learning with foundation models,” arXiv preprint arXiv:2402.01862 , 2024. [28] A. Kasturi and C. Hota, “Osgan: One-shot distributed learning using generative adversarial networks: A. kasturi, c. hota,” The Journal of Supercomputing , vol. 79, no. 12, pp. 13 620–13 640, 2023. [29] J. Shi, S. Zheng, X. Yin, Y. Lu, Y. Xie, and Y. Qu, “Clip-guided federated learning on heterogeneity and long-tailed data,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 38, no. 13, 2024, pp. 14 955–14 963. [30] J. Zhang, Y. Hua, H. Wang, T. Song, Z. Xue, R. Ma, J. Cao, and H. Guan, “Gpfl: Simultaneously learning global and personalized feature information for personalized federated learning,” in Proceedings of the IEEE/CVF international conference on computer vision , 2023, pp. 5041– 5051. [31] H. Chen, A. Frikha, D. Krompass, J. Gu, and V. Tresp, “Fraug: Tackling federated learning with non-iid features via representation augmenta-tion,” in Proceedings of the IEEE/CVF international conference on computer vision , 2023, pp. 4849–4859. [32] T. Zhou, J. Zhang, and D. H. Tsang, “Fedfa: Federated learning with feature anchors to align features and classifiers for heterogeneous data,” 
+
+IEEE Transactions on Mobile Computing , vol. 23, no. 6, pp. 6731–6742, 2023. [33] R. Ye, Z. Ni, C. Xu, J. Wang, S. Chen, and Y. C. Eldar, “Fedfm: Anchor-based feature matching for data heterogeneity in federated learning,” 
+
+IEEE Transactions on Signal Processing , vol. 71, pp. 4224–4239, 2023. [34] Z. Yang, Y. Zhang, Y. Zheng, X. Tian, H. Peng, T. Liu, and B. Han, “Fedfed: Feature distillation against data heterogeneity in federated learning,” Advances in neural information processing systems , vol. 36, pp. 60 397–60 428, 2023. [35] S. Kornblith, M. Norouzi, H. Lee, and G. Hinton, “Similarity of neural network representations revisited,” in International conference on machine learning . PMlR, 2019, pp. 3519–3529. [36] K. Zhou, Y. Yang, T. Hospedales, and T. Xiang, “Deep domain-adversarial image generation for domain generalisation,” in Proceedings of the AAAI conference on artificial intelligence , vol. 34, no. 07, 2020, pp. 13 025–13 032. [37] H. Venkateswara, J. Eusebio, S. Chakraborty, and S. Panchanathan, “Deep hashing network for unsupervised domain adaptation,” in Pro-ceedings of the IEEE conference on computer vision and pattern recognition , 2017, pp. 5018–5027. [38] Y. Zhang, Y. Wang, Y. Li, Y. Xu, S. Wei, S. Liu, and X. Shang, “Fed-erated discriminative representation learning for image classification,” 
+
+IEEE Transactions on Neural Networks and Learning Systems , vol. 36, no. 2, pp. 3204–3217, 2025. [39] X. Chen, Y. Zhang, X. Xu, D. Hu, and G. Xu, “Vector quantization-based clustered federated learning with global feature anchors for improved representation and generalization,” IEEE Transactions on Neural Net-works and Learning Systems , vol. 36, no. 11, pp. 19 790–19 804, 2025.
