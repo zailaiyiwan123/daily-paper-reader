@@ -6,35 +6,30 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-08
-- 运行时间：2026-08-08 20:57:32 UTC
+- 最新运行日期：2026-08-09
+- 运行时间：2026-08-09 20:49:03 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：3
-- 速读区：2
+- 本次总论文数：3
+- 精读区：0
+- 速读区：3
 
 ### 今日简报（AI）
-今日精读5篇论文，重点关注个性化智能体记忆图（PGMem）与实例自适应LoRA生成（MoEGen），两篇均获9.0高分。速读涉及联邦学习低秩压缩与生成式推荐协同记忆，但评分相对较低。建议优先研读高分论文，深入理解记忆增强与高效微调的前沿方法。
-- 详情：[/202608/08/README](/202608/08/README)
+今日速读3篇论文，无精读；其中广告检索加速引擎GRACE评分最高（7.0/10）。重点关注生成式推荐加速与多模态记忆检索两大方向。建议普通读者优先了解GRACE对实时广告召回效率的提升思路。
+- 详情：[/202608/09/README](/202608/09/README)
 
 ### 精读区论文标签
-1. [PGMem: Tightly Coupled Persona-Memory Graph for Lifelong Personalized Agents](/202608/08/2608.01708v1-pgmem-tightly-coupled-persona-memory-graph-for-lifelong-personalized-agents)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：个性化智能体；用画像-记忆图追踪用户偏好
-2. [MoEGen: Mixture-of-Experts for Instance-Adaptive LoRA Generation](/202608/08/2608.03275v1-moegen-mixture-of-experts-for-instance-adaptive-lora-generation)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：生成实例自适应的LoRA适配器，属于个性化模型适应技术
-3. [CRIP: Channel Level Representation Injection for Personalized One-Shot Federated Learning](/202608/08/2608.02222v1-crip-channel-level-representation-injection-for-personalized-one-shot-federated-learning)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：通过通道级表示注入实现个性化单次联邦学习
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [FraQ: Efficient Coordinate-Space Recompression for Federated Low-Rank Adaptation](/202608/08/2608.03605v1-fraq-efficient-coordinate-space-recompression-for-federated-low-rank-adaptation)  
+1. [GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval](/202608/09/2608.00938v1-grace-generative-recommender-acceleration-engine-for-real-time-ads-retrieval)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：联邦LoRA自适应支持跨客户端高效个性化模型适配
-2. [Collaborative Memory Augmentation for Generative Recommendation](/202608/08/2608.01315v1-collaborative-memory-augmentation-for-generative-recommendation)  
+   evidence：生成式广告检索与个性化资格过滤
+2. [The Assistant Erased You: Measuring Loss of Authorship Signals in AI-Mediated Communication](/202608/09/2608.00926v1-the-assistant-erased-you-measuring-loss-of-authorship-signals-in-ai-mediated-communication)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：利用协同记忆增强生成式推荐中的个性化物品序列生成
+   evidence：提出作者风格擦除率量化AI改写后的个体风格消失，与个性化文本生成的风格保持评估相关。
+3. [V-Mem: Modality-Routed Retrieval for Long-Term Multimodal Agentic Memory](/202608/09/2608.01543v1-v-mem-modality-routed-retrieval-for-long-term-multimodal-agentic-memory)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：面向长期多模态智能体记忆的模态路由检索，支持用户相关多模态交互
 
 
 <div class="dpr-home-promo-card">

@@ -1,0 +1,402 @@
+Title: GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval
+
+URL Source: https://arxiv.org/pdf/2608.00938v1
+
+Published Time: Tue, 04 Aug 2026 01:01:19 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# GRACE: G ENERATIVE RECOMMENDER ACCELERATION ENGINE FOR 
+
+# REAL -T IME ADS RETRIEVAL 
+
+Zhou Fang 1 Yuhang Huang 1 Ang Zhang 1 Yihan He 1 Ruichao Xiao 1 Chao Li 1 Yavuz Yetim 1 Sibyl Yang 1
+
+Xiaohan Wei 1 Fei Tian 1 Liang Wang 1 Liyuan Li 1 Nathan Yan 1 Gaoxiang Liu 1
+
+# ABSTRACT 
+
+Productionizing generative recommenders for high-volume, real-time ads retrieval creates two serving challenges: 
+
+eligibility , ensuring that each generated ad is eligible for the request under the advertiser’s audience targeting rules, and compute , which requires meeting strict latency and GPU cost requirements while remaining capable of generating thousands of ads per request with wide-beam decoding. This paper presents GRACE, a serving system for ads generative retrieval that addresses both challenges. For eligibility, GRACE introduces Generative Target Matching (GTM), which extends catalog-valid constrained decoding with personalized filtering over Semantic ID (SID) prefixes using bitmask and Bloom filter matchers derived from targeting rules. SID-level GTM improves final ad-level target matching pass rate from 23.55% to 40.42% over constrained decoding alone. For compute-cost and latency, GRACE targets encoder-decoder Transformers, which are more lightweight than LLMs. It redesigns the decoder around the wide-beam, short-sequence regime, covering attention kernels, KV cache, and beam search optimizations. On NVIDIA GH200, compared with the faster of FlashAttention-2 and FlashAttention-3 baselines, GRACE improves cross-attention latency by 68.0 × and self-attention latency by 23.4–25.8 × across decode steps. Together, these changes reduce decoder latency by 11.1 ×, keeping ads generative retrieval within latency and compute requirements. 
+
+# 1 INTRODUCTION 
+
+Large-scale ads recommender systems commonly use a cascaded retrieval and ranking architecture: fast retrieval stages narrow a large ad corpus to a smaller candidate set, and more heavyweight ranking models score those candi-dates (Covington et al., 2016; Gallagher et al., 2019). Ads recommendation adds a hard eligibility requirement. Ad-vertisers can specify targeting rules over attributes such as geography, demographics, and other request signals to de-fine the audience they intend to reach. For each user request, ads candidate generation must enforce these rules so that only ads eligible for that user enter retrieval. Retrieval then selects a smaller set from this eligible inventory for down-stream ranking. We refer to this eligibility check as Target Matching. Generative retrieval changes this flow. Instead of scoring candidates produced by Target Matching, a Transformer decoder can represent each item as a Semantic ID (SID), a short sequence of discrete tokens, and autoregressively emit SID sequences conditioned on the user (Rajput et al., 2023; He et al., 2026; Deng et al., 2025). This creates a serving    
+
+> 1Meta Platforms. Correspondence to: Zhou Fang <zho-ufang@meta.com >.
+
+mismatch for ads: targeting rules change dynamically and define a different eligible ad subset for each request, while the generative model learns a stable SID space and predicts high-probability identifiers directly. A post-generation fil-ter can expand generated SIDs to ads and then run Target Matching, but many generated ads may be discarded before reaching the downstream ranking stage. This mismatch makes eligibility the first serving problem for ads generative retrieval. Catalog-valid constrained decoding does not solve it by itself. STATIC (Su et al., 2026), for ex-ample, efficiently enforces that each generated SID belongs to a constrained catalog. That is a validity constraint: de-coding is restricted to SIDs that exist in the catalog, and can support request-independent business rules such as fresh-ness, locality, category, or inventory constraints. For ads, generation can also require a personalized eligibility con-straint: the generated SID must represent at least one ad whose targeting rules match the user. Thus, eligibility must be checked during decoding, not only after generated SIDs are expanded back to ads. 
+
+Compute is the second serving problem. Real-time ads re-trieval needs the capability to generate thousands of ads per request under strict latency and compute-cost requirements. This motivates our serving design around a lightweight encoder-decoder Transformer (Vaswani et al., 2017; Ra-arXiv:2608.00938v1 [cs.IR] 2 Aug 2026 GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+jput et al., 2023) rather than an LLM. Its decoder shape differs from the long-sequence regimes targeted by general attention kernels such as FlashAttention and FlashInfer (Dao et al., 2022; Dao, 2024; Shah et al., 2024; Ye et al., 2025b): beam search creates a wide effective batch, self-attention sequences are only a few SID tokens long, and encoder outputs are shared across beams as cross-attention context. This wide-batch, short-sequence shape leaves general atten-tion kernels severely underutilized, requiring specialized decoder optimizations. This paper presents GRACE (Generative Recommender ACceleration Engine), a serving system for ads genera-tive retrieval that addresses both problems. For eligibility ,GRACE introduces Generative Target Matching (GTM), which preserves catalog-valid decoding while adding a re-quest specific targeting test at each decode step. It uses bit-mask matchers for low-cardinality attributes such as coun-try, age, and gender, and Bloom filter matchers for high-cardinality attributes such as location. Candidate tokens are masked unless they both extend a valid SID prefix and preserve at least one eligible ad under that prefix, so beam search advances only through prefixes that remain eligible for the request. In an evaluation over 30M SIDs, SID-level GTM improves final ad-level target matching pass rate from 23.55% to 40.42% over constrained decoding alone. For compute , GRACE redesigns the decoder with opti-mized cross-attention layout, short-sequence self-attention kernels, paged KV cache for beam search, GTM kernels, and dynamic per-step beam sizes. On NVIDIA GH200, com-pared with the faster of FlashAttention-2 and FlashAttention-3 scaled dot-product attention (SDPA) baselines, GRACE improves cross-attention latency by 68.0 × and self-attention latency by 23.4–25.8 × across decode steps. Together, these optimizations reduce fixed beam size M = 1024 decoder latency by 11.1 ×, from 197.7 ms to 17.8 ms; dynamic per-step beams further reduce optimized decoder latency to 15.8 ms. With these changes, GRACE keeps generative retrieval within the latency and compute requirements of real-time ads retrieval even with GTM overhead. This paper makes three contributions: 1. It identifies the gap between catalog-valid constrained decoding and ads audience target matching, and intro-duces GTM for personalized eligibility testing inside Transformer decoding. 2. It optimizes the wide-beam, short-sequence attention of encoder-decoder generative retrievers with custom kernels that substantially outperform state-of-the-art general attention kernels for this workload shape. 3. It provides an end-to-end serving design for ads genera-tive retrieval, including multi-stage pipelined inference  
+
+> Figure 1. GRACE serving path. Offline, ads source data is used to asynchronously build the GTM SID trie, the SID-to-ad index, and the ad-level target matching index. Online serving converts user features into encoder context tokens and runs four-step beam search decoding. At each SID position, GTM constrained top-k
+> enforces both valid SID transitions and personalized target match-ing against user-side targeting attributes. Post-processing expands generated SIDs to ads and applies exact ad-level target filtering.
+
+and beam search optimizations. 
+
+# 2 RELATED WORK 
+
+2.1 Ads Recommendation and Audience Targeting 
+
+Conventional ads serving is organized as a cascade. First, Target Matching enforces advertiser audience rules: for each request, the system checks user and request attributes against targeting constraints and keeps only ads eligible for that request. Second, retrieval selects a much smaller can-didate set from this eligible inventory under strict latency constraints. Third, ranking stages apply richer models to the retrieved candidates. Andromeda is a representative large-scale ads retrieval system, combining deep retrieval models with hierarchical indexing to search over tens of millions of ad candidates (Sun et al., 2024). Work on early-stage ads ranking studies the tradeoff between efficient pre-ranking and final-stage ranking quality (Wang et al., 2023), while broader ranking and recommendation models improve fea-ture interaction, user modeling, and large-scale architecture design (Naumov et al., 2019; Wang et al., 2021; Zhang et al., 2022; Zeng et al., 2025; Zhai et al., 2024; Li et al., 2025). GRACE differs from this conventional flow because a gener-ative retriever emits ad identifiers directly instead of scoring candidates after Target Matching. As a result, ads eligibility cannot be enforced only before retrieval; it must be enforced inside the generative decoding loop. GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+2.2 Generative Retrieval 
+
+Generative retrieval replaces nearest-neighbor or candidate-scoring retrieval with autoregressive generation of iden-tifiers. GENRE generates entity names for entity re-trieval (De Cao et al., 2021), and DSI maps queries di-rectly to document identifiers with a Transformer index (Tay et al., 2022). TIGER adapts this formulation to recommen-dation by assigning each item a Semantic ID (SID) and generating the next item’s SID from user history (Rajput et al., 2023). Subsequent systems study SID design, LLM adaptation, and industrial-scale generative recommendation, including LC-Rec (Zheng et al., 2024), PLUM (He et al., 2026), and OneRec (Deng et al., 2025). These works primar-ily address tokenization, training, alignment, and retrieval quality. GRACE is complementary: it studies how to serve SID-based ads retrieval when generated identifiers must satisfy request-time targeting rules under strict latency and compute-cost requirements. 
+
+2.3 Constrained Decoding 
+
+Constrained decoding (CD) restricts autoregressive gen-eration at inference time, with prior work enforcing lex-ical predicate-logic constraints (Lu et al., 2021) and code-validity constraints such as syntax, typing, and contextual logic (Poesia et al., 2022). In generative retrieval, the central constraint is catalog validity: the generated identifier must belong to the allowed item set. DISC-PPV accelerates pre-fix verification for constrained generation (Ye et al., 2025a), and STATIC provides accelerator-friendly constrained de-coding for catalog-valid SIDs (Su et al., 2026). GRACE builds on this direction but targets a different constraint. Catalog validity is request-independent, while ads eligibility is personalized: the feasible next token depends on both the SID prefix and the user’s targeting attributes. GTM there-fore augments catalog-valid decoding with request-specific target matching before beam selection. 
+
+2.4 Attention Kernels 
+
+Efficient attention kernels and LLM serving runtimes opti-mize Transformer inference across important production regimes. The FlashAttention family improves attention through IO-aware tiling, sequence-parallel work partition-ing, and hardware-specific pipeline co-design for Hopper and Blackwell GPUs (Dao et al., 2022; Dao, 2024; Shah et al., 2024; Zadouri et al., 2026). LLM serving systems such as vLLM/PagedAttention and FlashInfer focus on high-throughput autoregressive serving through dynamic batch-ing, KV cache memory management, customizable atten-tion, and decode-time scheduling (Kwon et al., 2023; Ye et al., 2025b). GRACE instead targets a wide-beam, short-sequence decoder with shared encoder context tokens, and decode-time CD+GTM matching. These differences moti-vate kernel optimizations specialized for this workload. 
+
+# 3 GRACE S ERVING ARCHITECTURE 
+
+3.1 Inference Flow 
+
+GRACE provides a serving framework for placing gener-ative retrieval within a multi-stage real-time ads serving stack. Figure 1 summarizes the inference flow. First, an en-coder converts request-side user features into context tokens. Second, GRACE runs an autoregressive beam search loop over SID positions. At each position, the decoder produces next-token logits for the current beams; a fused constraint kernel applies both CD and GTM filtering to remove invalid or ineligible next tokens. For each surviving next token, the beam score is updated by adding the new token’s log-probability to the accumulated log-probability of the prefix; beam top-k then selects the highest-scoring prefixes and rearranges beam state for the next decode step. Third, the completed SIDs are expanded to ads through a SID-to-ad index. Fourth, the expanded ads pass through the ad-level exact target matcher. The remaining ads then continue to the downstream retrieval and ranking stack. The flow uses three physical indexes, built periodically and asynchronously from the real-time online flow, as shown in Figure 1. • GTM SID trie. A trie-based constrained decoding in-dex on GPU, following STATIC (Su et al., 2026), aug-mented with targeting matchers for SID prefixes and full SIDs. Low-cardinality targeting attributes, such as country, age, and gender, use bitmask matchers; high-cardinality targeting attributes, such as fine-grained locations, use Bloom filter matchers. This is the only index read by the GTM kernel inside the decoding loop. • SID-to-ad index. A CPU-resident map from com-pleted SIDs to ad ids. CD ensures that all generated SIDs are catalog-valid, so each generated SID expands to at least one generated ad. • Ads targeting index. A CPU-resident ad-level target matcher, which enforces the same bitmask and Bloom filter targeting semantics as GTM but at exact ad gran-ularity. This CPU-side post-matching remains necessary because GTM operates at SID granularity, while each SID is a clus-ter of ads. An eligible SID only guarantees that at least one ad in the cluster is eligible for the request; the other ads expanded from the same SID may still be ineligible and must be removed by exact ad-level filtering. With GTM, however, this post-matching stage receives SIDs that have GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+already passed personalized eligibility checks during decod-ing, so its pass rate is much higher than with ad-level target matching alone (Section 6.2). 
+
+3.2 Encoder-Decoder Model 
+
+GTM works for SID-based generative retrievers, includ-ing encoder-decoder and decoder-only Transformer models, while the compute optimizations in this paper focus on encoder-decoder models (Vaswani et al., 2017): an encoder maps request features and histories to cross-attention con-text tokens, and a decoder autoregressively generates the SID. 
+
+Encoder. GRACE is agnostic to the encoder choice as long as it emits context tokens for decoder cross-attention. TIGER demonstrates this encoder-decoder pattern: its Trans-former encoder encodes a user’s historical item sequence, and its decoder generates the next SID autoregressively (Ra-jput et al., 2023). For heterogeneous recommendation fea-tures, InterFormer provides an encoder design that combines non-sequence features, such as user profile and context, with behavior sequences, such as clicks and conversions, through feature-interaction and attention layers (Zeng et al., 2025). Our evaluation in Section 6 uses this InterFormer-style en-coder, which emits Tctx = 128 context tokens. 
+
+Decoder. In beam search decoding, all beams for the same request share the encoder outputs, so cross-attention can reuse the same KV across beams. The decoder maintains separate KV caches for cross-attention and self-attention. Cross-attention KV is computed once per request from en-coder context tokens and is shared by all beams for that request throughout decoding. Self-attention KV stores each layer’s generated-prefix key/value tensors and is updated after each autoregressive step as the partial SID grows. The decoder self-attention sequence is short because it contains only the generated SID prefix, not a long prompt prefix as in decoder-only LLMs. In the model studied here, the SID has fixed length LSID =4; the decoder has three layers, H = 16 heads, and head dimension dh = 128 , over a vocabulary of |V| = 512 .Under a fixed beam size M = 1024 , this requires 533 GFLOPs per request. 
+
+3.3 Beam Search with Dynamic Sizes 
+
+Beam search has two compute overheads in this workload. The first is beam-multiplied decoder compute: each autore-gressive step runs the Transformer decoder once for every beam, so decoder FLOPs scale with the pre-configured beam size chosen for that step. The second is beam rearrangement: after CD+GTM filtering, beam top-k selects the next beam’s prefixes from the scored candidates, and those selected chil-dren become the next beam array. Generated tokens, accu-mulated scores, and self-attention KV state must then follow the new beam order, making beam rearrangement a memory-operation cost in the decode loop. GRACE reduces these compute costs with two corresponding optimizations. 
+
+Dynamic per-step beam sizes. Standard beam search uses a fixed beam size M at every step. GRACE instead uses dynamic per-step beam sizes (M1, . . . , M LSID ). At step t,the decoder runs only on Mt pre-configured beam rows, and each row produces logits over the SID-token vocabulary 
+
+|V| . The CD+GTM filtering, beam score update, and top-
+
+k selection follow the inference flow in Section 3.1. The first step has M1 = 1 because decoding starts from a sin-gle initial state. For intermediate steps, top-k selects the next topk t = Mt+1 beams; at the final step it selects the generated SIDs. Dynamic beams avoid over-allocating scoring work near the trie root. In our evaluation |V| = 512 , so the first step can produce at most 512 distinct prefixes. CD+GTM filtering can reduce this further: the experiments in Sec-tion 6.2 measure 492.6 unique eligible beams on aver-age at the first position. From the second step onward, 
+
+Mt · |V| is much larger than Mt+1 , so top-k outputs nor-mally fill the next beam size. GRACE therefore uses 
+
+(M1, M 2, M 3, M 4) = (1 , 512 , 1024 , 1024) , rather than a fixed beam-size. Decoder compute is approximately lin-ear in beam size, so this reduces model compute from 533 to 446 GFLOPs per request in the 4-step setup, a 16.2% reduction. 
+
+Paged beam rearrangement. After each top-k selection, beam rearrangement forms the next beam state by shuffling the selected prefixes’ tokens, scores, and KV state, then ap-pending the new token. Generated tokens and accumulated scores are lightweight; the more demanding data movement comes from the self-attention KV cache. A dense imple-mentation copies the selected beams’ past prefix KV into each new beam row. At B · M = 16384 , this dense KV copy moves about 1.6 GB and costs about 1.79 ms per step. GRACE instead organizes self-attention KV in a paged-attention-style block table: each block stores one token’s self-attention KV for one beam row, across all heads. Beam rearrangement copies only block ids for previous positions, and the next decoder step writes the current token into a fresh block. Children that share a prefix can therefore reuse the same past block ids; Section 5 details the kernel layout. 
+
+3.4 Multi-Stage Pipelined Inference 
+
+GRACE implements the inference flow as four runtime stages that run concurrently: (1) an input stage for request batching and host-to-GPU transfer, (2) a feature prepro-cessing stage for embedding-heavy feature preparation, in-cluding embedding bags and sequence/non-sequence pre-processing, (3) a compute-intensive stage for the encoder’s GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval  
+
+> Figure 2. Multi-stage pipelined inference in GRACE. Input, fea-ture preprocessing, compute-intensive, and post stages run on sep-arate Python threads and CUDA streams. The compute-intensive stage runs back-to-back on its own stream to keep GPU utilization high and hide lower-MFU stages.
+
+feature-interaction and attention compute, followed by the full decoding loop with GTM, and (4) a post stage for SID-to-ad lookup and exact ad-level target filtering. Each stage runs on a Python thread with a dedicated CUDA stream. Python GIL contention is mitigated by moving the hot path out of the Python interpreter through TorchScript, CUDA graphs, and a C++ implementation of the post stage. For one batch, these stages execute in order. Across differ-ent batches, they are staggered across streams and run in parallel, as illustrated in Figure 2. We report Model FLOPs utilization (MFU) as observed computational throughput divided by the maximum theoretical compute capacity of the hardware. The feature preprocessing stage has lower MFU, while the compute-intensive stage has high MFU and dominates compute. Because these stages stress different parts of the hardware, the compute-intensive stage can run back-to-back while lower-MFU stages overlap in the same time window, improving end-to-end GPU efficiency without changing the model computation or introducing measurable regression from parallel execution. 
+
+# 4 GENERATIVE TARGET MATCHING 
+
+4.1 Problem Formulation 
+
+We distinguish catalog validity from advertiser eligibility. A valid SID exists in the catalog and maps to at least one ad; an eligible ad is one that is matched with the user/request by the targeting rules; an eligible SID is a SID with at least one eligible ad; and an eligible SID prefix is a prefix whose subtree contains at least one eligible ad. Conventional Target Matching starts from the request at-tributes and returns a set of ads by querying the targeting index, then hands the surviving ads to the retrieval model. A generative retrieval model has no such pre-matched ad inputs. At step t, the only choice available is which next SID tokens the beam search is allowed to explore. GTM translates the conventional target filtering contract into this token-level control problem: a token is feasible only if the prefix it creates still contains at least one ad that could pass target filtering for the request. At decode step t, the current beam prefix is p in the SID trie. The valid next SID tokens are the children of p in this trie, and v denotes one candidate next token. Constrained decoding admits v if the concatenated prefix p∥v, formed by appending token v to prefix p, is a prefix of some valid SID: 
+
+CD t[v] = 1[v ∈ children( p)] .
+
+GTM defines an eligibility indicator TM t[v] for each candi-date token. The request attributes used by Target Matching are denoted by u, such as country, age, gender, and location. It admits v if the SID subtree rooted at p∥v contains at least one ad eligible for request attributes u:
+
+TM t[v] = match( u, p∥v).
+
+The decoder applies both constraints to the log probabilities of candidate tokens: 
+
+Lt[v] ←
+
+(
+
+Lt[v], CD t[v]TM t[v] = 1 ,
+
+−∞ , otherwise .
+
+TM t[v] is implemented with two matcher types: bitmask matchers for low-cardinality attributes and Bloom filter matchers for high-cardinality attributes. 
+
+4.2 Bitmask Matching for Low-cardinality Attributes 
+
+For low-cardinality constraints, bitmasks encode targeting attributes such as country, age, gender, and other user info. Each attribute has a fixed-size bit range, where each bit position corresponds to one possible value. Let bitmask( a)
+
+encode the values allowed by ad a’s targeting rules, and let bitmask( u) encode the user’s observed attribute values. The full bitmask concatenates these per-attribute ranges into one packed vector stored as a fixed-size array of 64-bit integers. We pad bitmasks to 64-bit word boundaries when needed, enabling CPU-side SIMD-vectorized bit operations. GRACE materializes such bitmasks for SID prefixes and full SIDs. Let A(p) be the ads represented by trie node p:for a full SID, this is the ad cluster assigned to that SID; for an internal SID prefix, this is the union of ads under all descendant SIDs. The stored bitmask matcher is the OR of those ad bitmasks: 
+
+bitmask( p) = _
+
+> a∈A (p)
+
+bitmask( a).
+
+Figure 3 shows the same union principle with a smaller toy mask: an internal-node matcher is formed by OR-ing the matchers below it. During decoding, candidate token v
+
+points to child node p∥v, and TM t[v] evaluates the bitmask match between bitmask( u) and the stored node matcher 
+
+bitmask( p∥v). The packed test passes when all user at-tribute bits are present in the node matcher: 
+
+(bitmask( p∥v) ∧ bitmask( u)) = bitmask( u).GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval   
+
+> Figure 3. GTM storage and k-way partitioning. Panel (a) shows subtree-union matcher entries on SID-trie nodes. Panel (b) applies k-way partitioning, splitting one broad subtree union into several partition-level unions. Panel (c) shows the CD+GTM index layout: CSR child-entry arrays provide child node ids, SID tokens, and matcher-table ids, while bitmask and Bloom matcher rows are stored in deduplicated tables. Appendix A gives the concrete lookup layout.
+
+Because the stored matcher is an OR over ads under the prefix, the test is conservative and may introduce false positives: it can make a node pass even when no single ad under that node is eligible, because different ads may contribute different matching attribute bits. As a small bit-level example, suppose a toy mask has two attributes: country bits [US , CA , UK] , age bits 
+
+[18 –24 , 25 –34] . If a trie node contains one ad targeting US users in the 18–24 age bucket and another ad targeting CA users in the 25–34 age bucket, the node union matcher is 
+
+bitmask( p) = 110 |{z} 
+
+> country
+
+11 |{z} 
+
+> age
+
+.
+
+A request from a user in the US, at age 30, has 
+
+bitmask( u) = 100 |{z} 
+
+> country
+
+01 |{z} 
+
+> age
+
+,
+
+so every attribute intersects: 100 ∧ 110 ̸ = 0 , 01 ∧ 11 ̸ = 0 .The node is kept, even though neither ad is individually eligible: the US ad fails the age attribute, and the 25–34 ad fails the country attribute. 
+
+k-way partition. k-way partitioning mitigates OR-induced false positives by splitting descendants under a trie node into k groups and storing one union matcher per group; a re-quest passes only if at least one group matches all attributes. Figure 3(b) illustrates this partitioned layout. We define matcher fill rate as the fraction of set bits in a stored union matcher row. Lower fill means the union bitmask filter is less saturated, so the matcher is more selective and less likely to keep prefixes that are false positives of the subtree union. The tradeoff is that k-way partitioning stores and checks more matchers for each node: a prefix is kept if any partition matcher passes. • Static k-way uses a fixed k per decode position. Dur-ing construction, each SID is assigned to the partition that gives the smallest post-union fill rate after adding that SID’s matcher. • Dynamic k-way chooses k separately for each trie node, i.e., for each SID prefix. The builder increases 
+
+k for that node until the union fill rate reaches a best-effort target or reaches kmax .As discussed in Section 3.1, GTM is a SID-level filter, so generated SIDs still pass through the CPU-side exact ad-level target matcher after SID-to-ad lookup. Section 6.2 therefore reports exact ad-level pass rate as the evaluation metric for SID-level GTM. 
+
+4.3 Bloom Matching for High-cardinality Attributes 
+
+For high-cardinality constraints such as location, the value space is too large to encode as dense bit ranges, and each ad or request may contain multiple values. GRACE therefore uses Bloom filter matchers. We use location as the example: advertisers may target fine-grained geographies represented as strings, such as city, region, or local-area strings, while a request carries user-side location strings. Each ad encodes its target-location set as a fixed-width 
+
+w-bit Bloom filter bloom( a). In our evaluation, each Bloom matcher uses w = 256 bits, stored as four 64-bit integers. A request with Nloc user-side loca-tions {ℓ1, . . . , ℓ Nloc } encodes each location separately as 
+
+{bloom( ℓ1), . . . , bloom( ℓNloc )}. We use the Bloom con-tainment test 
+
+contains( B, ℓ j ) = 1[(bloom( ℓj ) ∧ B) = bloom( ℓj )] .
+
+A location constraint matches a request with an ad when 
+
+contains(bloom( a), ℓ j ) = 1 for at least one user location 
+
+ℓj .GRACE materializes Bloom matchers for the same SID prefixes and full SIDs as the bitmask matchers in Section 4.2. Using the same A(p) notation, the stored Bloom matcher for node p is the OR of the Bloom filters for ads represented by that node: 
+
+bloom( p) = _
+
+> a∈A (p)
+
+bloom( a).
+
+During decoding, TM t[v] uses the same child-node lookup pattern as bitmask matching, but the Bloom GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+predicate is ANY-of-many: it keeps p∥v as soon as 
+
+contains(bloom( p∥v), ℓ j ) = 1 for any request location 
+
+ℓj . As in Section 4.2, the subtree OR is conservative and may introduce false positives; Bloom hash collisions add another source of false positives. The same k-way partitioning from Section 4.2 applies to Bloom matchers: instead of storing one broad OR-ed Bloom filter for a prefix, the index can store several partition-level Bloom filters and keep the prefix if any partition matches a request location. This can reduce false positives from subtree unions, at the cost of more matcher entries and decode-time checks. Section 6.2 evaluates this tradeoff. Because SID-level Bloom filtering remains conservative, GRACE still runs exact ad-level Bloom filtering to remove ineligible ads. 
+
+4.4 Storage Layout and Lookup 
+
+Following the constrained decoding index introduced by STATIC (Su et al., 2026), GRACE stores valid SID se-quences as a prefix trie. Appendix A gives the concrete storage layout. During decoding, each active beam corre-sponds to one trie prefix/node and carries the integer node id for that prefix in addition to its decoded tokens and accu-mulated score. GRACE stores trie children in compressed sparse row (CSR) form. The node offsets array maps each trie node to a contiguous child-entry range; for node r, the range between consecutive offsets identifies all valid next-token children. For every child-entry id j in this range, the CSR tokens 
+
+array gives the candidate SID token, the CSR child nodes 
+
+array gives the child node id to carry if the candidate sur-vives, and the bitmask index and Bloom index arrays identify the matcher rows used for eligibility checking. Figure 3(c) visualizes this CD+GTM storage layout, where CSR child-entry arrays provide constrained decoding transitions and matcher ids point to deduplicated bitmask/Bloom tables for eligibility matching. At step t, after the decoder produces log probabilities over the SID vocabulary, the CD+GTM kernel enumerates valid children for each active beam. It then evaluates the child matchers against request-side user attributes u, encoded as bitmask and Bloom filter rows. The resulting mask re-moves invalid or ineligible tokens before beam top-k, and the selected child node ids become the node ids for the next decode step. Section 5.4 describes the GPU implementation of this lookup and matching path. 
+
+Deduplicated bitmask/Bloom storage. In practice, many child entries share identical bitmask or Bloom matcher rows. GRACE therefore deduplicates matcher storage: the matcher-table ids read from the CSR range point into shared tables of unique bitmask and Bloom matcher rows. Table 1           
+
+> Table 1. Index summary and GTM matcher storage by decode position. Here p1/p2/p3 denote non-root trie transition levels after prefixes of length 1/2/3; for LSID = 4 , p3 reaches full SIDs. GTM matcher storage values are before/after deduplication in MB. Metric Quantity SIDs 30M Ads/SID p50/p90/p99 1 / 2 / 11 Bitmask width 7 int64 values Bloom width 4 int64 values Bitmask storage p1/p2/p3 11/10, 620/175, 1645/228 Bloom storage p1/p2/p3 6/5, 354/112, 940/162
+
+reports the index distribution and matcher storage before and after deduplication. The largest savings occur at p3, the full-SID transition level: bitmask storage drops from 1645 MB to 228 MB, and Bloom storage drops from 940 MB to 162 MB. The k-way partitioning layout uses the same deduplicated-table format, but a trie node can store one or more matcher ids. In static k-way, the number of partitions is fixed by decode position, so matcher ids are stored in a fixed-width per-node layout. In dynamic k-way, each node can choose a different number of partitions, so matcher ids are stored in a CSR-style jagged format with a flat matcher id array and per-row offsets. 
+
+# 5 DECODER KERNEL DESIGN 
+
+Using the encoder-decoder setup from Section 3.2, the de-coder kernel benchmark runs with batch size B = 16 . Un-der the fixed beam size M = 1024 schedule, the first step has B active rows; later steps have B · M = 16384 rows. This wide-beam, short-sequence shape is poorly matched to general SDPA kernels: cross-attention has many one-token beam queries that share request KV, while self-attention has one-token queries over only the partial SID prefix. This dif-fers from common LLM serving regimes: prefill typically processes long query and key sequences with high com-pute intensity, while decode uses one-token queries over much longer KV caches and is often dominated by memory bandwidth. In GRACE, the pressure comes from thousands of small at-tention operations, memory-coalescing behavior, and beam rearrangement rather than from long sequence attention. The following subsections describe the corresponding de-coder optimizations: a cross-attention layout that lets beams share request-level KV, short-sequence self-attention ker-nels, and paged self-attention KV for beam rearrangement. GRACE also reduces framework overhead around these ker-nels. We use torch.compile max-autotune to let the compiler auto-fuse surrounding PyTorch operations where possible, GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+while Section 5.2 describes the manual fusion inside the custom self-attention kernel. The full fixed-length SID de-coding loop is then captured as a CUDA graph, including decoder forward, CD+GTM, top-k, and beam rearrange-ment. 
+
+5.1 Cross-Attention Beam-as-Query Layout 
+
+Before the cross-attention reshape, a general SDPA layout would use 
+
+Q ∈ RBM ×H×1×dh , K, V ∈ RBM ×H×Tctx ×dh .
+
+Here BM denotes batch size B times beam size M . This treats the decode as BM independent single-query attention operations. It misses the beam search structure: the M
+
+beams for one request have different queries but attend to the same user-context KV. GRACE keeps cross-attention 
+
+K, V in their natural request-level layout, RB×H×Tctx ×dh ,and permutes 
+
+Q : RBM ×H×1×dh → RB×H×M ×dh ,
+
+so the beams of one request become the query-sequence dimension. The attention call is then M beam queries over one shared user context, rather than M unrelated one-query calls. The reshape keeps one copy of the request KV, creates a better-shaped attention operation, and reuses the same user-context KV loads across all beams for that request. At decode step t, with Tq = 1 , the beam-as-query reshape is: 
+
+q = view( Q, [B, M t, H, T q , d h]) ,q = permute( q, [0 , 2, 1, 3, 4]) → [B, H, M t, T q , d h],q = reshape( q, [B, H, M tTq , d h]) ,x = SDPA( q, K, V ) → [B, H, M tTq , d h],x = reshape( x, [B, H, M t, T q , d h]) ,x = permute( x, [0 , 2, 1, 3, 4]) → [B, M t, H, T q , d h],X = reshape( x, [BM t, H, T q , d h]) .
+
+Thus SDPA sees MtTq query positions for each request, while the output X restores the original beam-major layout. Appendix B gives the correctness argument for this layout transformation. 
+
+5.2 Coalesced Short-Sequence Self-Attention 
+
+Self-attention also has single-token queries, but its K, V ∈
+
+RBM ×H×Tself ×dh are beam-specific because each beam has a different generated prefix. Therefore the cross-attention KV-broadcast trick does not apply. Instead, the exploitable structure is that many flattened batch/beam rows have the same short sequence length. GRACE uses a Triton SDPA kernel tailored to this decode shape: it coalesces multiple beam rows into one kernel tile, computes a larger attention tile, and applies a block-diagonal mask so each row attends only to its own cached prefix. For example, suppose a tile coalesces G = 4 beam rows with Tself = 3 . This represents four independent 1 × 3
+
+attentions, but the Triton kernel evaluates one 4 × 12 tile and masks cross-row entries. In implementation, G is picked by Triton autotuning from a small set of candidate coalescing factors.                                                            
+
+> k0,0k0,1k0,2k1,0k1,1k1,2k2,0k2,1k2,2k3,0k3,1k3,2
+> q0111000000000
+> q1000111000000
+> q2000000111000
+> q3000000000111
+
+Here qi is the current query token for beam i, and ki,j is self-attention key j for the same beam. Entries marked 0 are set to −∞ before softmax. This mask is not a causal mask: causality is already enforced by exposing only the beam prefix 0, . . . , t . The mask only prevents different beam rows from attending to one another. This transformation spends extra arithmetic: the useful fraction is 1/G . This is still a net win because Tself is only a few SID tokens, while the baseline executes many tiny 1 × Tself attentions with poor occupancy, small memory transactions, and weak tensor-core utilization. Coalescing turns them into fewer, larger, regular tiles with more coalesced memory access. 
+
+Kernel fusion. At higher optimization levels, the de-coder further fuses the non-GEMM middle of decoder self-attention. The QKV projection and output projection remain cuBLAS GEMMs; the fused Triton kernel consumes the QKV projection output directly, writes the current token’s 
+
+k, v into the cache, gathers the short cached prefix, com-putes the masked block-diagonal attention, and returns the output. This avoids separate cache-write, reshape, SDPA, and context materialization steps. 
+
+5.3 Paged Self-Attention KV Cache 
+
+Section 3.3 introduces the paged beam rearrangement idea. Here we specify the self-attention KV layout used by the kernel. Following PagedAttention (Kwon et al., 2023), GRACE stores KV blocks in a flat pool and uses a block table P ∈ ZBM t×LSID to map logical beam rows and SID positions to physical KV blocks. A block stores the self-attention KV for one generated token of one beam row. Thus Pi,t maps logical beam row i and SID position t to the physical KV block for that token. Let pi be the parent row selected by beam topk t for new beam row i. A dense implementation copies the parent’s cached KV bytes into row i. GRACE instead copies only the parent’s block ids for the existing prefix, P new  
+
+> i,j
+
+= Ppi,j 
+
+for 0 ≤ j < t , and writes the current token’s KV into a fresh block. During attention, the kernel follows the block ids in prefix order to gather the physical KV blocks. This makes KV reads less contiguous than a dense reordered cache, but replaces large KV-cache copies with small integer-table copies; beams that share a parent also share the same past GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+block ids. Section 6.3 and Table 5 report the latency impact, and Table 6 shows the net end-to-end gain. 
+
+5.4 GTM Kernel 
+
+The CD+GTM kernel implements the decode-time lookup path from Section 4.4 and Appendix A. We implement this path as CUDA kernels rather than Triton kernels to get finer control over shared-memory staging, per-candidate thread assignment, and early exit behavior. Each CUDA block handles one beam, and threads within the block process the beam’s child-entry range in parallel. Since all beams expanded from the same user request share the same user-side targeting attributes, the kernel maps the beam row back to the corresponding row in the batched user-attribute ten-sors and stages those masks in shared memory once. All next-token candidates for that beam then reuse the staged user-attribute masks instead of reloading them. The kernel evaluates the predicates from Sections 4.2 and 4.3 in an order that reduces work. It checks the bitmask matcher first, comparing packed int64 values and exiting on the first failed int64 comparison; Bloom matching runs only for candidates that pass the bitmask check. For Bloom matching, the kernel scans the cached request Bloom rows, one row per user-side location ℓj . For each location, it com-pares the request-location Bloom int64 values against the candidate Bloom matcher and stops the inner scan as soon as a required int64 value is not contained. The outer scan stops as soon as any user location is contained in the candi-date matcher, because one matched location is sufficient for the ANY-of-many location predicate. The early exits reduce instruction count and matcher mem-ory traffic, although a CUDA block’s completion time is still bounded by the slowest active candidate processed by its threads. 
+
+# 6 EVALUATION 
+
+6.1 Setup 
+
+We evaluate GRACE by running the inference flow in Sec-tion 3.1. The evaluation has two parts. First, we measure exact ad-level target matching pass rate after generated SIDs are expanded and filtered by the CPU-side ad-level matcher; this evaluates the effectiveness of SID-level GTM under the final ad-level eligibility check. Second, we measure serving performance with kernel microbenchmarks and end-to-end latency for the full inference path. The filtering study uses the model evaluation dataset for user features, synthetic user-location data with 64 random locations per user, and the 30M-SID index summarized in Table 1. Performance measurements use the model config-uration from Section 3.2 and run on an NVIDIA GH200                                     
+
+> Table 2. Mean GTM matcher fill rate by decode position. Fill rate is the fraction of 1 bits in the bitmask or Bloom matcher; lower is more selective. Mask Method Root Pos1 Pos2 Pos3 Bitmask CD+GTM 0.734 0.283 0.139 0.128 Bitmask Static k-way 0.563 0.097 0.010 0.016
+> Bitmask Dynamic k-way 0.627 0.283 0.142 0.128 Bloom CD+GTM 0.979 0.475 0.069 0.048 Bloom Static k-way 0.933 0.070 0.004 0.006
+> Bloom Dynamic k-way 0.976 0.333 0.080 0.048
+
+Grace Hopper Superchip (NVIDIA, 2026). 
+
+6.2 Ad-Level Target Matching Pass Rate 
+
+This subsection compares four decode-time filtering modes. 
+
+CD only uses constrained decoding for catalog-valid SIDs but disables SID-level targeting. CD+GTM enables bitmask and Bloom matchers without k-way partitioning, so each trie entry has one union matcher for each matcher type. The matcher rows are stored in the deduplicated format described in Section 4.4. Static k-way and Dynamic k-way 
+
+use the partitioning variants from Section 4.2 for bitmask matchers and Section 4.3 for Bloom matchers. For static k-way, both bitmask and Bloom use k = (64 , 64 , 32 , 8) 
+
+across the four decode positions. For dynamic k-way, each trie node chooses k independently with kmax = 32 for both bitmask and Bloom, using a best-effort target fill rate of 0.25 defined in Section 4.2, Table 2 reports the resulting GTM matcher fill rates. Root is the start-token transition from the empty prefix, and Pos1– Pos3 are transitions after SID prefixes of length 1, 2, and 3. Since LSID = 4 , Pos3 produces complete SIDs. Static k-way substantially reduces matcher saturation for both bitmask and Bloom matchers, while dynamic k-way is not effective because it often selects small k.Table 3 reports the exact ad-level pass rate after generated SIDs are mapped to ads and filtered by the CPU-side ad-level target matcher. To analyze where the pass-rate changes come from, we bucket requests by the number of generated ads after SID-to-ad lookup and before ad-level filtering. These buckets measure generated-ad volume before exact filtering and show how GTM changes the generated-ad dis-tribution. CD+GTM shifts requests from the < 5k bucket to larger buckets: the < 5k share drops from 50.78% to 31.84%, while the 10k+ share rises from 12.50% to 29.10%. This means decode-time targeting produces more ads be-fore the exact ad-level filtering stage, because GTM selects different SIDs than CD-only decoding. A higher final pass rate means that GTM more effectively focuses decoding on eligible SIDs and generates fewer inel-igible ads. Comparing CD only with CD+GTM shows the GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+Table 3. Bucketized ad-level pass-rate comparison. Buckets are generated ads per request after SID lookup and before ad-level filtering; Users is the request fraction in each bucket. Method Users Bitmask Bloom Final 
+
+< 5k generated ads/user 
+
+CD only 50.78% 57.72% 36.09% 20.83% CD+GTM 31.84% 76.82% 73.33% 56.33% 
+
+Static k-way 31.84% 76.34% 72.90% 55.65% Dynamic k-way 31.84% 76.09% 73.44% 55.88% 
+
+5k–9.9k generated ads/user 
+
+CD only 36.72% 54.91% 39.92% 21.92% CD+GTM 39.06% 64.14% 65.17% 41.80% Static k-way 38.09% 64.98% 65.63% 42.65% 
+
+Dynamic k-way 38.87% 64.58% 64.88% 41.90% 
+
+10k+ generated ads/user 
+
+CD only 12.50% 62.28% 45.95% 28.62% CD+GTM 29.10% 56.02% 63.46% 35.55% Static k-way 30.08% 55.44% 63.29% 35.09% Dynamic k-way 29.30% 56.12% 63.67% 35.73% 
+
+All requests 
+
+CD only 100.00% 57.81% 40.74% 23.55% CD+GTM 100.00% 61.52% 65.70% 40.42% Static k-way 100.00% 61.31% 65.68% 40.27% Dynamic k-way 100.00% 61.58% 65.69% 40.45% 
+
+main effectiveness result. The all-request final pass rises from 23.55% to 40.42%. The gain is largest in the lower-and mid-volume buckets: < 5k improves from 20.83% to 56.33%, and 5k–9.9k improves from 21.92% to 41.80%. Both matcher types contribute: for < 5k, bitmask pass improves from 57.72% to 76.82%, and Bloom pass after bitmask improves from 36.09% to 73.33%. Overall, k-way partitioning does not materially improve final pass rate over unpartitioned CD+GTM. Although par-titioning reduces matcher fill and makes each partition matcher more selective, decoding keeps a prefix if any par-tition matches, so the results from multiple matchers are unioned. Considering the extra storage and kernel overhead of checking multiple partitions, the unpartitioned CD+GTM layout is the preferred operating point. 
+
+6.3 Kernel-Level Performance 
+
+After GTM improves candidate quality, the system still has to fit a tight P99 < 100 ms end-to-end inference la-tency budget. About 30 ms is used to accumulate batches of 16 users, leaving roughly 70 ms for the four runtime stages described in Section 3.4: input, feature preprocess-ing, compute-intensive inference, and post-processing. We first measure GRACE’s attention-kernel improvements because attention was the bottleneck and provides the largest latency gains. The cross-attention beam-as-query layout from Section 5.1 reduces FlashAttention-2 (FA2) latency from 9.6 ms to 0.097 ms (98.5 ×) and FlashAttention-3 (FA3) latency from 6.9 ms to 0.101 ms (68.0 ×), as shown 
+
+Table 4. Cross-attention Q-reshape benchmark on GH200. Laten-cies are in ms. R = 16 ×1024 .Layout Q K, V FA2 FA3 Before [R, 16 , 1, 128] [R, 16 , 128 , 128] 9.6 6.9 After [16 , 16 , 1024 , 128] [16 , 16 , 128 , 128] 0.097 0.101 Speedup – – 98.5 × 68.0 ×
+
+Table 5. Self-attention GH200 microbenchmark. Latencies are P50 ms. Coalesced, Fused, and Paged cells show latency with speedup over FA2 in parentheses (FA3 is slower than FA2 in this shape). The lower block reports representative NCU counters at t = 3 ;HBM (%) is achieved HBM bandwidth as a percentage of peak.                                              
+
+> tFA2 FA3 Coalesced Fused Paged 05.563 5.998 0.474 (11.7 ×)0.222 (25.1 ×)0.216 (25.8 ×)15.565 6.024 0.480 (11.6 ×)0.223 (25.0 ×)0.224 (24.9 ×)25.578 5.986 0.488 (11.4 ×)0.235 (23.8 ×)0.233 (24.0 ×)35.566 5.983 0.501 (11.1 ×)0.269 (20.7 ×)0.238 (23.4 ×)TFLOP/s 0.096 0.090 1.072 1.994 2.254 HBM (%) 2.38 2.22 29.36 75.52 84.46 Instr. 2.48B 2.13B 57.7M 35.8M 43.8M Occ. (%) 12.19 14.06 91.24 36.67 36.44
+
+in Table 4. For self-attention, Table 5 reports three variants that cor-respond to the optimizations in Section 5. Coalesced is the short-sequence Triton kernel from Section 5.2, which groups beam rows for coalesced block-diagonal attention. 
+
+Fused adds the decode-time self-attention fusion from Sec-tion 5.2 while using dense KV cache. Paged adds the block table KV layout from Section 5.3, so beam rearrangement avoids copying past KV. These variants reduce per-step la-tency from 5.5–6.0 ms with FA2/FA3 to 0.216–0.238 ms with the Paged kernel. NVIDIA Nsight Compute (NCU) counters show the mechanism: at t = 3 , FA2 executes 2.48B instructions and reaches only 2.38% HBM band-width, while Paged executes 43.8M instructions and reaches 84.46% HBM bandwidth. Table 6 reports both full-model latency and decoder-only latency. Full-model latency uses the end-to-end inference path described above, while the decoder column isolates the decode loop. The first block reports the fixed-beam optimization sweep: cross-attention reshaping is the largest single step, reducing decoder P50 from 196.7 ms to 69.3 ms; self-attention kernel optimization brings it to 20.3 ms; paged KV cache reaches 17.8 ms. The second block switches from the fixed-beam L4 setup to the more efficient dynamic-beam schedule 
+
+[1 , 512 , 1024 , 1024] . D0 reduces decoder latency to 15.5 ms. D1–D3 then add lookup, CD, and GTM kernels for SID bitmask and Bloom matching. The row with both bitmask and Bloom GTM remains within the end-to-end inference latency budget: D3 full-model P99 is 53.6 ms, leaving room inside the 70 ms compute window after batch accumulation. GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+Table 6. Decoder E2E latency with batch size 16. Full and Decoder columns report P50/P99 in ms; Full includes all runtime stages in Section 3.4, and Decoder isolates the decode loop. The first block is a fixed-beam optimization sweep; the second block uses dynamic beam sizes (1 , 512 , 1024 , 1024) and adds lookup and GTM matching. Case Increment Full Decoder 
+
+Mt = [1 , 1024 , 1024 , 1024] 
+
+FLOPs/request: 0.533 TFLOPs L0 Baseline FA2 214.8/220.1 196.7/197.7 L1 + cross-attn reshape 86.5/87.9 69.3/69.4 L2 + self-attn opt. 38.5/40.8 20.3/20.4 L3 + self-attn fusion 39.3/45.2 20.4/20.5 L4 + paged KV cache 34.3/40.5 17.8/17.8 
+
+Mt = [1 , 512 , 1024 , 1024] 
+
+FLOPs/request: 0.446 TFLOPs D0 L4 with dynamic beams 34.9/35.8 15.5/15.8 D1 + CD + SID to Ads Lookup 38.9/40.9 16.4/16.5 D2 + GTM bitmask 41.4/45.0 16.6/16.8 D3 + GTM bitmask + Bloom 51.0/53.6 25.0/27.3 
+
+We report decoder MFU, computed from per-request model FLOPs, batch size, and batch mean decoder latency: 
+
+MFU = FLOPs req ·B/ (tmean ·peak) . Using the dynamic-beam FLOP count in Table 6 (0 .446 TFLOPs/request) and the GH200 Hopper GPU BF16 peak of 989 TFLOP/s, D0 corresponds to 46.6% decoder MFU. The row with GTM matching performs the same model FLOPs, but adds non-FLOPs GTM matching work inside the decoder loop, reduc-ing decoder MFU to 28.8%. With the pipelined inference design in Section 3.4, this compute-intensive decoder stage runs back to back on its own stream and can hide lower-MFU stages while dominating overall accelerator utiliza-tion. 
+
+# 7 DISCUSSION AND FUTURE WORK 
+
+Future work will improve GTM by adding more categories of bitmask and Bloom filter constraints and additional con-straint types for more complex target matching rules, while keeping the compatibility with kernel optimizations. Ker-nel and model efficiency work includes decoder scaling, Mixture-of-Experts (MoE), low-level kernel optimizations using TLX (Guan et al., 2026), model compression includ-ing quantization, pruning, and sparsity, and automated ker-nel authoring (Liao et al., 2026). A longer-term direction is extending GRACE to opti-mize compute for LLM-based generative recommenders in real-time ads recommendation. This requires com-bining eligibility-aware decoding with efficient decoding techniques, prompt engineering, model compression, and scheduling improvements so language models can meet ads retrieval latency and compute-cost requirements. 
+
+# 8 CONCLUSION 
+
+GRACE addresses the two serving challenges created by generative ads retrieval. For eligibility, GTM moves tar-get matching into the autoregressive loop by combining catalog-valid constrained decoding with personalized masks over SID prefixes. This focuses beam search on eligible SIDs during decoding, so generated ads pass the down-stream exact ad-level target matcher at a much higher rate. For compute, GRACE targets lightweight encoder-decoder Transformers and redesigns the wide-beam, short-sequence decoder with custom kernels and beam search optimizations for cross-attention, self-attention, KV cache, and decoding beam state. Together, these changes improve ads target fil-tering and keep ads generative retrieval within latency and compute requirements. 
+
+# APPENDIX 
+
+# A GTM I NDEX STORAGE AND LOOKUP 
+
+This appendix gives the concrete storage layout used by the CD+GTM index, including constrained decoding state transitions and eligibility matchers. For each trie node, all valid next-token children are stored in one contiguous range of the index arrays.                                                  
+
+> GTM SID Trie vocab_size: int sid_length: int num_nodes: int #Number of integer trie node ids. node_offsets: int32[num_nodes +1] #Children of node i: #[node_offsets[i], node_offsets[i +1]) csr_child_nodes: int32[num_child_entries] #Child node id for each child entry. csr_tokens: int16[num_child_entries] #SID token that reaches the child node. bitmask_index: int32[num_child_entries] bloom_index: int32[num_child_entries] #Matcher-table row ids. bitmask_table: uint64[num_bitmask_rows][W_bm] bloom_table: uint64[num_bloom_rows][W_bl] #Packed, deduplicated matcher rows.
+
+For a current trie node, lookup scans one contiguous child-entry range:                                   
+
+> Lookup(node_id, user_bitmask, user_blooms): start =node_offsets[node_id] end =node_offsets[node_id +1] for jin [start, end): child_node =csr_child_nodes[j] token =csr_tokens[j] bm =bitmask_table[bitmask_index[j]] bl =bloom_table[bloom_index[j]] bitmask_ok =match(user_bitmask, bm) bloom_ok =any(match(q, bl) for qin user_blooms) GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval
+> if bitmask_ok and bloom_ok: emit(token, child_node)
+
+At runtime, the GPU parallelizes the lookup and match across active beams and child entries. 
+
+# B CROSS -A TTENTION LAYOUT 
+
+# CORRECTNESS 
+
+The beam-as-query reshape in Section 5.1 is a layout-only transformation. Assume flattened beam rows are request-major, so row r = bM t + m corresponds to request b and beam m. The forward reshape maps 
+
+QbM t+m,h,τ, : 7 → qb,h,mT q +τ, :.
+
+Thus, for each request b, SDPA sees the MtTq beam-query positions as one query sequence and attends them to the same request-level Kb,h, :,: and Vb,h, :,:. The inverse reshape maps 
+
+xb,h,mT q +τ, : 7 → XbM t+m,h,τ, :,
+
+which restores the original flattened beam-row order. There-fore the transformation changes only the tensor layout seen by SDPA; it does not mix requests or reorder the final beam outputs. 
+
+# REFERENCES 
+
+Covington, P., Adams, J., and Sargin, E. Deep Neural Net-works for YouTube Recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems ,pp. 191–198. ACM, September 2016. Dao, T. FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning. In International Con-ference on Learning Representations , May 2024. Dao, T., Fu, D. Y., Ermon, S., Rudra, A., and R´ e, C. FlashAt-tention: Fast and Memory-Efficient Exact Attention with IO-Awareness. In Proceedings of the 36th International Conference on Neural Information Processing Systems ,pp. 16344–16359, 2022. De Cao, N., Izacard, G., Riedel, S., and Petroni, F. Autore-gressive Entity Retrieval. In International Conference on Learning Representations , 2021. Deng, J., Wang, S., Cai, K., Ren, L., Hu, Q., Ding, W., Luo, Q., and Zhou, G. OneRec: Unifying Retrieve and Rank with Generative Recommender and Iterative Preference Alignment. arXiv preprint arXiv:2502.18965 , 2025. Gallagher, L., Chen, R.-C., Blanco, R., and Culpepper, J. S. Joint Optimization of Cascade Ranking Models. In Pro-ceedings of the Twelfth ACM International Conference on Web Search and Data Mining , pp. 15–23. ACM, January 2019. Guan, Y., Yu, H., Chen, P., Shi, D., Manivannan, K., Ri-asanovsky, N. J., Ren, M., Wang, L., Nay, S., Kanuparthy, P., Pan, Z., Hu, Z., and Ding, Y. TLX: Hardware-Native, Evolvable MIMW GPU Compiler for Large-Scale Pro-duction Environments. arXiv preprint arXiv:2605.10905 ,2026. He, R., Heldt, L., Hong, L., Keshavan, R., Mao, S., Mehta, N., Su, Z., Tsai, A., Wang, Y., Wang, S.-C., Yi, X., Baugher, L., Cakici, B., Chi, E., Goodrow, C., Han, N., Ma, H., Rosales, R., Van Soest, A., Tandon, D., Wu, S.-L., Yang, W., and Zheng, Y. PLUM: Adapting Pre-trained Language Models for Industrial-scale Generative Recom-mendations. In Proceedings of the ACM Web Conference 2026 , pp. 8093–8104, April 2026. Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H., Gonzalez, J. E., Zhang, H., and Stoica, I. Effi-cient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the 29th Symposium on Operating Systems Principles , pp. 611– 626. ACM, October 2023. Li, H., Liu, X., Nie, J., Wen, E., Yang, C., Yang, J., Yu, N., Beg, H., Arditi, G., and Bhatia, N. Meta’s Generative Ads Model (GEM): The Central Brain Accelerating Ads Recommendation AI Innovation. Meta Engineering Blog, 2025. Liao, G., Qin, H., Wang, Y., Golden, A., Kuchnik, M., Yetim, Y., Xiao, R., Ang, J. J., Fu, C., He, Y., Hsia, S., Jiang, Z., Levenstein, R., Li, D., Li, L., Mathews, A., Puvvada, V., Shi, F., Yan, N., Yu, X., Pashkevich, U., Steiner, M., Wu, C.-J., and Liu, G. KernelEvolve: Scaling Agentic Kernel Coding for Heterogeneous AI Accelera-tors at Meta. In 2026 ACM/IEEE 53rd Annual Interna-tional Symposium on Computer Architecture (ISCA) , pp. 733–747, Raleigh, NC, USA, 2026. IEEE. Lu, X., Welleck, S., Hessel, J., Jiang, L., Qin, L., West, P., Ammanabrolu, P., and Choi, Y. NeuroLogic Decoding: (Un)supervised Neural Text Generation with Predicate Logic Constraints. In Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics , pp. 4288–4299. Association for Computational Linguistics, 2021. Naumov, M., Mudigere, D., Shi, H.-J. M., Huang, J., Sun-daraman, N., Park, J., Wang, X., Gupta, U., Wu, C.-J., Azzolini, A. G., Dzhulgakov, D., Mallevich, A., Cher-niavskii, I., Lu, Y., Krishnamoorthi, R., Yu, A., Kon-dratenko, V., Pereira, S., Chen, X., Chen, W., Rao, V., Jia, B., Xiong, L., and Smelyanskiy, M. Deep Learning Recommendation Model for Personalization and Recom-mendation Systems. arXiv preprint arXiv:1906.00091 ,2019. GRACE: Generative Recommender Acceleration Engine for Real-Time Ads Retrieval 
+
+NVIDIA. NVIDIA GH200 Grace Hopper Super-chip. https://www.nvidia.com/en-us/ data-center/grace-hopper-superchip/ ,2026. Poesia, G., Polozov, O., Le, V., Tiwari, A., Soares, G., Meek, C., and Gulwani, S. Synchromesh: Reliable Code Genera-tion from Pre-trained Language Models. In International Conference on Learning Representations , 2022. Rajput, S., Mehta, N., Singh, A., Hulikal Keshavan, R., Vu, T., Heldt, L., Hong, L., Tay, Y., Tran, V. Q., Samost, J., Kula, M., Chi, E. H., and Sathiamoorthy, M. Recom-mender Systems with Generative Retrieval. In Advances in Neural Information Processing Systems , volume 36, pp. 10299–10315, December 2023. Shah, J., Bikshandi, G., Zhang, Y., Thakkar, V., Ramani, P., and Dao, T. FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-Precision. In Pro-ceedings of the 38th International Conference on Neural Information Processing Systems , pp. 68658–68685, 2024. Su, Z., Katsman, I., Wang, Y., He, R., Heldt, L., Kesha-van, R., Wang, S.-C., Yi, X., Gao, M., Dalal, O., Hong, L., Chi, E. H., and Han, N. Vectorizing the Trie: Effi-cient Constrained Decoding for LLM-based Generative Retrieval on Accelerators. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining , Jeju Island, Republic of Korea, 2026. Sun, C., Yu, N., Lu, H., Wang, L., Pu, Y., Liu, G., Bhatia, N., and Musumeci, G. Meta Andromeda: Supercharging Advantage+ Automation with the Next-Gen Personalized Ads Retrieval Engine. Meta Engineering Blog, 2024. Tay, Y., Tran, V. Q., Dehghani, M., Ni, J., Bahri, D., Mehta, H., Qin, Z., Hui, K., Zhao, Z., Gupta, J., Schuster, T., Cohen, W. W., and Metzler, D. Transformer Memory as a Differentiable Search Index. In Advances in Neural Information Processing Systems , volume 35, pp. 21831– 21843, 2022. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., and Polosukhin, I. Attention is All You Need. In Advances in Neural Information Processing Systems , volume 30, pp. 5998–6008, 2017. Wang, R., Shivanna, R., Cheng, D. Z., Jain, S., Lin, D., Hong, L., and Chi, E. H. DCN V2: Improved Deep & Cross Network and Practical Lessons for Web-scale Learning to Rank Systems. In Proceedings of the Web Conference 2021 , pp. 1785–1797. ACM, April 2021. Wang, X., Jin, Q., Huang, S., Zhang, M., Liu, X., Zhao, Z., Chen, Y., Zhang, Z., Yang, J., Wen, E., Chordia, S., Chen, W., and Huang, Q. Towards the Better Ranking Consis-tency: A Multi-task Learning Framework for Early Stage Ads Ranking. In Proceedings of the AdKDD Workshop ,2023. Ye, H., Jain, H., You, C., Suresh, A. T., Lin, H., Zou, J., and Yu, F. Efficient and Asymptotically Unbiased Constrained Decoding for Large Language Models. In International Conference on Artificial Intelligence and Statistics , vol-ume 258, pp. 4483–4491. PMLR, April 2025a. Ye, Z., Chen, L., Lai, R., Lin, W., Zhang, Y., Wang, S., Chen, T., Kasikci, B., Grover, V., Krishnamurthy, A., and Ceze, L. FlashInfer: Efficient and Customizable Atten-tion Engine for LLM Inference Serving. In Proceedings of the 8th Annual Conference on Machine Learning and Systems , May 2025b. Zadouri, T., Hoehnerbach, M., Shah, J., Liu, T., Thakkar, V., and Dao, T. FlashAttention-4: Algorithm and Kernel Pipelining Co-Design for Asymmetric Hardware Scaling. In Proceedings of the 9th Annual Conference on Machine Learning and Systems , May 2026. Zeng, Z., Liu, X., Hang, M., Liu, X., Zhou, Q., Yang, C., Liu, Y., Ruan, Y., Chen, L., Chen, Y., Hao, Y., Xu, J., Nie, J., Liu, X., Zhang, B., Wen, W., Yuan, S., Zhang, X., Wang, K., Chen, W.-Y., Han, Y., Li, H., Yang, C., Long, B., Yu, P. S., Tong, H., and Yang, J. InterFormer: Effective Heterogeneous Interaction Learning for Click-Through Rate Prediction. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management , pp. 6225–6233. ACM, November 2025. Zhai, J., Liao, L., Liu, X., Wang, Y., Li, R., Cao, X., Gao, L., Gong, Z., Gu, F., He, J., Lu, Y., and Shi, Y. Actions Speak Louder than Words: Trillion-Parameter Sequen-tial Transducers for Generative Recommendations. In 
+
+Proceedings of the 41st International Conference on Ma-chine Learning , volume 235, pp. 58484–58509. PMLR, July 2024. Zhang, B., Luo, L., Liu, X., Li, J., Chen, Z., Zhang, W., Wei, X., Hao, Y., Tsang, M., Wang, W., Liu, Y., Li, H., Badr, Y., Park, J., Yang, J., Mudigere, D., and Wen, E. DHEN: A Deep and Hierarchical Ensemble Network for Large-Scale Click-Through Rate Prediction. In Work-shop on Deep Learning Practice and Theory for High-Dimensional Sparse and Imbalanced Data with KDD ,2022. Zheng, B., Hou, Y., Lu, H., Chen, Y., Zhao, W. X., Chen, M., and Wen, J.-R. Adapting Large Language Models by Integrating Collaborative Semantics for Recommen-dation. In 2024 IEEE 40th International Conference on Data Engineering (ICDE) , pp. 1435–1448. IEEE, May 2024.
