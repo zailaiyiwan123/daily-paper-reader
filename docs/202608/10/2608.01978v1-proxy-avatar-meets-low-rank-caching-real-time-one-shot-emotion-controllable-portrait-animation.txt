@@ -1,0 +1,360 @@
+Title: Proxy Avatar Meets Low-Rank Caching: Real-Time One-Shot Emotion-Controllable Portrait Animation
+
+URL Source: https://arxiv.org/pdf/2608.01978v1
+
+Published Time: Tue, 04 Aug 2026 02:40:47 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Proxy Avatar Meets Low-Rank Caching: Real-Time One-Shot Emotion-Controllable Portrait Animation 
+
+## Haijie Yang 1, Jindi Bao 1, Yixuan Dong 2, Hongliang Zhang 1, Jian Bi 1, Hao Tang 3, Zhenyu Zhang 4,Jianjun Qian 1, Jian Yang 1
+
+> 1
+
+Nanjing University of Science and Technology 
+
+> 2
+
+Tsientang Institute for Advanced Study 
+
+> 3
+
+Peking University 
+
+> 4
+
+Nanjing University 
+
+Abstract 
+
+Audio-driven portrait animation has advanced rapidly with diffusion-based generative models, yet real-time one-shot gen-eration with expressive emotion control remains challenging. Existing methods often suffer from insufficient emotion-aware motion priors and expensive appearance computation dur-ing multi-step denoising. To address these issues, we pro-pose Proxy Avatar Meets Low-Rank Caching, a cascaded framework for real-time one-shot emotion-controllable por-trait animation. Instead of directly generating the target por-trait from audio, our method uses a Gaussian-based emo-tion proxy avatar as a reusable motion generator, which is trained once on a single identity to produce expressive driv-ing videos from audio and emotion labels. Since the proxy avatar only provides motion rather than target appearance or geometry, a large-scale one-shot retargeting model further extracts identity-independent motion from the proxy perfor-mance and adapts it to arbitrary target portraits. To improve inference efficiency, we introduce zero-shot appearance reuse with low-rank caching, which caches reference appearance features at the initial denoising step and models subsequent feature variations using lightweight low-rank adapters. Ex-tensive experiments demonstrate that our method achieves stronger emotional expressiveness, better identity-preserving animation, and substantially reduced inference cost, enabling real-time one-shot portrait animation. 
+
+## Introduction 
+
+Audio-driven talking head generation aims to animate a por-trait according to speech, with wide applications in digital humans, and human-computer interaction. Fig. 1 shows our target setting of real-time emotion-controllable portrait an-imation. Existing methods (Prajwal et al. 2020; Sun et al. 2023; Xu et al. 2024a) have achieved impressive lip synchro-nization and visual quality, but rich emotional expressiveness and efficient real-time inference remain challenging. To achieve emotion control, existing methods have ex-plored different forms of emotional guidance. Early emotion-driven methods (Karras et al. 2017; Wang et al. 2020) usually inject categorical emotion labels into the generation process, which enables coarse emotion conditioning but often pro-vides limited control over expressive facial dynamics. Some methods (Peng et al. 2023; Yang et al. 2024) are also person-specific or require training on a limited set of identities, making it difficult to generalize emotional motion to arbitrary 
+
+Copyright © 2027, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. 0 10 20 30 40 50 FPS 
+
+> EDTalk (ECCV’24) FLOAT (ICCV’25) C-MET (CVPR’26)
+> Ours
+> 4.8 21 8.3 32
+> Real Time
+
+Figure 1: Given a source portrait, an audio clip, and an emo-tion category, our method can generate emotional talking-head videos in real time on a consumer-grade GPU, specif-ically the RTX 4090. The blue box indicates the driving videos, and the yellow box indicates the driving results. portraits. Later works attempt to improve emotional expres-siveness by disentangling speech into emotion representa-tions. For example, EVP (Ji et al. 2021) disentangles speech into content and emotion representations, but unreliable dis-entanglement may lead to unstable emotion generation from speech alone. Another line of work uses reference videos to provide emotional or speaking styles, such as EAMM (Ji et al. 2022) and StyleTalk (Ma et al. 2023). Although effec-tive, such guidance is often impractical, since it is difficult to collect reference videos covering diverse emotions and ar-bitrary speech content. The references may also suffer from mismatched duration, low resolution, or occlusion. More re-cently, SPACE (Gururani et al. 2023) and EmoSpeaker (Feng et al. 2026) improve controllable expression by introduc-ing explicit emotional conditions and facial representations. Nevertheless, these methods often rely on coefficients, land-marks, or dedicated renderers, and still struggle to jointly achieve flexible emotion control, strong cross-identity gen-eralization, and efficient real-time inference. To improve inference efficiency, recent talking head sys-arXiv:2608.01978v1 [cs.CV] 3 Aug 2026 tems explore compact motion representations, lightweight renderers, and real-time generation architectures. LivePor-trait (Guo et al. 2024) adopts an efficient portrait anima-tion pipeline with stitching and retargeting control. Om-niTalker (Wang et al. 2026) further shows that large-scale multimodal training, dual-branch generation, and optimized visual rendering can support real-time audio-video synthe-sis. More recently, EmoTag (Xu et al. 2026) introduces a Gaussian-based emotion-aware talking head framework with few-shot personalization, improving rendering efficiency for expressive avatar animation. However, it still relies on identity-specific adaptation and does not address the com-putational redundancy in diffusion-based one-shot portrait generation. However, diffusion-based portrait animation still repeatedly computes fixed reference appearance features dur-ing denoising, making redundant appearance computation a key bottleneck for real-time one-shot generation. To address these limitations, we revisit the design of emotion-controllable talking head generation from a division-of-labor perspective. Instead of forcing a single model to learn emotional expression, identity adaptation, and efficient synthesis simultaneously, we decompose the prob-lem into three collaborative stages. The first stage builds a Gaussian-based emotion-aware proxy performer, which con-verts audio and emotion conditions into a vivid intermediate performance with stable articulation and expressive facial dynamics. This intermediate video provides an explicit and controllable motion carrier, but its identity is deliberately not treated as the target appearance. The second stage trans-fers the proxy performance to an arbitrary portrait through a large-scale one-shot animation model, where the driving signal is interpreted as identity-independent motion rather than proxy-specific geometry. The third stage focuses on the computational bottleneck of diffusion-based synthesis. Since the reference appearance is fixed during generation, we reuse its appearance features across denoising steps and represent the remaining feature changes with low-rank residuals. Al-though the pipeline appears cascaded, the proxy avatar is trained only once, and each component addresses a distinct bottleneck, forming a coherent and efficient system. Our contributions are summarized as follows: 
+
+• We build a Gaussian-based emotion proxy avatar that is trained once per proxy identity and then reused to provide high-quality emotional motion priors. 
+
+• We use large-scale one-shot retargeting as a bridge to make the single-identity proxy performance reusable for arbitrary target portraits. 
+
+• We introduce low-rank appearance caching to reuse refer-ence features and approximate denoising variations with low-rank residuals, reducing diffusion inference cost. 
+
+## Related Work 
+
+Audio-driven Talking Head Generation 
+
+Audio-driven talking head generation aims to synthesize fa-cial animations from speech and has been widely studied for digital humans and virtual assistants. Early methods mainly focus on lip synchronization, such as Wav2Lip(Prajwal et al. 2020), while later works improve facial dynamics and head motion through different intermediate representations. For example, MakeItTalk(Zhou et al. 2020) models speaker-aware motion, Audio2Head(Wang et al. 2021) generates nat-ural head movements, and SadTalker(Zhang et al. 2023) pre-dicts 3D motion coefficients for single-image talking face animation. Existing methods can be broadly divided into person-specific and person-independent approaches. Person-specific methods can achieve high fidelity for a given iden-tity but require training or fine-tuning for each subject. In contrast, person-independent methods are trained on large-scale audio-visual datasets and can generalize to unseen por-traits. Recent one-shot methods, such as VividTalk(Sun et al. 2023) and OmniTalker(Wang et al. 2026), further improve arbitrary-identity animation quality and efficiency. However, controllable emotional expression and real-time inference re-main less explored. Our method follows the one-shot setting, but uses an emotion-aware proxy avatar to provide control-lable motion priors for arbitrary portrait retargeting. 
+
+Emotion-controllable Talking Head Generation 
+
+Emotional expressiveness is essential for natural talking-head generation. Existing methods introduce emotion guid-ance through labels, reference videos, or explicit facial pri-ors. Label-based methods built on emotional datasets such as MEAD (Wang et al. 2020) provide controllable cate-gories but are limited by annotated data diversity. EVP (Ji et al. 2021) disentangles speech into content and emo-tion representations, while reference-based methods such as EAMM (Ji et al. 2022) and StyleTalk (Ma et al. 2023) trans-fer emotional styles from external videos, which are often difficult to obtain for arbitrary speech and emotions. Recent methods further use explicit intermediate representations: EmoSpeaker (Feng et al. 2026) predicts emotion-related 3D facial coefficients, EMOdiffhead (Zhang, Mai, and Zhang 2026) adopts FLAME expression vectors for diffusion-based synthesis, and C-MET (Choi et al. 2026) learns cross-modal emotion transfer between speech and visual feature spaces for emotion editing. Despite their progress, these methods still depend on emotion-specific data, reference sources, coefficient-based priors, or costly generative mod-els. In contrast, our Gaussian-based proxy avatar provides reusable identity-independent emotional motion without ex-ternal emotional videos or multi-identity avatar training. 
+
+Efficient Portrait Animation 
+
+Efficiency is essential for real-time talking head genera-tion. Recent methods improve speed with compact motion representations, lightweight renderers, or optimized gener-ation pipelines. For example, LivePortrait(Guo et al. 2024) achieves efficient portrait animation with stitching and retar-geting control, VASA-1(Xu et al. 2024b) generates lifelike talking faces in real time, and OmniTalker(Wang et al. 2026) explores real-time multimodal talking head generation with an optimized visual renderer. However, these methods mainly rely on lightweight rendering pipelines rather than diffusion-based high-fidelity synthesis. Diffusion-based methods, such as EchoMimic(Chen et al. 2025), EMO(Tian et al. 2024), and EMOdiffhead(Zhang, Mai, and Zhang 2026), improve Only one identity is trained  
+
+> Train One Identity 3D Gaussian Neutral Space Spatial-Audio-Emotion Attention
+> Spatial Feature Audio Feature Emotion Feature
+> Joint Attention Add Offsets to Neutral Space
+
++∆       
+
+> Offsets in Gaussian Deformation Space
+> ∆∆∆
+> position opacity color
+> Real-time Inference
+> Invisible to users
+> Generated Videos
+> Only used as driving video for Stage 2
+> Stage 1: 3D Gaussian-based Emotion Proxy Avatar
+> Reference Portrait
+> （Any ID)
+> Driving Portrait
+> （from stage 1)
+> VAE
+> ReferenceNet
+> Motion Controller Crop Face
+> Pose Controller
+> Unet Diffusion Model Stage 2: One-Shot Portrait Motion Driving Module
+> …………Freeze Early Timesteps Fine-tune Later Timesteps
+> Ladv-region
+> Lmse & L lpips
+> Ladv-global
+> Generated Portrait GT
+> SyncNet SyncNet
+> (Lip Sync Loss)
+> Crop Mouth
+> Stage 3: Appearance Redundancy Distillation
+> ………
+
+≈ ×    
+
+> Original Feature
+> ��Reconstructed Feature
+> Low-Rnak Feature Approximation
+> ���
+> Lsync
+> ��→ � �
+> Frozen Trainable 3D Gaussian
+
+Figure 2: Overview . A 3D Gaussian-based emotion proxy avatar first produces controllable emotional driving videos from audio and emotion conditions. The one-shot portrait motion driving module then transfers identity-independent proxy motion to arbitrary target portraits. Finally, the distillation acceleration module reduces redundant diffusion computation for efficient real-time portrait animation. realism and expressiveness by progressively denoising vi-sual latents under audio, identity, or expression conditions. Nevertheless, iterative denoising introduces substantial com-putational cost. In portrait animation, the reference image re-mains fixed, and its appearance features are highly reusable across frames and denoising steps. Existing diffusion-based methods rarely exploit this redundancy. So we reuse refer-ence appearance features with low-rank caching, reducing inference cost while preserving visual fidelity. 
+
+## Method 
+
+Given a reference portrait, a driving audio clip, and an emo-tion condition, our goal is to generate a talking-head video with accurate lip synchronization, controllable emotional ex-pression, and real-time inference. As shown in Fig. 2, our framework comprises three stages, which are introduced in the following order: emotion proxy avatar, one-shot portrait motion driving, and appearance redundancy distillation. 
+
+3D Gaussian-based Emotion Proxy Avatar 
+
+The first stage aims to build an emotion-controllable proxy performer that converts audio and emotion conditions into an explicit driving video. Instead of learning emotional motion for arbitrary identities directly, we train the proxy avatar once on a single identity. This design concentrates audio-emotion motion learning in a controllable proxy space, while leaving cross-identity adaptation to the following one-shot portrait motion driving module. 
+
+Gaussian Proxy Representation. We represent the proxy avatar with a set of 3D Gaussians: 
+
+G = {xi, ri, si, ci, α i}Ni=1 , (1) where xi, ri, si, ci, and αi denote the center position, rota-tion, scale, color, and opacity of the i-th Gaussian, respec-tively. Each Gaussian is associated with a covariance matrix: 
+
+Σi = RiSiS⊤
+
+i R⊤
+
+i , (2) where Ri and Si are derived from ri and si. Given a camera view, the Gaussians are projected onto the image plane and rendered by alpha compositing: 
+
+C(p) = X
+
+i∈N (p)
+
+Tiαici, Ti = Y
+
+j<i 
+
+(1 − αj ), (3) where p is a pixel location, N (p) denotes the depth-ordered Gaussians contributing to this pixel, and Ti is the accu-mulated transmittance. This explicit representation enables high-fidelity and real-time rendering, making it suitable for constructing the proxy performer. 
+
+Audio-Emotion Motion Decomposition. Given an audio clip A = {at}Tt=1 and an emotion condition e, where t is the frame-aligned time step, the proxy avatar predicts frame-wise facial motion. We first encode audio and emotion as: 
+
+f at = Ea(at), f e = Ee(e), (4) where Ea(·) is the audio encoder and Ee(·) is the emotion em-bedding layer. The audio feature mainly provides phoneme-related articulation cues, while the emotion feature controls expression-related facial dynamics. To stabilize emotional motion generation, we decompose the proxy motion into neutral speech motion and emotion-dependent residual mo-tion: 
+
+mt = mneu t + ∆ memo t . (5) Here, mneu t captures audio-synchronized talking motion, and ∆memo t models affective facial deformation. This de-composition prevents the emotion branch from relearning phoneme-driven mouth motion and encourages it to focus on brows, cheeks, eyelids, and mouth-corner dynamics. 
+
+Spatial-Audio-Emotion Joint Attention. To capture the mutual dependency among facial regions, speech content, and emotional states, we introduce a spatial-audio-emotion joint attention module. The spatial-audio-emotion attention module consists of multiple sets of cross-attention layers Fca 
+
+and feed-forward layers Ff d , each connected via skip con-nections. The module is formulated as follows: 
+
+z0 
+
+> n
+
+= qn, (6) 
+
+z′ln = Fca (zl−1 
+
+> n
+
+, f at , f e) + zl−1 
+
+> n
+
+, l = 1 ...L, (7) 
+
+zln = Ff d (z′ln ) + z′ln , l = 1 ...L.  (8) By computing the cross-attention between the spatial query 
+
+qn, audio features f at and emotion features f e of the tth 
+
+image frame, the output features successfully integrate these signals with the rich facial details captured by the Gaussian model, preparing for subsequent Gaussian deformation in the emotion space. 
+
+Emotion-aware Gaussian Deformation. To predict the off-sets for each Gaussian attribute, we use a set of MLP regres-sors, Fd, as detailed below: 
+
+(∆ xi,t , ∆ri,t , ∆si,t , ∆ci,t , ∆αi,t ) = Fd(zLn ). (9) Therefore, the Gaussian attributes in the final emotional space are: xemo i,t = xneu i,t + ∆ xi,t , remo i,t = rneu i,t + ∆ ri,t ,
+
+semo i,t = sneu i,t + ∆ si,t , cemo i,t = cneu i,t + ∆ ci,t , αemo i,t =
+
+αneu i,t + ∆ αi,t . Training objectives are provided in the ap-pendix . After training, the proxy avatar renders an emotional driving video in real time: 
+
+Vp = RG(A, e; Θ p), (10) where RG denotes the Gaussian rendering process and Θp
+
+represents the learned proxy avatar parameters. The proxy video Vp contains synchronized lip motion and emotion-aware facial dynamics, it serves as an explicit motion carrier for the next stage, where identity-independent motion is ex-tracted and retargeted to an arbitrary reference portrait. 
+
+One-Shot Portrait Motion Driving Module 
+
+Given the proxy driving video generated by the 3D Gaussian-based emotion proxy avatar, the second stage transfers its emotional facial motion to an arbitrary reference portrait IR.We denote the proxy driving video as Vp = {Ipt }Tt=1 and the frame-aligned audio features as A = {at}Tt=1 , where 
+
+Ipt and at correspond to the same timestamp. Although the proxy video contains expressive lip motion and emotion-aware facial dynamics, it still reflects the proxy identity’s geometry and appearance. Therefore, we extract identity-independent motion cues from the proxy video and inject them into a one-shot portrait animation conditioned on IR.
+
+Controller-Guided Portrait Generation. We adopt adiffusion-based portrait animation backbone to synthesize the target frame It from a noisy latent zτt at denoising step 
+
+τ . The generation process is conditioned on the reference appearance, proxy motion, proxy pose: 
+
+ˆϵ = ϵθ (zτt , τ ; capp , Ct) , Ct = {cmot t , cpose t }, (11) where capp is extracted from the reference image IR, cmot t
+
+and cpose t are obtained from the proxy frame Ipt . The refer-ence appearance condition is computed by a ReferenceNet: 
+
+capp = R(IR), (12) which provides identity, texture, and background information for preserving the target portrait. 
+
+Motion Controller. The motion controller captures fine-grained facial dynamics from the proxy video, including mouth shapes, eye movements, and local expression changes. Specifically, we use a motion encoder Em to extract implicit facial motion representations: 
+
+cmot t = Em(Ipt ). (13) These implicit features are injected into the spatial layers of the denoising network through cross-attention: 
+
+Attn mot = Softmax 
+
+ Qz K⊤
+
+> m
+
+√d
+
+
+
+Vm, (14) where Qz is projected from the denoising feature, while 
+
+Km and Vm are projected from cmot t . This controller trans-fers local facial dynamics from the proxy performance while avoiding direct dependence on the proxy appearance. 
+
+Pose Controller. The motion controller mainly focuses on local expression dynamics, but global head pose, translation, and scale also need to be aligned with the target portrait. Therefore, we introduce a pose controller based on 3D im-plicit keypoints. Following the one-shot retargeting formula-tion, we extract 3D motion parameters from both the proxy frame and the reference portrait: 
+
+kpc,t , Rpt , tpt , s pt = Ek(Ipt ), (15) 
+
+kRc , RR, tR, s R = Ek(IR), (16) where kRc denotes the canonical 3D keypoints of the refer-ence portrait, encoding the target facial geometry such as face shape and facial structure. RR, tR, and sR represent the head rotation, translation, and scale of the reference portrait, respectively. To adapt the proxy pose to the target geometry, we compute the target-space driving keypoints: 
+
+kdt = spt · kRc Rpt + tpt . (17) The resulting keypoints are mapped into a spatial condition map by a pose guider: 
+
+cpose t = P(kdt ), (18) and injected into the denoising backbone through spatial ad-dition. This controller provides explicit geometric guidance for head movement and coarse facial layout, complementing the implicit motion features. After training on large-scale diverse facial videos, the one-shot portrait motion driving module learns to extract identity-independent motion from the proxy performance and adapt it to arbitrary target portraits. Training objectives are provided in the appendix . The generated portrait sequence from this stage serves as the high-quality diffusion synthesis result, while the next stage further reduces its inference cost through appearance-redundancy-based distillation acceleration. Appearance Redundancy Distillation 
+
+Although the one-shot portrait motion driving module can generate high-fidelity animated portraits, its diffusion-based generation process still requires multiple denoising steps and repeated appearance conditioning. In one-shot portrait ani-mation, the target identity is specified by a fixed reference image IR. Therefore, its identity, texture, and background ap-pearance remain largely unchanged throughout generation. However, conventional diffusion-based portrait animation models repeatedly extract and inject reference appearance features at different denoising steps, resulting in substantial redundant computation. To address this issue, we propose an appearance redundancy distillation strategy that compresses the denoising process and reuses reference appearance fea-tures with lightweight low-rank residual adaptation. 
+
+Few-step Appearance Distillation. Based on the observa-tion reported in the appendix that portrait structure and mo-tion are mainly established in the early denoising steps, we first distill the original multi-step sampling process into a compact schedule: 
+
+TK = {τ1, τ 2, . . . , τ K }, K ≪ N,  (19) where N is the number of denoising steps in the original dif-fusion model and K is the number of distilled steps. Starting from Gaussian noise zτK , the student model progressively denoises the latent along TK and predicts the clean latent ˆz0,which is decoded into the image space: 
+
+ˆIt = Dvae (ˆ z0 
+
+> t
+
+), (20) where Dvae is the VAE decoder. The distilled model is su-pervised by a hybrid objective Lstep , see appendix .
+
+Low-rank Appearance Reuse. Step distillation reduces the number of denoising steps, but each step may still require costly reference appearance extraction. To further remove appearance redundancy, we compute the full reference ap-pearance feature only at the first distilled step: 
+
+F1 = Rτ1 (IR). (21) For the following denoising steps, instead of re-running the full appearance extractor, we approximate the reference fea-ture as:  eFj = F1 + ∆ Fj , i = 2 , . . . , K.  (22) Since the difference between appearance features across de-noising steps is small and structured, we parameterize the residual ∆Fj with a low-rank decomposition: 
+
+∆Fj ≈ Aj Bj , (23) where Aj ∈ Rd×r and Bj ∈ Rr×m are lightweight learnable matrices, with r ≪ min( d, m ). For a multi-layer appearance feature pyramid, the approximation is applied at each layer: 
+
+eFlj = Fl 
+
+> 1
+
++ Alj Blj , l = 1 , . . . , L.  (24) The denoising network uses eFj as the appearance condition: 
+
+ˆϵj = ϵθ
+
+
+
+zτj 
+
+> t
+
+, τ j ; Ct, eFj
+
+
+
+. (25) This design preserves step-specific appearance adaptation while avoiding repeated full ReferenceNet computation. 
+
+Appearance Feature Distillation. To ensure that the low-rank reused feature approximates the original full appearance feature, we introduce an appearance feature distillation loss. Let Flj be the full reference feature extracted by the original appearance branch at step τj , and let eFlj be the low-rank approximated feature. We minimize: 
+
+Lapp =
+
+> K
+
+X
+
+> j=2
+> L
+
+X
+
+> l=1
+
+eFlj − sg( Flj ) 1
+
+, (26) where sg( ·) denotes the stop-gradient operation. This loss transfers the behavior of the full appearance extractor to the low-rank residual branch without updating the teacher appearance features. The final distillation objective is: 
+
+LARD = Lstep + λapp Lapp . (27) 
+
+## Experiments 
+
+Implementation Details. For the 3D Gaussian-based emo-tion proxy avatar, we select one subject from MEAD (Wang et al. 2020) with multiple emotion categories and all three in-tensity levels, and train a single proxy avatar once. Instead of training separate proxy avatars for different intensity levels, we use all intensity levels jointly to enrich emotional mo-tion diversity, which reduces training overhead and avoids maintaining multiple intensity-specific models. During in-ference, the proxy motion is conditioned on the input audio and emotion category, where the audio dynamics naturally modulate the strength of the generated emotional motion. The proxy avatar is implemented in PyTorch and trained with the Adam optimizer (Kingma and Ba 2014) , where the learning rate is initialized as 1 × 10 −4 and gradually decayed to 1 × 10 −5. For the one-shot portrait motion driv-ing and appearance redundancy distillation modules, we fol-low PersonaLive (Li et al. 2026) and train on VFHQ (Xie et al. 2022), NerSemble (Kirschstein et al. 2023), and DH-FaceVid-1K (Di et al. 2025). All videos are processed at 25 fps and cropped to 512 × 512 . For adversarial training, we adopt the StyleGAN2 discriminator initialized with FFHQ-pretrained weights (Karras, Laine, and Aila 2019). The de-noising steps are set to N = 4 , the chunk size is set to M = 4 ,and the motion threshold in Historical Keyframe Mechanism (HKM) is set to τ = 17 . The model is trained on two A100 GPUs using AdamW (Loshchilov and Hutter 2017) with a learning rate of 1 × 10 −5 and a weight decay of 0.01 . For self-reconstruction, we train one proxy avatar for each of two selected MEAD identities, and each proxy is trained only once using all emotion categories and intensity levels. This setting is used solely as an identity-specific diagnostic to verify reconstruction robustness across subjects; it does not require retraining per test clip or per emotion and does not change our main one-shot driving pipeline. For cross-identity evaluation, we randomly select 10 target identities and report the averaged results over all generated videos. 
+
+Evaluation Metrics. We adopt different metrics for self-reconstruction and cross-identity driving. For self-reconstruction, we report PSNR (Wang et al. 2004a), LPIPS (Zhang et al. 2018), SSIM (Wang et al. 2004b), Land-mark Distance (LMD), Action Unit Error (AUE) for low-er/upper facial regions, SyncNet-based Lip Sync (Chung and Zisserman 2017), and FPS. For cross-identity driving, where paired ground truth is unavailable, we report FID (Heusel et al. 2017), identity similarity (ID-Sim), emotion classifica-tion accuracy (Emo-Acc), and Lip Sync (Chung and Zisser-man 2017). 
+
+Comparison Settings. We evaluate our method under two settings. (1) Self-reconstruction , where a reference image and the corresponding audio from the same identity are used to reconstruct the target video. (2) One-shot cross-identity driving , where the target portrait is provided by a single ref-erence image, while the driving audio and emotion condition come from a different identity. GT EDTalk [ECCV’24] FLOAT [ICCV’25] C-MET [CVPR’26] EmoTag [CVPR’26] Ours 
+
+Figure 3: Qualitative comparison on self-reconstruction .Our method generates more expressive, visually faithful, and well-synchronized talking heads than previous methods across emotional cases. 
+
+Qualitative Comparison. Fig. 3 shows the qualitative com-parison under the self-reconstruction setting. Compared with existing methods, our method generates more expressive results while maintaining stable audio-lip synchronization. EDTalk (Tan et al. 2024) and C-MET (Choi et al. 2026) suf-fer from identity inconsistency and audio mismatch in some cases, while FLOAT(Ki, Min, and Chae 2025) lacks natu-ral emotional variations. Although EmoTaG(Xu et al. 2026) produces reasonable talking-head animations, its emotional expressiveness is still limited, especially when generating high-intensity emotional expressions. Fig. 4 shows the qual-itative comparison under the one-shot cross-identity driving setting. Compared with existing methods, our method bet-ter transfers emotion-aware facial motion to unseen target portraits while preserving the target identity. The generated results exhibit more vivid emotional expressions, more nat-ural facial dynamics, and fewer identity distortions, demon-strating the advantage of our identity-independent motion extraction and one-shot retargeting design. Please refer to the demo for dynamic comparisons. 
+
+Long-video Stability. We further evaluate long-video gen-eration stability in the supplementary demo . Our method                                                                
+
+> Method PSNR ↑LPIPS ↓SSIM ↑LMD ↓AUE-(L/U) ↓Lip Sync ↑FPS ↑
+> EDTalk-ECCV’24 27.38 0.32 0.745 3.16 0.841-0.347 5.655 4.8 FLOAT-ICCV’25 26.46 0.43 0. 712 3.67 0.992-0.691 4.913 21 C-MET-CVPR’26 26.10 0.49 0.704 4.29 1.135-0.829 3.540 8.3 EmoTag-CVPR’26 28.31 0.021 0.764 2.83 0.695-0.277 5.982 45
+> w/o PA 29.02 0.030 0.832 2.76 0.811-0.318 5.783 32 w/o LRC + w/o few-step 31.42 0.017 0.890 2.23 0.664-0.198 6.351 7.8 w/o LRC + w/ few-step 31.28 0.018 0.887 2.26 0.670-0.204 6.322 21.5
+> Ours 31.24 0.018 0.883 2.27 0.672-0.207 6.314 32
+
+Table 1: Quantitative comparison and ablation study under the self-reconstruction setting. maintains stable identity, coherent facial motion, and con-sistent lip synchronization over extended sequences, without obvious temporal drift. EDTalk [ECCV’24] FLOAT [ICCV’25] C-MET [CVPR’26] EmoTag [CVPR’26] Ours  
+
+> Surprised Contempt
+
+Figure 4: Qualitative comparison on one-shot cross-identity 
+
+driving. Given a single reference portrait and driving audio from a different identity, our method produces more expres-sive emotional facial motions while better preserving the target identity. 
+
+Quantitative Results. Tab. 1 reports the quantitative com-parison under the self-reconstruction setting. Our method achieves the best performance on most metrics (excluding ablation study), demonstrating superior visual fidelity, more accurate facial motion, and better audio-lip synchronization. Although EmoTag (Xu et al. 2026) achieves the highest FPS, our method still runs at 32 FPS, satisfying real-time infer-ence while providing significantly better generation qual-ity and motion accuracy. Tab. 2 reports the quantitative re-sults under the one-shot cross-identity driving setting. Since paired ground-truth videos are unavailable in this setting, we evaluate distribution-level visual quality, identity preserva-tion, emotional expressiveness, and lip synchronization. Our method achieves the best performance across all metrics, with the lowest FID and the highest ID-Sim, Emo-Acc, and Lip Sync scores. These results demonstrate that our method can better preserve the target identity while transferring expres-sive emotion-aware facial motion and maintaining accurate audio-lip synchronization. 
+
+User Study. To further evaluate perceptual quality, we con-duct a user study against representative baseline methods. We invite 20 participants to assess anonymized videos from the Method FID ↓ ID-Sim ↑ Emo-Acc ↑ Lip Sync ↑                                
+
+> EDTalk-ECCV’24 42.37 0.612 55.8 5.214 FLOAT-ICCV’25 47.85 0.583 48.7 4.766 C-MET-CVPR’26 50.92 0.561 51.3 3.182 EmoTag-CVPR’26 34.91 0.702 63.2 5.742 w/o PA 35.87 0.721 61.4 5.632 w/o LRC + w/o few-step 29.41 0.752 76.2 6.141
+> w/o LRC + w/ few-step 29.57 0.749 75.6 6.105
+> Ours 29.64 0.745 75.4 6.096
+
+Table 2: Quantitative comparison and ablation study under the one-shot cross-identity driving. Method Emo Exp ↑ Lip Syn ↑ Visual Realism ↑               
+
+> EDTalk-ECCV’24 5% 0% 15% FLOAT-ICCV’25 10% 5% 10% C-MET-CVPR’26 0% 5% 0% EmoTag-CVPR’26 15% 30% 10%
+> Ours 70% 60% 65%
+
+Table 3: User study on emotional expressiveness, lip syn-chronization, and visual realism. self-reconstruction setting in terms of emotional expressive-ness, lip synchronization, and visual realism. As reported in Tab 3, our method obtains the highest overall ratings, espe-cially in emotional expressiveness, indicating that it produces more vivid and coherent emotion-aware facial motions. GT 
+
+> (Driving Images)
+> Ours
+> (Full Model ）
+> w/o PA
+> (Stage2+Stage3 ）
+> w/o ARD
+> (Stage1+Stage2 ）
+
+Figure 5: Qualitative ablation results. The left part shows results under the self-reconstruction setting, and the right part shows results under the cross-identity driving setting. 
+
+Ablation study. To evaluate the contribution of each com-ponent, we ablate by removing key modules of our method. 
+
+Proxy Avatar (PA). Fig. 5 shows the qualitative ablation of the emotion proxy avatar. In the self-reconstruction setting, the full model produces results that are closer to the ground truth, especially in emotion-related facial regions such as the eyes, cheeks, and mouth. Without the emotion proxy avatar, the generated expressions become weaker and less consistent with the target emotional motion. In the cross-identity driv-ing setting, the full model also exhibits stronger and more vivid emotional expressions, demonstrating that the proxy avatar provides effective emotion-aware motion priors for both reconstruction and cross-identity animation. Tab. 1 and Tab. 2 report the quantitative ablation of the emotion proxy avatar. Removing the proxy avatar leads to consistent per-formance degradation in both self-reconstruction and cross-identity driving settings. These results demonstrate that the proxy avatar provides effective emotion-aware motion pri-ors for expressive and identity-preserving portrait animation. The FPS remains almost unchanged because the final portrait generation stage always requires a driving video as input, re-gardless of whether it is produced by the emotion proxy avatar or obtained from an alternative source. 
+
+Appearance Redundancy Distillation (ARD). Fig. 5 shows the qualitative ablation of ARD (Since the qualitative results of w/o and w/ few-step are difficult to distinguish by the naked eye, they are not presented). As highlighted by the yellow dashed boxes, introducing the acceleration module may cause slight appearance structure degradation in some local regions, such as subtle facial contours or fine texture details. However, these artifacts remain visually acceptable and do not significantly affect identity perception, emotional expression, or lip synchronization. Considering the substan-tial improvement in inference speed, the proposed module achieves a favorable balance between visual fidelity and real-time efficiency. Tab. 1 and Tab. 2 report the ablation results of ARD (w/o LRC(Low-Rank Caching) + w/o few-step and w/o LRC + w/ few-step). For the acceleration-related variants, the model without LRC and few-step distillation achieves the best numerical scores, which is expected because it uses the original multi-step denoising process and full reference ap-pearance computation. However, the improvements over our full model are marginal, e.g., only 0.23 in FID and 0.045 in Lip Sync, while its inference speed is much lower as shown in Tab. 1. The variant with few-step distillation but without LRC also obtains results very close to our full model, indicat-ing that low-rank appearance caching introduces only minor quality variations. Overall, these results show that our full model preserves comparable cross-identity generation qual-ity while achieving substantially better inference efficiency. 
+
+Other experimental analyses . Due to space limitations, we provide more experimental analyses in the appendix . In par-ticular, we analyze whether the single-identity proxy avatar introduces actor-specific motion bias and whether its emo-tional motion prior generalizes to diverse target portraits. We also quantify the storage overhead of the learnable low-rank matrices and evaluate the generalization of appearance caching across different identities and backgrounds. 
+
+## Conclusion 
+
+In this paper, we propose a real-time one-shot emotion-controllable portrait animation framework. Our method first builds a 3D Gaussian-based emotion proxy avatar to gen-erate expressive and controllable driving motions, and then transfers the identity-independent motion to arbitrary target portraits through a one-shot portrait driving module. To im-prove inference efficiency, we further introduce appearance redundancy distillation, which reduces redundant appearance computation while preserving visual fidelity. Extensive ex-periments demonstrate that our method achieves superior emotional expressiveness, identity preservation, lip synchro-nization, and real-time performance. We discuss limitations and potential future directions in the appendix .References 
+
+Chen, Z.; Cao, J.; Chen, Z.; Li, Y.; and Ma, C. 2025. Echomimic: Lifelike audio-driven portrait animations through editable landmark conditions. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, 2403–2410. Choi, C.; Kim, T.; Lee, D.; Jung, S.; and Kim, T. 2026. Cross-Modal Emotion Transfer for Emotion Editing in Talking Face Video. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 1759–1770. Chung, J. S.; and Zisserman, A. 2017. Out of Time: Auto-mated Lip Sync in the Wild. In Computer Vision – ACCV 2016 Workshops , 251–263. Cham. ISBN 978-3-319-54427-4. Di, D.; Feng, H.; Sun, W.; Ma, Y.; Li, H.; Chen, W.; Fan, L.; Su, T.; and Yang, X. 2025. DH-FaceVid-1K: A Large-Scale High-Quality Dataset for Face Video Generation. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , 12124–12134. Feng, G.; Cheng, H.; Li, Y.; Ma, Z.; Li, C.; Qian, Z.; Miao, Q.; and Pun, C.-M. 2026. Emospeaker: One-shot fine-grained emotion-controlled talking face generation. IEEE Transac-tions on Multimedia .Guo, J.; Zhang, D.; Liu, X.; Zhong, Z.; Zhang, Y.; Wan, P.; and Zhang, D. 2024. Liveportrait: Efficient portrait anima-tion with stitching and retargeting control. arXiv preprint arXiv:2407.03168 .Gururani, S.; Mallya, A.; Wang, T.-C.; Valle, R.; and Liu, M.-Y. 2023. Space: Speech-driven portrait animation with controllable expression. In Proceedings of the ieee/cvf inter-national conference on computer vision , 20914–20923. Heusel, M.; Ramsauer, H.; Unterthiner, T.; Nessler, B.; and Hochreiter, S. 2017. Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems , 30. Ji, X.; Zhou, H.; Wang, K.; Wu, Q.; Wu, W.; Xu, F.; and Cao, X. 2022. Eamm: One-shot emotional talking face via audio-based emotion-aware motion model. In ACM SIGGRAPH 2022 conference proceedings , 1–10. Ji, X.; Zhou, H.; Wang, K.; Wu, W.; Loy, C. C.; Cao, X.; and Xu, F. 2021. Audio-driven emotional video portraits. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 14080–14089. Karras, T.; Aila, T.; Laine, S.; Herva, A.; and Lehtinen, J. 2017. Audio-driven facial animation by joint end-to-end learning of pose and emotion. ACM Trans. Graph. , 36(4). Karras, T.; Laine, S.; and Aila, T. 2019. A style-based gen-erator architecture for generative adversarial networks. In 
+
+Proceedings of the IEEE/CVF conference on computer vi-sion and pattern recognition , 4401–4410. Ki, T.; Min, D.; and Chae, G. 2025. Float: Generative motion latent flow matching for audio-driven talking portrait. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , 14699–14710. Kingma, D. P.; and Ba, J. 2014. Adam: A Method for Stochas-tic Optimization. arXiv preprint arXiv:1412.6980 .Kirschstein, T.; Qian, S.; Giebenhain, S.; Walter, T.; and Nießner, M. 2023. Nersemble: Multi-view radiance field re-construction of human heads. ACM Transactions on Graph-ics (TOG) , 42(4): 1–14. Li, Z.; Pun, C.-M.; Fang, C.; Wang, J.; and Cun, X. 2026. Per-sonalive! expressive portrait image animation for live stream-ing. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , 18118–18128. Loshchilov, I.; and Hutter, F. 2017. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 .Ma, Y.; Wang, S.; Hu, Z.; Fan, C.; Lv, T.; Ding, Y.; Deng, Z.; and Yu, X. 2023. Styletalk: One-shot talking head generation with controllable speaking styles. In Proceedings of the AAAI conference on artificial intelligence , volume 37, 1896–1904. Peng, Z.; Wu, H.; Song, Z.; Xu, H.; Zhu, X.; He, J.; Liu, H.; and Fan, Z. 2023. EmoTalk: Speech-Driven Emotional Disentanglement for 3D Face Animation. arXiv:2303.11089. Prajwal, K.; Mukhopadhyay, R.; Namboodiri, V. P.; and Jawa-har, C. 2020. A lip sync expert is all you need for speech to lip generation in the wild. In Proceedings of the 28th ACM international conference on multimedia , 484–492. Sun, X.; Zhang, L.; Zhu, H.; Zhang, P.; Zhang, B.; Ji, X.; Zhou, K.; Gao, D.; Bo, L.; and Cao, X. 2023. VividTalk: One-Shot Audio-Driven Talking Head Generation Based on 3D Hybrid Prior. arXiv:2312.01841. Tan, S.; Ji, B.; Bi, M.; and Pan, Y. 2024. Edtalk: Efficient disentanglement for emotional talking head synthesis. In Eu-ropean Conference on Computer Vision , 398–416. Springer. Tian, L.; Wang, Q.; Zhang, B.; and Bo, L. 2024. Emo: Emote portrait alive generating expressive portrait videos with au-dio2video diffusion model under weak conditions. In Euro-pean Conference on Computer Vision , 244–260. Springer. Wang, K.; Wu, Q.; Song, L.; Yang, Z.; Wu, W.; Qian, C.; He, R.; Qiao, Y.; and Loy, C. C. 2020. MEAD: A Large-Scale Audio-Visual Dataset for Emotional Talking-Face Genera-tion. In Vedaldi, A.; Bischof, H.; Brox, T.; and Frahm, J., eds., Computer Vision - ECCV 2020 - 16th European Confer-ence, Glasgow, UK, August 23-28, 2020, Proceedings, Part XXI , volume 12366 of Lecture Notes in Computer Science ,700–717. Springer. Wang, S.; Li, L.; Ding, Y.; Fan, C.; and Yu, X. 2021. Au-dio2head: Audio-driven one-shot talking-head generation with natural head motion. arXiv preprint arXiv:2107.09293 .Wang, Z.; Bovik, A.; Sheikh, H.; and Simoncelli, E. 2004a. Image quality assessment: from error visibility to structural similarity. IEEE Transactions on Image Processing , 13(4): 600–612. Wang, Z.; Bovik, A. C.; Sheikh, H. R.; and Simoncelli, E. P. 2004b. Image quality assessment: from error visibility to structural similarity. IEEE transactions on image processing ,13(4): 600–612. Wang, Z.; Zhang, P.; Qi, J.; Xu, S.; Zhang, B.; et al. 2026. Omnitalker: One-shot real-time text-driven talking audio-video generation with multimodal style mimicking. 
+
+Advances in Neural Information Processing Systems , 38: 21834–21862. Xie, L.; Wang, X.; Zhang, H.; Dong, C.; and Shan, Y. 2022. Vfhq: A high-quality dataset and benchmark for video face super-resolution. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition , 657–666. Xu, H.; Cheng, K.; Wang, L.; Bi, N.; and Liu, X. 2026. Emotag: Emotion-aware talking head synthesis on gaussian splatting with few-shot personalization. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 10921–10931. Xu, M.; Li, H.; Su, Q.; Shang, H.; Zhang, L.; Liu, C.; Wang, J.; Yao, Y.; and Zhu, S. 2024a. Hallo: Hierarchical Audio-Driven Visual Synthesis for Portrait Image Anima-tion. arXiv:2406.08801. Xu, S.; Chen, G.; Guo, Y.-X.; Yang, J.; Li, C.; Zang, Z.; Zhang, Y.; Tong, X.; and Guo, B. 2024b. Vasa-1: Lifelike audio-driven talking faces generated in real time. Advances in Neural Information Processing Systems , 37: 660–684. Yang, H.; Zhang, Z.; Tang, H.; Qian, J.; and Yang, J. 2024. Consistentavatar: Learning to diffuse fully consistent talking head avatar with temporal guidance. In Proceedings of the 32nd ACM International Conference on Multimedia , 3964– 3973. Zhang, J.; Mai, W.; and Zhang, Z. 2026. Emodiffhead: con-tinuously emotional control in talking head generation via diffusion. IEEE Transactions on Artificial Intelligence .Zhang, R.; Isola, P.; Efros, A. A.; Shechtman, E.; and Wang, O. 2018. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. arXiv:1801.03924. Zhang, W.; Cun, X.; Wang, X.; Zhang, Y.; Shen, X.; Guo, Y.; Shan, Y.; and Wang, F. 2023. Sadtalker: Learning realistic 3d motion coefficients for stylized audio-driven single image talking face animation. In Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition , 8652– 8661. Zhou, Y.; Han, X.; Shechtman, E.; Echevarria, J.; Kaloger-akis, E.; and Li, D. 2020. Makelttalk: speaker-aware talking-head animation. ACM Transactions On Graphics (TOG) ,39(6): 1–15.

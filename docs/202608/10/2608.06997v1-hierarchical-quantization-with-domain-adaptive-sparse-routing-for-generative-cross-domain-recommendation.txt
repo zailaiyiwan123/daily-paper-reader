@@ -1,0 +1,524 @@
+Title: Hierarchical Quantization with Domain-Adaptive Sparse Routing for Generative Cross-Domain Recommendation
+
+URL Source: https://arxiv.org/pdf/2608.06997v1
+
+Published Time: Mon, 10 Aug 2026 00:41:23 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Hierarchical Quantization with Domain-Adaptive Sparse Routing for Generative Cross-Domain Recommendation 
+
+Haiying He 1∗
+
+, Xiaopeng Li 1∗
+
+, Yuchen Gu 1, Kuo Cai 2, Bo Chen 2, Jingtong Gao 1, Yejing Wang 1
+
+Derong Xu 1, Qiang Luo 2, Ruiming Tang 2, Guorui Zhou 2, Han Li 2, Xiangyu Zhao 1†
+
+> 1
+
+City University of Hong Kong, 2Kuaishou Technology 
+
+## Abstract 
+
+Generative Recommendation (GenRec) represents a promising paradigm that achieves remarkable empirical success by encoding items as compact Seman-tic IDs (SIDs) and modeling user behavior via next-token prediction across diverse recommendation scenarios. Extending this paradigm to cross-domain recommenda-tion is challenging because a unified model must accommodate heterogeneous item semantics and behavioral patterns across domains. Existing methods commonly rely on globally shared representations or lightweight domain adaptation, which may provide insufficient capacity for modeling heterogeneous patterns at different semantic granularities. To address these challenges, we propose HD-R EC , a unified generative framework for cross-domain recommendation. HD-R EC employs a hier-archical domain-aware quantizer that constructs semantic identifiers using globally shared coarse-level codebooks and adaptively routed fine-level codebooks. It fur-ther introduces a domain-adaptive sparse mixture-of-experts module that combines a continuously activated shared expert with a dynamically selected specialized expert. To improve the coherence of multi-token item representations, we de-velop a cross-granularity routing consistency objective that regularizes token-level routing decisions toward their item-level consensus. Experiments on three public cross-domain recommendation benchmarks show that HD-R EC consistently im-proves over competitive sequential, generative, and cross-domain recommendation baselines. 
+
+## 1 Introduction 
+
+Recommender systems have become indispensable across e-commerce, online media, and social platforms Li et al. [2025]. Their primary goal is to assist users in efficiently discovering relevant items within vast information, thereby enhancing user experience and engagement. In practical deployments, they frequently operate across multiple domains or scenarios (e.g., distinct content categories) Zhu et al. [2021], Zang et al. [2022]. In such contexts, leveraging data from resource-rich domains can significantly improve recommendations in data-scarce domains, establishing the critical need for effective Cross-Domain Recommendation (CDR). Early CDR approaches primarily relied on overlapping entities (e.g., shared users or items) to align domains and facilitate knowledge transfer Li [2011]. However, the applicability of these methods is restricted in practical scenarios where domains share minimal or zero common identifiers due to privacy constraints or platform heterogeneity Zhang et al. [2022]. Furthermore, even when entity overlap is present, manually engineered feature alignments frequently fail to capture the semantic relationships between domains possessing significantly different content and user bases. To overcome the limitation of relying on overlapping entities, recent methods have explored utilizing content features through pre-trained language models (PLMs) to construct unified semantic spaces Hou et al. [2022], Geng et al. [2022]. 
+
+> Preprint. arXiv:2608.06997v1 [cs.IR] 7 Aug 2026
+
+These approaches encode item metadata (e.g., titles and descriptions) into transferable representations that bridge domains without explicit entity correspondence. Although promising, they typically necessitate extensive auxiliary data for effective pre-training and may encounter domain gap issues when content distributions differ substantially Su et al. [2024]. These constraints indicate that existing solutions for CDR have not fully utilized the semantics of cross-domain content in a unified and scalable manner. Consequently, there is a compelling motivation to explore a new recommendation paradigm capable of transferring knowledge across heterogeneous domains without the requirement for explicit entity overlaps. To overcome these limitations, recent studies explore Generative Recommendation (GenRec), a new paradigm reformulating recommendation as a sequence-to-sequence generation task Jin et al. [2025], Deldjoo et al. [2024]. By encoding items into content-derived Semantic IDs (SIDs) and modeling user behavior via next-token prediction over item sequences, GenRec nat-urally unifies heterogeneous domains within a single generative framework. Building upon this, several studies extend GenRec to cross-domain settings. Some approaches map multi-domain items and interactions into a shared semantic space, training unified generative models over mixed-domain sequences Jin et al. [2025]. Others introduce additional components like domain prompts, lightweight adapters, or auxiliary contrastive losses to adapt models to domain-specific patterns Lee et al. [2025], Chen et al. [2023]. Nevertheless, a unified model must represent item embeddings that exhibit both cross-domain overlap and domain-dependent geometric struc-tures. To illustrate this challenge, we visualized item embeddings from the Amazon dataset us-ing t-SNE (Figure 1). This visualization serves as a qualitative motivation rather than a quan-titative assessment of representation disentanglement: a unified tokenizer needs shared capacity for common semantic structures while retaining adaptive capacity for heterogeneous patterns. 100 0 100   
+
+> t-SNE Dim 1
+> 100
+> 0100
+> t-SNE Dim 2
+> (a) Sports v Clothing
+> Sports Clothing
+> 100 0100
+> t-SNE Dim 1
+> (b) Elec. v Phones
+> Electronics Phones
+
+Figure 1: t-SNE visualization of the learned em-beddings. (a) Comparison between Sports and Clothing domains. (b) Comparison between Elec-tronics and Cell Phones domains. This observation motivates two design consider-ations for unified generative cross-domain rec-ommendation. First, hierarchical semantic or-ganization should represent coarse item seman-tics with globally shared capacity while allow-ing fine-grained patterns to be modeled adap-tively. Second, adaptive capacity allocation should enable a unified model to activate spe-cialized parameters according to item represen-tations, rather than applying exactly the same parameters to all domains and items. To address these challenges, we propose HD-REC , a unified generative framework for cross-domain recommendation. Our core philosophy is hierarchical modeling: HD-R EC first constructs multi-level semantic identifiers through hierarchical quantization: coarse-level codes are selected from globally shared codebooks, while the final residual code is selected from a set of adaptively routed codebooks. It then introduces a domain-adaptive sparse mixture-of-experts module that combines an always-active shared expert with a dynamically selected specialized expert. Finally, cross-granularity routing consistency learning encourages the semantic tokens belonging to the same item to maintain coherent routing decisions. Together, these components provide hierarchical representation capacity and sparse conditional computation for unified cross-domain generative modeling. To summarize, the main contributions are as follows: • We propose HD-R EC , a unified generative framework for cross-domain recommendation that combines hierarchical semantic tokenization with domain-adaptive sparse routing. • We introduce a hierarchical domain-aware quantizer that combines globally shared coarse-level codebooks with adaptively routed fine-level codebooks, together with a sparse MoE module that combines shared and specialized model capacity. • We develop a cross-granularity routing consistency objective that encourages coherent expert-routing decisions among semantic tokens belonging to the same item. • Extensive experiments on three cross-domain datasets show HD-R EC significantly outperforms competitive baselines, validating its effectiveness. 22 Problem Definition 
+
+In this section, we present the formal definition of the Cross-Domain Sequential Recommendation (CDSR) task. Consider a recommendation system consisting of a domain set D = {d1, d 2, . . . , d T }
+
+and a user set U. Each domain d ∈ D is associated with an independent item set Id, and the overall item space is I = S 
+
+> di∈D
+
+Idi .
+
+User Behavior Modeling. For each user u ∈ U , interactions within domain d are chronologically ordered as: 
+
+Sdu = ( v1, v 2, . . . , v |Sdu|), vi ∈ I d. (1) Let Du ⊆ D denote the set of domains that user u has interacted with. The full multi-domain behavior of user u is defined as: 
+
+Hu = {Sudi | di ∈ D u}. (2) 
+
+Cross-Domain Recommendation Task (CDSR). Given a user u and a target domain dt ∈ D , CDSR aims to predict the next item interaction in the target domain, conditioned on the user’s multi-domain behavior history Hu.Formally, for each target-domain interaction event at time t, we predict: 
+
+vt ∈ I dt , (3) based on historical behavior H<t u .We model the probability of the next interaction using a parameterized model Pθ :
+
+Pθ (vt | H<t u , d t). (4) The model is optimized by maximizing the log-likelihood over all target-domain interactions: 
+
+L(θ) = X
+
+> u∈U
+
+X 
+
+> t∈T dtu
+
+log Pθ (vt | H<t u , d t), (5) where T dt 
+
+> u
+
+denotes the set of timestamps where user u has interactions in the target domain dt.The formulation permits more than two domains. In this work, we focus on the case of two domains, i.e., D = {ds, d t}.
+
+## 3 Methodology 
+
+In this section, we present details of HD-R EC . As illustrated in Figure 2, HD-R EC consists of three key components: (i) a Hierarchical Domain-Aware Quantizer that constructs multi-level Semantic IDs using globally shared coarse-level codebooks and adaptively routed fine-level codebooks (Section 3.1); (ii) a Domain-Adaptive Sparse MoE that combines an always-active shared expert with a dynamically selected specialized expert (Section 3.2); and (iii) a Cross-Granularity Routing Consistency Learning that regularizes token-level routing decisions toward their item-level consensus (Section 3.3). We elaborate on each component below. 
+
+3.1 Hierarchical Domain-aware Quantizer 
+
+Conventional residual quantization methods such as Residual-Quantized Variational Autoencoder (RQ-VAE) Lee et al. [2022] learn shared codebooks across all domains. While effective for represen-tation compression, this design may under represent domain-dependent variations in cross-domain recommendation. In cross-domain recommendation, however, items often share high-level semantics (e.g., “sports electronics”, “basketball”) while exhibiting specific variations in fine-grained prefer-ences (e.g., “low-top basketball shoes” in e-commerce versus “basketball training videos” on content platforms). To address this limitation, we propose a Hierarchical Domain-Aware Quantizer (HDQ) that progressively decomposes item semantics. Our core insight is to introduce a hierarchical inductive bias for organizing item semantics: the shared shallow layers model coarse semantic structures, whereas the routed final layer provides additional capacity for fine-grained residual quantization. 3Figure 2: The overview of the proposed HD-R EC . (a) HDQ constructs Semantic IDs through globally shared coarse-level quantization and adaptively routed fine-level quantization. (b) DAS MoE combines an always-active shared expert with a dynamically selected specialized expert. (c) CRCL encourages coherent expert-routing decisions among tokens belonging to the same item. 
+
+Coarse-Grained Semantic Decomposition (Layers 1 to L − 1). Given an item i with a continuous feature vector xi ∈ RD, an encoder Eθ maps it to a latent representation zi = Eθ (xi) ∈ Rd. We initialize the residual as r0 = zi. For the first L − 1 layers, the tokenizer progressively captures coarse-level semantics using globally shared codebooks. At each layer l ∈ { 1, . . . , L − 1}, it selects the nearest code vector from the shared codebook Cl ⊂ Rd by minimizing the Euclidean distance: 
+
+cl = arg min 
+
+> c∈C l
+
+∥rl−1 − c∥2 (6) The residual is subsequently updated by subtracting the selected vector to propagate the remaining information to the next layer: 
+
+rl = rl−1 − cl (7) 
+
+Domain-Adaptive Routing and Specialization (Layer L). Unlike the preceding layers, the final quantization layer L provides adaptive fine-grained quantization. We introduce a specialized codebook decomposition strategy comprising K distinct codebooks {C (1)  
+
+> L
+
+, . . . , C(K) 
+
+> L
+
+}, each providing additional capacity for residual representation. Rather than assigning these codebooks to predefined domains, a lightweight router dynamically selects a codebook according to the item’s residual representation. Given the final residual rL−1, the router gϕ yields routing logits over the K candidate codebooks: 
+
+αi = gϕ(rL−1) ∈ RK , (8) To obtain a differentiable, discrete routing decision, we apply the Gumbel-Softmax trick Jang et al. [2016]: 
+
+ai = GumbelSoftmax( αi, τ ) ∈ RK , (9) where τ is the temperature parameter. During the forward pass, we adopt a straight-through estimator to deterministically select the top-1 codebook index ki = arg max k aik , while utilizing the soft Gumbel-Softmax probabilities during the backward pass for gradient propagation. Thus, the learned routing index ki dynamically assigns the item to an adaptive semantic subspace. The tokenizer then performs a nearest-neighbor lookup exclusively within the selected codebook: 
+
+c(ki) 
+
+> L
+
+= arg min 
+
+> c∈C (ki)
+> L
+
+∥rL−1 − c∥2, (10) 4where rL−1 denotes the residual propagated from layer L − 1. Each routed codebook is assigned a unique offset to ensure that its codewords have distinct Semantic IDs in the global vocabulary. 
+
+Final Representation and Reconstruction. The final quantized latent representation ˆzi is aggre-gated as the sum of the shared-codebook components from shallow layers and the routed adaptive component from the final layer: 
+
+ˆzi =
+
+> L−1
+
+X
+
+> l=1
+
+cl + c(ki) 
+
+> L
+
+. (11) A decoder Dψ is then employed to reconstruct the original feature from this quantized representation, yielding ˆxi = Dψ (ˆ zi).
+
+Joint Optimization Objectives. The hierarchical quantizer is trained end-to-end. We use the mean squared reconstruction error over a mini-batch B: To prevent routing collapse, a common degenerate solution where only a few codebooks receive the majority of assignments, we introduce a load-balancing regularizer. Let uk = 1
+
+> |B|
+
+P 
+
+> i∈B
+
+aik denote the average routing probability of codebook k
+
+within the mini-batch. We encourage uniform utilization across all K codebooks: 
+
+Lbalance =
+
+> K
+
+X
+
+> k=1
+
+
+
+uk − 1
+
+K
+
+2
+
+(12) Finally, to update the codebooks while stabilizing the encoder training, we apply the standard vector quantization losses using the stop-gradient operator sg[ ·]. The codebook loss ( Lcb ) and commitment loss ( Lcom ) are applied across all shared layers and the routed final layer: 
+
+Lcb = 1
+
+|B| 
+
+X
+
+> i∈B
+> L−1
+
+X
+
+> l=1
+
+sg[ r(i)
+
+> l−1
+
+] − c(i)
+
+> l
+> 22
+
++ sg[ r(i)
+
+> L−1
+
+] − c(ki)
+
+> L
+> 22
+
+!
+
+, (13) 
+
+Lcom = 1
+
+|B| 
+
+X
+
+> i∈B
+> L−1
+
+X
+
+> l=1
+
+r(i) 
+
+> l−1
+
+− sg[ c(i) 
+
+> l
+
+] 22
+
++ r(i) 
+
+> L−1
+
+− sg[ c(ki) 
+
+> L
+
+] 22
+
+!
+
+, (14) The overall training objective is formulated as the weighted sum of these components: 
+
+L = Lrec + λcb Lcb + λcom Lcom + λbal Lbalance . (15) 
+
+3.2 Domain-Adaptive Sparse MoE 
+
+While hierarchical quantization organizes item representations at the input level, a standard Trans-former backbone applies the same dense FFN parameters to all tokens. To provide conditional model capacity under unified cross-domain training, we introduce a Domain-Adaptive Sparse Mixture-of-Experts (DAS MoE) architecture. The module combines an always-active shared expert with one input-selected specialized expert, thereby allocating additional capacity in a sparse and data-dependent manner. Specifically, our MoE layer comprises a single shared expert Eshared and K specialized experts 
+
+{E1, . . . , E K }, where each expert is instantiated as a Feed-Forward Network (FFN). For a token embedding ht ∈ Rd at position t, a lightweight gating network projects the representation to compute routing logits over the K specialized experts: 
+
+st = Wgate ht ∈ RK (16) where Wgate denotes the learnable parameters of the router. Same to the HDQ router, We apply a sparse routing mechanism to deterministically select the top-1 specialized-expert routing index k∗ 
+
+> t
+
+:
+
+k∗ 
+
+> t
+
+= arg max 
+
+> k
+
+st,k , (17) The final token representation combines the outputs of the always-active shared expert and the selected specialized expert: 
+
+M oE (ht) = Eshared (ht) + Ek∗ 
+
+> t
+
+(ht). (18) This architecture offers several critical advantages. Specifically, the shared expert processes every token, while the routing network selects one additional expert based on the token representation. The resulting shared-plus-routed structure provides conditional model capacity while preserving sparse computation, since only one routed expert is activated for each token. 53.3 Cross-granularity Routing Consistency Learning 
+
+In generative recommendation, a cross-domain interaction sequence for a user can be represented as 
+
+Su = [ i1, . . . , i n]. Utilizing our hierarchical tokenizer, each item is decomposed into a sequence of 
+
+L semantic tokens, denoted as [c1, . . . , cL]. The primary training objective of the backbone model is the standard next-token prediction (NTP): 
+
+Lntp = −
+
+> n−1
+
+X
+
+> t=1
+> L
+
+X
+
+> l=1
+
+log P (c(t+1)  
+
+> l
+
+|c(t+1)  
+
+> <l
+
+, i 1, i 2, . . . , i t) (19) Standard MoE architectures typically operate strictly at the token level, where each token indepen-dently selects experts based on its local hidden representation Dai et al. [2024]. While this design ensures maximum flexibility, it poses a unique challenge in our setting: Since the tokens of the same item jointly constitute its Semantic ID, unconstrained token-wise routing may assign them substantially different expert distributions, increasing intra-item routing variability. To resolve this issue, we propose a soft Cross-Granularity Routing Consistency regularization 
+
+(CRCL). This mechanism encourages routing coherence among tokens belonging to the same item by minimizing the Kullback-Leibler (KL) divergence between each individual token’s routing distribution and the aggregated item-level distribution. This regularizer encourages tokens belonging to the same item to exhibit similar routing distributions while retaining token-level routing flexibility. Specifically, for an item i consisting of L token embeddings {h(i)1 , . . . , h(i) 
+
+> L
+
+}, we first construct an item-level global representation to serve as an item-level routing reference obtained by mean pooling its token embeddings: 
+
+havg = 1
+
+L
+
+> L
+
+X
+
+> t=1
+
+h(i) 
+
+> t
+
+(20) We then project this global representation through the gating network to obtain the item-level routing logits si = Wgate h(i) 
+
+> avg
+
+∈ RK , which induce an item-level routing distribution: 
+
+Pitem = sof tmax (si). (21) Concurrently, each individual token t maintains its own localized routing distribution based on its specific embedding: 
+
+P (t) 
+
+> token
+
+= softmax (Wgate h(i) 
+
+> t
+
+). (22) To enforce consistency, the Cross-Granularity Routing Consistency Loss penalizes the divergence of token-level routing decisions from the consensus item-level distribution: 
+
+Lconsistency = 1
+
+|B| 
+
+X
+
+> i∈B
+
+1
+
+L
+
+> L
+
+X
+
+> t=1
+
+KL (Ptoken ∥Pitem ), (23) where B denotes the mini-batch. This regularization encourages tokens belonging to the same item to maintain similar routing preferences while preserving token-level routing flexibility through the soft KL-divergence objective. The final optimization objective is formulated by jointly minimizing the generative task loss, the consistency regularization, and the MoE load-balancing loss: 
+
+Ltotal = Lntp + λ1Lconsistency + λ2Lbalance (24) where λ1, λ 2 ∈ [0 , 1] are hyper-parameters carefully tuned to control the strength of the respective regularizations. 
+
+## 4 Experiment 
+
+In this section, we conduct extensive experiments on several publicly available datasets to evaluate the effectiveness of our proposed method. To systematically analyze the performance of HD-R EC ,we investigate several Research Questions (RQ ) based on the experimental results. • RQ1 : How does HD-R EC perform compared with existing cross-domain and single-domain recommendation models? 6• RQ2 : How does each component contribute to the overall performance of HD-R EC ?• RQ3 : How do hyperparameters affect the performance of HD-R EC ?• RQ4 : Does the proposed architecture introduce significant inference overhead? • RQ5 : Does HD-R EC improve intra-item routing consistency? 
+
+4.1 Experimental Setup 4.1.1 Datasets 
+
+We conduct experiments on three public cross-domain dataset pairs: Clothing-Sports (Leisure), 
+
+Electronics-Phones (Technology) and Books-Movies (Entertainment). The first two datasets are constructed from sub-categories of the Amazon product review dataset 1, which contains user reviews of products on a large e-commerce platform. The third is derived from the Douban dataset 2, which contains user reviews of books, movies, and music on a major Chinese social platform. For model evaluation, we adopt the leave-last-out evaluation protocol. For each user interaction sequence, the second-to-last interaction is used for validation and the last one is used for testing. After preprocessing, the statistics of the dataset are summarized in Table 1. 
+
+4.1.2 Baselines Table 1: Dataset statistics.                             
+
+> Data Users Items Inter. Spar.
+> Clothing 39,387 23,033 278,677 99.97% Sports 35,598 18,357 296,337 99.95% Electronics 192,403 63,001 1,689,188 99.99% Phones 27,879 10,429 194,439 99.93% Books 1,713 8,601 104,295 99.29% Movies 2,628 20,964 1,249,016 97.73%
+
+To comprehensively validate the effectiveness of HD-REC , We benchmark our approach against three ma-jor categories of state-of-the-art baselines: 
+
+i) Single-domain Sequential Recommendation 
+
+(SDSR). These methods model users’ sequential be-haviors within an individual domain using advanced neural architectures or sparsity-aware training strate-gies. Due to their single-domain setting, these methods do not leverage cross-domain signals or auxiliary semantic information. • BERT4Rec Sun et al. [2019] adapts the Transformer-based BERT Devlin et al. [2019] framework to sequential recommendation by introducing a masked item prediction objective. • SASRec Kang and McAuley [2018] adopts a unidirectional self-attention mechanism to model user behavior sequences, thereby preserving the temporal causality in sequential interactions. • STOSA Fan et al. [2022] enriches the self-attention mechanism by modeling item representations as distributions and adopting Wasserstein-based attention to capture collaborative transitivity. 
+
+ii) Generative Recommendation Systems (GenRec). This line of work formulates recommendation as an autoregressive generation task, typically leveraging large pre-trained language models or generative architectures to generate item identifiers or semantic tokens based on user interaction sequences. However, most existing approaches are developed under a single-domain setting and primarily rely on in-domain interaction data, without explicitly modeling transferable knowledge across domains. • VQ-Rec Hou et al. [2023] discretizes continuous item embeddings into codebook indices via vector-quantized tokenization and performs prediction in the discrete token space using Transformers. • TIGER Rajput et al. [2023] represents each item as a semantic identifier composed of quantized codewords derived from content embeddings and trains a Transformer to generate next-item Semantic IDs. • HSTU Zhai et al. [2024] formulates recommendation as autoregressive transduction and uses hierarchical self-attention to encode long behavioral histories into unified sequential representations for joint ranking and retrieval generation. 
+
+> 1https://jmcauley.ucsd.edu/data/amazon/index_2014.html/
+> 2https://www.researchgate.net/publication/350793434_Douban_dataset_ratings_item_details_ user_profiles_tags_and_reviews
+
+7iii) Cross-domain Sequential Recommendation (CDSR). These methods leverage user interac-tions across multiple domains to mitigate data sparsity and improve sequential recommendation performance. By transferring knowledge across domains, these approaches can capture richer user preference patterns than single-domain models. • C2DSR Cao et al. [2022a] constructs a cross-domain interaction graph and applies graph neural networks with adaptive gating mechanism to regulate knowledge transfer. • TriCDR Ma et al. [2024] employs triplet-based contrastive learning to align users embeddings across domains and enhances cross-domain preference modeling. • LLM4CDSR Liu et al. [2025] reformulates CDSR as a text generation task by converting inter-action histories into textual prompts via semantic embeddings and hierarchical user profiling to capture implicit cross-domain preferences. • GenCDR Hu et al. [2026] introduces a generative cross-domain framework with a domain-adaptive tokenizer (universal RQ-VAE + domain-specific LoRA Hu et al. [2022]) and a domain-adaptive recommender (universal LoRA on aggregated data + domain-specific LoRA), both fine-tuned via parameter-efficient LoRA. In contrast, HD-R EC introduces input-dependent capacity at both the tokenizer and backbone levels through routed fine-level codebooks and sparse experts. HD-REC further regularizes routing consistency across the semantic tokens of the same item. The two approaches therefore explore different parameterizations for unified generative cross-domain recommendation. 
+
+4.1.3 Implementation Details 
+
+All experiments are conducted on NVIDIA A800 GPUs. HD-R EC is trained using a two-stage pipeline. In the first stage, we train the hierarchical domain-aware tokenizer on all item embeddings. We use AdamW as the optimizer with a learning rate of 1e-3. The group size of each codebook is set to 1024 and the code dimension is set to 32. The routing network is implemented as a single-layer MLP with ReLU activation. In the second stage, we train the entire recommendation model. We use T5 Raffel et al. [2020] as the backbone architecture and set the learning rate to 1e-4. During inference for the main performance evaluation, beam search with beam size 20 is applied. For the efficiency analysis in RQ4, we follow a stress-test setting with beam size 200 to evaluate the inference overhead under a larger candidate search space. The weight of the Cross-granularity Routing Consistency loss is set to 0.01. 
+
+4.1.4 Evaluation Metrics 
+
+Following the standard practice in previous works Kang and McAuley [2018], Cao et al. [2022a], we evaluate model performance using standard Top-k recommendation metrics, including Hit Rate@10 
+
+and NDCG@10 . Model selection is conducted by choosing the checkpoint that achieves the highest 
+
+Hit Rate@10 on the validation set, and the selected model is then evaluated on the test set. 
+
+4.2 Overall Performance (RQ1) 
+
+Table 2 reports the overall performance of HD-R EC . The results show that HD-REC performs favorably under unified cross-domain training. In particular, the improvements are more pronounced on Sports and Electronics, while smaller but consistent gains are observed on Clothing and the Douban domains. (1) Single-domain Sequential Recommendation (SDSR) models operate within a single domain and rely primarily on ID-based sequence signals. Since they neither exploit interactions from other domains nor leverage semantic content information, they consistently exhibit the weakest performance across domains, with particularly large gaps on the Amazon sub-domain pairs. (2) Generative Recommendation Systems (GenRec) approaches adopt a generative paradigm that models recommendation as an autoregressive prediction problem over semantic item tokens. By jointly training on mixed-domain sequences and incorporating semantic representations, these methods alleviate the limitations of pure ID-based models and achieve consistent improvements over SDSR. However, these methods do not explicitly introduce hierarchical adaptive capacity for heterogeneous item representations, which may limit their flexibility under unified cross-domain training. 8Table 2: The overall results of competing baselines and HD-R EC on three cross-domain datasets. The best and second-best results are highlighted in bold and underline, respectively. “ Impr. ” denotes the relative improvement of HD-R EC over the strongest baseline. The t-tests showed significant performance improvements ( p ≤ 0.05 ).                                                                                                                                                                       
+
+> Model Amazon (Leisure) Amazon (Technology) Douban (Entertainment)
+> Clothing Sports Electronics Phones Books Movies H@10 N@10 H@10 N@10 H@10 N@10 H@10 N@10 H@10 N@10 H@10 N@10 SDSR
+> BERT4Rec 0.0219 0.0105 0.0325 0.0169 0.0276 0.0149 0.0524 0.0278 0.0176 0.0158 0.1798 0.1211 SASRec 0.0227 0.0108 0.0334 0.0173 0.0285 0.0154 0.0537 0.0287 0.0182 0.0164 0.1825 0.1265 STOSA 0.0223 0.0135 0.0346 0.0283 0.0315 0.0172 0.0618 0.0346 0.0219 0.0165 0.1753 0.1223
+> GenRec
+> VQ-Rec 0.0248 0.0170 0.0389 0.0281 0.0318 0.0262 0.0607 0.0399 0.0224 0.0201 0.1922 0.1261 TIGER 0.0241 0.0167 0.0397 0.0287 0.0322 0.0269 0.0613 0.0406 0.0221 0.0198 0.1893 0.1255 HSTU 0.0253 0.0174 0.0381 0.0277 0.0328 0.0271 0.0615 0.0425 0.0230 0.0206 0.1931 0.1268
+> CDSR
+> C2DSR 0.0255 0.0191 0.0395 0.0258 0.0336 0.0278 0.0589 0.0493 0.0205 0.0182 0.1854 0.1203 TriCDR 0.0258 0.0194 0.0396 0.0259 0.0339 0.0280 0.0593 0.0505 0.0211 0.0185 0.1865 0.1217 LLM4CDSR 0.0261 0.0196 0.0398 0.0260 0.0338 0.0279 0.0614 0.0506 0.0216 0.0189 0.1878 0.1225 GenCDR 0.0265 0.0203 0.0403 0.0262 0.0342 0.0283 0.0621 0.0512 0.0237 0.0212 0.1971 0.1275
+> Ours HD-R EC 0.0278 *0.0209 *0.0489 *0.0292 *0.0398 *0.0285 *0.0683 *0.0526 *0.0245 *0.0220 *0.1978 *0.1285 *Impr (%) 4.9% 2.9% 17.6% 1.7% 16.3% 0.7% 9.9% 2.7% 3.4% 3.6% 0.4% 0.8%
+
+(3) Cross-domain Sequential Recommendation (CDSR) baselines further improve performance by explicitly modeling cross-domain interactions through alignment mechanisms, auxiliary domain information, or LLM-based semantic bridging. Consequently, they generally outperform GenRec models, highlighting the effectiveness of leveraging cross-domain signals to mitigate data sparsity. Nevertheless, most CDSR methods still rely on shared representation spaces or relatively simple transfer mechanisms, their representation and adaptation mechanisms differ from the hierarchical quantization and token-level sparse routing explored in this work. (4) HD-R EC achieves the best performance across all domains and metrics. The gains are particularly pronounced on Sports and Electronics, which are also among the sparser domains in the evaluated benchmarks. Compared to the strongest baseline, HD-R EC improves H@10 by 17.6% on Sports, 16.3% on Electronics, and 9.9% on Phones, while maintaining consistent improvements on Clothing and Douban datasets. These results establish the empirical effectiveness of the proposed architecture under pairwise cross-domain training. 
+
+4.3 Ablation Study (RQ2) 
+
+Table 3: Main ablation results. 
+
+Model Cloth. Sport. H@10 N@10 H@10 N@10 HD-R EC 0.0278 0.0209 0.0489 0.0292 
+
+w/o HDQ 0.0254 0.0188 0.0435 0.0261 
+
+w/o DAS MoE 0.0256 0.0191 0.0418 0.0259 
+
+w/o CRCL 0.0261 0.0194 0.0437 0.0269 
+
+In this section, we analyze the contribution of each component in HD-R EC through ablation studies on the Clothing-Sports dataset. The results are reported in Table 3, and the key findings are as follows: (1) w/o HDQ. Removing the hierarchical domain-aware quantizer leads to a performance drop. This result indicates that combining globally shared coarse-level quantization with adaptively routed fine-level quantization is more effective than the corresponding ablated tokenizer. The performance comparison supports the hierarchical design but does not by itself establish representation disentanglement. (2) w/o DAS MoE. Replacing the DAS MoE with standard dense FFN also degrades performance, suggesting that the combination of shared and sparsely activated specialized capacity is beneficial under unified cross-domain training. (3) w/o CRCL. Removing the Cross-Granularity Routing Consistency Learning module also leads to noticeable performance degradation. This finding indicates that regularizing intra-item routing consistency is beneficial for recommendation performance. 
+
+4.4 Tokenizer Design Analysis (RQ2) 
+
+Beyond the component-level ablations, we further investigate the design choices of the hierarchical domain-aware tokenizer. Specifically, we compare HD-REC with variants that remove shared 90 0.001 0.005 0.01 0.05 0.1                     
+
+> Parameter
+> 0.0245 0.0250 0.0255 0.0260 0.0265 0.0270 0.0275
+> H@10
+> Clothing H@10
+> 00.001 0.005 0.01 0.05 0.1
+> Parameter
+> 0.0180 0.0185 0.0190 0.0195 0.0200 0.0205 0.0210
+> N@10
+> Clothing N@10
+> 00.001 0.005 0.01 0.05 0.1
+> Parameter
+> 0.040 0.042 0.044 0.046 0.048
+> H@10
+> Sports H@10
+> 00.001 0.005 0.01 0.05 0.1
+> Parameter
+> 0.023 0.024 0.025 0.026 0.027 0.028 0.029 0.030
+> N@10
+> Sports N@10
+> Clothing Dataset Sports Dataset
+
+Figure 3: The results of hyper-parameter experiments on the Clothing and Sports dataset. codebooks, move the adaptive codebooks to the first layer, replace learned routing with random routing, or use a single expanded codebook at the final layer. The results are reported in Table 4. Table 4: Tokenizer ablation results. 
+
+Model Cloth. Sport. H@10 N@10 H@10 N@10 Full HDQ 0.0256 0.0191 0.0418 0.0259 
+
+w/ All Shared 0.0239 0.0177 0.0391 0.0257 
+
+w/ Specific First 0.0233 0.0166 0.0389 0.0253 
+
+w/o Routing 0.0238 0.0169 0.0385 0.0251 
+
+w/ Expand Last 0.0244 0.0179 0.0409 0.0257 
+
+(1) w/ All Shared. We replace HDQ with a stan-dard RQ-VAE tokenizer where all codebooks are shared across domains. This variant replaces the adaptively routed final-layer codebooks with a shared codebook. Its lower performance indicates that additional input-dependent fine-level quanti-zation capacity is beneficial for modeling hetero-geneous item representations. (2) w/ Specific First. Moving the adaptive code-books to the first layer also degrades performance. This result is consistent with our design motivation that globally shared codebooks are suitable for coarse semantic encoding, while adaptive capacity is more useful for residual refinement. (3) w/o Routing. We further investigate the importance of learned routing mechanism by replacing it with random routing, where each sample arbitrarily selects a codebook pathway. This leads to significant performance degradation, confirming the importance of data-dependent codebook selection. (4) w/ Expand Last. Expanding a single shared final-layer codebook does not match the performance of using multiple adaptively routed codebooks. This indicates that the gain does not result solely from increasing final-layer vocabulary capacity; the routing structure itself contributes to performance. Overall, the results support the proposed hierarchical tokenizer design: shared codebooks are more suitable for coarse-grained semantic decomposition, whereas adaptive routing provides additional capacity for fine-grained domain-dependent information. 
+
+4.5 Hyper-parameter Analysis (RQ3) 
+
+To answer RQ3 , we study the impact of the Cross-Granularity Routing Consistency Learning (CRCL) loss weight λ1. Specifically, we vary λ1 within {0, 0.001 , 0.005 , 0.01 , 0.05 , 0.1} while keeping other hyper-parameters fixed. The performance trends are illustrated in Figure 3. As λ1 increases, the performance exhibits a clear inverted-U trend. The best performance is achieved at λ1 = 0 .01 across both datasets, with relative improvements of 9.4%/15.0% on Clothing and 11.8%/13.4% on Sports (H@10/N@10) compared with the variant where λ1 = 0 .When λ1 exceeds 0.01, the performance gradually degrades, indicating that excessive consistency regularization overly constrains token-level routing flexibility. Thus, we set λ1 = 0 .01 as the default to balance routing coherence and semantic expressiveness. 
+
+4.6 Efficiency Analysis (RQ4) 
+
+In terms of RQ4 , we evaluate the inference efficiency of our proposed HD-R EC . As shown in the infer time columns of Table 5, HD-R EC introduces only a marginal inference overhead compared with the baseline TIGER. Specifically, HD-R EC takes 106.2 ms and 107.8 ms per test instance on Clothing and Sports, respectively, which is only 2.6 ms and 2.1 ms slower than the baseline. This 10 corresponds to a relative overhead of merely 2.5% and 2.0%, indicating that the additional inference cost brought by HD-R EC is negligible in practice. 
+
+4.7 Consistency Study (RQ5) 
+
+Table 5: Efficiency and routing-consistency compar-ison under beam size 200. Lower is better. Baseline denotes TIGER in the efficiency experiment and 
+
+w/o CRCL in the routing-consistency experiment.               
+
+> Model Infer Time (ms) RV (×10 −4)
+> Cloth. Sport. Cloth. Sport. HD-R EC 106.2 107.8 0.429 0.589 Baseline 103.6 105.7 2.626 3.348
+
+To evaluate item-level routing consistency of the MoE router, we introduce a metric called 
+
+Routing Variance (RV) . For each token t in an item, the router outputs a probability distribu-tion over experts pt ∈ RE , where E is the number of experts. We compute the variance of routing probabilities across tokens belonging to the same item. For item i with token set Ti,the routing variance is defined as: 
+
+RV i = 1
+
+E
+
+> E
+
+X
+
+> e=1
+
+Var t∈T i (pt,e ) , (25) where Ti denotes the set of tokens belonging to item i and pt,e denotes the routing probability of token t assigned to expert e. The global RV is obtained by averaging across all items: 
+
+RV = Ei[RV i] . (26) A smaller RV indicates that tokens within the same item tend to be routed to similar experts, reflecting stronger routing consistency. As shown in Table 5 right, HD-R EC achieves an approximately 6.0×
+
+reduction in RV compared with the baseline, indicating that the proposed consistency regularizer substantially improves intra-item routing coherence. 
+
+## 5 Related Works 
+
+Cross-domain Sequential Recommendation .Cross-domain recommender systems (CDR) transfer knowledge across domains to alleviate data sparsity. Early approaches relied on overlapping entities as bridges, such as EMCDR Cao et al. [2022b] learning latent mappings via shared users, CoNet Hu et al. [2018] enabling bidirectional knowledge transfer through cross-connected neural networks, and HeroGRAPH Cui et al. [2020] con-structing shared heterogeneous graph to propagate information across domains. Recently, LLMs have advanced CDR by capturing semantic relationships without overlapping entities. LLM4CDSR Liu et al. [2025] extracts cross-domain preferences from textual descriptions, and LeCDSR Wang et al. [2025] generates unified semantic representations to support zero-shot transfer. However, effectively integrating diverse semantics while preserving specific knowledge remains a key challenge. 
+
+Generative Recommendation Models . Generative recommendation replaces the traditional retrieval-and-ranking pipeline by directly generating the next item in a single stage. Typically, items are quantized into hierarchical semantic IDs and predicted sequentially using Transformer-based models. Existing research mainly focuses on improving quantization to preserve item semantics (e.g., TIGER, LETTER) Rajput et al. [2023], Wang et al. [2024] and optimizing architectures and training strategies (e.g., HSTU, OneRec) Zhai et al. [2024], Deng et al. [2025]. However, most existing works target single-domain datasets, and their effectiveness in cross-domain scenarios remains limited. 
+
+## 6 Conclusion 
+
+In this paper, we presented HD-R EC , a generative framework for pairwise cross-domain sequential recommendation. HD-R EC combines hierarchical domain-aware quantization, domain-adaptive sparse experts, and cross-granularity routing consistency learning. The framework uses globally shared coarse-level codebooks together with adaptively routed fine-level codebooks, and combines shared model capacity with sparsely activated specialized capacity. Experiments on three public benchmark pairs show consistent improvements over competitive baselines. Ablation studies verify the contribution of each component, and routing analysis confirms that CRCL improves intra-item routing consistency. Future work will investigate direct measures of representation specialization and unified training over a larger number of domains. 11 7 Limitations 
+
+Although HD-R EC achieves consistent improvements on three public cross-domain recommendation datasets, several limitations remain. First, our experiments mainly focus on two-domain cross-domain sequential recommendation settings. While these datasets cover different application scenarios, the scalability and stability of HD-R EC under more complex multi-domain settings with a larger number of heterogeneous domains require further investigation. Second, HD-R EC relies on content-derived item representations and semantic ID tokenization. Therefore, its performance may be affected when item metadata is noisy, incomplete, or weakly aligned with users’ actual preference signals. Third, our evaluation is conducted on standard offline benchmark datasets, while real-world recommendation systems often involve dynamic item catalogs, evolving user interests, changing domain distributions, and online feedback loops. The behavior of HD-R EC under these more realistic deployment conditions has not been fully discussed in this work. In future work, we also plan to explore broader practical issues such as fairness and privacy preservation in generative cross-domain recommendation. 
+
+## References 
+
+Jiangxia Cao, Xin Cong, Jiawei Sheng, Tingwen Liu, and Bin Wang. Contrastive cross-domain sequential recommendation. In Proceedings of the 31st ACM International Conference on Infor-mation & Knowledge Management , pages 138–147, 2022a. Jiangxia Cao, Jiawei Sheng, Xin Cong, Tingwen Liu, and Bin Wang. Cross-domain recommendation to cold-start users via variational information bottleneck. In 2022 IEEE 38th International Conference on data engineering (ICDE) , pages 2209–2223. IEEE, 2022b. Yanyu Chen, Yao Yao, Wai Kin Victor Chan, Li Xiao, Kai Zhang, Liang Zhang, and Yun Ye. Cdr-adapter: Learning adapters to dig out more transferring ability for cross-domain recommendation models. arXiv preprint arXiv:2311.02398 , 2023. Qiang Cui, Tao Wei, Yafeng Zhang, and Qing Zhang. Herograph: A heterogeneous graph framework for multi-target cross-domain recommendation. In ORSUM@ RecSys , 2020. Damai Dai, Chengqi Deng, Chenggang Zhao, RX Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai Yu, Yu Wu, et al. Deepseekmoe: Towards ultimate expert specialization in mixture-of-experts language models. arXiv preprint arXiv:2401.06066 , 2024. Yashar Deldjoo, Zhankui He, Julian McAuley, Anton Korikov, Scott Sanner, Arnau Ramisa, Rene Vidal, Maheswaran Sathiamoorthy, Atoosa Kasrizadeh, Silvia Milano, et al. Recommendation with generative models. arXiv preprint arXiv:2409.15173 , 2024. Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. Onerec: Unifying retrieve and rank with generative recommender and iterative preference alignment. arXiv preprint arXiv:2502.18965 , 2025. Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of the 2019 conference of the North American chapter of the association for computational linguistics: human language technologies, volume 1 (long and short papers) , pages 4171–4186, 2019. Ziwei Fan, Zhiwei Liu, Yu Wang, Alice Wang, Zahra Nazari, Lei Zheng, Hao Peng, and Philip S Yu. Sequential recommendation via stochastic self-attention. In Proceedings of the ACM web conference 2022 , pages 2036–2047, 2022. Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In 
+
+Proceedings of the 16th ACM conference on recommender systems , pages 299–315, 2022. Yupeng Hou, Shanlei Mu, Wayne Xin Zhao, Yaliang Li, Bolin Ding, and Ji-Rong Wen. Towards universal sequence representation learning for recommender systems. In Proceedings of the 28th ACM SIGKDD conference on knowledge discovery and data mining , pages 585–593, 2022. 12 Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. Learning vector-quantized item representation for transferable sequential recommenders. In Proceedings of the ACM Web Conference 2023 , pages 1162–1171, 2023. Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. ICLR , 1(2):3, 2022. Guangneng Hu, Yu Zhang, and Qiang Yang. Conet: Collaborative cross networks for cross-domain recommendation. In Proceedings of the 27th ACM international conference on information and knowledge management , pages 667–676, 2018. Peiyu Hu, Wayne Lu, and Jia Wang. From ids to semantics: A generative framework for cross-domain recommendation with adaptive semantic tokenization. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 14874–14882, 2026. Eric Jang, Shixiang Gu, and Ben Poole. Categorical reparameterization with gumbel-softmax. arXiv preprint arXiv:1611.01144 , 2016. Jinqiu Jin, Yang Zhang, Fuli Feng, and Xiangnan He. Generative multi-target cross-domain recom-mendation. arXiv preprint arXiv:2507.12871 , 2025. Wang-Cheng Kang and Julian McAuley. Self-attentive sequential recommendation. In 2018 IEEE international conference on data mining (ICDM) , pages 197–206. IEEE, 2018. Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. Autoregressive image generation using residual quantization. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 11523–11532, 2022. Sunkyung Lee, Minjin Choi, Eunseong Choi, Hye-young Kim, and Jongwuk Lee. Gram: Generative recommendation via semantic-aware multi-granular late fusion. arXiv preprint arXiv:2506.01673 ,2025. Bin Li. Cross-domain collaborative filtering: A brief survey. In 2011 IEEE 23rd International Conference on Tools with Artificial Intelligence , pages 1085–1086. IEEE, 2011. Xiaopeng Li, Bo Chen, Junda She, Shiteng Cao, You Wang, Qinlin Jia, Haiying He, Zheli Zhou, Zhao Liu, Ji Liu, et al. A survey of generative recommendation from a tri-decoupled perspective: Tokenization, architecture, and optimization. Preprints , 2025. Qidong Liu, Xiangyu Zhao, Yejing Wang, Zijian Zhang, Howard Zhong, Chong Chen, Xiang Li, Wei Huang, and Feng Tian. Bridge the domains: Large language models enhanced cross-domain sequential recommendation. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval , pages 1582–1592, 2025. Haokai Ma, Ruobing Xie, Lei Meng, Xin Chen, Xu Zhang, Leyu Lin, and Jie Zhou. Triple sequence learning for cross-domain recommendation. ACM Transactions on Information Systems , 42(4): 1–29, 2024. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of machine learning research , 21(140):1–67, 2020. Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems , 36:10299–10315, 2023. Hongzu Su, Jingjing Li, Zhekai Du, Lei Zhu, Ke Lu, and Heng Tao Shen. Cross-domain recommen-dation via dual adversarial adaptation. ACM Transactions on Information Systems , 42(3):1–26, 2024. Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. Bert4rec: Sequential recommendation with bidirectional encoder representations from transformer. In Proceedings of the 28th ACM international conference on information and knowledge management , pages 1441–1450, 2019. 13 Shuliang Wang, Jiabao Zhu, Kaibo Wang, and Sijie Ruan. Lecdsr: Large language model enhanced cross-domain sequential recommendation. Information Fusion , page 103762, 2025. Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. Learnable item tokenization for generative recommendation. In International Conference on Information and Knowledge Management , 2024. Tianzi Zang, Yanmin Zhu, Haobing Liu, Ruohan Zhang, and Jiadi Yu. A survey on cross-domain recommendation: taxonomies, methods, and future directions. ACM Transactions on Information Systems , 41(2):1–39, 2022. Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Michael He, et al. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. arXiv preprint arXiv:2402.17152 , 2024. Hongwei Zhang, Xiangwei Kong, and Yujia Zhang. Cross-domain collaborative recommendation without overlapping entities based on domain adaptation. Multimedia Systems , 28(5):1621–1637, 2022. Feng Zhu, Yan Wang, Chaochao Chen, Jun Zhou, Longfei Li, and Guanfeng Liu. Cross-domain recommendation: challenges, progress, and prospects. arXiv preprint arXiv:2103.01696 , 2021. 14
