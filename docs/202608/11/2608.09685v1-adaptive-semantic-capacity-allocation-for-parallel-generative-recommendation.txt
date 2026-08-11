@@ -1,0 +1,271 @@
+Title: Adaptive Semantic Capacity Allocation for Parallel Generative Recommendation
+
+URL Source: https://arxiv.org/pdf/2608.09685v1
+
+Published Time: Tue, 11 Aug 2026 02:27:15 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# Adaptive Semantic Capacity Allocation for Parallel Generative Recommendation 
+
+## Chenxi Li 
+
+lichenxi24@mails.ucas.ac.cn University of the Chinese Academy of Sciences Beijing, China Institute of Automation, Chinese Academy of Sciences Beijing, China 
+
+## Yuchen Lu 
+
+luyuchen2021@ia.ac.cn Institute of Automation, Chinese Academy of Sciences Beijing, China University of the Chinese Academy of Sciences Beijing, China 
+
+## Xu Yang 
+
+xu.yang@ia.ac.cn Institute of Automation, Chinese Academy of Sciences Beijing, China University of the Chinese Academy of Sciences Beijing, China 
+
+## Abstract 
+
+Autoregressive semantic ID recommenders are constrained by ex-pensive beam-search decoding, which limits the practical length of item identifiers. Parallel generation methods alleviate this bot-tleneck by predicting all semantic ID tokens simultaneously, en-abling longer IDs. However, existing semantic ID methods still rely on manually predefined and homogeneous ID structures, where both the number of semantic slots and the codebook size of each slot are treated as fixed hyperparameters. This ignores the het-erogeneous capacity demands of different semantic subspaces and may allocate prediction capacity to slots with limited utility. We show that uniformly expanding semantic slots can provide lim-ited gains, indicating redundant capacity in homogeneous seman-tic IDs. We propose InforID, a lightweight adaptive semantic tar-get construction framework for parallel generative recommenda-tion. InforID allocates a fixed capacity budget across candidate semantic slots, thereby jointly determining the effective ID length and slot-specific codebook sizes. Experiments demonstrate im-proved recommendation accuracy under comparable capacity bud-gets while preserving one-step parallel prediction. Code is available at https://anonymous.4open.science/r/inforID-F582. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+## Keywords 
+
+Sequential Recommendation, Semantic ID 
+
+ACM Reference Format: 
+
+Chenxi Li, Yuchen Lu, and Xu Yang. 2018. Adaptive Semantic Capacity Allocation for Parallel Generative Recommendation. In Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 5 pages. https://doi. org/XXXXXXX.XXXXXXX 
+
+> * Corresponding author: Xu Yang (xu.yang@ia.ac.cn). Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> © 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+Table 1: Effect of uniform slot expansion on Sports. Each slot has 32 dimensions and 256 codewords.                                    
+
+> #Slots Dim. R@5 N@5 R@10 N@10 13 416 0.0285 0.0201 0.0430 0.0248 14 448 0.0307 0.0211 0.0464 0.0261
+> 15 480 0.0301 0.0211 0.0452 0.0259 16 512 0.0299 0.0205 0.0453 0.0254 17 544 0.0290 0.0200 0.0442 0.0249 18 576 0.0300 0.0208 0.0458 0.0252
+
+## 1 Introduction 
+
+Semantic ID-based generative recommendation represents each item with a discrete semantic identifier and predicts target items in the semantic ID space [4, 10, 17, 23]. Unlike atomic item IDs, semantic IDs decompose an item into multiple discrete seman-tic tokens, enabling recommendation models to capture sub-item semantic structure [9, 17]. However, autoregressive semantic ID recommenders decode identifiers token by token and typically rely on beam search, which makes inference expensive and restricts the practical length of item identifiers [17, 18, 22]. Recent parallel generation methods alleviate this bottleneck by predicting all se-mantic ID tokens simultaneously, making long semantic identifiers feasible [10, 15]. Despite this progress, the structure of semantic IDs remains largely manually predefined. Existing semantic ID methods usually determine the number of semantic slots and the codebook size of each slot through hyperparameter selection [9, 10, 17]. In particular, parallel semantic ID methods commonly use homogeneous code-books, assigning the same number of codewords to every slot [10]. This design implicitly assumes that all semantic subspaces require equal representational capacity. We argue that this homogeneous capacity assumption is often suboptimal. Simply increasing the number of uniformly allocated seman-tic slots does not necessarily improve recommendation. Although OPQ rotates item representations to make subspaces more suitable for product quantization [3, 11], the number of slots and the code-book size of each slot remain manually fixed. In our preliminary study, reducing the retained projected dimensionality before uni-form partitioning causes little performance degradation and some-times even improves accuracy. This suggests that simply adding more uniformly parameterized slots does not guarantee more useful prediction targets, and that part of the codebook capacity may be spent on slots that contribute little to recommendation. arXiv:2608.09685v1 [cs.AI] 10 Aug 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chenxi Li et al. 
+
+Figure 1: Information distribution across projected subspaces. Skewed energy indicates heterogeneous capacity demands. 
+
+Motivated by these findings, we revisit semantic ID construction as a target-space capacity allocation problem for parallel generative recommendation. Our goal is not to propose a new quantization algorithm for embedding compression, but to construct a discrete semantic target space that better matches the heterogeneous capac-ity demands of candidate slots. We propose InforID, a lightweight and pluggable construction framework that adaptively allocates capacity over candidate semantic slots. The resulting allocation de-termines not only slot-specific codebook sizes, but also the effective ID length: slots assigned zero bits are removed because their single-codeword codebooks cannot distinguish items. The retained slots are then predicted in parallel with slot-specific heads, preserving the efficiency advantage of parallel generation [10]. Our contributions are threefold. First , we identify the manually predefined homogeneous ID structure as an overlooked limitation of semantic ID recommendation. Second , we propose InforID, a lightweight adaptive target construction framework for parallel generative recommendation that determines slot-specific codebook sizes and a data-dependent effective ID length. Third , experiments show that InforID improves recommendation accuracy under com-parable capacity budgets while preserving parallel prediction. 
+
+## 2 Motivation 
+
+We first examine whether uniformly increasing semantic ID length consistently improves recommendation. In an OPQ-based parallel semantic ID construction pipeline [3, 10], item representations are projected and partitioned into 𝑚 equal-size subspaces, where each slot has 32 dimensions and uses a codebook size of 256. As shown in Table 1, increasing 𝑚 from 13 to 18 on the Sports dataset does not yield monotonic gains: performance peaks at 𝑚 = 14 and then fluctuates or degrades. This suggests that simply adding homoge-neous slots does not necessarily produce more useful prediction targets. To explain why homogeneous capacity may be inefficient, we analyze the information distribution before ID construction. After projection, we measure the energy of each candidate subspace by 
+
+𝑠 𝑗 =∑︁   
+
+> 𝑑 ∈𝐺 𝑗
+
+𝜆 𝑑 ,
+
+where 𝐺 𝑗 is the 𝑗 -th subspace and 𝜆 𝑑 is the variance of the 𝑑 -th projected dimension. Figure 1 shows a highly skewed energy distri-bution, indicating that different semantic slots have heterogeneous capacity demands. This motivates adaptive semantic target con-struction instead of manually fixed homogeneous ID structures. 
+
+## 3 Method 
+
+InforID is designed as an adaptive semantic target construction framework for parallel generative recommendation. Given candi-date semantic slots, it allocates a fixed capacity budget to determine which slots are retained and how large their slot-specific vocabular-ies are. The resulting semantic IDs define the prediction targets, the output dimensions of parallel heads, and the item scoring space. 
+
+## 3.1 Candidate Semantic Slots 
+
+Let x𝑖 ∈ R𝐷 denote the continuous semantic representation of item 
+
+𝑖 , extracted from item content such as text or multimodal features [9, 10, 17, 19]. Directly partitioning the raw embedding dimensions may lead to highly correlated and unstable subspaces. Therefore, we first transform item representations into a projected space to obtain a more suitable basis for semantic slot construction [3, 10, 11]. The projected representation is then divided into 𝑀 equal-size subspaces: 
+
+z𝑖 = [z(1) 
+
+> 𝑖
+
+, z(2) 
+
+> 𝑖
+
+, . . . , z(𝑀 ) 
+
+> 𝑖
+
+],
+
+where z( 𝑗 ) 
+
+> 𝑖
+
+denotes the sub-vector of item 𝑖 in the 𝑗 -th subspace. Each subspace corresponds to a candidate semantic slot. Different from homogeneous semantic ID construction, InforID does not force all candidate slots to appear in the final identifier with the same capacity. Instead, these slots serve as candidates for subsequent capacity allocation. A slot will be retained in the effec-tive semantic ID only if it receives positive capacity. Therefore, the final ID structure is not manually fixed in advance, but determined by the adaptive allocation process described next. 
+
+## 3.2 Adaptive Capacity Allocation 
+
+Given the candidate semantic slots, InforID assigns each slot a non-negative bit-width 𝑏 𝑗 , which determines its codebook size 𝐾 𝑗 = 2𝑏 𝑗 .Instead of using the same bit-width for all slots, InforID allocates a fixed total budget 𝐵 across candidate slots: 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑏 𝑗 = 𝐵, 𝑏 𝑗 ∈ Z≥0.
+
+For the 𝑗 -th candidate slot, let C𝑗 (𝑏 𝑗 ) denote the codebook with 2𝑏 𝑗 codewords obtained by k-means clustering on the correspond-ing subspace [13]. We define its subspace reconstruction loss as 
+
+L𝑗 (𝑏 𝑗 ) = 1
+
+|I| ∑︁ 𝑖 ∈ I 
+
+min     
+
+> e∈ C 𝑗 (𝑏 𝑗 )
+
+z( 𝑗 ) 
+
+> 𝑖
+
+− e 22 .
+
+Here, reconstruction loss serves only as a lightweight proxy for preserving item-level semantic distinctions during target construc-tion; the final criterion remains downstream retrieval performance. The capacity allocation objective is min    
+
+> {𝑏 𝑗 }𝑀 𝑗 =1
+> 𝑀
+
+∑︁ 
+
+> 𝑗 =1
+
+L𝑗 (𝑏 𝑗 ), s.t.
+
+> 𝑀
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑏 𝑗 = 𝐵, 𝑏 𝑗 ∈ Z≥0.
+
+Since exhaustive search over all bit allocations is impractical, we use a greedy allocation procedure. Starting from 𝑏 𝑗 = 0 for all slots, InforID assigns bits one at a time. At each iteration, it tentatively adds one bit to each candidate slot and computes the marginal reduction in reconstruction loss: 
+
+Δ𝑗 = L𝑗 (𝑏 𝑗 ) − L 𝑗 (𝑏 𝑗 + 1).InforID Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Figure 2: Overview of InforID. Adaptive capacity allocation determines heterogeneous semantic IDs, removes zero-bit slots. 
+
+The bit is assigned to the slot with the largest reduction: 
+
+𝑗 ∗ = arg max  
+
+> 𝑗
+
+Δ𝑗 , 𝑏 𝑗 ∗ ← 𝑏 𝑗 ∗ + 1.
+
+This process repeats until the total budget 𝐵 is exhausted. The final allocation yields heterogeneous codebook sizes across slots. Importantly, it also induces slot selection: slots assigned zero bits are removed from the final semantic ID, making the effective ID length data-dependent. 
+
+## 3.3 Parallel Retrieval with Heterogeneous Semantic IDs 
+
+After allocation, InforID retains only the slots assigned positive bit-widths: 
+
+A = { 𝑗 | 𝑏 𝑗 > 0}, 𝑚 eff = |A| .
+
+For each retained slot 𝑗 ∈ A , its codebook C𝑗 = {e𝑗,𝑐 }𝐾 𝑗  
+
+> 𝑐 =1
+
+has size 
+
+𝐾 𝑗 = 2𝑏 𝑗 . The semantic token of item 𝑖 at slot 𝑗 is the index of the nearest codeword: 
+
+𝑐 𝑖,𝑗 = arg min    
+
+> 𝑐 ∈ { 1,...,𝐾 𝑗 }
+
+z( 𝑗 ) 
+
+> 𝑖
+
+− e𝑗,𝑐  
+
+> 22
+
+.
+
+The final semantic ID of item 𝑖 is 
+
+c𝑖 = (𝑐 𝑖,𝑗 )𝑗 ∈ A .
+
+If 𝑏 𝑗 = 0, then 𝐾 𝑗 = 1, so all items share the same codeword in this slot. Such a slot provides no discriminative information and is excluded from the effective semantic ID, prediction, and scoring. Given a user history, a transformer decoder-style backbone en-codes it into h𝑢 [20]. Following the parallel prediction paradigm, we factorize the probability of the target semantic ID over retained slots [6, 10]: 
+
+𝑃 (c𝑖 + | 𝑢 ) =
+
+Ö 
+
+> 𝑗 ∈ A
+
+𝑃 ( 𝑗 ) (𝑐 𝑖 +,𝑗 | 𝑢 ).
+
+Each retained slot uses a slot-specific head to output [1, 2, 10] 
+
+𝑃 ( 𝑗 ) (𝑐 | 𝑢 ), 𝑐 ∈ { 1, . . . , 𝐾 𝑗 }.
+
+Thus, the output dimension of each head is determined by the allocated codebook size 𝐾 𝑗 .Given the ground-truth next item 𝑖 +, the multi-token prediction loss is 
+
+LMTP = −∑︁  
+
+> 𝑗 ∈ A
+
+log 𝑃 ( 𝑗 ) (𝑐 𝑖 +,𝑗 | 𝑢 ).
+
+At inference time, candidate item 𝑖 is scored using the same additive log-probability form [10]: score (𝑢, 𝑖 ) =∑︁  
+
+> 𝑗 ∈ A
+
+log 𝑃 ( 𝑗 ) (𝑐 𝑖,𝑗 | 𝑢 ).
+
+All ID construction is performed offline. Online inference follows the same one-step parallel prediction paradigm [5, 7, 10], so InforID changes the effective ID length, slot-specific vocabularies, and scor-ing space without introducing sequential decoding overhead. 
+
+## 4 EXPERIMENTS 4.1 Experimental Setup 
+
+We evaluate InforID on four public Amazon review benchmarks: Sports, Beauty, Toys, and CDs [8], using Recall and NDCG at cut-offs 5 and 10 for next-item retrieval evaluation. We compare with SASRec [12], VQ-Rec [9], RecJPQ [16], TIGER [17], and RPG [10], covering item-ID based recommendation, quantized item represen-tation, autoregressive semantic ID generation, and parallel semantic ID generation. All reported results are averaged over three runs with different random seeds. For item representation, TIGER uses sentence-t5-base [14, 17] following its original setting, whereas RPG and InforID use text-embedding-3-large [21]. To ensure that the comparison is not tied to a specific embedding source, we further evaluate TIGER, RPG, and InforID with both embeddings and observe similar relative trends. To isolate the effect of semantic ID construction, RPG and InforID share the same item embeddings and parallel prediction backbone. InforID only replaces RPG’s manually fixed homoge-neous ID construction with adaptive semantic capacity allocation, and ID construction variants are compared under comparable ca-pacity budgets unless otherwise specified. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chenxi Li et al. 
+
+Table 2: Performance comparison between InforID and various baselines across four datasets. The best results are highlighted in bold, and the second-best results are underlined.                                                                                                                    
+
+> Method Sports Beauty Toys CDs R@5 N@5 R@10 N@10 R@5 N@5 R@10 N@10 R@5 N@5 R@10 N@10 R@5 N@5 R@10 N@10 SASRec 0.0233 0.0154 0.0350 0.0192 0.0387 0.0249 0.0605 0.0318 0.0463 0.0306 0.0675 0.0374 0.0351 0.0177 0.0619 0.0263 RecJPQ 0.0141 0.0076 0.0220 0.0102 0.0311 0.0167 0.0482 0.0222 0.0331 0.0182 0.0484 0.0231 0.0075 0.0046 0.0138 0.0066 VQ-Rec 0.0208 0.0144 0.0300 0.0173 0.0457 0.0317 0.0664 0.0383 0.0497 0.0346 0.0737 0.0230 0.0352 0.0238 0.0520 0.0292 TIGER 0.0264 0.0181 0.0400 0.0225 0.0454 0.0321 0.0648 0.0384 0.0521 0.0371 0.0712 0.0432 0.0492 0.0329 0.0748 0.0411 RPG 0.0314 0.0216 0.0463 0.0263 0.0550 0.0381 0.0809 0.0464 0.0592 0.0401 0.0869 0.0490 0.0498 0.0338 0.0735 0.0415
+> InforID 0.0329 0.0229 0.0491 0.0279 0.0562 0.0388 0.0815 0.0469 0.0613 0.0421 0.0877 0.0506 0.0521 0.0351 0.0764 0.0431
+
+Table 3: Ablation study on semantic ID construction strate-gies under the same bit budget. NDCG@10 and relative re-construction loss are reported for each dataset.                                            
+
+> Variant Sports Beauty Toys CDs Loss ↓N@10 ↑Loss ↓N@10 ↑Loss ↓N@10 ↑Loss ↓N@10 ↑
+> PQ 1.000 0.0239 1.000 0.0412 1.000 0.0425 1.000 0.0374 OPQ 0.775 0.0255 0.657 0.0464 0.771 0.0488 0.738 0.0386
+> InforID 0.583 0.0279 0.475 0.0469 0.570 0.0506 0.583 0.0431
+
+## 4.2 Overall Performance 
+
+Table 2 reports the overall performance. InforID achieves the best or comparable results across the four benchmarks. Compared with SASRec [12] and quantized representation baselines [9, 16], se-mantic ID-based generative methods [10, 17] show stronger per-formance, indicating the effectiveness of content-derived discrete identifiers. RPG is the most relevant baseline because it uses the same paral-lel prediction paradigm as InforID. Under the same item embeddings and backbone, InforID achieves better or comparable performance than RPG across all four datasets. This suggests that the gain mainly comes from replacing the manually fixed homogeneous ID structure with adaptive semantic target construction. 
+
+## 4.3 Capacity Allocation Analysis 
+
+We further analyze whether the improvement of InforID comes from adaptive capacity allocation. To this end, we compare different semantic ID construction strategies under the same total capacity budget, including uniform product quantization (PQ), optimized product quantization (OPQ), and InforID. All methods use the same item embeddings and parallel prediction backbone, and differ only in how semantic IDs are constructed. Table 3 reports both NDCG@10 and relative reconstruction loss for each dataset. The relative reconstruction loss is computed over all candidate subspaces and normalized by the PQ loss on each dataset under the same bit budget. PQ and OPQ construct content-based semantic IDs, but they still rely on homogeneous slot capaci-ties, assigning the same vocabulary size to each semantic slot. In contrast, InforID adaptively reshapes the semantic target space by assigning different vocabulary sizes to retained slots and removing zero-bit slots from prediction and scoring. 
+
+Figure 3: Sensitivity analysis of total bit budget 𝐵 on four datasets. The NDCG@10 performance is reported as 𝐵 varies from 64 to 352. 
+
+InforID achieves consistently strong reconstruction quality and downstream NDCG@10. This supports using marginal reconstruc-tion gain as a lightweight allocation signal: it helps preserve item-level semantic distinctions during target construction, while the final criterion remains downstream retrieval performance. These controlled comparisons indicate that the benefit of InforID does not come from a different recommender backbone or item embedding source, but from constructing a more suitable heteroge-neous semantic target space under the same prediction paradigm and capacity budget. We additionally observe lower ID collision rates than homoge-neous OPQ under the same bit budget, suggesting improved item discriminability. 
+
+## 4.4 Budget Sensitivity 
+
+We further vary the total capacity budget 𝐵 to examine the robust-ness of InforID. As shown in Figure 3, performance improves when the budget increases but gradually saturates, indicating diminishing returns of semantic capacity. 
+
+## 5 Conclusion 
+
+We revisit semantic ID construction as adaptive semantic target con-struction for parallel generative recommendation. InforID allocates capacity across candidate semantic slots, jointly determining the effective ID length and slot-specific codebook sizes while preserv-ing one-step parallel prediction. Experiments show that semantic ID structures should be data-dependent rather than manually fixed and homogeneous. InforID Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+## GenAI Usage Disclosure 
+
+The authors did not use generative AI tools for code implemen-tation, data processing, model training, hyperparameter tuning, evaluation, or conducting experiments. During manuscript prepara-tion, generative AI tools were used only for minor grammar correc-tion, sentence-level phrasing refinement, and style transfer of the architecture figure for visual presentation purposes. These tools were not used to generate scientific claims, experimental results, or technical conclusions. All research ideas, technical contributions, methodological design, and experimental analysis were developed, validated, and written by the authors. 
+
+## References 
+
+[1] Tianle Cai, Yuhong Li, Zhengyang Geng, Hongwu Peng, Jason D Lee, Deming Chen, and Tri Dao. 2024. Medusa: Simple llm inference acceleration framework with multiple decoding heads. arXiv preprint arXiv:2401.10774 (2024). [2] Ting Chen, Simon Kornblith, Mohammad Norouzi, and Geoffrey Hinton. 2020. A simple framework for contrastive learning of visual representations. In Interna-tional conference on machine learning . PmLR, 1597–1607. [3] Tiezheng Ge, Kaiming He, Qifa Ke, and Jian Sun. 2013. Optimized product quantization. IEEE transactions on pattern analysis and machine intelligence 36, 4 (2013), 744–755. [4] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In Proceedings of the 16th ACM conference on recommender systems . 299–315. [5] Marjan Ghazvininejad, Omer Levy, Yinhan Liu, and Luke Zettlemoyer. 2019. Mask-predict: Parallel decoding of conditional masked language models. In Proceedings of the 2019 conference on empirical methods in natural language processing and the 9th international joint conference on natural language processing (EMNLP-IJCNLP) .6112–6121. [6] Fabian Gloeckle, Badr Youbi Idrissi, Baptiste Rozière, David Lopez-Paz, and Gabriel Synnaeve. 2024. Better & faster large language models via multi-token prediction. arXiv preprint arXiv:2404.19737 (2024). [7] Jiatao Gu, James Bradbury, Caiming Xiong, Victor OK Li, and Richard Socher. 2017. Non-autoregressive neural machine translation. arXiv preprint arXiv:1711.02281 
+
+(2017). [8] Ruining He and Julian McAuley. 2016. Ups and downs: Modeling the visual evolution of fashion trends with one-class collaborative filtering. In proceedings of the 25th international conference on world wide web . 507–517. [9] Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. 2023. Learning vector-quantized item representation for transferable sequential recommenders. In Proceedings of the ACM Web Conference 2023 . 1162–1171. [10] Yupeng Hou, Jiacheng Li, Ashley Shin, Jinsung Jeon, Abhishek Santhanam, Wei Shao, Kaveh Hassani, Ning Yao, and Julian McAuley. 2025. Generating long semantic ids in parallel for recommendation. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 . 956–966. [11] Herve Jegou, Matthijs Douze, and Cordelia Schmid. 2010. Product quantization for nearest neighbor search. IEEE transactions on pattern analysis and machine intelligence 33, 1 (2010), 117–128. [12] Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recom-mendation. In 2018 IEEE international conference on data mining (ICDM) . IEEE, 197–206. [13] James B McQueen. 1967. Some methods of classification and analysis of multi-variate observations. In Proc. of 5th Berkeley Symposium on Math. Stat. and Prob. 
+
+281–297. [14] Jianmo Ni, Gustavo Hernandez Abrego, Noah Constant, Ji Ma, Keith Hall, Daniel Cer, and Yinfei Yang. 2022. Sentence-t5: Scalable sentence encoders from pre-trained text-to-text models. In Findings of the association for computational lin-guistics: ACL 2022 . 1864–1874. [15] Aleksandr V Petrov and Craig Macdonald. 2023. Generative sequential recom-mendation with gptrec. arXiv preprint arXiv:2306.11114 (2023). [16] Aleksandr V Petrov and Craig Macdonald. 2024. RecJPQ: training large-catalogue sequential recommenders. In Proceedings of the 17th ACM International Conference on Web Search and Data Mining . 538–547. [17] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al. 2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [18] Ilya Sutskever, Oriol Vinyals, and Quoc V Le. 2014. Sequence to sequence learning with neural networks. Advances in neural information processing systems 27 (2014). [19] Aaron Van Den Oord, Oriol Vinyals, et al. 2017. Neural discrete representation learning. Advances in neural information processing systems 30 (2017). [20] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. Advances in neural information processing systems 30 (2017). [21] Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan Majumder, and Furu Wei. 2024. Improving text embeddings with large language models. In 
+
+Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 11897–11916. [22] Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. 2016. Google’s neural machine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144 (2016). [23] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhao-jie Gong, Fangda Gu, Michael He, et al. 2024. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. arXiv preprint arXiv:2402.17152 (2024).

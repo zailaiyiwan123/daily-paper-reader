@@ -6,46 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-10
-- 运行时间：2026-08-10 20:57:12 UTC
+- 最新运行日期：2026-08-11
+- 运行时间：2026-08-11 21:21:38 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：5
-- 速读区：3
+- 本次总论文数：12
+- 精读区：6
+- 速读区：6
 
 ### 今日简报（AI）
-今日共处理8篇论文，精读5篇、速读3篇，重点覆盖生成式AI与推荐系统交叉方向。  
-最值得关注的是情绪可控实时人像动画（结合低秩缓存）与未配对多模态生成式推荐，两者均获8/10高分，代表了效率优化与跨模态交互的前沿。  
-建议优先精读这两篇高影响力论文，并留意速读中关于生成式重排序和LLM路由的工程化思路。
-- 详情：[/202608/10/README](/202608/10/README)
+今日精读聚焦LLM个性化与记忆管理，速读涉及推荐、隐私和可解释问答。  
+最值得关注两篇9分工作：结构化记忆缓解过度个性化，以及公共条件检索+效用感知证据准入的TRACE-Memory。  
+建议优先阅读上述两篇，了解如何在保护隐私的同时提升生成效果。
+- 详情：[/202608/11/README](/202608/11/README)
 
 ### 精读区论文标签
-1. [Proxy Avatar Meets Low-Rank Caching: Real-Time One-Shot Emotion-Controllable Portrait Animation](/202608/10/2608.01978v1-proxy-avatar-meets-low-rank-caching-real-time-one-shot-emotion-controllable-portrait-animation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：单样本个性化肖像动画，支持情感控制，与个性化多模态生成相关
-2. [Unpaired Modality-Agnostic Generative Recommendation](/202608/10/2608.02477v1-unpaired-modality-agnostic-generative-recommendation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：多模态生成式推荐，实现个性化内容生成
-3. [Shape Your Feed: An LLM-based Agentic System for Conversational Recommendation](/202608/10/2608.06632v1-shape-your-feed-an-llm-based-agentic-system-for-conversational-recommendation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：生成式对话推荐中通过LLM实现实时共同策划的用户个性化。
-4. [Beyond Starry Night: Shortcut-Aware Control-State Planning for Artist-Grounded Text to Image Generation](/202608/10/2608.06751v1-beyond-starry-night-shortcut-aware-control-state-planning-for-artist-grounded-text-to-image-generation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：文本到图像生成中基于用户指定艺术家的个性化意图控制。
-5. [Hierarchical Quantization with Domain-Adaptive Sparse Routing for Generative Cross-Domain Recommendation](/202608/10/2608.06997v1-hierarchical-quantization-with-domain-adaptive-sparse-routing-for-generative-cross-domain-recommendation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：生成式跨域推荐中的个性化生成方法，通过层次量化与域自适应路由建模用户行为
+1. [Mitigating Over-Personalization in LLMs via Structured Memory](/202608/11/2608.08300v1-mitigating-over-personalization-in-llms-via-structured-memory)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：直接研究大语言模型中的过度个性化并提出缓解方法
+2. [TRACE-Memory: Public-Conditioned Retrieval and Utility-Aware Evidence Admission for Personalized Generation](/202608/11/2608.08446v1-trace-memory-public-conditioned-retrieval-and-utility-aware-evidence-admission-for-personalized-generation)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：面向个性化生成的公共条件检索与效用感知证据准入
+3. [Muscle Memory for Agents: Compile not Merely Retrieve](/202608/11/2608.08995v1-muscle-memory-for-agents-compile-not-merely-retrieve)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：将用户重复意图编译为专用智能体实现个性化
+4. [Different Feedback, Different Updates: Selective Self-Learning from User Interactions for Large Language Models](/202608/11/2608.09109v1-different-feedback-different-updates-selective-self-learning-from-user-interactions-for-large-language-models)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：基于用户反馈的选择性自学习与个性化LoRA适配器
+5. [In-Loop Model Adaptation with Coupled Latent-Noise Guidance for High-Fidelity Subject-Driven Text-to-Image Generation](/202608/11/2608.09244v1-in-loop-model-adaptation-with-coupled-latent-noise-guidance-for-high-fidelity-subject-driven-text-to-image-generation)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：循环内模型适配用于主题驱动的个性化图像生成
+6. [Learning Preference Adaptation for Large Language Model Personalization via Verbal Reinforcement Learning](/202608/11/2608.09507v1-learning-preference-adaptation-for-large-language-model-personalization-via-verbal-reinforcement-learning)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：基于语言强化学习的任务特定偏好适配用于大模型个性化
 
 ### 速读区论文标签
-1. [DEGR: Dual Exploration-Driven Generative Re-Ranking for Adaptive Cross-Request Context Bridging](/202608/10/2608.04809v1-degr-dual-exploration-driven-generative-re-ranking-for-adaptive-cross-request-context-bridging)  
+1. [PushDualGen: Enabling LLMs to Generate Semantic IDs with Interpretable Copy for Industrial Push Recommendation](/202608/11/2608.07989v1-pushdualgen-enabling-llms-to-generate-semantic-ids-with-interpretable-copy-for-industrial-push-recommendation)  
+   标签：评分：8.0/10、query:pers-gen
+   evidence：基于LLM生成语义ID和可解释文案以实现个性化推送推荐
+2. [CIDER: A Dataset of Contextual Disclosure Boundaries for Privacy Preference Alignment](/202608/11/2608.09164v1-cider-a-dataset-of-contextual-disclosure-boundaries-for-privacy-preference-alignment)  
+   标签：评分：8.0/10、query:pers-gen
+   evidence：用于LLM个体隐私偏好对齐的数据集
+3. [NeSy-RAG: Neuro-Symbolic RAG for Explainable Question Answering](/202608/11/2608.06292v1-nesy-rag-neuro-symbolic-rag-for-explainable-question-answering)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：通过生成依赖用户事实的谓词解决RAG问答中缺失用户上下文的检测问题，实现个性化文本生成。
+4. [Example-Guided Prompting for Document-Level Text Simplification](/202608/11/2608.05447v1-example-guided-prompting-for-document-level-text-simplification)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：面向推荐的自适应上下文桥接生成式重排序方法
-2. [PRISM: Distribution-Gated Flow Matching for Controllable Unpaired Image Translation](/202608/10/2608.06240v1-prism-distribution-gated-flow-matching-for-controllable-unpaired-image-translation)  
+   evidence：示例引导提示，通过检索实例增强LLM提示以改进生成
+5. [Gryphon-v2: One Model in Place of a Cascade - Generate-and-Rank Recommender with Rollout Distillation](/202608/11/2608.06213v1-gryphon-v2-one-model-in-place-of-a-cascade---generate-and-rank-recommender-with-rollout-distillation)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：无配对图像翻译中的逐特征可控生成方法，可作为个性化图像生成的基础技术
-3. [LLMRouter: Unified Infrastructure for Developing, Evaluating, and Deploying LLM Routers](/202608/10/2608.06867v1-llmrouter-unified-infrastructure-for-developing-evaluating-and-deploying-llm-routers)  
+   evidence：从用户历史生成个性化候选项的生成式排序推荐模型
+6. [Adaptive Semantic Capacity Allocation for Parallel Generative Recommendation](/202608/11/2608.09685v1-adaptive-semantic-capacity-allocation-for-parallel-generative-recommendation)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：统一LLM路由框架，明确支持个性化路由
+   evidence：面向并行生成式推荐的自适应语义容量分配，支持个性化内容生成
 
 
 <div class="dpr-home-promo-card">

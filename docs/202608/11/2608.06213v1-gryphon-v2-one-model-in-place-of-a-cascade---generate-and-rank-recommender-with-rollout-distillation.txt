@@ -1,0 +1,470 @@
+Title: Gryphon-v2: One Model in Place of a Cascade - Generate-and-Rank Recommender with Rollout Distillation
+
+URL Source: https://arxiv.org/pdf/2608.06213v1
+
+Published Time: Fri, 07 Aug 2026 01:11:19 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Gryphon-v2: One Model in Place of a Cascade — Generate-and-Rank Recommender with Rollout Distillation 
+
+# Anna Lipkina ∗
+
+Yandex Moscow, Russia zalipan@yandex-team.ru 
+
+# Daria Tikhonovich ∗
+
+Yandex Moscow, Russia daria.m.tikhonovich@gmail.com 
+
+# Viktor Yanush ∗
+
+Yandex Moscow, Russia yanushv@yandex-team.ru 
+
+# Mariia Ulianova 
+
+Yandex Moscow, Russia devchatay@gmail.com 
+
+# Oleg Sorokin 
+
+Yandex Moscow, Russia olegsorokin.ai@gmail.com 
+
+# Vladislav Dodonov 
+
+Yandex Moscow, Russia golafotino@gmail.com 
+
+# Ilya Murzin 
+
+Yandex Moscow, Russia ilyamurzin@yandex-team.ru 
+
+# Denis Burshtein 
+
+Yandex Moscow, Russia deburo@yandex-team.ru 
+
+# Nikolay Savushkin 
+
+Yandex Moscow, Russia penguin-diver@yandex-team.ru 
+
+## Abstract 
+
+Industrial recommender systems are commonly deployed as multi-stage cascades with separate candidate generators, pre-rankers, and final rankers. Although effective, these cascades require repeated user-history processing, complex feature pipelines, and multiple serving stages. Semantic-ID-based generative retrieval offers a path toward simpler end-to-end systems, but next-item prediction alone does not capture the fine-grained preferences encoded by produc-tion ranking objectives. We present Gryphon-v2, a unified generate-and-rank architec-ture for end-to-end recommendation. The model encodes a user history once, generates Semantic-ID candidates with an autoregres-sive decoder, resolves them to catalogue items, and ranks them with an item-level Ranking Module that reuses the shared encoder states. To transfer fine-grained production ranking preferences without adding an expensive second model to the serving path, we distill a high-capacity, training-only Teacher Ranker into the Ranking Mod-ule. Gryphon-v2 is trained with Rollout Distillation : teacher scores are the only ranking supervision, and they are collected over two complementary candidate distributions. Rollouts from the current decoder expose the Ranking Module to candidates produced by the same generation mechanism used at serving time, while logged impressions cover items users were actually shown. In an online A/B experiment on a large-scale recommendation surface at Yandex Music, a single Gryphon-v2 model replaces a production cascade comprising more than 15 candidate genera-tors, pre-ranking, and final ranking. The deployment increases the number of active users by 1.41% at serving latency comparable to the production cascade. These results support the practical viabil-ity of a generative retriever with a Ranking Module distilled from the Teacher Ranker as an end-to-end alternative to a production cascade. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems .
+
+> ∗These authors contributed equally to this research and are listed alphabetically.
+
+## Keywords 
+
+Generative Recommendation, Knowledge Distillation, Learning to Rank, Semantic IDs, Recommender Systems 
+
+## 1 Introduction 
+
+Industrial recommender systems typically use cascades of candidate generators, pre-rankers, and final rankers. This design is effective but costly to maintain, requiring repeated history processing, com-plex feature pipelines, and multiple serving stages. Generative rec-ommendation with Semantic IDs (SIDs) [20] can consolidate parts of this pipeline, but next-item prediction alone does not capture the fine-grained, multi-objective preferences optimized by a production ranker. Two lines of industrial work address this gap. The first adds a post-training stage that aligns the generator with service-level objectives through reinforcement learning against a learned re-ward model or against user feedback directly [6, 18, 28, 32]. The second unifies candidate generation and ranking inside a single architecture, so that item-level scoring rather than retrieval scores determines the final order, while the shared encoder provides effi-cient serving [13, 16, 23, 25]. Gryphon-v2 brings together ideas from these two research direc-tions (Figure 1). From unified generate-and-rank models, we adopt Gryphon’s shared-encoder architecture [25], in which a lightweight item-level Ranking Module reorders generated candidates without re-encoding the user history. From reward-based post-training, we adopt the principle of transferring fine-grained service-level prefer-ences from a high-capacity offline model to the served model. We implement this transfer by distilling a Teacher Ranker—validated in an online A/B experiment to outperform the production ranker, but too computationally expensive to serve at full traffic scale—into the Ranking Module. The teacher therefore plays a role analogous to a reward model, while the optimization remains supervised dis-tillation rather than reinforcement learning. To train the integrated Ranking Module, Gryphon-v2 uses Roll-out Distillation , a procedure inspired by on-policy distillation in LLM post-training [1, 14]. A training-only Teacher Ranker supplies arXiv:2608.06213v1 [cs.IR] 6 Aug 2026 Lipkina et al. 
+
+Figure 1: Gryphon-v2 framework: a unified generate-and-rank architecture that replaces the production cascade with one served model. The model is jointly trained with the next-token-prediction loss and the distillation losses. More than 90% of distinct distillation candidates come from model beam-search rollouts. 
+
+preference targets for candidates drawn from two complementary sources: rollouts generated by the current SID decoder using the same constrained-decoding mechanism as at serving time, and logged impressions, which broaden coverage to items exposed in production traffic. In an online A/B experiment on a large-scale mu-sic recommendation surface at Yandex Music, Gryphon-v2 replaces the full production cascade — more than 15 candidate generators, pre-ranking, and final ranking — with one served model, improving the number of active users by 1.41% at comparable serving latency. In summary, our main contributions are the following: 
+
+• We introduce Gryphon-v2 — a unified generate-and-rank recommender in which SID generation provides high-recall candidates and an item-level Ranking Module, distilled from a high-capacity, training-only Teacher Ranker, produces the final item ordering. 
+
+• We develop Rollout Distillation , a training procedure in which the teacher scores candidates generated by the cur-rent decoder — the same decoding mechanism used at serv-ing time — together with logged impressions as a comple-mentary candidate source. 
+
+• We report an online A/B experiment in which a single served generate-and-rank model replaces a mature produc-tion cascade, while significantly improving user-engagement metrics at serving latency comparable to the cascade. 
+
+## 2 Related Work 2.1 End-to-End Generative Recommendation 
+
+Multi-stage recommender systems typically optimize cascade stages with stage-specific objectives, which makes end-to-end optimiza-tion of the final recommendation outcome difficult. Generative recommendation addresses this fragmentation by conditioning one model on the user’s interaction history and directly generating Semantic IDs (SIDs) of recommended items [20]. Several deployed generative recommenders augment next-token pre-training with post-training against service-level objectives. OneRec applies on-policy reinforcement learning using a learned preference reward model [18]; OneRec-V2 uses rewards derived directly from real user feedback together with a lazy decoder-only architecture that removes the encoder and simplifies cross-attention [32]; GPR combines multi-token and value-aware training with hi-erarchical policy optimization [28]; and OxygenREC combines near-line reasoning instructions with a unified ranking-model reward service and scenario-aware policy optimization [6]. Related systems apply reward- or preference-based post-training in local services, e-commerce, live-streaming, and advertising [19, 26, 27, 29, 31]. Across this family, the shared pattern is an explicit post-training stage for the generative policy; the supervision itself varies among learned reward or ranking models, direct user-feedback rewards, and task-specific reward functions. In these formulations, post-training modifies the generator that produces the served candidates or slate. Gryphon-v2 uses Semantic-ID generation as a high-recall proposal mechanism, while its final item order is produced by a Ranking Module that shares the history encoder with the generator and is distilled from a training-only Teacher Ranker. 
+
+## 2.2 Unified Architecture for Retrieval and Ranking 
+
+A second line of work couples candidate generation and ranking objectives within a single model [4, 22]. Existing methods typi-cally reuse history encodings across stages or condition ranking on generated candidates. Gryphon-v2 
+
+UniPinRec unifies retrieval and ranking tasks by using a shared input format, joint training, and a common backbone, while still serving retrieval through approximate nearest-neighbor search over item embeddings [13]. GRank pairs a MIPS-based generator trained under target-aware supervision with a lightweight cross-attention ranker. It avoids structured item-centric indexes, but still relies on maximum-inner-product search and maintains separate user-history encoders for candidate generation and ranking [23]. Re-coChain merges SID generation and reranking within a single causal decoder, while relying on searched sequence modeling against the generated target and using distinct, stage-specific input formats for generation and reranking [16]. UniSGR introduces value-aware SID generation together with a unified multi-objective ranking module, aligning generation with click, cart, purchase, and value-oriented objectives [22]. Gryphon identifies a mismatch between SID generation and item-level scoring in generative recommendation. It proposes a shared-encoder architecture with an Item-Level Scoring Module, decoupling retrieval-time item selection from potentially miscali-brated SID beam scores [25]. We build Gryphon-v2 upon the Gryphon architecture, intro-ducing distillation training of the item-level Ranking Module and allowing a single model to replace the full production cascade from retrieval to final ranking. 
+
+## 2.3 Distillation in Recommender Systems 
+
+Knowledge distillation trains a student to reproduce the signals of a teacher model [7]. In recommendation it is a standard tool for transferring ranking quality, compressing expensive scorers, and aligning retrieval-stage models with objectives defined later in the cascade [11, 24, 33]. Continuous teacher scores are especially informative for ranking, preserving the preference intensity and ordering that hard labels discard [9, 24]. Industrial recipes decouple offline model scale from online serv-ing cost. Rec-Distill distills a separately trained large teacher into a lightweight served student through black-box logit matching [3], and Meta’s ExFM formalizes this as external distillation : a foundation-model teacher trained apart from the served models supplies logged scalar predictions as supervision, so scaling the teacher adds no serving cost [15]. To widen the scalar bottleneck, other designs transfer teacher knowledge as features—target-aware embeddings for lightweight experts [12] or historical embedding sequences for vertical models [8]. Several industrial distillation approaches draw distillation candi-dates from logged impressions [3, 15, 24], which provide stable su-pervision on observed traffic. Training students on model-generated outputs is, in turn, well established in LLM post-training [1, 14]. Gryphon-v2 adapts this candidate-selection principle to a deployed generate-and-rank recommender by distilling the Ranking Module on candidates from the current SID decoder, while retaining logged impressions as complementary candidate source. 
+
+## 3 Methodology 
+
+Replacing a cascade with one served model imposes two require-ments that the cascade satisfies with separate components: the model must produce a sufficiently broad candidate set and order those candidates effectively, while processing the user history once within the serving latency budget. Gryphon-v2 inherits Gryphon’s shared-encoder architecture: SID generation provides high-recall proposals, and an item-level Ranking Module reuses the same history states to determine the final item order. The key difference is how the Ranking Module is supervised and deployed (Figure 1). In Gryphon-v2, next-token prediction (NTP) trains the generative path, while the training-only Teacher Ranker provides distillation targets for the Ranking Module on decoder rollouts and logged impressions. 
+
+## 3.1 Architecture Overview 
+
+Gryphon-v2 uses Gryphon’s shared-encoder architecture [25]—a history encoder, autoregressive SID decoder, and item-level Ranking Module. 
+
+Encoder. Let 𝑢 index a request and its associated user context, and let 𝐻 𝑢 = (ℎ𝑢, 1, . . . , ℎ 𝑢,𝑛 𝑢 ) denote the chronological sequence of events available before the request-time cutoff. A bidirectional Transformer maps this sequence to contextual states 
+
+𝐸 𝑢 = Encode hist (𝐻 𝑢 ).
+
+The history is encoded once. Both the decoder and the Ranking Module reuse the same request-specific activations 𝐸 𝑢 , so neither path separately re-encodes 𝐻 𝑢 .
+
+Decoder. The autoregressive decoder cross-attends to 𝐸 𝑢 and emits the SID of the next item. At inference, catalogue-trie-constrained beam search produces valid candidate SIDs, which are resolved to concrete catalogue items (Section 3.3). The decoder acts as a pro-posal mechanism: its sequence likelihood determines beam mem-bership, but not the final order of resolved items. 
+
+Ranking Module. For each resolved candidate, the Ranking Mod-ule uses an item representation as a query over 𝐸 𝑢 . It predicts task-specific item-level scores whose fixed combination determines the final ordering (Section 3.4). 
+
+## 3.2 Request-wise Training Instances 
+
+Each training instance corresponds to a served request indexed by 
+
+𝑢 . Let M𝑢 be the set of catalogue items impressed in that request, together with their associated feedback. The subset P𝑢 ⊆ M 𝑢 
+
+contains the positive impressed items used as NTP targets. Let T
+
+denote the fixed set of ranking tasks. During joint training, the current SID decoder generates and resolves the rollout candidate set G𝑢 . The Teacher Ranker and Rank-ing Module score the same candidates from M𝑢 and G𝑢 , producing a teacher target 𝑟 𝑇 ,𝑡 𝑢,𝑖 for each candidate 𝑖 and task 𝑡 ∈ T , where the superscript 𝑇 denotes the teacher. Logged and generated distilla-tion candidates provide complementary sets for teacher scoring. Grouping these signals by request allows the student to encode 𝐻 𝑢 
+
+once and reuse 𝐸 𝑢 for all generation and distillation targets. 
+
+## 3.3 Semantic-ID Generation and Resolution 
+
+Next-token-prediction training. Each catalogue item 𝑖 is assigned a Semantic ID Φ(𝑖 ) = (𝑠 1, . . . , 𝑠 𝐿 ), a tuple of discrete codes drawn from 𝐿 hierarchical codebooks and arranged coarse-to-fine. Lipkina et al. 
+
+Conditioned on 𝐸 𝑢 , the decoder factorizes an SID autoregres-sively and predicts one code at each position. For every positive target 𝑖 + ∈ P 𝑢 with Φ(𝑖 +) = (𝑠 + 
+
+> 1
+
+, . . . , 𝑠 + 
+
+> 𝐿
+
+), its teacher-forced NTP contribution is 
+
+ℓNTP (𝑢, 𝑖 +) = −
+
+> 𝐿
+
+∑︁ 
+
+> ℓ=1
+
+log 𝑝 𝜃 (𝑠 + 
+
+> ℓ
+
+| 𝑠 + 
+
+> <ℓ
+
+, 𝐸 𝑢 ).
+
+Here 𝜃 denotes the model parameters on the NTP path. For re-quests with multiple positive targets, we sum their teacher-forced contributions: 
+
+LNTP (𝑢 ) =∑︁  
+
+> 𝑖 +∈ P 𝑢
+
+ℓNTP (𝑢, 𝑖 +).
+
+Constrained generation. During inference, catalogue-trie-constrained beam search ensures that every completed SID resolves to at least one catalogue item. Using beam search with beam size 𝐾 , the de-coder returns an ordered SID beam B (𝐾 ) 
+
+> 𝑢
+
+.
+
+Collision resolution and candidate budgeting. Several items may correspond to the same SID. Let C𝜎 = { 𝑖 : Φ(𝑖 ) = 𝜎 } denote the collision class of a generated SID 𝜎 . Expanding every SID in the generated beam gives the unbudgeted candidate set 
+
+eI𝑢 =
+
+Ø   
+
+> 𝜎 ∈ B (𝐾 )
+> 𝑢
+
+C𝜎 .
+
+We construct the semantic index to keep collision classes small. In deployment, the resolved candidate pool is capped at the item budget 𝐵 item . If | eI𝑢 | > 𝐵 item , SID hypotheses are removed from 
+
+B (𝐾 ) 
+
+> 𝑢
+
+in ascending beam-score order, together with their collision classes, until the item budget is satisfied. Let B (𝐾 ) 
+
+> 𝑢, keep
+
+denote the retained SID beam. The final candidate pool is 
+
+I𝑢 =
+
+Ø   
+
+> 𝜎 ∈ B (𝐾 )
+> 𝑢, keep
+
+C𝜎 , |I 𝑢 | ≤ 𝐵 item .
+
+All items in C𝜎 inherit the same beam score, so this score cannot distinguish items within a collision class. More generally, autore-gressive SID likelihood may be poorly calibrated for item-level relevance estimation [5, 25]. Beam scores are therefore used only for proposal generation and rare capacity-control truncation. The Ranking Module determines the final ordering of I𝑢 (Section 3.4). 
+
+## 3.4 Ranking Module 
+
+The item-level Ranking Module scores resolved candidates in I𝑢 
+
+using the shared history states 𝐸 𝑢 , without re-encoding the user history. Its candidate encoder can incorporate additional item-level features through the candidate representation. For candidate 𝑖 , let x𝑖 denote its item-level features. The candidate encoder maps these features to a candidate representation: 
+
+e𝑖 = Encode item (x𝑖 ).
+
+In the reported deployment, x𝑖 contains the item identifier and its SID Φ(𝑖 ) = (𝑠 1, . . . , 𝑠 𝐿 ). Both feature sources are represented using compositional multi-hash embeddings retrieved from the unified embedding table shared with the history encoder [2, 21]. For the SID, we construct prefix 𝑛 -gram features from its code sequence following [30]. The candidate representation attends to the shared encoded history through one or more cross-attention blocks: ˜e𝑢,𝑖 = CrossAttn (e𝑖 , 𝐸 𝑢 ).
+
+A task-specific output head maps ˜ e𝑢,𝑖 to one score for each ranking task 𝑡 ∈ T , matching the output structure of the Teacher Ranker (Section 3.5): ˆ𝑟 𝑡 𝑢,𝑖 = Head 𝑡 ( ˜e𝑢,𝑖 ), 𝑡 ∈ T .
+
+For the final ordering, the task scores are combined using fixed weights: ˆ𝑅 (𝑢, 𝑖 ) =∑︁  
+
+> 𝑡 ∈ T
+
+𝑤 𝑡 ˆ𝑟 𝑡 𝑢,𝑖 ,
+
+where 𝑤 𝑡 is the weight assigned to task 𝑡 . Items in I𝑢 are ordered by decreasing ˆ 𝑅 (𝑢, 𝑖 ), with no additional reranking during serving. 
+
+## 3.5 Teacher Ranker 
+
+The Teacher Ranker is a large sequential model that scores candi-date items using long user interaction histories, without relying on hand-crafted tabular features. It was selected through prior in-ternal offline and online validation against the production ranker. These evaluations predated the Gryphon-v2 experiment and are not included as controlled results in this paper; we use them only to motivate the choice of distillation teacher. Its computational cost makes direct deployment impractical, so it is used only during training to supervise the Ranking Module through distillation. Architecturally, it pairs the sequential history encoder with a cross-attention ranker, where each candidate attends directly to the encoded history [23, 25], and uses task-specific heads for multi-objective learning. Following ARGUS [10], we train the teacher autoregressively over chronological interaction sequences, obtaining supervision from multiple positions within each sequence. This efficient training formulation allows the teacher to learn from substantially more data than the Gryphon-v2 student within a practical training budget. The teacher also conditions on histories of up to 8 ,000 events, a context length that would be prohibitively expensive for the served Gryphon-v2 model. The featureless design enables the teacher to score any user–item pair based solely on the preceding user history, allowing it to provide distillation targets for rollout candidates. 
+
+## 3.6 Rollout Distillation 
+
+Rollout Distillation trains the Ranking Module using Teacher Ranker scores for candidates from two sources: current-decoder rollouts and logged impressions. The rollout candidate-selection principle is inspired by on-policy distillation in LLM post-training [1, 14], but the optimization itself remains supervised, and no gradient is propagated through beam search. For a request 𝑢 , a candidate item 𝑖 ∈ G 𝑢 ∪ M 𝑢 , and a ranking task 𝑡 ∈ T , let 𝑟 𝑇 ,𝑡 𝑢,𝑖 and ˆ 𝑟 𝑡 𝑢,𝑖 denote the Teacher Ranker and Ranking Module scores, respectively. 
+
+Rollout candidates. For each user history 𝐻 𝑢 , constrained beam search synchronously generates a beam of SIDs B𝑢 using the cur-rent decoder parameters at every training step, with no checkpoint lag. The generated SIDs are then resolved into valid catalogue items, producing the rollout candidate set G𝑢 for the current user request. The Ranking Module scores each item conditioned on the shared Gryphon-v2 
+
+encoder states 𝐸 𝑢 , while the teacher scores the same items with its own architecture. Distillation is applied independently for each ranking task, with all tasks entering the objective with equal weight, where rollout candidates distillation loss is element-wise MAE: 
+
+Lroll -distill = 1
+
+|T | ∑︁ 𝑡 ∈ T 
+
+1
+
+|G 𝑢 |∑︁ 𝑖 ∈ G 𝑢 
+
+ˆ𝑟 𝑡 𝑢,𝑖 − 𝑟 𝑇 ,𝑡 𝑢,𝑖 .
+
+In our training data, rollout candidates account for more than 90% of the distinct distillation candidates. This share describes candidate coverage, not relative loss weight: each source loss is normalized by its own candidate count, and both distillation losses enter the joint objective with equal coefficients. 
+
+Impression candidates. We complement the rollout candidate set G𝑢 with the items M𝑢 displayed in the corresponding logged request. This pool broadens the set of teacher-scored candidates beyond current-decoder rollouts and anchors training to items observed in production traffic. We apply the same task-wise MAE objective: 
+
+Limpr -distill = 1
+
+|T | ∑︁ 𝑡 ∈ T 
+
+1
+
+|M 𝑢 |∑︁ 𝑖 ∈ M 𝑢 
+
+ˆ𝑟 𝑡 𝑢,𝑖 − 𝑟 𝑇 ,𝑡 𝑢,𝑖 .
+
+Rollout Distillation is the sum of the two candidate-source terms, each normalized by its own candidate count and entering with coefficient one: 
+
+Ldistill = Lroll -distill + L impr -distill ,
+
+## 3.7 Joint Training 
+
+We train the unified Gryphon-v2 architecture with a joint objective combining next-token prediction and Rollout Distillation: 
+
+L = LNTP + L distill .
+
+The NTP loss updates the decoder and the shared encoder, while the distillation updates the Ranking Module and the shared en-coder. The Teacher Ranker provides targets during training but is not included in the Gryphon-v2 serving graph. Joint training transfers item-level ranking information into the same encoded user representation 𝐸 𝑢 used for SID generation. 
+
+## 4 Deployment 
+
+Gryphon-v2 serves the traffic allocated to the online experiment as the sole learned recommendation model on the treatment path. Serving starts from the offline checkpoint described in Section 5, after which the model receives online updates based on recent interaction data. The Teacher Ranker supplies training targets and is refreshed daily, but is never part of the serving path. Online training instances are grouped by request using logged impressions and feedback. The corresponding history 𝐻 𝑢 is recon-structed at the request-time cutoff using the same profile representa-tion and feature construction as serving, reducing training–serving skew. The served model is updated on a ten-minute cadence, and each update itself takes on the order of tens of minutes. As a result, the model serving the experiment is typically trained on user events observed less than an hour earlier. At request time, a CPU service constructs the request features and sends them to Gryphon-v2, which is served on GPU through the NVIDIA Triton Inference Server. The model returns the final item ordering without downstream learned pre-ranking or rank-ing stages. Section 5.5 reports the resulting serving latency and compares this path with the production cascade. 
+
+## 5 Experiments 
+
+We organize the empirical study around three research questions. 
+
+RQ1. How does Gryphon-v2 compare with matched generative baselines in candidate-generation quality, fidelity to the Teacher Ranker, and ranking accuracy on logged impressions? 
+
+RQ2. Can Gryphon-v2 replace the production cascade — candi-date generation, pre-ranking, and ranking — with a single generate-and-rank model while improving online engagement metrics? 
+
+RQ3. How do distillation loss, rollout beam size, and candidate-source composition affect Gryphon-v2 performance? 
+
+## 5.1 Offline Experimental Setup 
+
+Dataset. We construct chronological training and test sets from two weeks of interaction logs of a large-scale music recommenda-tion service, using the request-wise instances defined in Section 3.2. This two-week window is used for all offline comparisons only; the online experiment starts from a four-week checkpoint and is updated online. We apply temporal split, so test requests occur strictly after the training window and covers the last day of logs. The logs come from a purely recommendation-driven surface: an infinite personalized music feed with no search or editorial context. We retain a request only if at least one of its impressions is positive, where an impression counts as positive if the track received a like or a long listen and was not disliked. This guarantees that every training request carries at least one positive target for next-token prediction. 
+
+Baselines. We compare Gryphon-v2 to the following baselines: 
+
+• Generative retrieval : the encoder–decoder backbone with the SID decoder alone; resolved candidates are ordered by SID beam likelihood. It is trained with the same Semantic-ID next-token-prediction objective as Gryphon-v2, but has no item-level Ranking Module. 
+
+• Gryphon [25]: It uses the same shared encoder, SID de-coder, and item-level Ranking Module as Gryphon-v2, but the Ranking Module is trained from next-item supervision rather than Teacher Ranker distillation. Gryphon-v2 and both baselines use the same tokenizer, encoder– decoder backbone, history features, candidate budget, and con-strained decoding procedure. Gryphon and Gryphon-v2 use the same item-level Ranking Module architecture, so their comparison isolates the effect of teacher distillation versus next-item supervi-sion. 
+
+Evaluation protocol. We report three complementary diagnos-tics. First, Recall@1000 measures candidate-generation recall on re-solved candidates before item-level reranking. Second, TeacherRecall@ 𝑘 
+
+measures fidelity to the Teacher Ranker’s top-𝑘 selections: mod-els evaluated with an active Ranking Module use its reranked or-der, while beam-order evaluations use SID beam likelihood. Third, weighted pair accuracy (WPA) measures ordering quality on production-logged impression pairs from the test set. Lipkina et al. 
+
+Metrics. Candidate generation quality is evaluated with Recall@1000: the fraction of held-out targets for each user request recovered among the top-1 ,000 resolved items. We measure Recall@1000 on the candidate set ordered strictly by beam search scores, before applying the item-level Ranking Module if it is present in the model. Tables abbreviate the metric as R@1000. We use the Teacher Ranker’s top-𝑘 selections as an offline ref-erence for evaluating distillation fidelity. This metric does not independently measure recommendation quality; rather, it mea-sures how closely the student reproduces the teacher on the stu-dent’s serving-time candidate distribution. For each user request, the model and the Teacher Ranker score the same candidate pool produced by decoder beam search at the production beam size. We define TeacherRecall@ 𝑘 as the fraction of the Teacher Ranker’s top-𝑘 items recovered in the model’s top-𝑘 :TeacherRecall@ 𝑘 (𝑢 ) = 1
+
+𝑘 Top 𝑘 
+
+
+
+𝑠 model 
+
+> 𝑢
+
+
+
+∩ Top 𝑘 
+
+
+
+𝑠 teacher 
+
+> 𝑢
+
+
+
+,
+
+averaged over the evaluated user requests: TeacherRecall@ 𝑘 = 1
+
+|U| ∑︁ 𝑢 ∈ U 
+
+TeacherRecall@ 𝑘 (𝑢 ).
+
+A value of 1 .0 indicates that the model selects the same top-𝑘 items as the teacher from the candidate set, and 0 .0 indicates disjoint top-𝑘 sets. Tables abbreviate the metric as T-R@10 and T-R@100. To complement this teacher-relative measure, we report weighted pair accuracy (WPA), the label-based metric used to evaluate our production ranking models. The test set contains temporally ad-jacent recommendation impressions with different engagement grades. Eligible pairs may occur within one recommendation re-quest or across the boundary between two adjacent requests. The engagement ordering is like > play > skip > dislike .
+
+Each engagement grade has a predefined target weight 𝑡 . We orient every eligible pair (𝑖, 𝑗 ) ∈ P such that 𝑡 𝑖 > 𝑡 𝑗 , and compute WPA =
+
+Í(𝑖,𝑗 ) ∈ P (𝑡 𝑖 − 𝑡 𝑗 ) 1{𝑠 (𝑖 ) > 𝑠 ( 𝑗 )} 
+
+Í(𝑖,𝑗 ) ∈ P (𝑡 𝑖 − 𝑡 𝑗 ) ,
+
+where 𝑠 (·) is the scalar ordering score: SID beam likelihood for beam-order evaluations and the ranker’s score for evaluations with an active ranker. Thus, a correctly ordered pair contributes in pro-portion to the difference between its engagement weights, and pairs with more widely separated grades contribute more strongly. The Ranking Module, Teacher Ranker, and production ranker are evaluated on the same impression pairs from the test set. Weighted pair accuracy uses logged engagement labels as its target under the existing cascade’s exposure policy. Tables abbreviate the metric as WPA. 
+
+Implementation details. Architecture hyperparameters and the optimization schedule are reported in Appendix A. Offline training makes one chronological pass over the two-week window. Train-ing rollouts use beam size 32. Ranking tasks and the three joint-objective losses are equally weighted. We construct multimodal item representations by aligning text and audio features with collaborative signals following QARM [17]. 
+
+Table 1: Offline comparison of generative models: candidate-generation recall (R@1000), agreement with the Teacher Ranker (T-R@ 𝑘 ), and label-based ordering accuracy (WPA). 
+
+Model R@1000 T-R@10 T-R@100 WPA 
+
+Generative models 
+
+Generative retrieval 0.8643 0.0382 0.1944 0.5429 Gryphon 0.8593 0.0392 0.1701 0.5528 Gryphon-v2 (beam order) 0.8615 0.0381 0.1936 0.5478 Gryphon-v2 (ours) 0.8615 0.5654 0.7344 0.5892 
+
+Reference rankers 
+
+Production ranker — — — 0.6141 Teacher Ranker — — — 0.6199 
+
+> Gryphon-v2 (beam order) uses the Gryphon-v2 checkpoint with the Ranking Module bypassed. Bold marks the best point estimate among the generative models. The reference rankers generate no candidates and are reported on WPA only. They are shown for context and are not matched comparisons, since they are trained on a full year of logged feedback against the two-week window used for the generative models.
+
+Audio and textual content features are extracted with Qwen2.5-Omni and projected by a small Transformer trained with an in-batch contrastive objective. Residual 𝐾 -means quantization produces the hierarchical SIDs. The resulting index has an Independent Code Rate of 0 .98. At inference, the decoder generates 1 ,024 valid SIDs. After col-lision expansion, the pool is capped at 𝐵 item = 1,200 by removing the lowest-scoring SID hypotheses and their collision classes. The online experiment uses the same configuration, except that the model is initially trained on four weeks of data and subsequently updated online (Section 4). 
+
+## 5.2 Offline Results (RQ1) 
+
+Table 1 reports the offline comparison on the test set. 
+
+Candidate generation. On R@1000, Gryphon-v2 lands between the two baselines at 0 .8615, within the metric’s run-to-run standard deviation ( ≈ 0.003) of each. Gryphon-v2 with the Ranking Module bypassed shares the same value by construction, since R@1000 is computed on the generated pool before reranking. We read this as evidence that the distilled Ranking Module does not come at a cost in candidate-generation quality. 
+
+Top-𝑘 selection fidelity. Without distillation, none of the order-ings recover the Teacher Ranker’s selections: beam-score ordering (Generative retrieval, and Gryphon-v2 with the Ranking Module bypassed) and Gryphon’s next-item-trained Ranking Module all reach T-R@10 below 0 .04 and T-R@100 below 0 .20. Distillation changes this sharply: Gryphon-v2 reaches 0 .5654 and 0 .7344, more than an order of magnitude higher at 𝑘 =10. Notably, Gryphon’s Ranking Module has the same architecture as Gryphon-v2’s, so the gap is attributable to the supervision rather than to item-level scoring per se. 
+
+Impression-ranking quality. Among the generative models, Gryphon-v2 achieves the highest WPA at 0 .5892, against at most 0 .5528 for the other generative models. We additionally report WPA for the Gryphon-v2 
+
+reference rankers: the Teacher Ranker (0 .6199), which supplies the distillation targets, and the production ranker (0 .6141). Both are trained on a full year of logged feedback, compared with the two-week window used for the generative models, so we present them as a quality ceiling and not as matched comparisons. Relative to that ceiling, teacher distillation in Gryphon-v2 closes 54% of the WPA gap between next-item supervision and the Teacher Ranker, and 59% of the gap to the production ranker: the distilled Ranking Module recovers the majority of each gap from a two-week training window. 
+
+End-to-end interpretation. Taken together, the offline results show that Gryphon-v2 preserves the candidate-generation quality of the Semantic-ID backbone, raises agreement with the Teacher Ranker on generated candidates by more than an order of magnitude at 
+
+𝑘 = 10, and attains the highest weighted pair accuracy among the generative models, recovering the majority of the gap to the refer-ence rankers. Each metric, however, covers a different component and a different candidate distribution: R@1000 evaluates the gener-ated pool before reranking, T-R@ 𝑘 evaluates fidelity to the teacher on candidates the model itself generates, and WPA evaluates order-ing on impressions logged under the production cascade’s exposure policy. No single one of them measures the unified generate-and-rank system end to end, so we treat the online A/B experiment in Section 5.3 as the primary assessment of user-facing quality. 
+
+## 5.3 Online A/B Experiment Results (RQ2) 
+
+We validate Gryphon-v2 through an online A/B experiment in a large-scale music recommendation service. Eligible users were as-signed at the user level to disjoint control and treatment arms, each containing 8% of the eligible population. The control arm is the full production cascade: more than 15 heterogeneous candi-date generators produce roughly 10,000 candidates per request, a production pre-ranker reduces them to 3,000, and a separate pro-duction ranker orders the final slate. In the treatment arm, this entire cascade—candidate generation, pre-ranking, and ranking—is replaced by a single Gryphon-v2 model, configured as reported in Table 5: it generates a beam of 1 ,024 valid SIDs, expands their collision classes, caps the resulting pool at 1 ,200 resolved items, and produces the final ordering with a single-layer item-level Ranking Module that combines its heads into a ranking score using the same combination as the Teacher Ranker — with no separate downstream ranker. In contrast to Gryphon, which supplied candidates to an unchanged production ranker [25], Gryphon-v2 is the sole model on the serving path. Table 2 reports the results; all deltas are relative to the produc-tion cascade. The primary engagement metric is the number of active users—users who listen for at least 7 minutes per day—which increased by +1.41%. Total listening time (TLT) increased by +1.62%, and Gryphon-v2 also moved the secondary quality metrics favor-ably: the unfinished-track ratio decreased by 9.65%, likes increased by +7.12%, and “Repeat” commands increased by +15.25%. These results show that, on treatment traffic during the experiment, a sin-gle learned generate-and-rank model could replace the candidate-generation, pre-ranking, and ranking stages while significantly improving the engagement metric. 
+
+Table 2: Online A/B experiment results: Gryphon-v2 versus the production cascade. 
+
+Metric Relative change Total listening time +1.62% Active users † +1.41% Likes +7.12% “Repeat” commands +15.25% Unfinished-track ratio -9.65%       
+
+> †Primary engagement metric; active users are those with daily listening time ≥7
+> minutes. All reported deltas are relative to the full production cascade and statistically significant at 𝑝 <0.001 .
+
+Table 3: Ablations of candidate source, rollout beam size, and distillation loss. 
+
+Configuration R@1000 T-R@10 T-R@100 WPA 
+
+Candidate source 
+
+Rollout + impressions † 0.8615 0.5654 0.7344 0.5892 
+
+Rollout only 0.8610 0.5618 0.7288 0.5730 Impressions only 0.8663 0.2983 0.5281 0.5872 
+
+Training rollout beam size 
+
+32 † 0.8615 0.5654 0.7344 0.5892 64 0.8565 0.5661 0.7359 0.5901 128 0.8616 0.5762 0.7427 0.5905 
+
+Distillation loss 
+
+MAE † 0.8615 0.5654 0.7344 0.5892 MSE 0.8671 0.5748 0.7329 0.5915 
+
+Huber 0.8679 0.5568 0.7220 0.5894 KL 0.8662 0.5452 0.7151 0.5860  
+
+> Each block varies one factor relative to the †-marked online production configuration. Bold marks the best point estimate within each block and does not imply statistical significance.
+
+## 5.4 Ablations (RQ3) 
+
+We conduct post-hoc ablations of candidate source, training roll-out beam size, and distillation loss, varying each factor relative to the deployed Gryphon-v2 configuration. Table 3 summarizes the results. 
+
+Candidate source. Rollouts draw distillation candidates from the same constrained-decoding mechanism used at serving time, though at a smaller beam width, while logged impressions broaden coverage to items with observed production exposure. Impression-only training is close to the deployed configuration on WPA but recovers only about half as much of the teacher’s top-10 selections (0.2983 vs. 0.5654). Rollout-only training retains teacher fidelity but gives the lowest WPA in the table. The deployed mixture is at least as good as either single-source variant on the metric that variant favours. 
+
+Rollout beam size. The training beam provides a computationally bounded on-policy sample of the serving pool. Matching the serving beam of 1 ,024 carries a prohibitive training cost because every Lipkina et al. 
+
+Table 4: Serving-stack complexity and latency under matched traffic: production cascade versus Gryphon-v2. 
+
+Measure Production cascade Gryphon-v2 Candidate generators > 15 One model Pre-ranking stage Separate Integrated Ranking stage Separate Integrated Candidates / request ∼ 10 ,000 → 3,000 ≤ 1,200 End-to-end latency Comparable candidate must be generated, resolved, and scored by the Teacher Ranker. The online experiment used beam size 32, fixed before this post-hoc analysis. Beam sizes 64 and 128 produce modest increases in some offline descriptive point estimates at higher compute cost. 
+
+Distillation loss. No objective dominates every metric: MSE per-forms best on T-R@10 and WPA, MAE on T-R@100, and Huber on R@1000. The deployed online configuration used MAE and was fixed before the final post-hoc ablation sweep, so the MSE result remains an offline finding. 
+
+## 5.5 Serving Efficiency and Stack Simplification 
+
+Beyond the online quality results, Gryphon-v2’s central operational claim is that one served model can replace the entire multi-stage cascade. Table 4 compares the two serving paths under matched traffic conditions. A generative backbone followed by the produc-tion ranker would not provide a comparable unified alternative because the ranker’s feature pipeline depends on representations from other deep models and would retain much of the cascade’s serving cost. 
+
+Candidate volume. The production cascade generates roughly 10 ,000 candidates per request and pre-ranks 3 ,000. Gryphon-v2 generates 1 ,024 valid SIDs and, after collision expansion, ranks at most 1 ,200 resolved items—approximately an order of magnitude fewer than the cascade’s initial fan-out. 
+
+Serving cost. Gryphon-v2 is served on GPU using the NVIDIA Tri-ton Inference Server (Section 4). Direct request-level measurements— including CPU-side feature construction, network transfer, inference-server overhead, candidate generation, and ranking—place its end-to-end latency on par with the production cascade on the same rec-ommendation surface (Table 4). The unified path therefore matches the multi-stage cascade’s serving latency while eliminating its inter-service transitions and successive candidate-scoring stages. 
+
+Throughput. Under matched serving conditions, Gryphon-v2 sustains approximately 4 × the throughput of the same genera-tive backbone followed online by the Teacher Ranker. It reuses its 2,048-event history encoding in the lightweight Ranking Module, avoiding the Teacher Ranker’s independent inference pass over up to 8 ,000 events. Distillation therefore removes the Teacher Ranker’s substantially more expensive inference pass from the serving path. 
+
+## 6 Limitations and Future Work 
+
+The online A/B experiment evaluates Gryphon-v2 as an end-to-end treatment. Consequently, the observed deltas estimate the aggregate effect of replacing the production cascade and do not isolate the marginal contributions of Rollout Distillation, the Ranking Module, or online updates. The experiment ran on a single music recommendation surface, with disjoint user-level control and treatment arms, each containing 8% of eligible users. The results establish short-term viability on this sampled traffic but do not establish long-term effects or effects after deployment to the full eligible population. We did not evaluate long-tail catalogue coverage, artist diversity, novelty, or exposure concentration. Measuring these effects under longer and broader deployments is important future work. TeacherRecall@ 𝑘 uses the same Teacher Ranker that provides the distillation targets and therefore measures distillation fidelity. WPA evaluates ordering on logged impressions under the existing cascade’s exposure policy, and therefore does not measure ordering quality on the items Gryphon-v2 itself surfaces. None of them measure the end-to-end independent recommendation quality. Finally, Rollout Distillation is supervised distillation: it neither uses policy gradients nor directly optimizes the decoder against a reward. We did not conduct a controlled comparison with post-training based on reinforcement learning and therefore cannot draw conclusions about relative quality, stability, or computational efficiency. The approaches may be complementary. 
+
+## 7 Conclusion 
+
+We presented Gryphon-v2, a shared-encoder model that unifies Semantic-ID candidate generation and item-level ranking, with the Ranking Module distilled from a high-capacity, training-only Teacher Ranker. Rollout Distillation collects teacher targets over candidates generated by the current decoder together with logged impressions, improving both agreement with the Teacher Ranker and label-based ranking accuracy over generative baselines, while fully preserving retrieval recall. In an online A/B experiment, a single Gryphon-v2 model replaced the entire production cascade — more than 15 candidate generators, pre-ranking, and final ranking — as the only learned model on the treatment serving path, increasing the number of active users by 1.41% at serving latency comparable to the production cascade. These results demonstrate the practical viability of a unified generate-and-rank model as an alternative to a multi-stage recommendation cascade. 
+
+## References                 
+
+> [1] Rishabh Agarwal, Nino Vieillard, Yongchao Zhou, Piotr Stanczyk, Sabela Ramos Garea, Matthieu Geist, and Olivier Bachem. 2024. On-policy distilla-tion of language models: Learning from self-generated mistakes. In International Conference on Learning Representations , Vol. 2024. 21246–21263. [2] Benjamin Coleman, Wang-Cheng Kang, Matthew Fahrbach, Ruoxi Wang, Lichan Hong, Ed H Chi, and Derek Zhiyuan Cheng. 2023. Unified Embedding: Battle-tested feature representations for web-scale ML systems. arXiv preprint arXiv:2305.12102 (2023). [3] Haoran Ding, Wenlin Zhao, Yuchen Jiang, Jie Zhu, Juren Li, Xinchun Li, Yishujie Zhao, Yi Zhang, Ao Qiao, Jianhui Dong, Cheng Chen, Ziyan Gong, Deping Xie, Peng Xu, Zikai Wang, Yuwei Wang, Huizhi Yang, Zhe Chen, and Yuchao Zheng. 2026. Rec-Distill: An Industrial Distillation Pipeline for Large-Scale Recommendation Models. arXiv preprint arXiv:2605.29755 (2026). https://arxiv. org/abs/2605.29755 [4] Vianne R Gao, Chen Xue, Marc Versage, Xie Zhou, Zhongruo Wang, Chao Li, Yeon Seonwoo, Nan Chen, Zhen Ge, Gourab Kundu, et al. 2025. Synergen: Contextualized generative recommender for unified search and recommendation.
+> arXiv preprint arXiv:2509.21777 (2025). [5] Chengcheng Guo, Kuo Cai, Yu Zhou, Qiang Luo, Ruiming Tang, Han Li, Kun Gai, and Guorui Zhou. 2026. PROMISE: Process Reward Models Unlock Test-Time
+
+Gryphon-v2 
+
+Scaling Laws in Generative Recommendations. arXiv preprint arXiv:2601.04674 
+
+(2026). doi:10.48550/arXiv.2601.04674 [6] Xuegang Hao, Ming Zhang, Alex Li, et al. 2025. OxygenREC: An Instruction-Following Generative Framework for E-commerce Recommendation. arXiv preprint arXiv:2512.22386 (2025). https://arxiv.org/abs/2512.22386 [7] Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. 2015. Distilling the Knowledge in a Neural Network. arXiv preprint arXiv:1503.02531 (2015). https://arxiv.org/abs/ 1503.02531 [8] Shali Jiang, Hua Zheng, Boyang Liu, Laming Chen, Kenny Lov, Chuanqi Xu, Lisang Ding, Qinghai Zhou, Can Cui, Xiaolong Liu, Xiaoyi Liu, Yasmine Badr, Xin Xu, Jiyan Yang, Ellie Dingqiao Wen, and Huayu Li. 2026. LoopFM: Learning frOm HistOrical RePresentations of Foundation Model for Recommendation. 
+
+arXiv preprint arXiv:2605.29280 (2026). https://arxiv.org/abs/2605.29280 [9] SeongKu Kang, Junyoung Hwang, Wonbin Kweon, and Hwanjo Yu. 2020. DE-RRD: A knowledge distillation framework for recommender system. In Pro-ceedings of the 29th ACM international conference on information & knowledge management . 605–614. [10] Kirill Khrylchenko, Artem Matveev, Sergei Makeev, and Vladimir Baikalov. 2025. Scaling Recommender Transformers to One Billion Parameters. arXiv preprint arXiv:2507.15994 (2025). [11] Jae-woong Lee, Minjin Choi, Jongwuk Lee, and Hyunjung Shim. 2019. Collabora-tive distillation for top-N recommendation. In 2019 IEEE international conference on data mining (ICDM) . IEEE, 369–378. [12] Dai Li, Kevin Course, Wei Li, Hongwei Li, Jie Hua, Yiqi Chen, Zhao Zhu, Rui Jian, Xuan Cao, Bi Xue, Yu Shi, Jing Qian, Kai Ren, Matt Ma, Qunshu Zhang, and Rui Li. 2025. Realizing Scaling Laws in Recommender Systems: A Foundation–Expert Paradigm for Hyperscale Model Deployment. arXiv preprint arXiv:2508.02929 
+
+(2025). https://arxiv.org/abs/2508.02929 [13] Hanyu Li, Yi-Ping Hsu, Aditya Mantha, Prabhat Agarwal, Laksh Bhasin, Jialu Wang, Hongtao Lin, Bella Huang, Yaxin Li, Xinyi Li, et al. 2026. UniPinRec: Unifying Generative Retrieval and Ranking at Pinterest Scale. arXiv preprint arXiv:2606.00422 (2026). [14] Yaxuan Li, Yuxin Zuo, Bingxiang He, Jinqian Zhang, Chaojun Xiao, Cheng Qian, Tianyu Yu, Huan-ang Gao, Wenkai Yang, Zhiyuan Liu, et al. 2026. Rethinking on-policy distillation of large language models: Phenomenology, mechanism, and recipe. arXiv preprint arXiv:2604.13016 (2026). [15] Mingfu Liang, Xi Liu, Rong Jin, Boyang Liu, Qiuling Suo, Qinghai Zhou, Song Zhou, Laming Chen, Hua Zheng, Zhiyuan Li, et al. 2025. External Large Foun-dation Model: How to Efficiently Serve Trillions of Parameters for Online Ads Recommendation. In Companion Proceedings of the ACM Web Conference 2025 .344–353. doi:10.1145/3701716.3715223 [16] Yu Liu and Jiangxia Cao. 2026. Harmonizing Generative Retrieval and Ranking in Chain-of-Recommendation. arXiv preprint arXiv:2604.25787 (2026). https: //arxiv.org/abs/2604.25787 [17] Xinchen Luo, Jiangxia Cao, Tianyu Sun, Jinkai Yu, Rui Huang, Wei Yuan, Hezheng Lin, Yichen Zheng, Shiyao Wang, Qigen Hu, et al. 2025. Qarm: Quantitative alignment multi-modal recommendation at kuaishou. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 5915– 5922. [18] OneRec Team. 2025. OneRec Technical Report. arXiv preprint arXiv:2506.13695 
+
+(2025). https://arxiv.org/abs/2506.13695 [19] Junyan Qiu et al. 2025. EGA-V1: Unifying Online Advertising with End-to-End Learning. arXiv preprint arXiv:2505.19755 (2025). [20] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Maciej Kula, Ed H. Chi, and Maheswaran Sathiamoorthy. 2023. Recommender Systems with Generative Retrieval. In Advances in Neural Information Processing Systems , Vol. 36. [21] Hao-Jun Michael Shi, Dheevatsa Mudigere, Maxim Naumov, and Jiyan Yang. 2020. Compositional embeddings using complementary partitions for memory-efficient recommendation systems. In Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining . 165–175. [22] Jiawei Sun, Jun Yang, Ziyue Guo, Dongyue Xu, Jianan Yan, Lifang Deng, and Xiaoyi Zeng. 2026. UniSGR: Unified Framework for Semantic ID Generation and Ranking. arXiv preprint arXiv:2607.04068 (2026). [23] Yijia Sun, Shanshan Huang, Zhiyuan Guan, Qiang Luo, Ruiming Tang, Kun Gai, and Guorui Zhou. 2026. GRank: Towards Target-Aware and Streamlined Industrial Retrieval with a Generate-Rank Framework. In Proceedings of the ACM Web Conference 2026 . 7798–7808. [24] Jiaxi Tang and Ke Wang. 2018. Ranking Distillation: Learning Compact Ranking Models with High Performance for Recommender System. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining . 2289–2298. doi:10.1145/3219819.3220021 [25] Daria Tikhonovich, Oleg Sorokin, Vladislav Dodonov, Mariia Ulianova, and Ilya Murzin. 2026. Gryphon: A Unified Architecture for Semantic-ID Gener-ation and Item-Level Scoring in Industrial Recommendations. arXiv preprint arXiv:2606.08604 (2026). [26] Shen Wang et al. 2026. OneLive: Dynamically Unified Generative Framework for Live-Streaming Recommendation. arXiv preprint arXiv:2602.08612 (2026). [27] Zhipeng Wei et al. 2025. OneLoc: Geo-Aware Generative Recommender Systems for Local Life Service. arXiv preprint arXiv:2508.14646 (2025). [28] Jun Zhang, Yi Li, Yue Liu, et al. 2025. GPR: Towards a Generative Pre-trained One-Model Paradigm for Large-Scale Advertising Recommendation. arXiv preprint arXiv:2511.10138 (2025). https://arxiv.org/abs/2511.10138 [29] Kun Zhang et al. 2026. OneMall: One Architecture, More Scenarios — End-to-End Generative Recommender Family at Kuaishou E-Commerce. arXiv preprint arXiv:2601.21770 (2026). [30] Carolina Zheng, Minhui Huang, Dmitrii Pedchenko, Kaushik Rangadurai, Siyu Wang, Fan Xia, Gaby Nahum, Jie Lei, Yang Yang, Tao Liu, et al. 2025. Enhancing embedding representation stability in recommendation systems with semantic id. In Proceedings of the Nineteenth ACM Conference on Recommender Systems .954–957. [31] Zuowu Zheng et al. 2025. EGA-V2: An End-to-End Generative Framework for Industrial Advertising. arXiv preprint arXiv:2505.17549 (2025). [32] Guorui Zhou, Hengrui Hu, Hongtao Cheng, et al. 2025. OneRec-V2 Technical Report. arXiv preprint arXiv:2508.20900 (2025). https://arxiv.org/abs/2508.20900 [33] Jieming Zhu, Jinyang Liu, Weiqi Li, Jincai Lai, Xiuqiang He, Liang Chen, and Zibin Zheng. 2020. Ensembled CTR prediction via knowledge distillation. In 
+
+Proceedings of the 29th ACM international conference on information & knowledge management . 2941–2958. 
+
+## A Hyperparameters and Training Schedule 
+
+Architecture. Table 5 summarizes the shared backbone configu-ration and the depth of the Ranking Module. 
+
+Table 5: Gryphon-v2 architecture hyperparameters. 
+
+Parameter Value 
+
+Encoder layers 7 (bidirectional) Decoder layers 2Ranking Module layers 1Hidden dimension 1,024 Attention heads 16 Head dimension 64 Max user-history length 2,048 events Number of SID codebooks 3SID codebook size 32,000 Total parameters 0.5B 
+
+Offline training. We jointly optimize Gryphon-v2 with AdamW under FSDP2 sharding. Each GPU processes 32 requests per micro-batch; across 128 GPUs and four gradient accumulation steps, this yields an effective batch size of 16 ,384 requests. Offline training makes one chronological pass over the training window. The learn-ing rate increases linearly from 10 −5 to 3 × 10 −4 during the first 3,000 optimization steps and then decreases linearly to 7 × 10 −5 by the end of training. 
+
+Online updates. Serving is initialized from the offline checkpoint. Subsequent updates on fresh interaction data use the same optimizer and effective batch size as offline training, with the learning rate held constant at 7 × 10 −5, the final value of the offline schedule. 
+
+## B Generative AI Usage Disclosure 
+
+Generative AI tools were used to support manuscript revision, in-cluding English-language editing, clarity improvements, and high-level feedback on the presentation before submission. The authors manually reviewed and edited all AI-assisted suggestions and take full responsibility for the final manuscript.

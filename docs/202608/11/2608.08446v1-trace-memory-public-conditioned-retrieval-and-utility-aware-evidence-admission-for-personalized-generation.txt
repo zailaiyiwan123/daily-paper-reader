@@ -1,0 +1,393 @@
+Title: TRACE-Memory: Public-Conditioned Retrieval and Utility-Aware Evidence Admission for Personalized Generation
+
+URL Source: https://arxiv.org/pdf/2608.08446v1
+
+Published Time: Tue, 11 Aug 2026 01:03:25 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# TRACE-Memory: Public-Conditioned Retrieval and Utility-Aware Evidence Admission for Personalized Generation 
+
+# Jing Wang, Zhu Wang, Yifan Guo, Yulong Yang, Yunji Liang 
+
+Northwest Polytechnical University jingwang25@mail.nwpu.edu.cn, wangzhu@nwpu.edu.cn 
+
+Abstract 
+
+Personalized generation systems retrieve user history by request–memory relevance and inject it into the model con-text. Yet relevant history may concern the wrong preference aspect, duplicate public information, or provide insufficient support. We argue that personal memory should be used only when it adds utility beyond a public-only response. We pro-pose TRACE-Memory, a two-stage framework for selective personalization. Stage 1 queries for user-specific information missing from the request and public context, then retrieves a coverage-oriented candidate pool. Stage 2 admits a com-pact subset of source-traceable evidence units, or the empty set, according to response-level incremental utility. We pro-gressively train the query-generation and evidence-admission policies through structured SFT initialization, reduced-space stage-wise GRPO warm-up, and nested multi-sample Joint GRPO. On a 5,400-task benchmark spanning Controlled and Natural tasks from Goodreads, Amazon Reviews, and Red-dit, TRACE-Memory consistently outperforms random and lexical memory use, improves over semantic retrieval, re-mains competitive with frontier-LLM memory pipelines as local generator capacity increases, and conditions evidence admission on public-context sufficiency, supporting selective rather than default personalization. 
+
+# Introduction 
+
+Large language models can produce informative responses from a current request, public information about the target, and general knowledge encoded in their parameters. This public-only path, however, does not directly represent how a particular user evaluates an attribute, balances competing factors, or reacts to similar items. Historical reviews, choices, and interactions provide user-specific evidence beyond pub-lic information, making personal-history retrieval central to personalized generation (Salemi et al. 2024; Mysore et al. 2024; Salemi, Kallumadi, and Zamani 2024). Yet relevance to the request alone does not warrant placing a memory in the generation context. Request-level similarity may retrieve history about the wrong preference aspect; a relevant record may provide too little evidence for a stable user judgment; and even accurate personal information may merely repeat what the public context already provides. In-jecting such history increases context cost and can produce 
+
+Copyright © 2027, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. 
+
+Figure 1: Three failure modes of relevance-based memory use. irrelevant, unsupported, or unnecessary personalization. Se-mantic relevance therefore does not imply incremental utility beyond the public-only response path (Hu et al. 2026; Liu et al. 2024; Yoran et al. 2024; Shi et al. 2023). Figure 1 illustrates these three failure modes. Existing personalized-memory systems commonly rank user histories using lexical or semantic similarity, retrieval recall, or LLM-based selection before injecting the resulting context (Mysore et al. 2024; Salemi, Kallumadi, and Za-mani 2024; Xu, Shi, and Choi 2024). They primarily ask which records match the request, rather than what user-specific information remains missing after the request and public context are given, or whether the retrieved evidence will improve the final response. A selective system must therefore identify the missing preference aspect, reject weak evidence, and abstain when the public context is already suf-arXiv:2608.08446v1 [cs.AI] 9 Aug 2026 ficient. Although response-aware selection has begun to con-nect memory use with downstream model behavior (Fisher, Neville, and Park 2026), selective personalization still re-quires a public-conditioned information-gap model and an explicit option to use no personal evidence. To address this issue, we propose TRACE-Memory 
+
+(Task-conditioned Retrieval and Admission of Contextual 
+
+Evidence), a two-stage framework for conditional personal-evidence governance. Stage 1 generates public-conditioned queries that describe missing user preferences, reactions, or behavioral patterns, and uses them to build a coverage-oriented candidate pool. The retrieved memories are seg-mented into source-traceable evidence units. Stage 2 then admits a compact subset according to its response-level in-cremental utility relative to the public-only path. An explicit empty-set action lets the system abstain from personalization when history adds insufficient value. The policies are learned through a progressive curricu-lum comprising structured SFT, reduced-space stage-wise GRPO, and nested multi-sample Joint GRPO. Nested re-ward aggregation connects downstream evidence utility to upstream query generation without requiring simultaneous policy updates. We construct a 5,400-task benchmark span-ning Controlled and Natural tasks from Goodreads, Amazon Reviews, and Reddit, and evaluate multiple policy backbones and response generators. Experiments reveal three consistent patterns. TRACE-Memory improves over random and lexi-cal memory use in all six fixed-generator settings and over semantic retrieval in four, confirming that response utility is a stronger admission signal than relevance alone. As local generator capacity increases, the average gap to frontier-LLM pipelines shrinks from −0.28 / − 0.29 at 8B to 0.00 at 32B, showing that evidence governance can recover a substantial part of the system-level capability gap. Finally, from L0 to L3, TRACE-Memory raises its EMPTY rate from 7.69% to 12.53% while average reward increases from 0.31 to 0.62, demonstrating context-sensitive rather than default person-alization. 
+
+Contributions. Our main contributions are: 
+
+• We formulate personal-memory use as incremental evi-dence utility over a public-only response path, separating useful personalization from semantic relevance. 
+
+• We propose TRACE-Memory with public-conditioned, coverage-oriented candidate construction, utility-aware evidence admission, and explicit empty-set support. 
+
+• We develop a progressive policy-optimization curriculum with nested reward aggregation, and evaluate its candidate coverage, evidence quality, selective memory use, system-level competitiveness, and final response quality across multiple domains and model scales. 
+
+# Related Work 
+
+Personalization with User Memory 
+
+Personalized generation has evolved from conditioning on static personas or predefined user attributes (Zhang et al. 2018; Zheng et al. 2019) to using longitudinal histo-ries at inference time. LaMP and LongLaMP establish retrieval-augmented benchmarks across short- and long-form personalized tasks (Salemi et al. 2024; Kumar et al. 2024), while PEARL and ROPG optimize history re-trieval with downstream generation feedback (Mysore et al. 2024; Salemi, Kallumadi, and Zamani 2024). Parameter-efficient approaches instead encode preferences through shared adapters, user representations, or plug-in modules (Tan, Liu, and Jiang 2024; Liu et al. 2025). Long-term memory systems and benchmarks further study persistent experience, long-horizon recall, preference follow-ing, dynamic profiling, and incremental memory manage-ment (Park et al. 2023; Maharana et al. 2024; Zhao et al. 2025; Jiang et al. 2025; Hu, Wang, and McAuley 2025). These works establish the value of preserving and retrieving user history, but recall alone does not determine whether a memory should enter the current response. TRACE-Memory assumes an existing history and instead studies conditional evidence admission given the request and public context. 
+
+Adaptive Retrieval and Selective Personalization 
+
+RAG and REALM established retrieval as a non-parametric knowledge source (Lewis et al. 2020; Guu et al. 2020). Later methods make retrieval and augmentation conditional on uncertainty, task complexity, evidence quality, or estimated usefulness (Jiang et al. 2023; Jeong et al. 2024; Asai et al. 2024; Xu, Shi, and Choi 2024). Related studies show that irrelevant context can distract language models, supporting selective filtering rather than fixed context injection (Yoran et al. 2024; Shi et al. 2023). This issue is sharper for personal memory, where unnec-essary history can cause irrelevance, repetition, or unsup-ported user inference. OP-Bench directly studies such over-personalization (Hu et al. 2026), while selective prediction provides the broader principle that a model may abstain when evidence is insufficient (Geifman and El-Yaniv 2017). Unlike adaptive RAG, which mainly asks whether external knowl-edge is needed, TRACE-Memory treats the empty evidence set as the exact public-only path and admits personal evi-dence only for its incremental value over that path. 
+
+Response-Aware Memory Selection 
+
+LLM-generated query expansion and rewriting can improve retrieval beyond the original request (Wang, Yang, and Wei 2023; Gao et al. 2023a; Ma et al. 2023), but these methods do not model which user information remains missing after public context is observed. More closely related work uses downstream generation signals to calibrate retrieval, includ-ing REPLUG, PEARL, and ROPG (Shi et al. 2024; Mysore et al. 2024; Salemi, Kallumadi, and Zamani 2024). Their pri-mary decision remains document ranking for a given query. RUMS is the closest response-aware memory-selection method: it estimates memory utility from its information-theoretic effect on the response distribution and can return an empty set (Fisher, Neville, and Park 2026). TRACE-Memory differs in three ways. Utility is measured relative to a response already conditioned on public context; candidate coverage is separated from final admission over source-traceable evi-dence (Gao et al. 2023b); and downstream response utility is propagated to public-conditioned query generation. The Figure 2: Overview of TRACE-Memory. Stage 1 generates public-conditioned memory queries to retrieve candidate memories, and Stage 2 admits a compact evidence set for personalized response generation. resulting problem is conditional evidence governance rather than static retrieval or independent memory-subset selection. 
+
+# Method 
+
+Problem Definition 
+
+We consider a personalized generation task with a user re-quest q, public context p, and user memory bank Mu =
+
+{mu, 1, . . . , m u,N }. The public context contains task-level in-formation available independently of the target user, such as item attributes, public reviews, and population-level signals, but excludes general knowledge encoded in the generator. Let G be the frozen response generator. A determinis-tic compiler Γ( X) orders and formats selected personal ev-idence X for G, without retrieval, selection, or semantic rewriting. We set Γ( ∅) = ϵ, making the empty evidence set exactly the public-only generation path. A relevance-based system instead retrieves C = R(q, p, Mu) and generates 
+
+y ∼ pG(· | q, p, Γ( C)) , although relevance does not estab-lish value beyond p or improvement in the final response. Ideally, a selected personal-evidence set S is valued by its utility gain over the public-only path: 
+
+∆Uu(S; q, p ) = Ey∼pG(·| q,p, Γ( S)) [Uu(y)] 
+
+− Ey∼pG(·| q,p ) [Uu(y)] . (1) Because true utility Uu is unobserved during training, TRACE-Memory approximates it through coverage-oriented candidate construction and utility-aware evidence admission. 
+
+TRACE-Memory Overview 
+
+Figure 2 shows the full pipeline. Stage 1 maps (q, p ) to public-conditioned queries Z that describe missing user-specific in-formation. A frozen retriever and deterministic segmenter construct source-traceable candidate evidence, after which Stage 2 selects a compact set S or returns the empty set. The two structured policies are initialized by SFT and pro-gressively optimized over the nested query–evidence action space; retrieval, segmentation, context compilation, and re-sponse generation remain frozen. 
+
+Public-Conditioned Query Generation 
+
+Directly scoring a memory’s incremental value before re-trieval is difficult because that value depends jointly on the task and what the public context already provides. Stage 1 instead predicts the user-specific information missing from p
+
+and expresses these gaps as retrieval queries, turning unob-served value estimation into coverage-oriented retrieval. Unlike generic query expansion and rewriting (Wang, Yang, and Wei 2023; Gao et al. 2023a; Ma et al. 2023), TRACE-Memory uses a query policy πϕ to generate a canon-ical list of public-conditioned information gaps: 
+
+Z = ( z1, z 2, . . . , z L),Z ∼ πϕ(· | q, p ), L ≤ Lmax . (2) Each zi describes a missing user preference, reaction, toler-ance, or behavioral pattern rather than repeating public facts about the target item. The retriever executes these queries over personal history and aggregates their results under a shared budget: 
+
+Cmem = R(Z, Mu)= Aggregate [
+
+> zi∈Z
+
+Retrieve( zi, Mu)
+
+!
+
+. (3) Retrieval uses BGE-base-en-v1.5 embeddings (Xiao et al. 2023). Stage 1 is deliberately recall-oriented: it maximizes the opportunity to recover useful personal information but leaves admission to Stage 2. 
+
+Utility-Aware Evidence Admission 
+
+The coverage-oriented pool may contain redundant, weakly supported, or publicly covered memories. Stage 2 converts it into a precision-oriented set by evaluating the incremental utility of the evidence that would reach the generator. 
+
+Evidence action. Ψ produces fine-grained evidence units: 
+
+Cevi = Ψ( Cmem ) = {e1, e 2, . . . , e K }. (4) Each unit retains its source identifier, offsets, and timestamp, keeping selected evidence attributable to its original interac-Figure 3: Nested multi-sample Joint GRPO in TRACE-Memory. Stage 1 samples multiple query lists, and Stage 2 samples multiple evidence actions under each query-induced candidate pool. Each Stage 2 action receives direct evidence utility, while the mean utility within its action group defines the reward of the corresponding Stage 1 query. Flame and snowflake icons denote trainable and frozen modules, respectively. tion (Gao et al. 2023b). Stage 2 then outputs: 
+
+A =  ⟨id 1, a 1⟩, . . . , ⟨id J , a J ⟩, STOP 
+
+∼ πω (· | q, p, Z, C evi ), S(A) ⊆ Cevi , (5) where aj is an extractive anchor. Conditioning on Z preserves the information-gap intent, while EMPTY maps to S(A) = ∅.
+
+Incremental utility. Stage 1 targets potential value; Stage 2 evaluates realized utility. Because Uu is unavailable, we measure how S changes the frozen generator’s distribution along a target response y∗ relative to the public-only path. The target is used only for offline rewards, never as input to either policy or the retriever. At position t, let 
+
+pSt = pG(· | y∗
+
+> <t
+
+, q, p, Γ( S)) ,p∅ 
+
+> t
+
+= pG(· | y∗
+
+> <t
+
+, q, p ). (6) We use per-token likelihood gain and entropy reduction: 
+
+∆L(S) = T −1
+
+> T
+
+X
+
+> t=1
+
+log pSt (y∗ 
+
+> t
+
+) − log p∅ 
+
+> t
+
+(y∗ 
+
+> t
+
+) ,
+
+∆H(S) = T −1
+
+> T
+
+X
+
+> t=1
+
+H(p∅ 
+
+> t
+
+) − H(pSt ) .
+
+(7) Positive ∆L(S) means that the evidence better explains the observed response; positive ∆H(S) means that it reduces uncertainty along that path. The evidence reward combines these utility signals with compactness and validity constraints: 
+
+RE (A) = ∆ L(S(A)) + η 1[∆ L(S(A)) ≥ − ϵL] ∆ H(S(A)) 
+
+− λE Cost E (S(A)) − λV 1[Invalid( A)] ,
+
+Cost E (S) = αE |S| + βE Len(Γ( S)) .
+
+(8) Invalid actions include malformed outputs, unavailable ev-idence identifiers, and ID–anchor inconsistencies. Since 
+
+Γ( ∅) = ϵ, RE (EMPTY ) = 0 .
+
+Progressive Warm Start and Joint GRPO 
+
+Training proceeds from SFT through reduced-space stage-wise GRPO to nested multi-sample Joint GRPO. This cur-riculum limits early branching before full query–evidence ex-ploration. Both policies use group-relative policy optimiza-tion (GRPO) (Shao et al. 2024). 
+
+Structured SFT initialization. The two policies are first trained independently on teacher-provided public-conditioned queries and source-grounded evidence actions: 
+
+L(1) SFT = −E [log πϕ(Z∗ | q, p )] ,
+
+L(2) SFT = −E [log πω (A∗ | q, p, Z, C evi )] . (9) SFT ensures valid actions but does not optimize utility. 
+
+Reduced-space stage-wise warm-up. We freeze SFT-initialized Stage 1 and train Stage 2 in one query-induced candidate space per task, then freeze Stage 2 and train Stage 1 with one downstream evidence rollout per query. This re-stricted branching warms up utility-oriented behavior before joint exploration; short SFT refreshes preserve valid outputs. 
+
+Nested multi-sample Joint GRPO. After warm-up, we ex-pand to the nested action space in Figure 3. For each task 
+
+(q, p, Mu, y ∗), Stage 1 samples M query lists and Stage 2 samples N evidence actions per induced pool: 
+
+Zm ∼ πϕ(· | q, p ), m = 1 , . . . , M, Am,n ∼ πω (· | q, p, Z m, C evi ,m ), n = 1 , . . . , N. (10) From each Zm, retrieval yields Cmem ,m and segmentation yields Cevi ,m .Each Stage 2 action receives its direct evidence reward. The mean reward of the N Stage 2 actions under one query becomes the sample-level reward of that Stage 1 query: 
+
+r(2)  
+
+> m,n
+
+= RE (Am,n ), ¯r(2)  
+
+> m
+
+= N −1
+
+> N
+
+X
+
+> n=1
+
+r(2) 
+
+> m,n
+
+,r(1)  
+
+> m
+
+= ¯ r(2)  
+
+> m
+
+− λQ Cost Q(Zm),
+
+Cost Q(Zm) = αQ|Zm| + βQ Len( Zm).
+
+(11) The within-query mean ¯r(2)  
+
+> m
+
+is one Stage 1 sample reward, not its GRPO group mean. 
+
+Group-relative updates. Stage 2 normalizes rewards across the N evidence actions conditioned on the same query Zm.Stage 1 separately normalizes the resulting query rewards across the M query lists sampled for the same task: 
+
+A(2)  
+
+> m,n
+
+= r(2)  
+
+> m,n
+
+− ¯r(2) 
+
+> m
+
+σ(2)  
+
+> m
+
++ ϵA
+
+, ¯r(1) = M −1
+
+> M
+
+X
+
+> m=1
+
+r(1)  
+
+> m
+
+,A(1)  
+
+> m
+
+= r(1)  
+
+> m
+
+− ¯r(1) 
+
+σ(1) + ϵA
+
+.
+
+(12) Each structured action receives one group-relative advantage. Both policies use standard GRPO with token-level clipping and KL regularization to their SFT references, following the clipped-update principle of PPO (Schulman et al. 2017). The other policy remains frozen during each update. Joint GRPO explores and scores nested M × N query– evidence actions; the policies are updated separately. 
+
+Inference. At test time, both policies decode deterministi-cally without a target response: 
+
+ˆZ = Decode( πϕ(· | q, p )) ,
+
+ˆCmem = R( ˆZ, Mu), ˆCevi = Ψ( ˆCmem ),
+
+ˆA = Decode 
+
+
+
+πω (· | q, p, ˆZ, ˆCevi )
+
+
+
+,
+
+ˆS = S( ˆA), y ∼ pG(· | q, p, Γ( ˆS)) .
+
+(13) 
+
+# Experiments 
+
+We evaluate TRACE-Memory through four questions. H1 
+
+examines end-to-end quality with the response generator fixed. H2 asks whether better evidence governance helps local generators compete with frontier-model personaliza-tion pipelines. H3 tests whether memory admission changes with the available public context. H4 analyzes candidate cov-erage, evidence quality, response-level evidence utility, and the contribution of progressive policy optimization. 
+
+Experimental Setup 
+
+Data. Training uses 4,500 tasks: 2,500 rule-generated Goodreads Controlled tasks (Wan and McAuley 2018), in-stantiated from predefined task types and book metadata, and 2,000 Natural tasks from Goodreads, Amazon Re-views (Hou et al. 2024), and Reddit (Baumgartner et al. 2020) (1,000/500/500). Validation and test each add 450 tasks in the same source proportions, yielding 5,400 total. Each includes a request, public context, target-user history, and reference response; target-item interactions are excluded from memory. Construction and splits are detailed in the supplementary material. 
+
+Models and training. Stage 1 uses Qwen3-1.7B or Qwen3-4B (Yang et al. 2025); Stage 2 uses Qwen3-4B or Llama-3.2-3B (Meta AI 2024); both use LoRA (Hu et al. 2022). The BGE-base-en-v1.5 retriever (Xiao et al. 2023), seg-menter, and generator remain frozen, while DeepSeek-V4-Flash (DeepSeek-AI et al. 2026) constructs SFT tar-gets. Training uses structured SFT, reduced-space stage-wise GRPO (Shao et al. 2024), and nested multi-sample Joint GRPO. Local generators are Qwen3-8B, Llama-3.1-8B (Grattafiori et al. 2024), Qwen3-14B, and Qwen3-32B; frontier generators are DeepSeek-V4-Flash, Gemini 3.1 Flash-Lite (Google 2026), and GPT-5.4 (OpenAI 2026). Comparisons share generation settings and evidence budgets; full training details are in the supplement. 
+
+Baselines. Public-only , Random , and All use no evidence, random history, or the full pool. Relevance baselines use 
+
+BM25 (Robertson and Zaragoza 2009), BGE-based Seman-tic Similarity , or Rule-based+Semantic . LLM+LLM uses a frontier LLM for query generation and evidence selection: DeepSeek-V4-Flash is fixed for retrieval analysis, while end-to-end tests use the corresponding frontier generator. Oracle Target-Response Retrieval uses the unavailable reference only as a candidate-coverage upper bound. 
+
+Evaluation. We report Recall@ K for useful and useful-plus-borderline memories, and precision, recall, and F1 for evidence admission. GPT-5.4 and Gemini 3.1 Flash indepen-dently assign useful, borderline, and not useful labels; border-line disagreements are manually adjudicated. These labelers differ from the DeepSeek-V4-Flash LLM+LLM baseline. Following human-preference protocols (Chiang et al. 2024), five volunteers compare anonymized, order-randomized response pairs under a double-blind rubric cov-ering task completion, incremental personalization, evidence faithfulness, personalization appropriateness, and auxiliary language quality. Majority vote determines the result; ties (under 10%) are discussed. The supplementary material pro-vides full annotation details. We report signed preference advantage: 
+
+Adv( A, B ) = Pr( A ≻ B) − Pr( B ≻ A), (14) where positive values favor A. We also report EMPTY rate, evidence length, reward mean shift, and Wasserstein distance. 
+
+End-to-End Personalized Generation Quality 
+
+Table 1 tests H1 with the generator fixed. Methods share in-puts, evidence budgets, and generation settings; only mem-ory querying and selection differ. In LLM+LLM, the col-umn generator also makes memory decisions. Cells report TRACE-Memory’s signed advantage. TRACE-Memory outperforms Random and BM25 in all six settings, by 0.11–0.38 and 0.05–0.17, respectively. The former exposes the cost of arbitrary history, while the latter shows the limitation of lexical matching. TRACE-Memory also beats Semantic Similarity in four settings. Mixed results against Public-only and All show that neither omitting mem-ory nor injecting the full pool is reliably optimal; evidence must add value beyond the public path. LLM+LLM leads in five settings by 0.02–0.12, while TRACE-Memory leads by 0.06 with GPT-5.4 on Natural tasks. That baseline uses the frontier generator for querying and selection, whereas TRACE-Memory uses trained smaller policies. Thus, TRACE-Memory reliably improves unfiltered and lexical memory use, usually improves semantic retrieval, and approaches—but does not uniformly surpass—frontier-LLM memory processing. Controlled Natural Baseline DeepSeek-V4-Flash Gemini 3.1 Flash-Lite GPT-5.4 DeepSeek-V4-Flash Gemini 3.1 Flash-Lite GPT-5.4 Public-only 0.12 0.18 0.04 -0.02 0.03 -0.05 Random 0.29 0.38 0.15 0.23 0.11 0.14                               
+
+> All 0.22 0.15 -0.08 0.09 -0.02 -0.15
+> BM25 0.05 0.14 0.17 0.10 0.07 0.07 Semantic similarity 0.12 0.11 -0.04 0.03 0.09 -0.01 LLM+LLM -0.02 -0.11 -0.12 -0.06 -0.07 0.06 Rule-based+Semantic 0.06 -0.01 -0.04 0.03 0.08 0.02
+
+Table 1: Signed preference advantage of TRACE-Memory over each baseline. Positive values favor TRACE-Memory; gray shading indicates direction only, not statistical significance. Bold indicates | Adv | > 0.10 .                                     
+
+> DeepSeek-V4-Flash Gemini 3.1 Flash-Lite GPT-5.4 Model Controlled Natural Controlled Natural Controlled Natural Average Qwen3-8B -0.32 -0.28 -0.21 -0.22 -0.38 -0.27 -0.28
+> Llama-3.1-8B -0.31 -0.25 -0.29 -0.23 -0.36 -0.31 -0.29
+> Qwen3-14B -0.11 -0.05 -0.09 -0.13 -0.16 -0.11 -0.11
+> Qwen3-32B 0.01 -0.02 0.07 0.05 -0.09 -0.03 0.00
+
+Table 2: Signed preference advantage of local generators with TRACE-Memory over frontier generators with LLM query reformulation and semantic retrieval. Positive values favor the local system; bold indicates | Adv | > 0.10 .                  
+
+> Context EMPTY (%) ↑
+> Evidence tokens Anchor tokens Reward L0 7.69 213 2.52 0.31 L1 8.03 367 4.28 0.27 L2 10.11 294 3.40 0.41 L3 12.53 257 3.25 0.62
+
+Table 3: Memory use under public-context interventions. Evidence tokens are the realized personal context supplied to the generator; reward is averaged over all tasks, including EMPTY decisions. Best and second-best values are bold and underlined, respectively; token columns are minimized. 
+
+System-Level Competitiveness 
+
+H2 compares complete systems: Table 2 pairs local genera-tors and TRACE-Memory against frontier generators with LLM query reformulation and semantic retrieval, testing whether evidence governance can offset part of the gener-ator gap. Average signed advantage improves with scale: −0.28 / −
+
+0.29 for the two 8B generators, −0.11 for Qwen3-14B, and 
+
+0.00 for Qwen3-32B. The 32B system matches or exceeds the DeepSeek-V4-Flash and Gemini 3.1 Flash-Lite pipelines in three settings but remains behind GPT-5.4; the 14B deficits narrow to 0.05–0.16. This identifies a capacity threshold: selective evidence is system-level competitive only with a sufficiently capable local generator. Together with H1, this shows that evidence governance offsets part, but not all, of the gap: GPT-5.4 and both 8B sys-tems retain their respective advantages. TRACE-Memory’s two local policy passes place its complexity between fixed                          
+
+> Controlled Natural Method U@20 U+B@20 U@30 U+B@30 Rule Query 57.50 58.50 51.00 55.90 Oracle Target-Response 100.00 87.00 100.00 87.80 LLM Query 96.20 92.70 89.90 89.10 TRACE (Qwen3-1.7B) 85.70 89.80 87.50 87.00 TRACE (Qwen3-4B) 91.40 96.10 91.70 92.80
+
+Table 4: Candidate-memory recall (%). U and B denote use-ful and borderline memories; Controlled and Natural use 
+
+K = 20 and K = 30 , respectively. Best and second-best values are bold and underlined. retrieval and per-instance frontier-LLM processing; without comparable measurements, we make no hardware-efficiency claim. 
+
+Public-Context-Aware Selective Memory Use 
+
+H3 fixes the request and history while varying public context. 
+
+L0 contains metadata, L1 same-item review snippets, and 
+
+L2 aggregated aspect cards. L3 is an oracle that uses the reference response only to select task-relevant public-side information; it does not place target-user preferences in the public context. L1 and L2 are alternative representations, so their differences isolate public-context effects on admission. Table 3 shows EMPTY rate rising monotonically from 7.69% at L0 to 12.53% at L3, especially under structured and oracle public information. Admission is therefore not fixed by request–history similarity: the same history is rejected more often as public context covers the task. L1 yields the longest evidence and lowest reward; L2 and (a) Qwen3-8B (b) Llama-3.1-8B (c) Qwen3-14B (d) Qwen3-32B 
+
+Figure 4: Reward distributions for personalized and public-only generation. WD denotes Wasserstein distance.                                             
+
+> Dataset Metric BM25 Semantic similarity LLM query + LLM select Rule query + semantic select Qwen3-4B + Qwen3-4B Qwen3-1.7B + Qwen3-4B Qwen3-4B + Llama-3.2-3B Controlled Precision 3.42 9.37 60.72 26.12 61.09 56.83 57.93 Recall 17.52 23.83 89.22 42.47 70.12 58.52 60.17 F1 5.72 13.45 72.26 32.35 65.29 57.66 59.03 Natural Precision 3.94 17.27 32.62 39.26 48.25 47.60 50.29
+> Recall 21.23 27.95 60.24 52.78 54.48 42.14 52.30 F1 6.65 21.35 42.32 45.03 51.18 44.70 51.28
+
+Table 5: Candidate-evidence admission precision, recall, and F1 (%). Model pairs are ordered as Stage 1 + Stage 2. Best and second-best values in each dataset–metric row are bold and underlined. L3 shorten evidence relative to L1 while improving reward. L0 remains shortest, so length is not monotonic. H3 is sup-ported at the decision level: public context changes both memory use and admitted evidence rather than mechanically compressing every personal context. 
+
+Internal Mechanism Analysis 
+
+H4 follows candidate coverage, evidence admission, re-sponse utility, and policy optimization. 
+
+Candidate coverage and evidence admission. Table 4 eval-uates Stage 1 under the fixed Controlled and Natural budgets (K = 20 and K = 30 ). TRACE with Qwen3-4B reaches 96.10% and 92.80% useful-plus-borderline recall, far above Rule Query; Oracle Target-Response is an unavailable upper bound. Table 5 then evaluates the admitted set. LLM+LLM achieves high recall but only 32.62% Natural precision, whereas TRACE variants reach 47.60–50.29% precision and 44.70–51.28% F1. Stage 1 thus preserves candidate coverage while Stage 2 improves evidence purity. 
+
+Response-level evidence utility. Figure 4 compares person-alized and public-only reward distributions under four local generators. Mean reward shifts are positive ( +0 .21 to +0 .41 ), with Wasserstein distances of 0.2125–0.4075. The consis-tent displacement associates admitted evidence with higher response-level utility across generator scales, although it is not a controlled context-length ablation. Single-signal reward ablations further show that using only ∆L causes policy col-lapse, whereas using only ∆H yields unstable reward tra-jectories; neither setting completes training. This motivates combining the two signals in the gated evidence reward rather than optimizing either one alone. 
+
+Progressive policy optimization. With Qwen3-4B policies and Qwen3-8B generation, Table 6 compares TRACE-SFT, TRACE-Stagewise, and TRACE-Full. This comparison di-rectly tests each optimization phase.          
+
+> Variant Evidence F1 Average evidence reward End-to-end preference TRACE-SFT 21.45 0.102 -0.27 TRACE-Stagewise 40.77 0.194 -0.15
+> TRACE-Full 65.29 0.305 –
+
+Table 6: Ablation over the progressive training curriculum. End-to-end preference is the signed advantage of each re-duced variant relative to TRACE-Full. Best and second-best reported values are bold and underlined. Evidence F1 rises from 21.45 to 40.77 and 65.29; aver-age reward rises from 0.102 to 0.194 and 0.305. Stage-wise warm-up reduces the TRACE-Full deficit from −0.27 to 
+
+−0.15 . Together, coverage, evidence purity, response utility, and the direct training-stage ablation support H4. The re-trieval and admission comparisons separately diagnose the two stages. 
+
+# Conclusion 
+
+We proposed TRACE-Memory, which retrieves user-specific information missing from public context and admits evidence by its incremental response utility, with an explicit empty-set decision. Across a 5,400-task benchmark, it improves relevance-based memory use, reaches average parity with frontier pipelines at 32B, and increases abstention as public context becomes sufficient. Mechanism analysis attributes these gains to candidate coverage, utility-aware admission, and progressive policy optimization, while stronger genera-tors remain complementary. Future work will study longer evolving interactions, cross-generator utility calibration, and matched latency and monetary cost. References 
+
+Asai, A.; Wu, Z.; Wang, Y.; Sil, A.; and Hajishirzi, H. 2024. Self-RAG: Learning to Retrieve, Generate, and Cri-tique through Self-Reflection. In International Conference on Learning Representations .Baumgartner, J.; Zannettou, S.; Keegan, B.; Squire, M.; and Blackburn, J. 2020. The Pushshift Reddit Dataset. In Pro-ceedings of the International AAAI Conference on Web and Social Media , volume 14, 830–839. Chiang, W.-L.; Zheng, L.; Sheng, Y.; Angelopoulos, A. N.; Li, T.; Li, D.; Zhu, B.; Zhang, H.; Jordan, M.; Gonzalez, J. E.; and Stoica, I. 2024. Chatbot Arena: An Open Platform for Evaluating LLMs by Human Preference. In Proceedings of the 41st International Conference on Machine Learning ,volume 235, 8359–8388. DeepSeek-AI; et al. 2026. DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence. arXiv preprint arXiv:2606.19348 .Fisher, J.; Neville, J.; and Park, C. Y. 2026. Response-Aware User Memory Selection for LLM Personalization. arXiv preprint arXiv:2604.14473 .Gao, L.; Ma, X.; Lin, J.; and Callan, J. 2023a. Precise Zero-Shot Dense Retrieval without Relevance Labels. In Pro-ceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 1762– 1777. Gao, T.; Yen, H.; Yu, J.; and Chen, D. 2023b. Enabling Large Language Models to Generate Text with Citations. In 
+
+Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , 6465–6488. Geifman, Y.; and El-Yaniv, R. 2017. Selective Classification for Deep Neural Networks. In Advances in Neural Informa-tion Processing Systems , volume 30. Google. 2026. Gemini 3.1 Flash-Lite. https://ai.google.dev/ gemini-api/docs/models/gemini-3.1-flash-lite. Accessed July 27, 2026. Grattafiori, A.; et al. 2024. The Llama 3 Herd of Models. 
+
+arXiv preprint arXiv:2407.21783 .Guu, K.; Lee, K.; Tung, Z.; Pasupat, P.; and Chang, M.-W. 2020. REALM: Retrieval-Augmented Language Model Pre-Training. In Proceedings of the 37th International Con-ference on Machine Learning , volume 119, 3929–3938. Hou, Y.; Li, J.; Fu, X.; He, Z.; Yan, A.; Chen, X.; and McAuley, J. 2024. Bridging Language and Items for Re-trieval and Recommendation: Benchmarking LLMs as Se-mantic Encoders. arXiv preprint arXiv:2403.03952 .Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.; Wang, L.; and Chen, W. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations .Hu, Y.; Long, Z.; Guo, J.; Sui, X.; Fu, X.; Zhao, W.; Zhao, Y.; and Qin, B. 2026. OP-Bench: Benchmarking Over-Personalization for Memory-Augmented Personalized Con-versational Agents. arXiv preprint arXiv:2601.13722 .Hu, Y.; Wang, Y.; and McAuley, J. 2025. Evaluating Mem-ory in LLM Agents via Incremental Multi-Turn Interactions. 
+
+arXiv preprint arXiv:2507.05257 .Jeong, S.; Baek, J.; Cho, S.; Hwang, S. J.; and Park, J. 2024. Adaptive-RAG: Learning to Adapt Retrieval-Augmented Large Language Models through Question Complexity. In 
+
+Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) ,7036–7050. Jiang, B.; Hao, Z.; Cho, Y.-M.; Li, B.; Yuan, Y.; Chen, S.; Ungar, L.; Taylor, C. J.; and Roth, D. 2025. Know Me, Respond to Me: Benchmarking LLMs for Dynamic User Profiling and Personalized Responses at Scale. arXiv preprint arXiv:2504.14225 .Jiang, Z.; Xu, F.; Gao, L.; Sun, Z.; Liu, Q.; Dwivedi-Yu, J.; Yang, Y.; Callan, J.; and Neubig, G. 2023. Active Retrieval Augmented Generation. In Proceedings of the 2023 Confer-ence on Empirical Methods in Natural Language Processing ,7969–7992. Kumar, I.; Viswanathan, S.; Yerra, S.; Salemi, A.; Rossi, R. A.; Dernoncourt, F.; Deilamsalehy, H.; Chen, X.; Zhang, R.; Agarwal, S.; Lipka, N.; Van Nguyen, C.; Nguyen, T. H.; and Zamani, H. 2024. LongLaMP: A Benchmark for Personalized Long-Form Text Generation. arXiv preprint arXiv:2407.11016 .Lewis, P.; Perez, E.; Piktus, A.; Petroni, F.; Karpukhin, V.; Goyal, N.; Küttler, H.; Lewis, M.; Yih, W.-t.; Rocktäschel, T.; Riedel, S.; and Kiela, D. 2020. Retrieval-Augmented Gen-eration for Knowledge-Intensive NLP Tasks. In Advances in Neural Information Processing Systems , volume 33, 9459– 9474. Liu, J.; Zhu, Y.; Wang, S.; Wei, X.; Min, E.; Lu, Y.; Wang, S.; Yin, D.; and Dou, Z. 2025. LLMs + Persona-Plug = Personalized LLMs. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 9373–9385. Liu, N. F.; Lin, K.; Hewitt, J.; Paranjape, A.; Bevilacqua, M.; Petroni, F.; and Liang, P. 2024. Lost in the Middle: How Language Models Use Long Contexts. Transactions of the Association for Computational Linguistics , 12: 157–173. Ma, X.; Gong, Y.; He, P.; Zhao, H.; and Duan, N. 2023. Query Rewriting in Retrieval-Augmented Large Language Models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , 5303–5315. Maharana, A.; Lee, D.-H.; Tulyakov, S.; Bansal, M.; Barbieri, F.; and Fang, Y. 2024. Evaluating Very Long-Term Conver-sational Memory of LLM Agents. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 13851–13870. Meta AI. 2024. Llama 3.2: Revolutionizing Edge AI and Vi-sion with Open, Customizable Models. https://www.llama. com/docs/model-cards-and-prompt-formats/llama3_2/. Mysore, S.; Lu, Z.; Wan, M.; Yang, L.; Sarrafzadeh, B.; Menezes, S.; Baghaee, T.; Gonzalez, E. B.; Neville, J.; and Safavi, T. 2024. Pearl: Personalizing Large Language Model Writing Assistants with Generation-Calibrated Retrievers. In Proceedings of the 1st Workshop on Customizable NLP: Progress and Challenges in Customizing NLP for a Domain, Application, Group, or Individual , 198–219. OpenAI. 2026. Introducing GPT-5.4. https://openai.com/ index/introducing-gpt-5-4/. Accessed July 27, 2026. Park, J. S.; O’Brien, J. C.; Cai, C. J.; Morris, M. R.; Liang, P.; and Bernstein, M. S. 2023. Generative Agents: Interactive Simulacra of Human Behavior. In Proceedings of the 36th Annual ACM Symposium on User Interface Software and Technology .Robertson, S.; and Zaragoza, H. 2009. The Probabilistic Relevance Framework: BM25 and Beyond. Foundations and Trends in Information Retrieval , 3(4): 333–389. Salemi, A.; Kallumadi, S.; and Zamani, H. 2024. Opti-mization Methods for Personalizing Large Language Mod-els through Retrieval Augmentation. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval , 753–761. Salemi, A.; Mysore, S.; Bendersky, M.; and Zamani, H. 2024. LaMP: When Large Language Models Meet Personalization. In Proceedings of the 62nd Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) ,7370–7392. Schulman, J.; Wolski, F.; Dhariwal, P.; Radford, A.; and Klimov, O. 2017. Proximal Policy Optimization Algorithms. 
+
+arXiv preprint arXiv:1707.06347 .Shao, Z.; Wang, P.; Zhu, Q.; Xu, R.; Song, J.; Bi, X.; Zhang, H.; Zhang, M.; Li, Y. K.; Wu, Y.; and Guo, D. 2024. DeepSeekMath: Pushing the Limits of Mathemati-cal Reasoning in Open Language Models. arXiv preprint arXiv:2402.03300 .Shi, F.; Chen, X.; Misra, K.; Scales, N.; Dohan, D.; Chi, E.; Schärli, N.; and Zhou, D. 2023. Large Language Models Can Be Easily Distracted by Irrelevant Context. arXiv preprint arXiv:2302.00093 .Shi, W.; Min, S.; Yasunaga, M.; Seo, M.; James, R.; Lewis, M.; Zettlemoyer, L.; and Yih, W.-t. 2024. REPLUG: Retrieval-Augmented Black-Box Language Models. In Pro-ceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) ,8371–8384. Tan, Z.; Liu, Z.; and Jiang, M. 2024. Personalized Pieces: Efficient Personalized Large Language Models through Col-laborative Efforts. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , 6459– 6475. Wan, M.; and McAuley, J. 2018. Item Recommendation on Monotonic Behavior Chains. In Proceedings of the 12th ACM Conference on Recommender Systems , 86–94. Wang, L.; Yang, N.; and Wei, F. 2023. Query2doc: Query Expansion with Large Language Models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , 9414–9423. Xiao, S.; Liu, Z.; Zhang, P.; Muennighoff, N.; Lian, D.; and Nie, J.-Y. 2023. C-Pack: Packed Resources for General Chi-nese Embeddings. arXiv preprint arXiv:2309.07597 .Xu, F.; Shi, W.; and Choi, E. 2024. RECOMP: Improving Retrieval-Augmented LMs with Compression and Selective Augmentation. In International Conference on Learning Representations .Yang, A.; et al. 2025. Qwen3 Technical Report. arXiv preprint arXiv:2505.09388 .Yoran, O.; Wolfson, T.; Ram, O.; and Berant, J. 2024. Making Retrieval-Augmented Language Models Robust to Irrelevant Context. In International Conference on Learning Represen-tations .Zhang, S.; Dinan, E.; Urbanek, J.; Szlam, A.; Kiela, D.; and Weston, J. 2018. Personalizing Dialogue Agents: I Have a Dog, Do You Have Pets Too? In Proceedings of the 56th Annual Meeting of the Association for Computational Lin-guistics (Volume 1: Long Papers) , 2204–2213. Zhao, S.; Hong, M.; Liu, Y.; Hazarika, D.; and Lin, K. 2025. Do LLMs Recognize Your Preferences? Evaluating Person-alized Preference Following in LLMs. In International Con-ference on Learning Representations .Zheng, Y.; Chen, G.; Huang, M.; Liu, S.; and Zhu, X. 2019. Personalized Dialogue Generation with Diversified Traits. 
+
+arXiv preprint arXiv:1901.09672 .
