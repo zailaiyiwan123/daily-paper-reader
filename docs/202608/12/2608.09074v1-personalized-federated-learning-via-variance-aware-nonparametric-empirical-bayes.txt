@@ -1,0 +1,8007 @@
+Title: Personalized Federated Learning via Variance-Aware Nonparametric Empirical Bayes
+
+URL Source: https://arxiv.org/pdf/2608.09074v1
+
+Published Time: Tue, 11 Aug 2026 01:48:03 GMT
+
+Number of Pages: 83
+
+Markdown Content:
+# Personalized Federated Learning via Variance-Aware Nonparametric Empirical Bayes 
+
+Jae Ho Chang, Arnab Auddy, and Subhadeep Paul 
+
+Department of Statistics, The Ohio State University 
+
+Abstract 
+
+We develop a new approach to Personalized Federated Learning across heteroge-neous clients using Nonparametric Empirical Bayes (NPEB). Leveraging the asymp-totic normality of local parameter estimates obtained from Empirical Risk Minimiza-tion or M-estimation, our method formulates these estimates as noisy observations to estimate an unknown shared prior via Nonparametric Maximum Likelihood. Akey challenge in applying NPEB in this setting is that existing approaches assume known fixed variances, which is not true in practice. To address this, we introduce a Variance-Aware Nonparametric Empirical Bayes (VANEB) framework that leverages the parameter-dependent asymptotic variance of local M-estimators. A key techni-cal contribution is a generalized Tweedie’s formula for this heteroskedastic setting. We then establish non-asymptotic error rates for density estimation in the average squared Hellinger distance and derive an oracle denoising inequality that provides error bounds for our estimator. While our theoretical guarantees are rooted in the asymp-totic regime of M-estimators, we empirically explore heuristic extensions of VANEB to modern federated learning settings involving Deep Neural Networks (DNNs). For DNNs, we propose VANEB-head and VANEB-FT, which personalize the last fully connected layer via an NPEB step using an approximate diagonal variance estimator. We show that our method has strong performance on popular vision datasets MNIST and CIFAR-10, using a convolutional neural network architecture. 
+
+Keywords: Federated Learning, Empirical Bayes, Nonparametric Maximum Likelihood, Tweedie’s Formula, Deep Neural Networks, Personalization 
+
+# 1 Introduction 
+
+Modern machine learning and artificial intelligence applications increasingly rely on data distributed across large numbers of devices or institutions, where ownership, privacy, or 1arXiv:2608.09074v1 [stat.ML] 10 Aug 2026 communication constraints may preclude centralized data collection. Federated Learning (FL) provides a framework for training models collaboratively in such settings by keeping raw data local to participating “edge” databases or devices and exchanging only information required for model learning [McMahan et al., 2017b,a, Wei et al., 2020, Karimireddy et al., 2020]. The seminal work of McMahan et al. [2017a] introduced the Federated Averaging (FedAvg) algorithm, which periodically aggregates locally trained model updates at a cen-tral server. Since then, extensive research has sought to improve optimization efficiency and robustness under communication and resource constraints, as well as data and system heterogeneity [Kairouz et al., 2021, Li et al., 2020, Karimireddy et al., 2020, Auddy et al., 2026]. More recently, federated learning methods have been developed for Large Language Models (LLMs) [Yao et al., 2024, Zhuang et al., 2023], including parameter-efficient fine-tuning approaches based on the Low-Rank Adaptation (LoRA) framework [Hu et al., 2022, Babakniya et al., 2023]. In real-world FL deployments, clients often differ substantially in their underlying data distributions, and this statistical heterogeneity can significantly impair the performance of a single globally shared model [Li et al., 2020, Karimireddy et al., 2020]. To address this, Personalized Federated Learning (PFL) seeks to train distinct, customized models for each client while still leveraging the shared knowledge of the federation [Karimireddy et al., 2020, Tan et al., 2022, Fallah et al., 2020, Jiang et al., 2019, Deng et al., 2020, Mansour et al., 2020, Ozkara et al., 2023, Kotelevskii et al., 2022, Dinh et al., 2020, Collins et al., 2021, Oh et al., 2021]. These methods seek to improve predictive performance for each client under its local data distribution, while exploiting shared structure across clients to facilitate knowledge transfer among clients. Existing personalization strategies include meta-learning approaches [Jiang et al., 2019, Fallah et al., 2020], multi-task learning formulations [Smith et al., 2017, Dinh et al., 2020], representation learning based methods [Collins et al., 2021, Oh et al., 2021, Liang et al., 2020, Arivazhagan et al., 2019], and Bayesian methods [Ozkara et al., 2023, Kotelevskii et al., 2022, Makhija et al., 2024], among others. In this paper, we cast personalized federated learning as a compound decision problem governed by empirical Bayes (EB) principles [Robbins, 1956]. Instead of transmitting raw data, each client transmits a local estimate to the central server. The server models these local summary statistics as noisy realizations of latent client-specific parameters, and the shared prior is estimated from the collection of local estimators. Then, our goal is to estimate the prior and denoise the local client estimates by EB [Efron, 2014]. We propose 2to employ Nonparametric empirical Bayes (NPEB) to avoid misspecification of the prior by learning a prior directly from the data via nonparametric maximum likelihood (NPMLE) [Saha and Guntuboyina, 2020, Soloff et al., 2025]. A fundamental limitation of existing NPEB theory and algorithms [Jiang and Zhang, 2009, Saha and Guntuboyina, 2020, Soloff et al., 2025] is their reliance on the assumption of 
+
+known and parameter-independent covariance structures. In the context of FL, this premise is frequently violated even in the asymptotic regime. For example, for M-estimators and generalized linear models (GLMs), the covariance of a client’s local estimator is unknown and is often a function of the client parameter that is being estimated (e.g., the inverse of the Fisher information or a “sandwich” formula). Standard NPEB methods in Saha and Guntuboyina [2020] and Soloff et al. [2025], which require known covariance matrices, are therefore not applicable in Federated Learning. Parameter-dependent covariance structures also change the structure of the NPMLE. The problem remains convex in the mixing distribution, but the stationarity condition for the support points requires additional terms involving the gradients of the variance functions (see Section 3.1). As a consequence, the support no longer lies on the ridgeline manifold of Ray and Lindsay [2005], and the closed-form updates available for fixed covariances do not apply. We address this gap with the Variance-Aware Nonparametric EB (VANEB) method. We incorporate the parameter-dependent covariance matrix into the likelihood model and derive the corresponding generalized Tweedie’s formula . We derive oracle denoising inequal-ities that bound the excess risk of the VANEB estimator relative to the oracle posterior mean, which requires knowledge of the true unknown prior. For computation, we propose a pseudo-EM algorithm that alternates between solving fixed-covariance NPMLE subprob-lems and updating the covariances at the newly estimated support points. Our framework considers two distinct sources of heterogeneity. The first is cross-client heterogeneity, which is the variation in the latent parameters {θk}Kk=1 across clients, en-coded in the unknown prior G0. This is the usual FL heterogeneity that motivates per-sonalization: different clients have different true parameters, and a single global model is suboptimal. Yet, information sharing is possible if one can identify other similar clients, which requires knowing G0. The second is heteroskedasticity within each client’s model: the local covariance Σk(θ) depends on the parameter θ itself. VANEB addresses both sources of heterogeneity simultaneously by learning G0 via the NPMLE and using it to estimate client-specific posterior means. Our theory takes the 3Gaussian approximation of the M-estimators as the working model, which is appropriate when the local sample sizes nk are moderate to large. Within this regime, the main re-sults are proven under a diagonal heteroskedastic Gaussian likelihood, which keeps both the variance-weighted Tweedie representation and the Hellinger convergence analysis tractable. Algorithmically, however, the same pseudo-EM template extends to a full covariance struc-ture (not necessarily diagonal), and we study that broader setting empirically through simulation and data applications. We have two main contributions, one each to the literature on empirical Bayes methods and personalized federated learning. 1. Unknown Heteroskedastic Variance Empirical Bayes formulation. We derive a generalized Tweedie formula for parameter-dependent covariance and identify the corre-sponding oracle Bayes rule through variance-weighted marginal densities. We establish non-asymptotic convergence rates for the NPMLE in the average squared Hellinger dis-tance. Furthermore, we derive an oracle denoising inequality, which provides a bound on the excess mean squared error of our estimator relative to the infeasible oracle Bayes estimator that has access to the true latent prior G0. We develop a pseudo-EM al-gorithm that iteratively solves fixed-covariance NPMLE subproblems while updating covariances at the new support locations. We give conditions for the convergence of its iterates and bound the distance between its fixed points and the critical points of the full heteroskedastic score (Lemma 3.3). Our results therefore relax assumptions and make NPEB methods applicable to a broad range of new problems. 2. Personalized federated learning for modern AI models. We translate the VANEB compound-decision framework into practical personalization methods for deep neural networks. For vision models, we introduce VANEB-Head and VANEB-FT , which it-eratively combines a FedAvg-trained body representation with variance-aware NPEB shrinkage of client-specific classification heads. These constructions preserve the body– head decompositions used by several modern personalized FL methods [Collins et al., 2021, Arivazhagan et al., 2019]. However, they replace either independent local adapta-tion (fine-tuning) or complete parameter averaging across clients with uncertainty-aware, data-adaptive sharing across clients. We evaluate VANEB against a wide range of state of the art methods including, (1) Fe-dAvg [McMahan et al., 2017a], (2) FedAvg followed by finetuning, (3) FedRep [Collins 4et al., 2021], (4) FedBABU [Oh et al., 2021], (5) FedPer [Arivazhagan et al., 2019], (6) LG-FedAvg [Liang et al., 2020], (7) Per-FedAvg [Fallah et al., 2020], (8) SCAFFOLD [Karimireddy et al., 2020], (9) Ditto [Li et al., 2021], and (10) local-only training, under label and covariate heterogeneity on MNIST and CIFAR-10. For evaluation, we consider both client-matched tests, which draw the test set to match the client’s observed label distribution, and balanced tests, which evaluate whether a personalized model retains predictive ability across the complete label space. VANEB-FT is particularly strong un-der balanced evaluation: it achieves the highest accuracy across all 13 reported MNIST and CIFAR-10 settings. Furthermore, it is the only personalized method that outper-forms FedAvg across all balanced and matched MNIST and CIFAR-10 experiments. These results indicate that empirical-Bayes sharing can provide personalization without sacrificing the broad predictive coverage learned from the federation. 
+
+1.1 Comparisons to Related Work 
+
+Beyond the NPEB literature discussed above, VANEB is related to parametric Bayesian approaches to PFL, distributed statistical inference, and representation-based PFL meth-ods. 
+
+Bayesian Personalized Learning. Recent Bayesian PFL methods also formulate per-sonalization as a hierarchical inference problem. Ozkara et al. [2023] studies a homoskedas-tic Gaussian observation model with a single Gaussian prior, while FedPop [Kotelevskii et al., 2022] and FedGMM [Wu et al., 2023] use more flexible parametric priors, in-cluding Gaussian mixtures and energy-based models. These approaches generally assume parameter-independent noise and require a parametric specification of the client popula-tion, such as the number and form of mixture components. VANEB instead estimates the latent prior nonparametrically and explicitly permits the covariance of each local estimator to depend on the unknown client parameter. It therefore accommodates multimodal or irregular client populations without prespecifying their structure. Our results in Theorem 4.2 show that this flexibility retains the benefit of pooling across clients: the excess risk relative to the oracle Bayes rule is of order (nK )−1 up to polylogarithmic factors in K.
+
+Distributed Statistical Inference. Related work on distributed statistical inference studies M -estimation under heterogeneous client distributions while targeting a common 5parameter [Gu and Chen, 2023, 2024]. VANEB instead targets personalized inference under heterogeneity. It treats the client-specific parameters as heterogeneous draws from an unknown prior G0, uses the collection of noisy local M-estimators ˆθk to learn G0 and estimate each client-specific parameter. Thus, our target is personalization instead of efficient distributed estimation of a single consensus parameter. 
+
+Personalized federated learning for deep learning. VANEB is closely related to representation-based PFL methods that divide a neural network into shared and client-specific components. FedPer [Arivazhagan et al., 2019], FedRep [Collins et al., 2021], LG-FedAvg [Liang et al., 2020], and FedBABU [Oh et al., 2021] differ in which body or head parameters are shared and whether the personalized head is trained during federation or adapted locally afterward. VANEB uses the same body-head decomposition but introduces a different sharing mechanism: it treats locally estimated heads as noisy observations from an unknown population distribution and replaces either independent local fitting or direct averaging with variance-aware NPEB shrinkage. We empirically compare against these representation-based methods, as well as several other PFL methods, and show strong performance of VANEB in our experiments. 
+
+# 2 Framework and Model 
+
+In many federated systems, the server cannot access raw client data and instead receives only low-dimensional summaries or estimators computed locally. This makes personaliza-tion a natural distributed inference problem. The server should combine “noisy” client estimates in a way that borrows information across clients without forcing them onto a single global estimate. Empirical Bayes provides exactly this viewpoint. It treats latent client parameters as draws from a common prior and interprets the server’s task as esti-mating that prior from noisy observations, i.e., a compound decision problem in the sense of Robbins [1956], Efron [2014]. In EB, the amount of shrinkage is automatically matched to each client’s uncertainty. If the prior is nearly degenerate, the personalized estimator collapses toward a common global signal; if the prior is diffuse, shrinkage disappears, and the method behaves like local training. In contrast to parametric hierarchical models, NPEB allows the data to determine the shape of latent heterogeneity, which is important in federated settings where 6client populations may be multi-modal, skewed, or concentrated near lower-dimensional structures. To connect this perspective to FL, we consider the following setup. Suppose client 
+
+k observes i.i.d. local data {zk,i }nk 
+
+> i=1
+
+from a marginal law Fzk (z) and and define a local parameter as θk := arg min u∈Rd Ezk, 1 ρ(zk, 1; u) for some function ρ : Rd × Rd → R. Then, k
+
+computes an M -estimator 
+
+ˆθk ∈ arg min θ∈Rd
+
+1
+
+nknkX
+
+> i=1
+
+ρ(zk,i ; θ).
+
+Under standard regularity conditions, local empirical processes yield asymptotic normality [Van der Vaart, 2000, Shao and Zhang, 2022]: 
+
+√nk( ˆθk − θk) nk →∞ 
+
+⇒ N (0d, Σk(θk)) 
+
+with asymptotic covariance 
+
+Σk(θ) := Hk(θ)−1Jk(θ)Hk(θ)−1,
+
+with Hessian Hk(θ) = E[∇2ρ(zk, 1; θ)] and Jk(θ) = E[∇ρ(zk, 1; θ)∇ρ(zk, 1; θ)⊤]. Berry-Esseen-type bounds for M-estimators show that the Gaussian approximation error decays at the near-n−1/2 
+
+> k
+
+rate under moment conditions [Shao and Zhang, 2022]. We therefore treat 
+
+ˆθk as approximately N (θk, Σk (θk ) 
+
+> nk
+
+), a noisy observation of the client-specific parameter θk.This characterization connects FL with the EB framework. However, standard NPEB methods assume Σk is known and independent of the parame-ter [Soloff et al., 2025]. Neither condition holds here: the covariance matrices are unknown, and in generalized linear models, M -estimation, and other curved models, the asymptotic covariance varies with θk. A fixed-variance NPEB procedure then faces two problems. First, it is entirely unclear how to provide or obtain the Σk values, and second, the NPEB procedure then solves a misspecified denoising problem. It misweights the likelihood con-tributions of clients whose plug-in variance differs from Σk(θk), and the estimated support of the prior is distorted accordingly. On the other hand, as the formulation above shows, in many common models the covariance is a known function of the unknown parameter (e.g., the inverse Fisher information), so each client can report the function Σk(·) rather than a single matrix. What is needed is a method that handles covariances that are functions of the parameter. 7This formulation encompasses a broad class of federated learning problems: least squares regression, generalized linear models, and robust M-estimators with smooth loss (e.g., Hu-ber). In each case, the asymptotic covariance matrix Σk(θ) depends on θ through the model structure and data distribution, inducing heteroskedasticity that VANEB exploits. For instance, in Poisson regression with 
+
+ρ(y, z; θ) = −y⟨z, θ⟩ + exp( ⟨z, θ⟩),
+
+the Fisher information depends on θ exponentially through the moment generating function of the covariates, so the variance varies by orders of magnitude across the parameter space (for a correctly specified model): 
+
+Σk(θ) = Ik(θ)−1 = E  e⟨zk, 1,θ⟩ zk, 1zk, 1⊤−1 ,
+
+where the expectation is over the marginal covariate distribution. Similarly, in logistic regression with 
+
+ρ(y, z; θ) = −y⟨z, θ⟩ + log(1 + exp( ⟨z, θ⟩)) ,
+
+the Fisher information yields 
+
+Σk(θ) = E  π(⟨zk, 1, θ⟩)(1 − π(⟨zk, 1, θ⟩)) zk, 1zk, 1⊤−1 ,
+
+where π(u) = eu/(1+ eu). Here, the variance inflates when predicted probabilities approach 
+
+0 or 1, i.e., when |⟨ z, θ⟩| is large. We do note that, in some cases, such as GLM, the covariance function may depend on unknown covariate distributions. In such cases, the clients will report estimated covariance functions based on their own observed data. We ignore the added uncertainty due to this here. 
+
+2.1 Model 
+
+We now state the statistical model studied in this paper. Let θ1, ..., θK ∈ Rd denote latent client parameters drawn i.i.d. from an unknown measure G0 on Rd, and suppose client k
+
+reports a local estimator ˆθk. Motivated by the asymptotic normality of M-estimators, we adopt the following heteroskedastic Gaussian working model for our EB framework: 
+
+√nk( ˆθk − θk) | θk ∼ N (0d, Σk(θk)) , k = 1 , ..., K (1) for a known covariance function Σk : Rd → Rd×d. Here, nk denotes the local sample size, and n−1/2 
+
+> k
+
+represents the local consistency rate. The model thus captures differences across clients in both sample size and covariance structure. 8To simplify notation, we introduce the rescaled local estimates ˆθk := √nk ˆθk. The likelihood of ˆθk given an arbitrary parameter θ ∈ Rd is then 
+
+φ(k)( ˆθk; θ) := |2πΣk(θ)|−1/2exp 
+
+
+
+−12∥Σk(θ)−1/2( ˆθk − √nkθ)∥2
+
+
+
+.
+
+Let n := min k≤K nk and ¯n := max k≤K nk denote the minimum and maximum local sample sizes over K clients, respectively. 
+
+Assumption 1 (Regularity) . For each client k, the covariance function Σk : Rd → Rd×d
+
+is known and diagonal: 
+
+Σk(θ) = diag( σk, 1(θ)2, . . . , σ k,d (θ)2).
+
+There exist constants 0 < s < ¯s < ∞ and LΣ < ∞ such that for all θ, θ′ ∈ Rd and k ≤ K,
+
+sId ⪯ Σk(θ) ⪯ ¯sId, ∥Σk(θ) − Σk(θ′)∥≤ LΣ∥θ − θ′∥,
+
+and each variance coordinate σk,i (·)2 is continuously differentiable with 
+
+sup 
+
+> θ∈Rd
+
+max 
+
+> i≤d, k ≤K
+
+∥∇ log σk,i (θ)2∥≤ LΣ.
+
+In addition, the client sample sizes are of the same order of magnitude, with ¯n/n → cn for some constant cn ≥ 1 as K → ∞ .
+
+Here, A ⪯ B means B − A is positive semi-definite. Assumption 1 collects all covari-ance conditions used later in the paper: uniform ellipticity condition controls degeneracy and Gaussian tails, diagonality identifies the theory regime, and the Lipschitz/ C1 bounds provide the smoothness needed in the pseudo-EM and van Trees arguments. The bounded ratio ¯n/n prevents any single client from dominating the aggregation. Our main analysis is carried out under a diagonal heteroskedastic covariance model 
+
+Σk(θ). This approximation also reduces the per-client communication from d(d + 1) /2
+
+covariance entries to d variance coordinates [Jhunjhunwala et al., 2024]. This regime is natural whenever the loss ρ is approximately coordinate-separable or when a diagonal covariance approximation is already used for communication and computation. Then, Assumption 1 implies 
+
+s ≤ inf 
+
+> θ∈Rd
+
+min  
+
+> i≤d, k ≤K
+
+σk,i (θ)2 ≤ sup 
+
+> θ∈Rd
+
+max  
+
+> i≤d, k ≤K
+
+σk,i (θ)2 ≤ ¯s. 
+
+92.2 Generalized Tweedie Formula and VANEB Estimator 
+
+Our aim is to obtain personalized estimators ˆθ1, ..., ˆθK that minimize the Bayes risk under the unknown prior, 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥ ˆθk − θk∥2
+
+and the Bayes rule for this risk is the posterior mean E(θk | ˆθk) for each client. Under our Gaussian likelihood setup, the posterior mean is given by Tweedie’s formula, provided the covariance matrix Σk is known and not a function of the parameter [Efron, 2014]. This is because Σk can be pulled outside the integral when taking the gradient of the density function fk,G , and one recovers the formula of Soloff et al. [2025], 
+
+E(θk | ˆθk) = ˆθk
+
+√nk
+
++ Σk
+
+√nk
+
+∇ log fk,G 0 ( ˆθk).
+
+However, when Σk = Σ k(θ) depends on the parameter, Σk(θ) cannot be pulled outside the integral, and this identity fails. We therefore derive a version of Tweedie’s formula for parameter-dependent covariances. The key is to express the marginal density fk,G ( ˆθk) and the variance-weighted score qk,G ( ˆθk) as functionals of the likelihood integrated against the prior distribution G0 as follows, 
+
+fk,G 0 ( ˆθk) = 
+
+Z
+
+φ(k)( ˆθk; θ) G0(d θ), qk,G 0 ( ˆθk) := 
+
+Z
+
+Σk(θ)∇φ(k)( ˆθk; θ) G0(d θ).
+
+By the diagonal structure, we can write 
+
+qk,G ( ˆθk) = 
+
+Z
+
+σk, 1(θ)2 ∂∂ ˆθ1
+
+φ(k)( ˆθk; θ)
+
+...
+
+σk,d (θ)2 ∂∂ ˆθd
+
+φ(k)( ˆθk; θ)
+
+ G(d θ) =: 
+
+ 
+
+> ∂∂ˆθ1
+
+˜fk,G, 1( ˆθk)
+
+... 
+
+> ∂∂ˆθd
+
+˜fk,G,d ( ˆθk)
+
+
+
+where ˜fk,G,i ( ˆθk) := R σk,i (θ)2φ(k)( ˆθk; θ)G(d θ) represents the variance-weighted marginal density for coordinate i. The factor σk,i (·)2 accounts for the parameter-dependent variance in coordinate i. In homoskedastic settings, this factor reduces to a constant, and the formula collapses to the classical Tweedie formula. This decomposition allows the scaled score to be expressed as a gradient of component-specific functions. By direct computation, we expand the score vector as: 
+
+qk,G 0 ( ˆθk) = 
+
+Z
+
+φ(k)( ˆθk; θ) · (√nkθ − ˆθk) G0(d θ).
+
+10 From this decomposition, we obtain a generalization of Tweedie’s formula that accommo-dates heteroskedastic, parameter-dependent noise: 
+
+√nkE(θk| ˆθk) = ˆθk + qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ,
+
+which in the original scale becomes 
+
+θok := E(θk| ˆθk) = ˆθk
+
+√nk
+
++ qk,G 0 ( ˆθk)
+
+√nkfk,G 0 ( ˆθk).
+
+The quantity θok is the oracle Bayes estimator for client k under the true prior G0. Com-pared with the classical Tweedie formula, the correction term now involves variance-weighted densities ˜fk,G,i , whose coordinate-wise weights σk,i (θ)2 make the shrinkage adaptive to the local noise level of each client. The oracle Bayes estimator above, θok, depends on the unknown prior G0, so the server must estimate G0 from the estimates { ˆθk}Kk=1 and covariance functions {Σk(·)}Kk=1 . We do this with an NPMLE. Given an estimated prior ˆG, the resulting VANEB personalized estimator becomes 
+
+ˆθvk := ˆθk
+
+√nk
+
++ qk, ˆG( ˆθk)
+
+√nkfk, ˆG( ˆθk), (2) where the NPMLE ˆG serves as a data-driven estimator for the unknown prior distribution 
+
+G0. We develop the NPMLE for our heteroskedastic setting and establish its convergence properties. The correction term in (2) weights coordinate i by σk,i (·)2 through ˜fk, ˆG,i . In a coordi-nate where the local variance is large, the likelihood is flat and the posterior mean moves substantially toward the regions where ˆG places its mass; where the local variance is small, the likelihood dominates, and the correction is small. The estimator therefore borrows more from the other clients exactly where the local estimate is least reliable, in the spirit of empirical Bayes shrinkage [James and Stein, 1961, Stein, 1956, Efron, 2012]. Compared with common FL optimizers, this update has a distinct role. FedAvg [McMa-han et al., 2017a] uses isotropic averaging of local steps, and FedProx/SCAFFOLD [Li et al., 2020, Karimireddy et al., 2020] stabilize optimization drift through proximal regularization or control variates; all are primarily designed around iterative gradient optimization. In contrast, VANEB applies a one-shot empirical Bayes correction to the local estimates { ˆθk}
+
+(which may be MLEs, M-estimators, or any asymptotically normal estimator; Van der 11 Vaart [2000]), with the direction and magnitude of the correction determined by the client-specific covariance function Σk(·). Relative to personalized stochastic gradient descent methods (e.g., pFedMe/Per-FedAvg [Dinh et al., 2020, Fallah et al., 2020]), VANEB shifts the onus from learning-rate tuning and repeated local iterations to estimating the shared prior G0. It requires a single round of communication for the local estimates and a single server-side update for personalization, which is attractive when communication is expensive or local computation is constrained. 
+
+# 3 NPMLE and VANEB Algorithm 
+
+To estimate the unknown prior distribution G0, we employ a nonparametric maximum likelihood approach [Koenker and Mizera, 2014, Saha and Guntuboyina, 2020, Soloff et al., 2025]. The NPMLE is defined as a solution ˆG to the following optimization problem: 
+
+ˆG ∈ arg max G∈P (Rd)ℓK (G), ℓK (G) := 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+log fk,G ( ˆθk) (3) where P(Rd) is a set of all probability measures on Rd. Here, ℓK (G) is the average log-marginal likelihood across all K clients under the candidate prior distribution G.
+
+Lemma 3.1. Define the optimality gap as D( ˆG, θ) := 1
+
+> K
+
+PKk=1     
+
+> φ(k)( ˆθk;θ)
+> fk, ˆG( ˆθk)
+
+− 1. Then, any NPMLE, ˆG in (3) satisfies D( ˆG, θ) ≤ 0 for all θ ∈ Rd and is supported on Z := {θ ; D( ˆG, θ) = 0}, which are the global maximizers of the reweighted mixture density 
+
+ˆψK (θ) := 
+
+> K
+
+X
+
+> k=1
+
+ˆL−1
+
+> k
+
+PKi=1 ˆL−1
+
+> i
+
+!
+
+φ(k)( ˆθk; θ),
+
+where ˆLk = fk, ˆG( ˆθk) are the estimated marginal likelihoods. 
+
+In the fixed-covariance case, the reweighted mixture density ˆψK admits a ridgeline man-ifold that reduces support estimation to a tractable low-dimensional problem [Soloff et al., 2025, Lemma 3]. When Σk depends on θ, no analogous characterization is available: the stationarity equation acquires additional terms involving the gradients of the variance func-tions (see Section 3.1), and its solutions admit no closed form. Nonetheless, this suggests an alternating update scheme. We first freeze the covariances at given θ and use the re-sulting ridgeline problem as the computational primitive inside VANEB. The covariance matrices are then updated at the new atoms using the known covariance functions Σk(·).We describe the detailed algorithm next. 12 3.1 Computation of the VANEB Estimator 
+
+We begin with the intuition in the classical setting where Σk is independent of θ, and the ridgeline manifold M (see Lemma 3.2) characterizes the NPMLE atoms exactly. In this case, the score equation is linear in the atom, and the M-step reduces to a closed-form weighted average. While we allow for covariance matrices to depend on the parameter 
+
+θ, the following lemma will be useful to update the atoms of the mixture density at a particular list of fixed covariance matrices. 
+
+Lemma 3.2 (Fixed-covariance ridgeline, Ray and Lindsay, 2005) . Let us fix the plug-in covariances Sk := Σ k( ˆθk) for all ˆθk, k = 1 , . . . , K ; and define the fixed-covariance mixture density 
+
+¯ψ(θ; w) := 
+
+> K
+
+X
+
+> k=1
+
+wk|2πSk|−1/2exp 
+
+−12 ∥(Sk)−1/2( ˆθk − √nkθ)∥2
+
+
+
+.
+
+Every critical point of ¯ψ(·; w) lies in the compact set 
+
+M := 
+
+
+
+> K
+
+X
+
+> k=1
+
+wknkS−1
+
+> k
+
+!−1 KX
+
+> k=1
+
+wknkS−1 
+
+> k
+
+ˆθk ; wk ≥ 0,
+
+> K
+
+X
+
+> k=1
+
+wk = 1 
+
+ (4) 
+
+whose element can be represented using at most d + 1 nonzero weights. 
+
+However, when Σk(θ) depends on θ, the score of the mixture density under our setup 
+
+ψ(θ) = PKk=1 wkφ(k)( ˆθk; θ) becomes 
+
+∇ψ(θ) = 
+
+> K
+
+X
+
+> k=1
+
+wkφ(k)( ˆθk; θ) sk(θ),
+
+where 
+
+sk(θ) := ∇θ log φ(k)( ˆθk; θ) = √nkΣk(θ)−1( ˆθk−√nkθ)+ 
+
+> d
+
+X
+
+> i=1
+
+((ˆθk,i − √nkθi)2
+
+σk,i (θ)2 − 1
+
+)
+
+∇σk,i (θ)
+
+σk,i (θ)
+
+is the log-likelihood score of client k. So unlike Ray and Lindsay [2005], Saha and Gun-tuboyina [2020], Soloff et al. [2025], the stationarity equation ∇ψ(θ) = 0d involves the gradients of the variance functions σk,i , and no closed-form solution exists for the critical point(s). Algorithm 1 addresses this intractability by alternating between (i) solving a fixed-covariance NPMLE subproblem, where substituting Sk = Σ k(aj ) recovers the tractable ridgeline property, and (ii) updating the covariances evaluated at the newly estimated 13 Algorithm 1: VANEB Estimator 
+
+Input: Observations { ˆθk}Kk=1 ; covariance function Σk; Pseudo-EM iterations T
+
+Output: Personalized estimates { ˆθvk }Kk=1  
+
+> 1
+
+Initialize atoms {aj }mj=1 ← { ˆθk}Kk=1 and covariance Σk,j ← Σk(aj ) 
+
+> 2
+
+Fit NPMLE weights: ˆw ← arg max w
+
+PKk=1 log Pmj=1 wj φ(k)(√nk ˆθk; aj ) for 
+
+j = 1 , . . . , m do  
+
+> 3
+
+for t = 1 , . . . , T do  
+
+> 4
+
+E-step: rkj ∝ ˆwj φ(k)(√nk ˆθk; aj ) 
+
+> 5
+
+M-step: aj ←
+
+PKk=1 rkj [Σ k,j /n k]−1 ˆθk
+
+PKk=1 rkj [Σ k,j /n k]−1 
+
+> 6
+
+Recompute covariances: Σk,j ← Σk(aj ) // Atom-covariance coupling  
+
+> 7
+
+Update weights: ˆwj ← 1
+
+K
+
+PKk=1 rkj  
+
+> 8
+
+return ˆθvk ← Pmj=1 rkj aj for all k
+
+atom locations. This iterative scheme produces, at convergence, a fixed point of the cou-pled atom-covariance system and can be viewed as an approximation by a sequence of computable ridgeline manifolds. 
+
+3.1.1 Algorithm 
+
+Our implementation uses a fixed-covariance conic solver only as an initialization, followed by a custom pseudo-EM routine in which 1. The E-step computes responsibilities using the current atom-dependent likelihoods, 2. The M-step updates each atom by precision-weighted averaging, and 3. The covariance is re-evaluated at the updated atoms before the next loop begins. Algorithm 1 summarizes this procedure. Let us denote a point mass at a ∈ Rd by δa. The final estimate produced by Algorithm 1, 
+
+ˆθvk =
+
+> m
+
+X
+
+> j=1
+
+rkj aj =
+
+Pmj=1 ˆwj aj φ(k)( ˆθk; aj )
+
+Pmj=1 ˆwj φ(k)( ˆθk; aj ) ,
+
+is the posterior mean under the fitted discrete mixture prior ˆG = Pmj=1 ˆwj δaj and the heteroskedastic likelihood φ(k)( ˆθk; θ). This is equivalent to applying the modified het-14 eroskedastic Tweedie formula with the NPMLE ˆG in place of G0:
+
+ˆθvk =
+
+R θ φ(k)( ˆθk; θ) d ˆG(θ)
+
+R φ(k)( ˆθk; θ) d ˆG(θ) = ˆθk
+
+√nk
+
++ qk, ˆG( ˆθk)
+
+√nkfk, ˆG( ˆθk).
+
+The pseudo-EM iterations refine the atom locations and weights, while the Tweedie rep-resentation provides a closed-form expression for the resulting posterior mean; this is the representation analyzed in Section 4. 
+
+3.1.2 Computation 
+
+Following Koenker and Mizera [2014], we restrict the NPMLE to a support-constrained version. For any non-empty, closed set A ⊆ Rd, define the support-constrained NPMLE as 
+
+ˆGA ∈ arg max G∈P (A)ℓK (G), (5) where P(A) denotes the collection of probability measures supported on A. By construc-tion, ˆG = ˆGRd
+
+.For computation, the key tuning parameter is the grid resolution δ. As in Soloff et al. [2025], we discretize the ridgeline region M by covering it with axis-aligned hypercubes: 
+
+H = Hj + [ −δ/ 2, δ/ 2] d ; j ∈ { 1, . . . , J } ,
+
+where the centers {H1, . . . , HJ } are spaced δ apart. The candidate support A is then the set of all 2d corner points of each hypercube, i.e., Hj + δ 
+
+> 2
+
+v for v ∈ {− 1, 1}d. Since M
+
+is compact, A = {a1, . . . , am} is finite, and the support-constrained NPMLE reduces to a finite-dimensional optimization over mixing weights: ˆGA = Pmj=1 ˆwj δaj where 
+
+ˆw ∈ arg max w∈∆m−1
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+log 
+
+> m
+
+X
+
+> j=1
+
+wj φ(k)( ˆθk; aj )
+
+!
+
+. (6) In Soloff et al. [2025], the precision matrices stay fixed throughout the optimization. Here they must move with the atoms. The role of the discretized solve is therefore only to provide a stable initialization for the support and weights; the subsequent pseudo-EM iterations in Algorithm 1 perform the heteroskedastic recoupling. The following proposition quantifies the approximation error introduced by this dis-cretization. As δ → 0, the discretized NPMLE’s log-likelihood converges to that of the unrestricted NPMLE, with an explicit bound that can guide practical grid selection: 15 Proposition 3.1 (Soloff et al., 2025) . Let M ⊂ Rd be any compact set containing all solutions to the true NPMLE problem (3) . Assume the diameter of M is at most D and fix grid spacing δ ∈
+
+
+
+0,
+
+q 34dsD
+
+
+
+. Construct a grid covering H of M with hypercubes of width 
+
+δ, and let A be the set of corner points. Then any discretized NPMLE solution ˆGA from 
+
+(5) satisfies the approximation error bound 
+
+sup 
+
+> G∈P (Rd)
+
+ℓK (G) − ℓK ( ˆGA) ≤ ds
+
+12 + 2D2
+
+s
+
+
+
+δ2. (7) 
+
+3.1.3 Convergence of VANEB Iterates 
+
+We next state a fixed-point guarantee for the iterative scheme in Algorithm 1. The key is that contraction is controlled by Brouwer’s fixed-point theorem. 
+
+Lemma 3.3 (Convergence of VANEB iterates) . Under Assumption 1, at iterate (t), fix E-step weights w(t) 
+
+> kj
+
+∝ wkφ(k)( ˆθk; a(t) 
+
+> j
+
+) with PKk=1 w(t) 
+
+> kj
+
+= 1 , and define 
+
+¯ψj (a) := X
+
+> k
+
+w(t) 
+
+> kj
+
+nkΣk(a)−1
+
+!−1 X
+
+> k
+
+w(t) 
+
+> kj
+
+nkΣk(a)−1 ˆθk.
+
+Write nwj := PKk=1 w(t) 
+
+> kj
+
+nk and the local weighted radius 
+
+Rwj := inf 
+
+> u∈Rd
+
+( KX
+
+> k=1
+
+w(t) 
+
+> kj
+
+nk
+
+nwj
+
+∥ ˆθk − u∥
+
+)
+
+,
+
+and set L ¯ψ,j := τ (1 + τ )Rwj LΣ/s and R := max 1≤k,ℓ ≤K ∥ ˆθk − ˆθℓ∥. Assume that a(t) 
+
+> j
+
+∈
+
+S 
+
+> k
+
+BrK ( ˆθk) for rK := 
+
+q2¯ sn log ( eτ d/ 2K). Then the following holds. 1. A fixed point a∗ 
+
+> j
+
+exists and satisfies 
+
+> K
+
+X
+
+> k=1
+
+w(t) 
+
+> kj
+
+nkΣk(a∗ 
+
+> j
+
+)−1( ˆθk − a∗ 
+
+> j
+
+) = 0d.
+
+If L ¯ψ,j < 1, then a∗ 
+
+> j
+
+is unique and the iterates of ¯ψj converge to it at rate L ¯ψ,j .Furthermore, under (1) and K = o(en),
+
+Rwj = OP
+
+r ¯sτ n log( eτ d/ 2K2n(1 + R)2)
+
+
+
+.
+
+Also write Rθ := max k,ℓ ∥θk − θℓ∥. Then 
+
+|R − Rθ| = OP
+
+s
+
+d + log Kn
+
+!
+
+, (8) 
+
+and L ¯ψ,j = oP (1) under the following: 
+
+16 (a) If Rθ ≤ D0 almost surely for some D0 > 0.(b) If G0 has a sub-Gaussian tail with finite mean. 2. Under the conditions in 1 and K = o(e√n), for each atom j there exists a true critical point a∗ 
+
+> j0
+
+of the score, PKk=1 w(t) 
+
+> kj
+
+sk(a∗
+
+> j0
+
+) = 0d, with 
+
+∥a∗ 
+
+> j0
+
+− a∗ 
+
+> j
+
+∥= oP (1) . (9) The first claim states that under the condition K = o(en), the fixed point uniquely exists and the VANEB iterates converge to it at the linear rate L ¯ψ,j , which is vanishing under a bounded client population or sub-Gaussian tail G0.The second claim quantifies the cost of freezing: a fixed point a∗ 
+
+> j
+
+is not an exact sta-tionary point of the target score, but its distance to the true critical point is oP (1) . In summary, each VANEB iteration solves a standard ridgeline problem, and the resulting fixed points approach the target critical points as the local sample sizes grow. 
+
+# 4 Theoretical Properties of VANEB 
+
+4.1 Hellinger Accuracy of the NPMLE 
+
+Under the asymptotic normality of M-estimators, we now analyze the statistical perfor-mance of the NPMLE and the resulting personalized estimator. Since different clients have different likelihoods, the natural loss is the average squared Hellinger distance. For any two priors G, H ∈ P (Rd), define 
+
+¯h2(f•,G , f •,H ) := 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+h2 (fk,G , f k,H ) ,
+
+¯h2( ˜f•,G,i , ˜f•,H,i ) := 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+h2
+
+ ˜fk,G,i , ˜fk,H,i 
+
+
+
+, i = 1 , ..., d, 
+
+where h2(f, g ) = 12
+
+R
+
+> Rd
+
+npf (x) − pg(x)
+
+o2
+
+dx is the standard squared Hellinger distance. Our first main result establishes convergence rates for the NPMLE estimator ˆG measured by the average squared Hellinger distance to the true prior G0.To state our main convergence result, we introduce a rate function that captures the estimation difficulty. Fix a positive scalar M and a compact set S ⊂ Rd. The convergence 17 rate is controlled by the function 
+
+ε2 
+
+> M
+
+(S, G 0) := M d
+
+K Vol( S1)nd/ 2 log d/ 2+1 K + log K inf   
+
+> q≥d+1 2 log K
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+2μk,q (S, G 0)
+
+M
+
+q
+
+, (10) where μk,q (S, G 0) := Eθ∼G0 [dS (√nkθ)q]1/q measures how close a random parameter is to the set S, with dS (t) := inf s∈S ∥t − s∥. S1 := x ∈ Rd; dS (x) ≤ 1 denotes the 1-enlargement of S.Let τ := ¯ s/s denote the condition number of the covariance bounds. The following theorem provides a non-asymptotic guarantee linking the optimization quality of an ap-proximate NPMLE to its statistical accuracy in estimating the true data distribution. We use ≤d,s, ¯s henceforth to denote the inequality up to a constant multiplication where the constant depends on d, s, and ¯s only. 
+
+Theorem 4.1. Any NPMLE ˆG ∈ P (Rd) such that 
+
+ℓK (G0) − ℓK ( ˆG) ≤d,s, ¯s ε2 
+
+> M
+
+(S, G 0) (11) 
+
+satisfies 
+
+P
+
+h¯h2(f•, ˆG, f •,G 0 ) ≳d t2ε2 
+
+> M
+
+(S, G 0)
+
+i
+
+≤ 2 exp  −t2nd/ 2 log d K (12) 
+
+P
+
+
+
+max 
+
+> i=1 ,...,d
+
+¯h2( ˜f•, ˆG,i , ˜f•,G 0,i ) ≳d t2ε2 
+
+> M
+
+(S, G 0)
+
+
+
+≤ 2 exp −t2(nd/ 2 log d K − log τ ) (13) 
+
+for all t > 0.
+
+The proof of Theorem 4.1 is in section A.3. The first inequality controls the usual mixture fit f•, ˆG, while the second controls the variance-weighted component densities 
+
+n ˜f•, ˆG,i 
+
+o
+
+> i≤d
+
+that appear in the generalized Tweedie formula. The second bound is nontrivial only when nd/ 2 log d K > log τ , which holds in the regime of interest here. The concentration exponent scales with nd/ 2 log d K, so larger local sample sizes and more clients improve con-centration. At the same time, the approximation error is governed by the metric entropy of the induced marginal class 
+
+F := {f•,G : G ∈ P (Rd)}.
+
+As n increases, each kernel in the integral fk,G = R φ(k)(· ; θ) d G(θ) becomes more concen-trated, so small perturbations of G produce sharper, more localized changes in f•,G , and resolving the class F to a fixed accuracy requires a finer cover. Specifically, the covering 18 number N (a, S M ) of an M -enlargement of S scales as nd/ 2, because the cover must use balls of radius a ∝ pn−1 log K instead of a ∝ √log K as in the one-sample case of Soloff et al. [2025], Saha and Guntuboyina [2020]. To prevent an unscaled set S from overstating the covering complexity as local sample sizes increase, we introduce a client-specific local scaling that normalizes the concentration. Specifically, we define Sk := 1√nk S and work with the refined rate function parameterized by S• := {Sk}k≤K :
+
+ε2 
+
+> M
+
+(S•, G 0) := M d
+
+K max  
+
+> k≤K
+
+Vol( S1 
+
+> k
+
+)nd/ 2 log d/ 2+1 K + log K inf   
+
+> q≥d+1 2 log K
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+2μk,q (Sk, G 0)
+
+M
+
+q
+
+=d
+
+M d
+
+K Vol( S1) log d/ 2+1 K + log K inf   
+
+> q≥d+1 2 log K
+
+max 
+
+> k≤K
+
+2μk,q (Sk, G 0)
+
+M
+
+q
+
+(14) Using Sk keeps the approximation term aligned with each client’s effective resolution and balances the concentration gain against entropy growth. 
+
+Corollary 4.1.1. In Theorem 4.1, suppose we use the Hellinger error rate εM (S•, G 0).Any approximate NPMLE ˆG such that 
+
+ℓK (G0) − ℓK ( ˆG) ≤d,s, ¯s ε2 
+
+> M
+
+(S•, G 0) (15) 
+
+satisfies 
+
+P
+
+h¯h2(f•, ˆG, f •,G 0 ) ≳d ε2 
+
+> M
+
+(S•, G 0)
+
+i
+
+≤ 2 exp  − log d K
+
+P
+
+
+
+max 
+
+> i=1 ,...,d
+
+¯h2( ˜f•, ˆG,i , ˜f•,G 0,i ) ≳d ε2 
+
+> M
+
+(S•, G 0)
+
+
+
+≤ 2 exp −(log d K − log τ ) .
+
+Furthermore, we have 
+
+E
+
+h¯h2(f•, ˆG, f •,G 0 )
+
+i
+
+≤d,s, ¯s ε2 
+
+> M
+
+(S•, G 0).
+
+We henceforth use the rate ε2 
+
+> M
+
+(S•, G 0) as the benchmark for the NPMLE’s statistical accuracy. Theorem 4.1 and Corollary 4.1.1 show that any approximate NPMLE with a log-likelihood gap of order ε2 
+
+> M
+
+(S•, G 0) attains the same average squared Hellinger accuracy as an exact maximizer. This gives a concrete target for optimization: any ˆG satisfying (15) inherits the rate ε2 
+
+> M
+
+(S•, G 0).
+
+Remark 1 (Discretization budget) . Like in Soloff et al. [2025], we derive the desired size of the hypercubes in H. The width of each hypercube δ > 0 can be chosen to satisfy the 
+
+19 error bound required in (15) , and it suffices to choose δ such that 
+
+12 + 2D2
+
+s
+
+
+
+δ2 ≤d,s, ¯s ε2 
+
+> M
+
+(S•, G 0).
+
+The LHS is the discretization error from replacing a continuous support by a grid, while the RHS is the statistical error budget allowed by the Hellinger theory. Assuming M ≥¯s
+
+√log K
+
+and D2 > s , we obtain 
+
+ε2 
+
+> M
+
+(S•, G 0) ≥d,s, ¯s
+
+log d+1 KK ,
+
+and since δ must also satisfy D2δ2 ≤ 3s2 
+
+> 4d
+
+(Proposition 3.1), the condition 
+
+D2δ2 ≤d,s, ¯s
+
+log d+1 KK (16) 
+
+suffices. In words, once the grid is fine enough to satisfy (16) , further refinement does not im-prove statistical accuracy at the target scale. According to Soloff et al. [2025, Proposition 4(b)], the support of the NPMLE ˆG expands at rate D ≍ √log K with high probability. Hence, we require δ ≍ pK−1 log d K and |A| = m ≍ (K/ log d K)d/ 2.
+
+Corollary 4.1.2. Suppose ˆG ∈ P (Rd) is any approximate NPMLE such that 
+
+ℓK (G0) − ℓK ( ˆG) ≤d,s, ¯s
+
+log d+1 KK . (17) 
+
+If G0 has compact support S, then 
+
+E ¯h2
+
+
+
+f•, ˆG, f •,G 0
+
+
+
+≤d Vol( S1)log d+1 KK .
+
+The above corollary’s claim follows from the calculations in Saha and Guntuboyina [2020, Corollary 2.2], noting that the client-scaled sets Sk ensure the entropy term remains near-parametric rate of O(log d+1 K/K ) for the case when G0 has compact support. Under the weaker moment condition, K in the denominator will converge in a slower rate of Kc
+
+for some c ∈ (0 , 1) [Saha and Guntuboyina, 2020, equation 2.10]. 
+
+4.2 Oracle denoising inequality 
+
+Building upon the Hellinger convergence guarantees, we now establish the statistical risk of the resulting personalized estimates. Specifically, we derive an oracle inequality that controls the excess risk of the VANEB estimator relative to the oracle posterior mean θok.20 Theorem 4.2. Let ˆG denote any approximate NPMLE satisfying (17) and 
+
+ℓK
+
+
+
+K−1δˆθk + (1 − K−1) ˆG
+
+
+
+≤ ℓK ( ˆG) (18) 
+
+for all k ≤ K. Fix some M ≥ p8¯ s log( eK 2) and a nonempty, compact set S ⊂ Rd. Define 
+
+ε2 
+
+> M
+
+(S•, G 0) as in (14) . If n ≳ KM d−2 log d/ 2+1 K , then 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥ ˆθvk − θok∥2≤d,s, ¯s
+
+(log K)3∨(d/ 2−1) 
+
+n ε2 
+
+> M
+
+(S•, G 0). (19) 
+
+In particular, consider the following special cases for G0:1. (Discrete support) If G0 = Pk∗ 
+
+> j=1
+
+w∗ 
+
+> j
+
+δa∗ 
+
+> j
+
+, then 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E ∥ ˆθvk − θok∥2≤d,s, ¯s
+
+k∗
+
+Kn (log K)d+( d/ 2∨4) .
+
+2. (Compact support) If G0 has compact support S, then 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E ∥ ˆθvk − θok∥2≤d,s, ¯s
+
+Vol( S1)
+
+Kn (log K)d+( d/ 2∨4) .
+
+3. (Gaussian Mixture Model) For w∗ 
+
+> j
+
+∈
+
+n
+
+w∗ 
+
+> 1
+
+, ..., w ∗ 
+
+> k∗
+
+; Pk∗ 
+
+> j=1
+
+w∗ 
+
+> j
+
+= 1 
+
+o
+
+, suppose the prior is of G0 = Pk∗ 
+
+> j=1
+
+w∗ 
+
+> j
+
+N (a∗ 
+
+> j
+
+, Γ∗ 
+
+> j
+
+). Let r > 0 be a sequence such that r = O(√n) and 
+
+Sr := Rr(0d). Then, 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E ∥ ˆθvk − θok∥2≤d,s, ¯s
+
+Vol( Sr)
+
+Kn (log K)d+( d/ 2∨4) .
+
+The proof of Theorem 4.2 is in section A.4. Theorem 4.2 bounds the excess risk of the VANEB estimator relative to the oracle Bayes estimator, averaged over clients. Condition (18) is a local maximality property: the log-likelihood cannot be improved by mixing in the point mass δˆθk at any single client’s estimate. It holds automatically for any exact global maximizer of ℓK .Compared to the Hellinger convergence rates for the NPMLE, the denoising bound carries an additional factor of n−1(log K)3∨(d/ 2−1) . The factor n−1 is the local parametric scale of each client estimate, whereas the remaining K-dependence reflects how quickly the shared prior is learned. In all three special cases (discrete support, compact support, and GMM), the bound decreases in both n and K, so larger local samples and more clients both improve denoising. 21 When G0 is supported on discrete atoms, the risk bound scales with the number of atoms 
+
+k∗, reflecting the complexity of the underlying parameter distribution. For compactly supported priors, the risk scales with the volume of the support, indicating that more spread-out distributions are harder to learn. When G0 has sub-Gaussian tails as in the GMM case of Theorem 4.2, a radius of 
+
+R ≍ √log K reduces the tail mass below 1/K (provided n ≫ log K). The compact support assumption can then be dropped at the cost of a polylogarithmic factor, and the excess risk remains ˜O (( nK )−1).
+
+4.3 Risk decomposition and benefits for personalized federated learning 
+
+Consider collections of local estimators ˆθk ∈ Rd and parameters θk ∈ Rd as in (1), i.e., 
+
+ˆΘ = { ˆθk}Kk=1 , Θ = {θk}Kk=1 , and define the (averaged) Bayes risk of the estimators by 
+
+R( ˆΘ) := 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥ ˆθk − θk∥2.
+
+Let Θo := {θok}Kk=1 be the collection of oracle Bayes rules. Since ˆθk = √nk ˆθk is a deter-ministic one-to-one rescaling and the clients are independent under the true prior G0, we have 
+
+EG0 (θk | ˆθk) = EG0 (θk | ˆθk) = θok.
+
+Therefore R admits the orthogonal decomposition, 
+
+R( ˆΘ) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥ ˆθk − θok + θok − θk∥2
+
+= 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥ ˆθk − θok∥2+ 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥θok − θk∥2
+
+=: RE ( ˆΘ) + R(Θ o).
+
+Once G0 is fixed, R(Θ o) is determined entirely by within-client posterior uncertainty. The next theorem specializes the multivariate van Trees inequality, as in Gassiat and Stoltz [2024], to our diagonal heteroskedastic Gaussian working model. 
+
+Theorem 4.3 (van Trees lower bound for the oracle baseline) . Let λ denote the Lebesgue measure on Rd. Suppose that G0 admits a C1 density g0 := dG0 
+
+> dλ
+
+such that g0(θ) → 0 as 
+
+22 ∥θ∥→ ∞ and 
+
+J0 := E
+
+h
+
+∇ log g0(θ) {∇ log g0(θ)}⊤i
+
+is finite. Then, under Assumption 1, Θo satisfies 
+
+d
+
+∥J 0∥+¯ n/s + dL 2Σ/2 ≤ R (Θ o) ≤ d¯sn .
+
+This theorem shows that the oracle term remains on the local 1/n scale and does not by itself produce any federation gain, so it remains to compare the excess risks of ˆΘ and 
+
+ˆΘv. For this, we consider the special case when G0 is a Gaussian mixture, as in case 3 of Theorem 4.2. Using sId ⪯ Σk(θk) ⪯ ¯sId, we also have 
+
+ds 
+
+¯n ≤ R ( ˆΘ) ≤ d¯sn ,
+
+so 
+
+RE ( ˆΘ) ≤ d¯sn − d
+
+∥J 0∥+¯ n/s + dL 2Σ/2.
+
+Thus, under Assumption 1 with ¯n ≍ n, this upper bound on the excess risk of the local M-estimators that are asymptotically normal is of order 1/n . Since the local estimators use no cross-client information, their excess risk does not decrease as K grows. By contrast, Theorem 4.2 and (14) give the following excess risk bound for VANEB: 
+
+RE ( ˆΘv) ≤d,s, ¯s Vol( Sr) M d
+
+Kn log d/ 2+( d/ 2∨4) K
+
+which decays with K through the prior-learning term. Both risk decompositions share the same oracle baseline R(Θ o), so the two methods differ only in the excess term: for the local M-estimators it can remain of order 1/n regardless of K, whereas for VANEB it is 
+
+˜O(( Kn )−1), decreasing in both the local sample sizes and the number of clients. The gain from federation enters entirely through learning the shared prior. 
+
+# 5 Numerical Simulations 
+
+We evaluate VANEB in three heterogeneous federated learning scenarios in R3. The first uses a parameter-dependent diagonal covariance matrix that closely aligns with our assump-tion, and the other two are generalized linear model settings with a full Fisher information-based covariance matrix that naturally depends on the parameter. In the two GLM settings (logistic and Poisson), we additionally introduce client-specific covariate covariance matri-ces Σx,k so both local likelihood curvature and covariate design vary across clients. The goal 23 is to understand when variance-aware shrinkage yields practical gains over fixed-variance EB and standard FedAvg. All three scenarios share a common prior G0 in R3 designed to challenge parametric methods with complex, non-Gaussian geometry. The support variable is sampled on a truncated domain t ∈ [−π/ 2, π/ 2) and mapped to a full phase u = 2( t + π/ 2) ∈ [0 , 2π),so each component keeps its full geometric shape. The five components are a trefoil knot 
+
+γ1 centered at (−2, 0, 0) , a helix γ2 centered at (2 , 0, 0) , a tilted ellipse γ3 centered at 
+
+(0 , 2.5, 0) , a figure-eight γ4 (lemniscate of Gerono) centered at (0 , −2.5, 1) , and a Viviani curve γ5 centered at (0 , 0, −2.5) (Figure 1). Client parameters are sampled from a weighted mixture over curves with weights 
+
+(w1, w 2, w 3, w 4, w 5) = (0 .35 , 0.35 , 0.1, 0.1, 0.1) ,
+
+and uniform sampling in t on each selected curve. This five-curve prior occupies a three-dimensional support with multiple connected components, self-intersections on the trefoil, and varying curvature, features that a Gaussian mixture prior approximates poorly. 3       
+
+> 2
+> 1
+> 012
+> 1
+> 3210123
+> 2
+> 3
+> 2
+> 1
+> 012
+> 3
+> Five-Curve Prior Atoms in 3
+> Trefoil Helix Tilted Ellipse Figure-8 Viviani
+
+Figure 1: Support of G0
+
+24 5.1 Baselines and metrics. 
+
+We evaluate the denoising risk RMSE( ˆΘv) = 
+
+
+
+K−1 PKk=1 ∥ ˆθvk − θk∥2
+
+1/2
+
+in each scenario with (i) increasing n ∈ { 5, 10 , 20 , 40 } at fixed K = 3200 , and (ii) increasing K ∈ { 50 , 200 , 800 , 3200 }
+
+at fixed n = 40 . Client sample sizes are drawn as nk ∼ Unif( n, 2n). All results are averaged over 200 Monte Carlo replicates. We compare six estimators. The Oracle Bayes benchmark uses fixed atoms on the true five-curve manifold to form posterior means under the correct heteroskedastic likelihood: 
+
+θok =
+
+Z θφ(k)( ˆθk; θ)
+
+fk,G 0 ( ˆθk) dG0(θ) = X
+
+> j
+
+w∗
+
+> j
+
+a∗ 
+
+> j
+
+φ(k)( ˆθk; a∗ 
+
+> j
+
+)
+
+fk,G 0 ( ˆθk)
+
+where {a∗ 
+
+> j
+
+} are atoms along the true prior curves with uniform weights w∗ 
+
+> j
+
+. The AdaMix 
+
+estimator [Ozkara et al., 2023] iteratively fits a Gaussian mixture prior on the server and performs client-side MAP shrinkage (Algorithm 3 in Appendix). The modified NPEB es-timator uses each client’s local sample-variance estimate as a fixed, parameter-independent precision throughout all EM iterations, providing a comparison where covariances do not adapt to atom locations (Note the original NPEB estimator in [Soloff et al., 2025] requires known covariances). The FedAvg estimator computes a global average of client MLEs over a single communication round, representing a classical federated averaging approach that treats MLEs as fixed point estimates without inferring an underlying prior. The Lo-cal baseline represents zero-communication learning: each client uses its own local MLE without any information pooling from other clients, serving as a baseline estimator that fed-erated approaches are expected to outperform. The VANEB estimator fits the NPMLE ˆG
+
+with parameter-dependent heteroskedastic covariances and returns posterior means under the fitted mixture (Section 3.1.1). 
+
+5.2 The scenarios 
+
+Scenario (i): Sample Means with Quadratic Variance Each client transmits a sam-ple mean for ˆθk with quadratic variance function Σ( θ) = diag( θ21 , ..., θ 2
+
+> d
+
+), clipped coordinate-wise to [smin , s max ] = [0 .01 , 100] for numerical stability. VANEB uses the known variance function of the parameter, while NPEB uses local sample-variance estimates reported by each client. The quadratic variance creates a strong heteroskedastic signal, and this sce-nario evaluates VANEB’s ability to leverage this heteroskedastic structure for improved estimation. 25 Scenario (ii): Multiclass Logistic Regression We consider the following 3-class lo-gistic regression model. Let θ ∈ R3 control all class boundaries, and Bc ∈ R3×3 (c = 1 , 2, 3)are fixed sparse diagonal projection matrices. Specifically: 
+
+B1 = diag (1 , −1, 0) , B2 = diag (0 , 1, −1) , B3 = diag (−1, 0, 1) .
+
+Each client k generates nk observations with features 
+
+zk, 1, ..., zk,n k
+
+> i.i.d.
+
+∼ N (0, Σx,k ),
+
+where Σx,k = Qk diag( λk, 1, λ k, 2, λ k, 3)Q⊤ 
+
+> k
+
+, Qk is an orthogonal random matrix, and λk,j ∼
+
+Unif(0 .5, 2.0) . Class labels are then generated according to the softmax probabilities: 
+
+pc(z, θ) := Pr( Yk = c | z) = e⟨Bcz,θ⟩
+
+P3 
+
+> x=1
+
+e⟨Bxz,θ⟩ .
+
+Let l(i) 
+
+> c,k
+
+:= Bczk,i . The expected Fisher information and its plug-in estimator at each client’s MLE ˆθ takes the form 
+
+Ik(θ) = E
+
+" CX
+
+> c=1
+
+pc(z, θ)l(1)  
+
+> c,k
+
+l(1)  
+
+> c,k
+> ⊤
+
+−
+
+> C
+
+X
+
+> c=1
+
+pc(z, θ)l(1) 
+
+> c,k
+
+! CX
+
+> c′=1
+
+pc′ (z, θ)l(1) 
+
+> c′,k
+> ⊤
+
+!# 
+
+ˆIk( ˆθ) = 1
+
+nknkX
+
+> i=1
+
+" CX
+
+> c=1
+
+pc(zk,i , ˆθ)l(i)
+
+> c,k
+
+l(i) 
+
+> c,k
+> ⊤
+
+−
+
+> C
+
+X
+
+> c=1
+
+pc(zk,i , ˆθ)l(i)
+
+> c,k
+> C
+
+X
+
+> c′=1
+
+pc′ (zk,i , ˆθ)l(i)
+
+> c′,k
+> ⊤
+
+!# 
+
+.
+
+Then the VANEB method updates the precision ˆIk( ˆθ) according to the M-step in Algorithm 1, while our adaptation of Soloff et al. [2025]’s NPEB uses the client-reported precisions as fixed throughout. Note that the variance field in this simulation experiment is more complex than in the quadratic case. In particular, this setting lies outside the diagonal assumption in the theoretical results: the Fisher covariance is not diagonal. We include it to test whether the variance-aware mechanism remains useful in a richer covariance geometry. 
+
+Scenario (iii): Poisson Regression In this scenario, each client fits Poisson regression 
+
+Yk ∼ Poisson (e⟨z,θk ⟩) with client-specific features generated as z ∼ N (0, (0 .1) 2Σx,k ), where 
+
+Σx,k is generated as in the logistic scenario. Each client obtains MLE ˆθk. The population Fisher and total empirical Fisher are 
+
+Ik(θk) = exp 
+
+0.12
+
+2 ⟨θk, Σx,k θk⟩
+
+
+
+0.12Σx,k 
+
+I3 + 0 .12θkθ⊤ 
+
+> k
+
+Σx,k 
+
+ ,
+
+ˆIk( ˆθk) = 1
+
+nknkX
+
+> i=1
+
+exp( ⟨zk,i , ˆθk⟩) zk,i z⊤
+
+> k,i
+
+.
+
+26 This Fisher-derived covariance changes exponentially with ∥θk∥, creating an extreme het-eroskedastic regime: atoms at the periphery of the prior have high precision, and atoms near the origin are much noisier. As in the logistic setting, this is a full-covariance empirical test that lies outside the regime covered by the main proofs. 50 200 800 3200 
+
+> K
+> 0.15 0.20 0.25 0.30 0.35
+> RMSE
+> Quadratic variance (Log x)
+
+(a) increasing K (fixed n = 40 ). 5 10 20 40  
+
+> nmin
+> 0.2 0.4 0.6 0.8 1.0
+> RMSE
+> Quadratic variance (Log x)
+> VANEB NPEB AdaMix Local Oracle
+
+(b) increasing n (fixed K = 3200 ). 
+
+Figure 2: Quadratic variance scenario: RMSE comparison ( d = 3 , five-curve prior with support parameter −π/ 2 ≤ t < π/ 2) over 200 replicates. In both figures, FedAvg is omitted for readability due to the large RMSE scale. 
+
+5.3 Results. 
+
+Quadratic variance scenario (Figure 2). In Figure 2(a), we note that VANEB im-proves steadily with an increasing number of clients and consistently outperforms fixed-variance EB once K is moderate. Figure 2(b) shows that VANEB strongly outperforms NPEB in the small sample regime. In both simulations, VANEB and NPEB generally outperform AdaMix and local-only estimation. The FedAvg method, which averages local estimates, has a high RMSE due to client dissimilarity and is omitted from the figures due to its large scale. These results support the claim that dynamic atom-covariance coupling is most valuable when local summaries are noisy. 
+
+Multiclass logistic scenario (Figure 3). The logistic regression environment presents a more complex, parameter-coupled Fisher covariance and exhibits a clear trade-off between sample size and client pool size. In the n-sweep at K = 3200 , VANEB substantially outperforms NPEB, AdaMix, and FedAvg in the hardest regimes with small client sample 27 50 200 800 3200 
+
+> K
+> 0.5 0.6 0.7 0.8
+> RMSE
+> Multiclass logistic (Log x)
+
+(a) K-sweep (fixed n = 40 ). 5 10 20 40  
+
+> nmin
+> 12345
+> RMSE
+> Multiclass logistic (Log x)
+> VANEB NPEB AdaMix FedAvg Local Oracle
+
+(b) n-sweep (fixed K = 3200 ). 
+
+Figure 3: Multiclass logistic scenario: RMSE comparison. FedAvg omitted from part (a) for readability due to large RMSE scale. sizes. In the K-sweep at fixed n = 40 , however, VANEB is not the best for small and moderate client counts ( K = 50 , 200 , 800 ), where NPEB and AdaMix have slightly lower errors. The crossover appears at a larger number of clients, and at K = 3200 , VANEB has the best performance among the compared methods. For intuition behind the slow K-gain, consider binary logistic regression with a single covariate z = 1 : I(θ) = p(θ)(1 − p(θ)) with p(θ) = eθ/(1 + eθ). Then ∇I (θ) = I(θ)(1 −
+
+2p(θ)) , so the Fisher gradient vanishes at the decision boundary θ = 0 and, exponentially fast, as |θ|→ ∞ . Thus I(θ) (and with it the local variance-shift signal that VANEB exploits when re-evaluating Σ at the atoms) is appreciable only in a thin transition region around 
+
+θ = 0 and is quickly negligible under separation. When this signal is small, the error in estimating G0 can dominate the benefit of learning the variance field, so a larger client pool 
+
+K is needed before variance-aware updates improve upon fixed-covariance NPEB. 
+
+Poisson regression scenario (Figure 4). The Poisson regression task is the most strongly heteroskedastic setting. At n = 5 , the local MLEs are numerically unstable and the RMSE of all local-estimator-based methods is several orders of magnitude larger than at n ≥ 10 , so this point is omitted from the plots. From n = 10 onward, VANEB is consistently the strongest non-oracle method (e.g., 2.819 vs NPEB 3.8 at n = 10 , and 1.3
+
+vs 1.363 at n = 40 ). In the K-sweep at fixed n = 40 , VANEB also maintains a strict advantage over NPEB for every K (1.545 vs 1.673 at K = 50 , 1.300 vs 1.363 at K = 3200 ). 28 50 200 800 3200 
+
+> K
+> 1.4 1.6 1.8 2.0 2.2
+> RMSE
+> Poisson regression (Log x)
+
+(a) K-sweep (fixed n = 40 ). 10 20 40 3 × 10 1 
+
+> nmin
+> 123456
+> RMSE
+> Poisson regression (Log x)
+> VANEB NPEB AdaMix FedAvg Local Oracle
+
+(b) n-sweep (fixed K = 3200 ). 
+
+Figure 4: Poisson regression scenario: RMSE comparison. Compared with the logistic case, the Poisson Fisher field is easier for VANEB to exploit at small K because Ik(θ) changes essentially monotonically with the signal magnitude through the factor exp (0 .12⟨θ, Σx,k θ⟩/2) . The Poisson variance field thus varies more strongly than the logistic one, but its dependence on θ is simpler to infer. Across scenarios, VANEB is strongest under Σk-θ coupling and either local sample sizes are small or the client pool is sufficiently large. The results also show that variance-adaptive gains are amplified when enough clients are available to stabilize the learned prior. Overall, the simulation studies support VANEB as a robust nonparametric personalization method while highlighting finite-sample regimes in which fixed-covariance baselines can remain competitive. In contrast, both local estimates and aggregation across clients, such as FedAvg, fail significantly in many cases. FedAvg is omitted from several plots because its high RMSE would affect readability. Because our 5-curve prior is highly multimodal and geometrically spread out, enforcing a single global point estimate incurs massive squared errors across heterogeneous clients. 
+
+# 6 Neural network adaptations and applications 
+
+In this section, we extend our Variance-Aware Nonparametric Empirical Bayes (VANEB) framework to federated training of deep neural networks. Training personalized AI models for each user, while borrowing information from other users, has emerged as a major use 29 Algorithm 2: VANEB-Head and VANEB-FT for neural-network personalization 
+
+Input: Clients [K]; rounds T ; participation q; atoms m; pseudo-EM iterations S; EB frequency b; mode M ∈ { Head , FT }; covariance rule C ∈ { Direct , Coordinate } 
+
+> 1
+
+Procedure VANEB( A, { ˆϕk, ˆΣk, n k}k∈A ): 
+
+> 2
+
+Construct ˆΣk by (20). For Direct, set Σk(a) = ˆΣk; for Coordinate, fit the coordinatewise variance functions and evaluate them at a 
+
+> 3
+
+m ← min( m, |A| ); initialize {aj }mj=1 from the reported heads and set πj = 1 /m  
+
+> 4
+
+for s = 0 , . . . , S − 1 do  
+
+> 5
+
+foreach k ∈ A , j ∈ [m] do  
+
+> 6
+
+rkj ←
+
+πj φd
+
+ ˆϕk; aj , Σk(aj )/n k
+
+Pmℓ=1 πℓφd
+
+ ˆϕk; aℓ, Σk(aℓ)/n k
+
+ 
+
+> 7
+
+foreach j ∈ [m] do  
+
+> 8
+
+πj ← |A| −1P 
+
+> k∈A
+
+rkj , aj ← P  
+
+> k∈A
+
+rkj nkΣk(aj )−1−1 P 
+
+> k∈A
+
+rkj nkΣk(aj )−1 ˆϕk 
+
+> 9
+
+if C = Coordinate then  
+
+> 10
+
+Update {Σk(aj )}k∈A at the new atom  
+
+> 11
+
+Recompute rkj and return ˜ϕk = Pmj=1 rkj aj , k ∈ A  
+
+> 12
+
+if M = Head then  
+
+> 13
+
+Initialize ψ(0) and ϕ(0)  
+
+> k
+
+= ϕ(0)  
+
+> 14
+
+for t = 0 , . . . , T − 1 do  
+
+> 15
+
+Sample St ⊂ [K] with |S t|= max(1 , ⌊qK ⌋) and broadcast (ψ(t), ϕ(t) 
+
+> k
+
+) to k ∈ S t 
+
+> 16
+
+Each selected client performs E local epochs and returns ( ˆψk, ˆϕk, ˆΣk, n k) 
+
+> 17
+
+ψ(t+1) ←
+
+P 
+
+> k∈S t
+
+nk ˆψk
+
+P 
+
+> k∈S t
+
+nk 
+
+> 18
+
+if t + 1 ≡ 0 (mod b) then  
+
+> 19
+
+{ϕ(t+1)  
+
+> k
+
+}k∈S t ← VANEB (St, { ˆϕk, ˆΣk, n k}k∈S t ) 
+
+> 20
+
+else  
+
+> 21
+
+ϕ(t+1)  
+
+> k
+
+← ˆϕk, k ∈ S t 
+
+> 22
+
+Retain ϕ(t+1)  
+
+> k
+
+= ϕ(t) 
+
+> k
+
+for k / ∈ S t 
+
+> 23
+
+else  
+
+> 24
+
+Train all parameters for T rounds by FedAvg, obtaining (ψ(T ), ϕ(T )) 
+
+> 25
+
+Broadcast the final model to all clients and freeze ψ(T ) 
+
+> 26
+
+Each client fine-tunes ϕ(T ) for EFT epochs and returns ( ˆϕk, ˆΣk, n k) 
+
+> 27
+
+{ϕvk}Kk=1 ← VANEB ([ K], { ˆϕk, ˆΣk, n k}Kk=1 )
+
+Output: Shared backbone and personalized client heads 
+
+30 case for federated learning. Although the asymptotic normality assumption central to our theory does not strictly hold for highly non-convex neural networks, we heuristically treat local weight estimates as approximately Gaussian and investigate whether VANEB remains effective in this setting. Updating the entire neural-network weight vector through NPEB can be noisy, computa-tionally expensive, and communication-inefficient. We therefore use a common body–head decomposition: a shared backbone ψ learns the representation, while the final layer ϕk is personalized for client k [Bengio, 2012, Tripuraneni et al., 2020, Collins et al., 2021]. The backbone is updated using FedAvg [McMahan et al., 2017a], and VANEB is applied only to the relatively lower-dimensional client heads. We consider two versions that use the same variance-aware EB operation but at different stages. VANEB-Head applies the EB update intermittently during federated training (every five communication rounds in our experiments), while the backbone is updated in every round. VANEB-FT first trains a common model by FedAvg, then fine-tunes each client’s head with the backbone fixed, and finally applies one EB update across all locally adapted heads. Thus, VANEB-Head integrates personalization into federated training, whereas VANEB-FT uses EB to denoise and share information among the final locally fine-tuned heads. Algorithm 2 presents both versions in a common form. For either version, client k reports a diagonal covariance estimate based on an approx-imation to the observed Fisher information matrix as, 
+
+ˆΣk = diag 
+
+ 1
+
+nknkX
+
+> i=1
+
+gk,i g⊤ 
+
+> k,i
+
++ λI
+
+!−1 , (20) where gk,i is the gradient of the head loss for observation i. Note that, for communica-tion efficiency and to remain closer to our theoretical setup, we retain only the diagonal elements from the full covariance matrix. As in Jhunjhunwala et al. [2024], this provides a Fisher information based approximation to local uncertainty. We consider two ways of supplying the covariance to pseudo-EM. The direct construction sets Σk(aj ) = ˆΣk at every candidate atom, whereas the coordinatewise construction estimates, separately for each head coordinate, a low-order variance function and evaluates it at aj . Crossing these two constructions with the two training stages gives the four reported variants: VANEB-Direct FT, VANEB-Coordinate FT, VANEB-Direct Head, and VANEB-Coordinate Head. We do note that there are multiple consistent estimators of the Fisher information matrix, and in our results are not sensitive to the particular estimator used. 31 Table 1: Final personalized test accuracy (%) on MNIST. The total training sample size is fixed at 50,000 and divided among the indicated number of clients. Bold denotes the highest result in each column and evaluation protocol. 
+
+α = 0 .01 α = 0 .1 α = 0 .5
+
+Method 100 200 500 100 200 500 100 200 500 
+
+Panel A: Balanced test distribution 
+
+FedAvg 80.51 79.86 70.74 89.22 83.27 75.18 90.46 87.16 74.36 FedAvg+FT 49.49 39.59 33.61 71.05 57.68 46.41 84.57 75.30 59.99 FedBABU 49.69 34.12 22.25 65.23 50.98 33.87 80.55 69.73 49.46 FedPer 26.09 30.02 28.20 59.04 54.67 47.34 81.36 73.50 61.10 FedRep 12.29 11.41 10.60 36.23 25.83 14.68 66.14 51.80 23.71 LG-FedAvg 59.77 50.13 46.42 70.67 57.29 48.12 83.19 70.83 56.70 Per-FedAvg 11.15 10.66 10.50 17.90 14.55 12.42 27.46 17.93 12.39 SCAFFOLD 73.61 75.42 68.30 82.51 78.06 69.56 85.61 81.32 67.38 Ditto 13.40 11.42 10.31 24.20 16.25 11.40 44.16 22.98 12.81 Local Only 11.52 11.19 10.26 20.28 15.18 11.14 31.58 18.40 11.91 VANEB-FT (direct) 69.30 73.81 75.84 86.94 82.65 77.25 92.10 87.16 77.11 
+
+VANEB-FT (coordinate) 83.60 82.10 74.77 90.91 84.95 76.50 92.34 87.55 76.18 VANEB-Head (direct) 31.34 44.52 46.68 59.08 61.24 60.40 81.88 77.92 66.82 VANEB-Head (coordinate) 37.35 47.45 44.26 67.13 64.94 58.26 84.12 78.57 66.08 
+
+Panel B: Client-matched test distribution 
+
+FedAvg 80.77 80.16 71.57 89.32 84.19 74.25 90.45 87.06 75.03 FedAvg+FT 96.82 92.99 82.06 95.81 91.85 79.06 93.83 89.47 75.67 FedBABU 96.26 92.15 79.05 95.04 90.37 74.93 93.10 87.29 70.18 FedPer 95.16 91.40 80.81 94.25 90.33 78.53 92.95 87.94 75.45 FedRep 93.71 88.00 74.03 91.41 84.11 61.66 88.44 80.31 51.57 LG-FedAvg 97.37 93.97 84.55 96.12 91.09 79.06 93.74 86.94 73.08 Per-FedAvg 93.02 86.23 73.77 81.96 72.67 58.03 67.91 51.83 36.31 SCAFFOLD 73.52 75.86 67.79 82.87 78.49 68.77 85.80 81.18 68.04 Ditto 94.04 87.18 73.30 87.05 74.95 55.17 78.63 57.82 35.57 Local Only 93.58 87.88 73.38 85.80 73.86 55.35 72.22 52.62 35.15 VANEB-FT (direct) 93.99 90.25 79.08 94.07 88.77 76.94 93.31 87.96 77.61 
+
+VANEB-FT (coordinate) 83.63 82.61 74.53 91.00 85.30 75.59 92.86 87.75 76.49 VANEB-Head (direct) 95.11 91.04 80.81 94.30 90.24 78.79 93.24 87.93 75.64 VANEB-Head (coordinate) 91.44 87.56 79.53 92.78 88.60 77.86 92.93 87.25 75.12 
+
+6.1 CNN on MNIST and CIFAR-10 vision datasets 
+
+We compare personalized CNN performance on MNIST and CIFAR-10. The MNIST net-work has two convolutional and two fully connected layers, with fc2 as the personalized 32 Table 2: Personalized CIFAR-10 test accuracy (%) with total sample size fixed at 50,000. 
+
+α = 0 .01 α = 0 .1 α = 0 .5
+
+Method 100 200 500 100 200 500 100 200 500 
+
+Panel A: Balanced test distribution 
+
+FedAvg 30.14 34.64 32.86 47.33 40.95 37.11 50.69 47.49 37.52 FedAvg+FT 13.27 14.25 15.08 24.34 22.29 20.39 39.00 33.08 27.95 FedBABU 14.94 14.96 15.02 24.34 22.00 19.49 34.96 30.06 25.09 FedPer 13.63 13.66 14.61 23.19 19.90 18.81 35.68 30.32 25.00 FedRep 12.36 12.26 13.61 21.46 20.20 18.87 35.38 30.33 24.74 LG-FedAvg 18.27 18.18 18.08 28.59 25.95 23.00 42.56 35.52 30.69 Per-FedAvg 10.92 10.50 10.29 14.09 12.95 11.82 17.30 15.99 13.30 SCAFFOLD 17.78 19.71 14.35 26.92 21.61 14.61 29.36 24.77 14.42 Ditto 16.34 14.55 12.55 25.16 20.79 16.00 36.77 28.95 20.08 Local Only 11.15 10.60 10.26 14.99 13.19 11.16 18.62 15.82 12.12 VANEB-FT (coordinate) 39.40 38.16 34.63 48.36 43.86 37.93 55.10 47.73 38.52 VANEB-FT (direct) 20.89 21.82 34.20 36.69 38.39 38.45 48.80 48.29 38.85 
+
+VANEB-Head (coordinate) 18.67 19.29 20.24 29.02 25.85 23.98 40.17 35.06 28.76 VANEB-Head (direct) 14.16 14.94 18.32 23.07 21.90 24.18 35.73 33.01 29.18 
+
+Panel B: Client-matched test distribution 
+
+FedAvg 29.93 34.73 33.24 47.46 40.80 36.79 50.54 47.32 37.40 FedAvg+FT 93.11 88.00 75.34 81.69 76.54 64.11 69.60 61.98 49.79 FedBABU 92.34 87.31 74.75 78.28 72.80 62.12 64.18 57.13 45.92 FedPer 92.73 87.49 74.22 79.74 74.66 61.85 66.74 58.49 46.88 FedRep 92.93 87.82 74.29 81.29 75.74 61.27 68.36 60.53 44.52 LG-FedAvg 93.40 88.09 75.41 81.82 76.51 64.07 69.66 62.35 50.09 
+
+Per-FedAvg 91.77 86.04 73.35 71.34 67.51 55.73 49.49 45.81 35.99 SCAFFOLD 17.56 19.61 14.42 26.43 21.69 14.56 28.99 24.64 14.51 Ditto 92.00 86.88 73.78 78.71 72.09 58.97 64.47 56.88 41.73 Local Only 92.01 86.14 73.38 73.61 67.98 55.28 51.28 46.17 34.63 VANEB-FT (coordinate) 45.12 38.01 34.36 54.32 43.91 37.44 55.00 48.05 38.97 VANEB-FT (direct) 85.68 79.51 42.96 70.56 62.57 38.07 62.60 48.52 39.14 VANEB-Head (coordinate) 80.68 73.86 64.29 74.56 66.78 55.25 63.42 55.48 44.09 VANEB-Head (direct) 92.27 85.76 71.04 80.08 73.42 56.11 67.03 57.93 44.29 
+
+head. The CIFAR-10 network has three convolutional blocks followed by three fully con-nected layers, with fc3 as the personalized head. In both cases the remaining layers form the shared backbone. We compare two variants of VANEB-Head and VANEB-FT with FedAvg, FedAvg followed by head fine-tuning, FedRep [Collins et al., 2021], FedBABU [Oh et al., 2021], FedPer [Arivazhagan et al., 2019], LG-FedAvg [Liang et al., 2020], Per-FedAvg 33 [Fallah et al., 2020], SCAFFOLD [Karimireddy et al., 2020], Ditto [Li et al., 2021], and local-only training. We generate joint label and covariate heterogeneity. Client training-label proportions are drawn from a Dirichlet distribution, with smaller α giving stronger label skew. Clients are also assigned to transformation clusters: rotations, translations, blur, and contrast changes are used for MNIST, while color jitter, blur, and affine perturbations are used for CIFAR-10. Holdout images are disjoint from training images and use deterministic trans-forms. We report two personalized evaluation protocols. The balanced protocol represents every class equally in each client’s test distribution and measures whether personaliza-tion preserves broad predictive coverage. The client-matched protocol follows that client’s training-label proportions and measures specialization to its local distribution. All experiments use 10% client participation. For MNIST data, we use two local epochs and 50 communication rounds, while for CIFAR-10 data we use 100 communication rounds and one local epoch. The LG-Fedavg additionally used 100-round LG stage. For each value α ∈ { 0.01 , 0.1, 0.5}, the total training sample size is fixed at 50,000 and divided among 100, 200, or 500 clients. The VANEB procedures use 10 atoms. The local-only results are for local training with effective compute match. Bold denotes the best result within each column and test protocol. Tables 1 and 2 show a clear distinction between the two evaluation protocols. Under client-matched evaluation, methods based on independent head adaptation can perform very well because the test labels follow the same skewed proportions observed during local training. Balanced evaluation is more demanding: every personalized model must predict the full label space, including labels that are rare at that client. This also explains why local-only training can appear strong under severe matched label skew but degrades sharply on balanced tests. The VANEB-FT variants give the strongest and most consistent balanced performance. Across MNIST and CIFAR-10, either Direct or Coordinate FT is best in every balanced column. More broadly, VANEB-Coordinate FT outperforms FedAvg in every reported comparison: all nine settings under both balanced and client-matched evaluation on both datasets (36 of 36 comparisons). However, VANEB-FT Coordinate is not always the overall best-performing method, especially in client-matched tests, since FedAvg can have degraded performance there. On client-matched tests, FedAvg with fine-tuning, LG-FedAvg, and related local-adaptation methods are often stronger because their test labels reproduce 34 Table 3: Final personalized test accuracy (%) on MNIST under joint Dirichlet label skew (α = 0 .1) and clustered covariate shift. 
+
+No covariate shift ( s = 0 ) Default shift ( s = 1 ) Strong shift ( s = 2 )Method 50 100 200 500 50 100 200 500 50 100 200 500 
+
+Panel A: Balanced test distribution 
+
+FedAvg 92.24 92.82 89.62 83.18 86.97 89.22 83.27 75.18 74.67 79.03 72.02 60.89 FedAvg+FT 86.80 80.42 70.45 59.82 77.53 71.05 57.68 46.41 62.08 54.32 43.02 30.23 FedBABU 78.00 74.58 64.40 46.02 69.49 65.31 50.58 33.51 52.85 49.59 37.77 21.51 FedPer 74.27 71.34 66.32 59.93 64.12 58.92 54.52 47.44 50.69 44.35 40.62 29.58 FedRep 54.77 44.92 30.96 16.39 47.47 36.24 25.89 14.62 37.93 27.59 20.56 12.83 LG-FedAvg 86.48 78.80 67.91 59.71 78.83 70.23 57.36 48.25 67.76 57.57 46.76 34.21 Per-FedAvg 25.13 19.55 15.35 13.30 23.53 17.88 14.49 12.40 21.19 15.97 13.53 11.60 SCAFFOLD 91.39 89.58 85.65 79.24 84.84 82.60 78.20 69.68 74.64 70.09 64.53 54.76 Ditto 58.18 27.21 17.34 11.73 50.49 24.37 16.33 11.42 41.93 21.11 14.88 11.20 Local Only 27.84 21.64 15.80 11.36 26.04 20.18 15.20 11.21 23.56 18.09 14.30 11.05 VANEB-Direct FT 93.66 93.56 90.34 85.24 87.45 86.94 82.65 77.25 72.62 73.40 68.33 63.28 
+
+VANEB-Coordinate FT 95.73 94.05 90.84 84.79 91.95 90.91 84.95 76.50 77.79 81.18 73.72 62.22 VANEB-Direct Head 75.27 71.63 73.25 70.65 64.05 59.08 61.24 60.40 52.22 44.37 46.42 44.33 VANEB-Coordinate Head 81.35 77.62 74.78 69.03 70.61 67.13 64.94 58.26 56.56 53.21 49.80 41.85 
+
+Panel B: Client-matched test distribution 
+
+FedAvg 92.08 92.76 90.00 82.80 86.91 89.32 84.19 74.25 76.78 79.77 72.85 60.33 FedAvg+FT 98.23 97.31 94.41 85.48 97.24 95.81 91.85 79.06 94.68 92.80 86.79 70.07 FedBABU 97.60 96.89 93.11 80.97 96.51 95.04 90.37 74.93 93.22 91.53 85.60 66.42 FedPer 97.80 96.27 93.42 84.17 96.76 94.25 90.33 78.53 93.75 90.28 84.53 69.39 FedRep 96.92 93.79 87.08 64.74 95.37 91.41 84.11 61.66 92.39 86.87 78.63 58.28 LG-FedAvg 98.60 97.24 93.25 84.34 97.78 96.12 91.09 79.06 96.80 94.21 87.43 71.42 
+
+Per-FedAvg 91.56 85.64 74.13 59.87 89.42 81.96 72.67 58.03 85.05 77.80 70.10 56.38 SCAFFOLD 91.10 89.75 85.83 78.86 84.61 82.87 78.49 68.77 75.83 70.51 64.74 53.81 Ditto 96.20 89.07 77.29 55.96 94.13 87.05 74.95 55.17 91.70 83.11 72.27 54.68 Local Only 93.68 88.02 75.37 55.98 92.05 85.80 73.86 55.35 88.20 80.83 71.64 54.87 VANEB-Direct FT 97.38 95.46 92.36 84.87 95.99 94.07 88.77 76.94 91.38 89.36 82.76 64.73 VANEB-Coordinate FT 95.53 93.79 91.20 84.47 93.85 91.00 85.30 75.59 83.53 82.41 74.92 62.00 VANEB-Direct Head 97.94 96.22 93.49 85.11 96.78 94.30 90.24 78.79 93.80 89.98 83.88 69.01 VANEB-Coordinate Head 97.39 95.54 92.57 83.89 95.43 92.78 88.60 77.86 91.65 88.21 79.36 67.65 
+
+the client’s local label mixture. Coordinate FT is especially effective with fewer clients, whereas Direct FT is more stable as the client population grows. VANEB-Head provides a complementary in-training procedure without a separate terminal fine-tuning stage and generally improves substantially over local-only training. To separate label heterogeneity from clustered feature heterogeneity, Table 3 varies the strength s of the client-cluster transformations at α = 0 .1. Increasing s lowers accuracy for every method and makes the decline sharper when the fixed sample is split among more clients. The VANEB-FT variants remain strongest throughout the balanced protocol: Coordinate FT is best in nine of the 12 settings, while Direct FT is best for 500 clients at each transformation strength. This complementarity agrees with the main tables and motivates reporting both covariance constructions. Figure 5 examines the effect of increasing the number of clients while holding the total 35 50 100 200 400 500 800 1000 
+
+Number of clients 
+
+> 010 20 30 40 50 60 70 80 90 100
+> Final personalized accuracy (%)
+> FedAvg FedAvg + FT FedBABU FedPer FedRep LG-FedAvg Per-FedAvg SCAFFOLD Ditto Local Only VANEB-FT Direct VANEB-FT Coordinate VANEB-Head Direct VANEB-Head Coordinate
+
+(a) α = 0 .1: balanced test distribution. 50 100 200 400 500 800 1000 
+
+Number of clients  
+
+> 010 20 30 40 50 60 70 80 90 100
+> Final personalized accuracy (%)
+> FedAvg FedAvg + FT FedBABU FedPer FedRep LG-FedAvg Per-FedAvg SCAFFOLD Ditto Local Only VANEB-FT Direct VANEB-FT Coordinate VANEB-Head Direct VANEB-Head Coordinate
+
+(b) α = 0 .1: client-matched test distribution. 50 100 200 400 500 800 1000 
+
+Number of clients 
+
+> 010 20 30 40 50 60 70 80 90 100
+> Final personalized accuracy (%)
+> FedAvg FedAvg + FT FedBABU FedPer FedRep LG-FedAvg Per-FedAvg SCAFFOLD Ditto Local Only VANEB-FT Direct VANEB-FT Coordinate VANEB-Head Direct VANEB-Head Coordinate
+
+(c) α = 0 .01 : balanced test distribution. 50 100 200 400 500 800 1000 
+
+Number of clients  
+
+> 010 20 30 40 50 60 70 80 90 100
+> Final personalized accuracy (%)
+> FedAvg FedAvg + FT FedBABU FedPer FedRep LG-FedAvg Per-FedAvg SCAFFOLD Ditto Local Only VANEB-FT Direct VANEB-FT Coordinate VANEB-Head Direct VANEB-Head Coordinate
+
+(d) α = 0 .01 : client-matched test distribution. 
+
+Figure 5: Final personalized accuracy on MNIST as the number of clients increases while the total federated sample size remains fixed. amount of data fixed. As the client population grows from 50 to 1,000, the number of observations available to each client decreases, making both local estimation and person-alization progressively more difficult. This deterioration becomes particularly pronounced beyond 500 clients. Under balanced evaluation, the VANEB-FT variants are strongest or nearly strongest across the client scales for both levels of label skew. Coordinate FT is generally strongest when each client has more data, while Direct FT is more stable after the fixed sample is divided among many clients. These results indicate that pooling locally adapted heads through the estimated population distribution remains effective as the client data become increasingly fragmented. The client-matched panels show a different pattern. Because their test-label proportions follow local training distributions, methods based on aggressive local head adaptation, 36 particularly FedAvg with fine-tuning and LG-FedAvg, often perform best. The contrast between the balanced and matched panels illustrates the distinction between specialization to a client’s observed label mixture and retaining predictive coverage across the complete label space. Figure 6 visualizes the estimated priors (the first two principal components) for the two VANEB-FT covariance constructions at 50 and 500 clients. The gray points are the locally fine-tuned heads, the red stars are the final prior atoms, and the blue points are the posterior-mean heads; the other panels show the estimated atom masses and the con-centration of client responsibilities. With 50 clients, Direct retains ten separated atoms and visibly distinct posterior heads, whereas Coordinate concentrates most mass on two atoms and produces stronger shrinkage. With 500 clients, Coordinate becomes essentially single-atom, while Direct retains diffuse prior mass across the ten atoms. Nevertheless, Direct responsibilities are then sufficiently diffuse that its posterior means also become very similar. Thus the direct construction preserves a richer estimated prior, while the coordinatewise construction induces more aggressive pooling as the federation becomes increasingly fragmented. Together, the two versions show how the same EB principle can be used either during federated training or after local adaptation. VANEB-Head continually shares information among uncertain client heads, while VANEB-FT applies a final population-level denoising step to independently fine-tuned heads. The balanced results indicate that this shrinkage prevents local adaptation from discarding information learned from the broader federation, allowing VANEB to personalize client models without sacrificing global predictive coverage. 
+
+# 7 Discussion 
+
+In this paper, we introduced the Variance-Aware Nonparametric Empirical Bayes (VANEB) framework for personalized federated learning. By deriving a generalized Tweedie formula that accommodates parameter-dependent covariance structures, we remove the known-covariance restriction of existing NPEB methods. Our analysis provides non-asymptotic guarantees for the NPMLE in the average squared Hellinger distance and an oracle de-noising inequality, covering M-estimators and generalized linear models (GLMs) under a diagonal covariance regime. Beyond our rigorous theoretical guarantees, we empirically demonstrated the practical 37 0.50 0.25 0.00 0.25 0.50 0.75 1.00 1.25 Shared PC1 1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 Shared PC2 
+
+VANEB-FT expected Fisher: coordinatewise variance function 
+
+FedAvg+FT heads Posterior heads Prior atoms Prior mean 
+
+2 4 6 8 10 Prior atom (sorted) 0.0 0.2 0.4 0.6 0.8 1.0 Estimated mass 
+
+Estimated prior weights 
+
+0.0 0.2 0.4 0.6 0.8 1.0 Maximum posterior atom probability 0246810 12 14 16 Clients 
+
+Responsibility concentration 
+
+0.50 0.25 0.00 0.25 0.50 0.75 1.00 1.25 Shared PC1 1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 Shared PC2 
+
+VANEB-FT expected Fisher: fixed direct diagonal 
+
+2 4 6 8 10 Prior atom (sorted) 0.0 0.2 0.4 0.6 0.8 1.0 Estimated mass 
+
+Estimated prior weights 
+
+0.0 0.2 0.4 0.6 0.8 1.0 Maximum posterior atom probability 0246810 12 14 16 Clients 
+
+Responsibility concentration 
+
+Estimated VANEB priors on MNIST (alpha=0.1, 50 clients) (a) 50 clients (1,000 training observations per client). 0.8 0.6 0.4 0.2 0.0 0.2 0.4 Shared PC1 0.6 
+
+0.4 
+
+0.2 
+
+0.0 0.2 0.4 Shared PC2 
+
+VANEB-FT expected Fisher: coordinatewise variance function 
+
+FedAvg+FT heads Posterior heads Prior atoms Prior mean 
+
+2 4 6 8 10 Prior atom (sorted) 0.0 0.2 0.4 0.6 0.8 1.0 Estimated mass 
+
+Estimated prior weights 
+
+0.0 0.2 0.4 0.6 0.8 1.0 Maximum posterior atom probability 0100 200 300 400 500 Clients 
+
+Responsibility concentration 
+
+0.8 0.6 0.4 0.2 0.0 0.2 0.4 Shared PC1 0.6 
+
+0.4 
+
+0.2 
+
+0.0 0.2 0.4 Shared PC2 
+
+VANEB-FT expected Fisher: fixed direct diagonal 
+
+2 4 6 8 10 Prior atom (sorted) 0.0 0.2 0.4 0.6 0.8 1.0 Estimated mass 
+
+Estimated prior weights 
+
+0.0 0.2 0.4 0.6 0.8 1.0 Maximum posterior atom probability 050 100 150 200 250 Clients 
+
+Responsibility concentration 
+
+Estimated VANEB priors on MNIST (alpha=0.1, 500 clients) 
+
+(b) 500 clients (100 training observations per client). 
+
+Figure 6: Estimated VANEB-FT priors on MNIST with α = 0 .1 and a fixed total training sample size of 50,000. The top and bottom rows within each subfigure show the coordi-natewise and direct covariance constructions, respectively. 38 utility of VANEB through heuristic extensions to Deep Neural Networks (DNNs). Although the core assumption of asymptotic normality does not apply to the highly non-convex loss landscapes of these modern architectures, our experimental results reveal that treating local parameters as approximately Gaussian allows VANEB to serve as a powerful, adaptive shrinkage regularizer, outperforming standard baselines like FedAvg. Several directions remain open. First, our guarantees are restricted to the diagonal co-variance approximation; extending them to full, non-diagonal Fisher information matrices is a natural next step. Second, bridging the gap between the theory and deep learning applications requires relaxing the asymptotic normality condition and addressing high di-mensionality. A non-asymptotic analysis based on empirical process theory, controlling the concentration of the local empirical risks directly, could provide guarantees for VANEB in non-convex, finite-sample settings. 
+
+# References 
+
+Manoj Ghuhan Arivazhagan, Vinay Aggarwal, Aaditya Kumar Singh, and Sunav Choud-hary. Federated learning with personalization layers. arXiv preprint arXiv:1912.00818 ,2019. Arnab Auddy, Xiangni Peng, and Subhadeep Paul. Statistical limits and efficient algorithms for differentially private federated learning. arXiv preprint arXiv:2605.18656 , 2026. Sara Babakniya, Ahmed Roushdy Elkordy, Yahya H Ezzeldin, Qingfeng Liu, Kee-Bong Song, Mostafa El-Khamy, and Salman Avestimehr. Slora: Federated parameter efficient fine-tuning of language models. arXiv preprint arXiv:2308.06522 , 2023. Yoshua Bengio. Deep learning of representations for unsupervised and transfer learning. In Proceedings of ICML workshop on unsupervised and transfer learning , pages 17–36. JMLR Workshop and Conference Proceedings, 2012. Liam Collins, Hamed Hassani, Aryan Mokhtari, and Sanjay Shakkottai. Exploiting shared representations for personalized federated learning. In International conference on ma-chine learning , pages 2089–2099. PMLR, 2021. Yuyang Deng, Mohammad Mahdi Kamani, and Mehrdad Mahdavi. Adaptive personalized federated learning. arXiv preprint arXiv:2003.13461 , 2020. 39 Canh T Dinh, Nguyen Tran, and Josh Nguyen. Personalized federated learning with moreau envelopes. Advances in neural information processing systems , 33:21394–21405, 2020. Bradley Efron. Large-Scale Inference: Empirical Bayes Methods for Estimation, Testing, and Prediction . Cambridge University Press, Cambridge, 2012. Bradley Efron. Two modeling strategies for empirical bayes estimation. Statistical science: a review journal of the Institute of Mathematical Statistics , 29(2):285, 2014. Alireza Fallah, Aryan Mokhtari, and Asuman Ozdaglar. Personalized federated learning: A meta-learning approach. arXiv preprint arXiv:2002.07948 , 2020. Elisabeth Gassiat and Gilles Stoltz. The van trees inequality in the spirit of hájek and le cam. Statistical Science , 39(4):644–653, 2024. Jia Gu and Song Xi Chen. Distributed statistical inference under heterogeneity. Journal of Machine Learning Research , 24(387):1–57, 2023. Jia Gu and Song Xi Chen. Statistical inference for decentralized federated learning. The Annals of Statistics , 52(6):2931–2955, 2024. Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of large language models. Iclr ,1(2):3, 2022. William James and Charles Stein. Estimation with quadratic loss. In Proceedings of the Fourth Berkeley Symposium on Mathematical Statistics and Probability , volume 1, pages 361–379. University of California Press, 1961. Divyansh Jhunjhunwala, Shiqiang Wang, and Gauri Joshi. Fedfisher: Leveraging fisher information for one-shot federated learning. In International Conference on Artificial Intelligence and Statistics , pages 1612–1620. PMLR, 2024. Wenhua Jiang and Cun-Hui Zhang. General maximum likelihood empirical Bayes estima-tion of normal means. The Annals of Statistics , 37(4):1647 – 1684, 2009. Yihan Jiang, Jakub Konečn` y, Keith Rush, and Sreeram Kannan. Improving fed-erated learning personalization via model agnostic meta learning. arXiv preprint arXiv:1909.12488 , 2019. 40 Peter Kairouz, H Brendan McMahan, Brendan Avent, Aurélien Bellet, Mehdi Bennis, Ar-jun Nitin Bhagoji, Kallista Bonawitz, Zachary Charles, Graham Cormode, Rachel Cum-mings, et al. Advances and open problems in federated learning. Foundations and trends® in machine learning , 14(1–2):1–210, 2021. Sai Praneeth Karimireddy, Satyen Kale, Mehryar Mohri, Sashank Reddi, Sebastian Stich, and Ananda Theertha Suresh. Scaffold: Stochastic controlled averaging for federated learning. In International conference on machine learning , pages 5132–5143. PMLR, 2020. Roger Koenker and Ivan Mizera. Convex optimization, shape constraints, compound de-cisions, and empirical bayes rules. Journal of the American Statistical Association , 109 (506):674–685, 2014. Nikita Kotelevskii, Maxime Vono, Alain Durmus, and Eric Moulines. Fedpop: A bayesian approach for personalised federated learning. Advances in Neural Information Processing Systems , 35:8687–8701, 2022. Tian Li, Anit Kumar Sahu, Manzil Zaheer, Maziar Sanjabi, Ameet Talwalkar, and Vir-ginia Smith. Federated optimization in heterogeneous networks. Proceedings of Machine learning and systems , 2:429–450, 2020. Tian Li, Shengyuan Hu, Ahmad Beirami, and Virginia Smith. Ditto: Fair and robust feder-ated learning through personalization. In International conference on machine learning ,pages 6357–6368. PMLR, 2021. Paul Pu Liang, Terrance Liu, Liu Ziyin, Nicholas B Allen, Randy P Auerbach, David Brent, Ruslan Salakhutdinov, and Louis-Philippe Morency. Think locally, act globally: Feder-ated learning with local and global representations. arXiv preprint arXiv:2001.01523 ,2020. Disha Makhija, Joydeep Ghosh, and Nhat Ho. A bayesian approach for personalized fed-erated learning in heterogeneous settings. Advances in Neural Information Processing Systems , 37:102428–102455, 2024. Yishay Mansour, Mehryar Mohri, Jae Ro, and Ananda Theertha Suresh. Three ap-proaches for personalization with applications to federated learning. arXiv preprint arXiv:2002.10619 , 2020. 41 Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Ar-cas. Communication-efficient learning of deep networks from decentralized data. In 
+
+Artificial intelligence and statistics , pages 1273–1282. Pmlr, 2017a. H Brendan McMahan, Daniel Ramage, Kunal Talwar, and Li Zhang. Learning differentially private recurrent language models. arXiv preprint arXiv:1710.06963 , 2017b. Jaehoon Oh, Sangmook Kim, and Se-Young Yun. Fedbabu: Towards enhanced represen-tation for federated image classification. arXiv preprint arXiv:2106.06042 , 2021. Kaan Ozkara, Antonious M Girgis, Deepesh Data, and Suhas N Diggavi. A statistical framework for personalized federated learning and estimation: Theory, algorithms, and privacy. In International Conference on Learning Representations (ICLR), 2023. Open-Review. net, 2023. Surajit Ray and Bruce G. Lindsay. The topography of multivariate normal mixtures. The Annals of Statistics , 33(5):2042 – 2065, 2005. Herbert Robbins. An empirical Bayes approach to statistics. Proceedings of the Third Berkeley Symposium on Mathematical Statistics and Probability , 1:157–163, 1956. Sujayam Saha and Adityanand Guntuboyina. On the nonparametric maximum likelihood estimator for gaussian location mixture densities with application to gaussian denoising. 
+
+The Annals of Statistics , 48(2):738–762, 2020. Qi-Man Shao and Zhuo-Song Zhang. Berry–esseen bounds for multivariate nonlinear statistics with applications to m-estimators and stochastic gradient descent algorithms. 
+
+Bernoulli , 28(3):1548–1576, 2022. Virginia Smith, Chao-Kai Chiang, Maziar Sanjabi, and Ameet S Talwalkar. Federated multi-task learning. Advances in neural information processing systems , 30, 2017. Jake A Soloff, Adityanand Guntuboyina, and Bodhisattva Sen. Multivariate, heteroscedas-tic empirical bayes via nonparametric maximum likelihood. Journal of the Royal Statis-tical Society Series B: Statistical Methodology , 87(1):1–32, 2025. Charles Stein. Inadmissibility of the usual estimator for the mean of a multivariate normal distribution , volume 1. University of California Press, 1956. 42 Alysa Ziying Tan, Han Yu, Lizhen Cui, and Qiang Yang. Towards personalized federated learning. IEEE transactions on neural networks and learning systems , 34(12):9587–9603, 2022. Nilesh Tripuraneni, Michael Jordan, and Chi Jin. On the theory of transfer learning: The importance of task diversity. Advances in neural information processing systems , 33: 7852–7862, 2020. Aad W Van der Vaart. Asymptotic statistics , volume 3. Cambridge university press, 2000. Kang Wei, Jun Li, Ming Ding, Chuan Ma, Howard H Yang, Farhad Farokhi, Shi Jin, Tony QS Quek, and H Vincent Poor. Federated learning with differential privacy: Al-gorithms and performance analysis. IEEE transactions on information forensics and security , 15:3454–3469, 2020. Yue Wu, Shuaicheng Zhang, Wenchao Yu, Yanchi Liu, Quanquan Gu, Dawei Zhou, Haifeng Chen, and Wei Cheng. Personalized federated learning under mixture of distributions. In International Conference on Machine Learning , pages 37860–37879. PMLR, 2023. Yuhang Yao, Jianyi Zhang, Junda Wu, Chengkai Huang, Yu Xia, Tong Yu, Ruiyi Zhang, Sungchul Kim, Ryan Rossi, Ang Li, et al. Federated large language models: Current progress and future directions. arXiv preprint arXiv:2409.15723 , 2024. Weiming Zhuang, Chen Chen, and Lingjuan Lyu. When foundation model meets federated learning: Motivations, challenges, and future directions. arXiv preprint arXiv:2306.15546 , 2023. 43 Appendices 
+
+# A Proof of Main Results 
+
+A.1 Proof overview and comparison with prior work 
+
+Our proofs build on the general NPMLE analysis framework developed by Saha and Gun-tuboyina [2020] and Soloff et al. [2025] for the fixed-covariance (homoskedastic) setting. However, the extension to parameter-dependent covariances Σk(θ) introduces several struc-tural difficulties that require new arguments. The classical analysis works directly with fk,G . In our setting, the oracle Bayes rule involves variance-weighted densities ˜fk,G,i that have no counterpart in prior work. We introduce a sandwiching argument (Section A.3) to transfer Hellinger bounds between fk,G 
+
+and ˜fk,G,i via the condition number τ = ¯ s/s .The NPMLE support is no longer a tractable ridgeline manifold when Σk depends on θ.We establish convergence of the pseudo-EM iterates under Lipschitz covariances (Lemma 3.3) and quantify the approximation gap to the true heteroskedastic critical points via the implicit function theorem. The metric entropy bounds require controlling the variation of φ(k)( ˆθ; θ) as a function of θ when the covariance also moves. Lemma B.3 provides a new mean-value-type bound involving the Jacobian of the variance function, which replaces the standard Lipschitz bounds available in the fixed-covariance case. The covering numbers of the marginal class F grow polynomially in nd/ 2 due to the sharpening of kernels with increasing local sample size—a phenomenon absent when each client contributes a single observation as in Saha and Guntuboyina [2020], Soloff et al. [2025]. 
+
+A.2 Notation 
+
+We write ∂ji f := ∂j
+
+> ∂x ji
+
+f (x) to denote a j-th partial derivative of a vector function f : Rd → R.Let Br( ˆθ) = {y ∈ Rd ; ∥ ˆθ − y∥≤ r} denote a closed ball in Rd. For an integer m > 0, we use a generic notation [m] = {1, . . . , m }. We adopt the following notation from Soloff et al. [2025]: 44 1. Consider a pseudo-metric space (M, m ). For some ε > 0, let N (ε, M, m ) denote the 
+
+ε-covering number: 
+
+N := arg min N
+
+(
+
+M ⊂
+
+> N
+
+[
+
+> i=1
+
+{y ; m(y, x i) ≤ ε}; x1, . . . , x N ∈ M
+
+)
+
+.
+
+We use a shorthand N (ε, M ) instead when M ⊆ Rd.2. For notations f•,G = ( fk,G )Kk=1 and q•,G = ( qk,G )Kk=1 , define the spaces of marginals 
+
+f•,G and q•,G :
+
+F = f•,G ; G ∈ P (Rd) , Fq = q•,G ; G ∈ P (Rd) .
+
+3. For S ⊂ Rd and M > 0, SM denotes an M -enlargement of S:
+
+SM = {x ∈ Rd ; dS (x) ≤ M }
+
+for dS (x) = inf s∈S ∥x − s∥.4. Define the semi-norms 
+
+∥f•,G − f•,H ∥∞,S M := max  
+
+> 1≤k≤K
+
+sup 
+
+> ˆθ∈SM
+
+fk,G ( ˆθ) − fk,H ( ˆθ)
+
+∥q•,G − q•,H ∥∞,S M := max  
+
+> 1≤k≤K
+
+sup 
+
+> ˆθ∈SM
+
+∥qk,G ( ˆθ) − qk,H ( ˆθ)∥
+
+where ∥·∥ denotes a vector ℓ2 norm. 
+
+A.3 Proof of Theorem 4.1 
+
+The overall concentration strategy follows the η-net approach of Soloff et al. [2025, Theorem 7]; the key new ingredient is the transfer between fk,G and the variance-weighted densities 
+
+˜fk,G,i via the condition number τ .By the conditions on Σk, we have 
+
+sf k,G ≤ ˜fk,G,i ≤ ¯sf k,G , i ≤ d, k ≤ K
+
+hence 
+
+sf k,G 
+
+¯sf k, ˆG
+
+≤ ˜fk,G,i 
+
+˜fk, ˆG,i 
+
+≤ ¯sf k,G 
+
+sf k, ˆG
+
+, i ≤ d, k ≤ K
+
+45 for any measures ˆG and G. This leads to 
+
+log ¯ss + ℓK ( ˆG) − ℓK (G0) ≥ 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+log ˜fk, ˆG,i 
+
+˜fk,G 0,i 
+
+≥ log s
+
+¯s + ℓK ( ˆG) − ℓK (G0), i ≤ d. 
+
+Therefore, we only need to prove the bound for ¯h(f•, ˆG, f •,G 0 ) as 
+
+( KY
+
+> k=1
+
+˜fk,G,i ( ˆθk)˜fk,G 0,i ( ˆθk) ≥ exp ( −K(t − log τ )) 
+
+)
+
+⊆
+
+( KY
+
+> k=1
+
+fk, ˆG( ˆθk)
+
+fk,G 0 ( ˆθk) ≥ exp( −Kt )
+
+)
+
+for any t ∈ R and i = 1 , ..., d .Given the approximation (11) in the likelihood, we acknowledge that for t > 0,
+
+P
+
+
+
+¯h(f•, ˆG, f •,G 0 ) ≥ Cd,s, ¯stε M
+
+
+
+= P
+
+"
+
+¯h(f•, ˆG, f •,G 0 ) ≥ Cd,s, ¯stε M ,
+
+> K
+
+Y
+
+> k=1
+
+fk, ˆG( ˆθk)
+
+fk,G 0 ( ˆθk) ≥ exp  −Cd,s, ¯sKε 2
+
+> M
+
+#
+
+≤ P
+
+" KY
+
+> k=1
+
+fk, ˆG( ˆθk)
+
+fk,G 0 ( ˆθk) ≥ exp  −Cd,s, ¯sKε 2
+
+> M
+
+#
+
+.
+
+Suppose for some ˜γK > 0, we have 
+
+> K
+
+Y
+
+> k=1
+
+fk, ˆG( ˆθk)
+
+fk,G 0 ( ˆθk) ≥ exp  (β − α)K ˜γ2
+
+> K
+
+ for some 0 < β < α < 1
+
+and fix t > 0. Let {f•,H j }Nj=1 ⊂ F be an η-net of F under the semi-norm ∥·∥ ∞,S M for covering number N := N (η, F, ∥·∥ ∞,S M ). Let J ⊆ [N ] collect the indices for which a distribution 
+
+H0j on Rd satisfying the following exists: 
+
+∥f•,H 0j − f•,H j ∥∞,S M ≤ η & ¯h(f•,H 0j , f •,G 0 ) ≥ t˜γK .
+
+As proclaimed by an η-net, there exsits an index j∗ ∈ [N ] such that 
+
+∥f•,H j∗ − f•, ˆG∥∞,S M ≤ η. 
+
+On {¯h(f•, ˆG, f •,G 0 ) ≥ t˜γK }, it follows that j∗ ∈ J by the definition of J hence 
+
+∥f•,H 0j∗ − f•, ˆG∥∞,S M ≤ 2η. 
+
+This gives 
+
+fk, ˆG( ˆθk) ≤
+
+
+
+fk,H 0j∗ ( ˆθk) + 2 η, if ˆθk ∈ SM
+
+(2 πs )−d/ 2, otherwise .
+
+46 Defining v(x) := η1x∈SM + η
+
+ M 
+
+> dS(x)
+
+d+1 
+
+1x̸∈ SM , we have 
+
+exp (β − α)Kt 2 ˜γ2
+
+> K
+
+≤ max 
+
+> j∈J
+
+" KY
+
+> k=1
+
+fk,H 0j ( ˆθk) + 2 v( ˆθk)
+
+fk,G 0 ( ˆθk)
+
+#
+
+·
+
+ Y 
+
+> k: ˆθk̸∈SM
+
+(2 πs )−d/ 2
+
+2v( ˆθk)
+
+
+
+on the event {¯h(f•, ˆG, f •,G 0 ) ≥ t˜γK }. Hence 
+
+P
+
+
+
+¯h(f•, ˆG, f •,G 0 ) ≥ t˜γK
+
+
+
+≤ P
+
+"
+
+max 
+
+> j∈JK
+
+Y
+
+> k=1
+
+fk,H 0j ( ˆθk) + 2 v( ˆθk)
+
+fk,G 0 ( ˆθk) ≥ exp( −αKt 2 ˜γ2 
+
+> K
+
+)
+
+#
+
++P
+
+ Y 
+
+> k: ˆθk̸∈SM
+
+(2 πs )−d/ 2
+
+2v( ˆθk) ≥ exp( βKt 2 ˜γ2 
+
+> K
+
+)
+
+ .
+
+By Markov’s inequality, the second term is bounded by 
+
+exp 
+
+
+
+−βKt 2 ˜γ2
+
+> K
+
+2 log K
+
+
+
+E
+
+Y  
+
+> k; ˆθk̸∈SM
+
+(2 πs )−d/ 2
+
+2v( ˆθk)
+
+ 
+
+> 12 log K
+
+= exp 
+
+
+
+−βKt 2 ˜γ2
+
+> K
+
+2 log K
+
+
+
+E
+
+
+
+> K
+
+Y
+
+> k=1
+
+(
+
+(2 πs )− d/ 2 
+
+> d+1
+
+dS ( ˆθk)(2 η)1/(d+1) M
+
+)1dS ( ˆθk )≥M )
+
+ 
+
+> d+1 2 log K
+
+.
+
+Using similar arguments as in Soloff et al. [2025, Proof of Theorem 7], we obtain the following tail probability: 
+
+P
+
+h¯h(f•, ˆG, f •,G 0 ) ≥ t˜γK
+
+i
+
+≤ N (η, F, ∥·∥ ∞,S M ) exp 
+
+
+
+(α − 1) Kt 2 ˜γ2
+
+> K
+
+2 + KC d
+
+pη Vol( SM )
+
+
+
++ exp −βKt 2 ˜γ2
+
+> K
+
+2 log K + κλs− dλ/ 2
+
+> d+1
+> K
+
+X
+
+> k=1
+
+E
+
+h
+
+dS ( ˆθk)λ1dS ( ˆθk )≥M
+
+i!
+
+for κ := 
+
+
+
+s d/ 2 
+
+> d+1
+
+η 1 
+
+> d+1
+
+M
+
+−1
+
+and λ := d+1 2 log K . Lemma B.8 gives us 
+
+E
+
+h
+
+dS ( ˆθk)λ1dS ( ˆθk )≥M
+
+i
+
+≤ CdM d+λ−2 ¯s1−d/ 2e−M 2/(8¯ s) + M λ
+
+2μk,q (S, G 0)
+
+M
+
+q
+
+whenever d+1 2(1 ∧q) ≤ log K. Taking M ≥ √8¯ s log K, we have e−M 2/(8¯ s) ≤ 1/K so 
+
+κλKX
+
+> k=1
+
+E
+
+h
+
+dS ( ˆθk)λ1dS ( ˆθk )≥M
+
+i
+
+≤ (κM )λ
+
+(
+
+CdM d−2 ¯s1−d/ 2 +
+
+> K
+
+X
+
+> k=1
+
+2μk,q (S, G 0)
+
+M
+
+q)
+
+.
+
+47 Noting (κM )λ =  sd/ 2η−1/(2 log K), choose η = 1 
+
+> K2sd/ 2
+
+so 
+
+ sd/ 2η−1/(2 log K) =
+
+ 4
+
+K2
+
+− 12 log K
+
+≤ e
+
+Also, Lemma C.3 applies as 
+
+log N (η, F, ∥·∥ ∞,S M ) ≤d N (a, S M +a) log d+1 cd,s, ¯s, ¯s′ K
+
+for a =
+
+q2¯ sn log 1 
+
+> η
+
+=
+
+q4¯ sn log sd/ 2K. Since a ∈
+
+q 2¯ sn log sd/ 2K, 
+
+q6¯ sn log sd/ 2K
+
+
+
+=: ( a, ¯a),we have 
+
+N (a, (SM )a) ≤ N (a, S M +¯ a) ≤d Vol(( SM +¯ a)a/ 2)/a d
+
+≤d,s, ¯s Vol( S2M )
+
+ n
+
+log K
+
+d/ 2
+
+(21) as ¯a ≪ M in large enough n. So, aggregating the rates, 
+
+log N ≤d Vol( S2M )nd/ 2 log d/ 2+1 cd,s K. 
+
+Therefore, we have the tail probability bounded as 
+
+P
+
+
+
+¯h(f•, ˆG, f •,G 0 ) ≥ t˜γK
+
+
+
+≤ exp 
+
+
+
+− (1 − α) Kt 2 ˜γ2
+
+> K
+
+2 + Cd Vol( S2M )nd/ 2 log d/ 2+1 cd,s K + Cd,s 
+
+pVol( SM )
+
+
+
++ exp 
+
+"
+
+−βKt 2 ˜γ2
+
+> K
+
+2 log K + e
+
+(
+
+C′
+
+> d, ¯s
+
+M d−2 + inf   
+
+> q≥d+1 2 log K
+> K
+
+X
+
+> k=1
+
+2μk,q (S, G 0)
+
+M
+
+q)# 
+
+for any t > 1. Now, the choice of ε2 
+
+> M
+
+= ε2 
+
+> M
+
+(S, G 0) in (10) satisfies 
+
+max 
+
+(
+
+Vol( S2M )nd/ 2 log d/ 2+1 cd,s K, pVol( SM ), M d−2, K log K inf   
+
+> q≥d+1 2 log K
+> K
+
+X
+
+> k=1
+
+2μk,q (S, G 0)
+
+M
+
+q)
+
+≤d,s Kε 2 
+
+> M
+
+(S, G 0).
+
+If we then take ˜γK =
+
+q Cd,s  
+
+> (1 −α)∧β
+
+εM (M, S, G 0), then by the choice of εM above, we have 
+
+ε2 
+
+> M
+
+≥ Vol( S1)M dnd/ 2 log d/ 2+1 KK ≥d nd/ 2 log d+1 KK hence 
+
+P
+
+
+
+¯h2(f•, ˆG, f •,G 0 ) ≥d,s, ¯s t2 ˜γ2
+
+> K
+
+
+
+≤ 2 exp 
+
+
+
+−t2Kε 2
+
+> M
+
+log K
+
+
+
+≤ 2 exp  −t2nd/ 2 log d K .
+
+Integrating the upper bound gives the bound for E
+
+h ¯h2(f•, ˆG,f •,G 0 )˜γ2
+
+> K
+
+i
+
+.48 A.4 Oracle denoising inequality: proof of Theorem 4.2 
+
+For simplicity, we use the notation Θ = [ θ1, ..., θK ]⊤ ∈ RK×d. The regret 1
+
+> K
+
+PKk=1 E∥ ˆθvk −
+
+θok∥2 hence equals 1 
+
+> K
+
+E∥ ˆΘv − Θv∥2 
+
+> F
+
+.
+
+A.4.1 Regularizing the Bayes rule 
+
+We first verify that the likelihood is lower bounded per observation. By (18), for any fixed 
+
+j ∈ [K],
+
+> K
+
+Y
+
+> k=1
+
+fk, ˆG( ˆθk) ≥
+
+> K
+
+Y
+
+> k=1
+
+fk,K −1δ ˆθk +(1 −K−1) ˆG( ˆθk)
+
+≥ K−1|2πΣj |−1/2(1 − K−1)K−1 Y 
+
+> k:k̸=j
+
+fk, ˆG( ˆθk).
+
+Cancelling terms for k ∈ [K] \ { j}, we conclude 
+
+fj, ˆG( ˆθj ) ≥ inf u|2πΣj (u)|−1/2
+
+eK = (2 π¯s)−d/ 2
+
+eK =: ρ0. (22) Given this, Saha and Guntuboyina [2020], Soloff et al. [2025] adopt the regularized empirical Bayes and oracle Bayes rules 
+
+ˆθvk,ρ = ˆθk
+
+√nk
+
++ qk, ˆG( ˆθk)
+
+√nkfk, ˆG( ˆθk) ∨ ρ (23) 
+
+θok,ρ = ˆθk
+
+√nk
+
++ qk,G 0 ( ˆθk)
+
+√nkfk,G 0 ( ˆθk) ∨ ρ.
+
+The inequality (22) means that ˆΘvρ = ˆΘv whenever ρ ≤ ρ0 hence 
+
+∥ ˆΘv − Θv∥F = ∥ ˆΘvρ − Θv∥F ≤ ∥ ˆΘvρ − Θvρ∥F +∥Θvρ − Θv∥F . (24) The last two terms are analyzed separately in Soloff et al. [2025], and we take similar approaches. 
+
+A.4.2 Control of ˆΘvρ − Θv
+
+The argument of Soloff et al. [2025, Proof of Theorem 9] does not apply here because our marginal densities are scaled mixtures over kernels that depend on both θ and Σk(θ). We therefore develop a modified analysis that routes through the variance-weighted functional 49 ˜∆k (Lemmas B.4 and B.5), extending Saha and Guntuboyina [2020, Lemmas 4.3 and F.6] to our setting. Define 
+
+˜∆k(G, ρ ) := 
+
+Z 
+
+1 − fk,G 
+
+fk,G ∨ ρ
+
+2 ∥qk,G 0 ∥2
+
+fk,G 
+
+.
+
+Then, for any compact S ⊆ Rd, letting Sn := 1√n S:
+
+E∥Θvρ − Θv∥2 
+
+> F
+
+=
+
+> K
+
+X
+
+> k=1
+
+1
+
+nk
+
+E qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ − qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk)
+
+> 2
+
+≤
+
+> K
+
+X
+
+> k=1
+
+1
+
+nk
+
+˜∆k (G0, ρ )
+
+≤d,s, ¯s
+
+Kn
+
+
+
+N
+
+ 4
+
+√nL (ρ), S n
+
+
+
+ρL (ρ)d + G0(Scn)
+
+
+
+by Lemmas B.4 and B.5 for L(ρ) := 
+
+q
+
+s log 1(2 π¯s)dρ2 whenever ρ ≤ (2 π¯s)−d/ 2e−8/s . Choosing 
+
+ρ = (2 π¯s)−d/ 2
+
+e1+8 /s K (25) and S = SM , we have L(ρ) = p2s log( Ke 1+8 /s ) hence 
+
+nK E∥Θvρ − Θv∥2 
+
+> F
+
+≤d,s, ¯s N
+
+ 1
+
+√2s n log K , S Mn
+
+ log d/ 2 KK + G0(( SMn )c)
+
+≤d Vol( S2Mn ) (2 s n log K)d/ 2 log d/ 2 KK + G0(( SMn )c)
+
+≤d,s Vol  S1 M d log d KK + inf   
+
+> q≥d+1 2 log K
+
+2μq
+
+M
+
+q
+
+for μq := EG0 [dSn (θ)q]1/q 
+
+by applying Saha and Guntuboyina [2020, Lemma F.6]. The second term is relevant with the second term in (14). Therefore, 
+
+1
+
+K E∥Θvρ − Θv∥2 
+
+> F
+
+≤d,s, ¯s Vol  S1 M d log d KnK + 1
+
+n inf   
+
+> q≥d+1 2 log K
+
+2μq
+
+M
+
+q
+
+≲ ε2 
+
+> M
+
+(S•, G 0)
+
+n .
+
+A.4.3 Control of ˆΘvρ − Θvρ
+
+Now, we recall that 
+
+ˆΘvρ − Θvρ
+
+> 2
+> F
+
+= X
+
+> k≤K
+
+1
+
+nk
+
+qk, ˆG( ˆθk)
+
+fk, ˆG( ˆθk) ∨ ρ − qk,G ( ˆθk)
+
+fk,G ( ˆθk) ∨ ρ
+
+> 2
+
+.
+
+For δ > 0 define an event Aδ =
+
+n
+
+max i≤d ¯h2( ˜f•, ˆG,i , ˜f•,G 0,i ) ∨ ¯h2
+
+
+
+f•, ˆG, f •,G 0
+
+
+
+≤ δ
+
+o
+
+. Given a compact set S ⊂ Rd, define a metric 
+
+mS (G, H ) := 1
+
+√n max  
+
+> k∈[K]
+
+sup  
+
+> z∈Rd:dSk(z)≤M
+
+qk,G (z)
+
+fk,G (z) ∨ ρ − qk,H (z)
+
+fk,H (z) ∨ ρ
+
+50 for Sk := 1√nk S. Let G1, . . . , G (N ) denote a minimal η∗-covering of 
+
+Hδ := 
+
+
+
+G : max 
+
+> i≤d
+
+¯h2( ˜f•,G,i , ˜f•,G 0,i ) ∨ ¯h2(f•,G , f •,G 0 ) ≤ δ
+
+
+
+(26) under mS for N := N (η∗, Hδ, m S ). For j ∈ [N ] define a K × d matrix ˆΘv, (j) 
+
+> ρ
+
+analogously as 
+
+Θ whose ith row is ˆθk√nk + qk,G (j) ( ˆθk )    
+
+> √nkfk,G (j)( ˆθk)∨ρ
+
+. We bound the regret as ∥ ˆΘvρ − Θvρ∥F ≤ P4 
+
+> t=1
+
+Qt,where 
+
+Q1 := ∥ ˆΘvρ − Θvρ∥F 1Acδ
+
+Q2 := 
+
+
+
+∥ ˆΘvρ − Θvρ∥F − max  
+
+> j∈[N]
+
+∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥F
+
+
+
+> +
+
+1Aδ
+
+Q3 := max  
+
+> j∈[N]
+
+
+
+∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥F −E∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥F
+
+
+
+> +
+
+Q4 := max   
+
+> j∈[N]
+
+E∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥F .
+
+(27) 
+
+Bounding E(Q21). By the shrinkage Tweedie’s formula in (23), 
+
+∥ ˆθvk,ρ − θok,ρ ∥2 = 1
+
+nk
+
+qk, ˆG( ˆθk)
+
+fk, ˆG( ˆθk) ∨ ρ − qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ
+
+> 2
+
+≤ 1
+
+nk
+
+qk, ˆG( ˆθk)
+
+fk, ˆG( ˆθk) ∨ ρ
+
+> 2
+
++ 1
+
+nk
+
+qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ
+
+> 2
+
+.
+
+Lemma B.2 provides 
+
+E(Q21) ≤¯s
+
+Kn log 1(2 πs )dρ2 × Pr( Acδ) ≤ K log( K2e1+8 /s )
+
+n Pr( Acδ).
+
+By Corollary 4.1.2, there is a constant Cd > 0 such that δ = Cdε2 
+
+> M
+
+(S•, G 0) satisfies Pr( Acδ) ≤
+
+2 exp  − log d K. Hence 
+
+1
+
+K E(Q21) ≤¯s
+
+2 log( Ke 1/2+4 /s )
+
+n exp(log d K) .
+
+Bounding E (Q22). Observe that 
+
+Q22 ≤ 1Aδ min  
+
+> j∈[N]
+
+∥ ˆΘvρ − ˆΘv, (j) 
+
+> ρ
+
+∥2
+
+> F
+
+= 1 Aδ min  
+
+> j∈[N]
+> K
+
+X
+
+> k=1
+
+1
+
+nk
+
+qk, ˆG( ˆθk)
+
+fk, ˆG( ˆθk) ∨ ρ − qk,G (j) ( ˆθk)
+
+fk,G (j) ( ˆθk) ∨ ρ
+
+> 2
+
+.
+
+On Aδ, we take j such that mS ( ˆG, G (j)) ≤ η∗. For each k, we have either ˆθk ∈ SMk or 
+
+ˆθk̸ ∈ SMk . When ˆθk ∈ SMk , we can bound the above by the supremum over all ˆθk ∈ SMk .51 Otherwise, bound the regularized rules as before. Then, 
+
+Q22 ≤d 1Aδ
+
+
+
+K(η∗)2 + # {k : ˆθk̸ ∈ SMk }log( K2e1+8 /s )
+
+n
+
+
+
+hence 
+
+E(Q22)
+
+K ≤d (η∗)2 + log( K2e1+8 /s )
+
+nK 
+
+> K
+
+X
+
+> k=1
+
+Pr 
+
+
+
+dSk ( ˆθk) ≥ M
+
+
+
+.
+
+By Lemma B.8, taking λ ↓ 0,
+
+E(Q22)
+
+K ≤d,s (η∗)2 + log( K2e1+8 /s )
+
+nK 
+
+(
+
+M d−2e−M 2/(8¯ s) +
+
+> K
+
+X
+
+> k=1
+
+inf   
+
+> q≥d+1 2 log K
+
+2μk,q (Sk, G 0)
+
+M
+
+q)
+
+≤ (η∗)2 + log( K2e1+8 /s )
+
+nK 
+
+(
+
+M d−2
+
+K +
+
+> K
+
+X
+
+> k=1
+
+inf   
+
+> q≥d+1 2 log K
+
+2μk,q (Sk, G 0)
+
+M
+
+q)
+
+given that M ≥ √8¯ s log K.
+
+Bounding EQ23. Fix j ∈ [N ]. Then, 
+
+∥ ˆθv, (j) 
+
+> k,ρ
+
+− θok,ρ ∥2 ≤ 1
+
+nk
+
+qk,G (j) ( ˆθk)
+
+fk,G (j) ( ˆθk) ∨ ρ − qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ
+
+> 2
+
+≤ 2
+
+nk
+
+ qk,G (j) ( ˆθk)
+
+fk,G (j) ( ˆθk) ∨ ρ
+
+> 2
+
++ qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ
+
+> 2
+
+ .
+
+By Lemma B.2, 
+
+∥ ˆθv, (j) 
+
+> k,ρ
+
+− θok,ρ ∥2≤ − 4¯ snk
+
+log(2 πs )dρ2 ≤d,s, ¯s
+
+log( Ke 1+8 /s )
+
+n =: r2.
+
+Let Vk,j = ˆθv, (j)  
+
+> k,ρ −θok,ρ
+> r
+
+, so ∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥2 
+
+> F
+
+= r2∥Vj ∥2 for Vj := ( V1,j , . . . , V K,j ). Since Vk,j are independent random variables in [0 , 1] , it has an exponentially decreasing tail probability with 
+
+Pr ( ∥Vj ∥≥ E∥Vj ∥+t) ≤ e−t2/2
+
+for some c > 0 independent of t ∈ R. Thus 
+
+Pr ( Q3 ≥ s) ≤ N exp 
+
+
+
+−Cd,s, ¯s
+
+s2
+
+r2
+
+
+
+, s > 0.
+
+Therefore, 
+
+1
+
+K E(Q23) ≤d
+
+r2
+
+K log( eN ) = log( eN )log( Ke 1+8 /s )
+
+Kn . (28) 52 Bounding EQ24. Again 
+
+E∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥F ≤
+
+q
+
+E∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥2
+
+> F
+
+≤
+
+vuut 1
+
+n
+
+> K
+
+X
+
+> k=1
+
+Eˆθk ∼fk,G 0
+
+qk,G (j) ( ˆθk)
+
+fk,G (j) ( ˆθk) ∨ ρ − qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ
+
+> 2
+
+.
+
+Then, Theorem B.7 gives us 
+
+1
+
+K
+
+
+
+E∥ ˆΘv, (j) 
+
+> ρ
+
+− Θvρ∥F
+
+2
+
+≤d,s, ¯s
+
+1
+
+n
+
+
+
+d max 
+
+
+
+log 3(Ke 1+8 /s ), log 1
+
+δ
+
+ 
+
+δ. 
+
+Recall our choice 
+
+δ = ε2 
+
+> M
+
+(S•, G 0) ≥d,s, ¯s
+
+Vol( S1)M d log d/ 2+1 KK ≥ 1
+
+K
+
+hence we obtain 
+
+E(Q24)
+
+K ≤d,s, ¯s
+
+log 3 Kn ε2 
+
+> M
+
+(S•, G 0).
+
+Metric Entropy for mS For any G, ˜G ∈ P (Rd), note that 
+
+√nm S (G, ˜G) = max  
+
+> k∈[K]
+
+sup    
+
+> x;dSk(x)≤M
+
+qk,G (x)
+
+fk,G (x) ∨ ρ − qk, ˜G(x)
+
+fk, ˜G(x) ∨ ρ
+
+≤ max  
+
+> k∈[K]
+
+sup    
+
+> x;dSk(x)≤M
+
+∥qk,G (x)∥
+
+fk,G (x) ∨ ρ · fk, ˜G(x) ∨ ρ − fk,G (x) ∨ ρ
+
+fk, ˜G(x) ∨ ρ
+
++ max  
+
+> k∈[K]
+
+sup    
+
+> x;dSk(x)≤M
+
+qk,G (x) − qk, ˜G(x)
+
+fk, ˜G(x) ∨ ρ
+
+≤ p−¯s log(2 πs )dρ2 max 
+
+> k∈[K]
+
+sup    
+
+> x;dSk(x)≤M
+
+fk, ˜G(x) − fk,G (x)
+
+ρ
+
++ max 
+
+> k∈[K]
+
+sup    
+
+> x;dSk(x)≤M
+
+qk,G (x) − qk, ˜G(x)
+
+ρ . (29) Therefore, 
+
+mS (G, ˜G) ≤ A max 
+
+> k∈[K]
+
+∥fk,G − fk, ˜G∥∞,S Mk +B max 
+
+> k∈[K]
+
+∥qk,G − qk, ˜G∥∞,S Mk
+
+for A := 1
+
+> ρ
+
+q
+
+− ¯sn log(2 πs )dρ2 and B := 1 
+
+> ρ√n
+
+. Letting η∗ := η(A + B), we have 
+
+log N (η∗, P(Rd), m S ) ≤ max  
+
+> k∈[K]
+
+log N (η/ 2, F, ∥·∥ ∞,S Mk ) + max  
+
+> k∈[K]
+
+log N (η/ 2, Fq, ∥·∥ ∞,S Mk )
+
+≤d max  
+
+> k∈[K]
+
+log N (a, S M +ak ) log d+1 cd,s, ¯s, ¯s′
+
+η
+
+53 for a =
+
+q2¯ sn log 1 
+
+> η
+
+and small η > 0 by Lemma C.3. Let η = ρ so that 
+
+log N (η∗, P(Rd), m S ) ≤d,s, ¯s Vol( S1)M d log d/ 2+1 K (30) for 
+
+η∗ ≤d,s, ¯s
+
+M
+
+√n.
+
+Final oracle denoising bound To obtain the oracle denoising bound, we aggregate the rates from the error decomposition. The overall risk decomposes as 
+
+1
+
+K E∥ ˆΘv − Θv∥2 
+
+> F
+
+≤ 1
+
+K E∥Θvρ − Θv∥2 
+
+> F
+
++ 1
+
+K
+
+> 4
+
+X
+
+> t=1
+
+E(Q2 
+
+> t
+
+).
+
+Combining the individual bounds: • 1 
+
+> K
+
+E∥Θvρ − Θv∥2 
+
+> F
+
+≲ ε2  
+
+> M(S•,G 0)
+> n
+
+log d/ 2−1 K from the worst-case density floor. • 1 
+
+> K
+
+E(Q21) ≤¯s log( Ke 1+8 /s )n−1 exp( − log d K) is exponentially suppressed. • 1 
+
+> K
+
+E(Q22) ≤d M 2 
+
+> n
+
++ log( K2e1+8 /s )
+
+> Kn
+
+nM d−2 
+
+> K
+
++ PKk=1 inf q≥ d+1 2 log K
+
+2μk,q (Sk ,G 0)
+
+> M
+
+qo
+
+≲ ε2 
+
+> M
+
+(S•, G 0)
+
+provided that n ≳ KM 2−d log −d/ 2−1 K for (14). • 1 
+
+> K
+
+E(Q23) ≤d Vol( S1)M d log d/ 2+2 KKn from the metric entropy of the Hellinger ball. • 1 
+
+> K
+
+E(Q24) ≤d,s, ¯s log 3(Ke 1+8 /s ) 
+
+> n
+
+ε2 
+
+> M
+
+(S•, G 0) captures the cost of restricting to the Hellinger-ball neighborhood. Summing these contributions: 
+
+1
+
+K E∥ ˆΘv − Θv∥2 
+
+> F
+
+≤d,s, ¯s
+
+(log K)3∨(d/ 2−1) 
+
+n ε2 
+
+> M
+
+(S•, G 0).
+
+When G0 is a Gaussian Mixture. For the case when G0 is a Gaussian Mixture, we only need to bound the second term in (14). Let Rk := R/ √nk and S := BR(0d). By the linearity of expectation and the definition of G0, we have: 
+
+EG0 [dSk (θ)q] = 
+
+> k∗
+
+X
+
+> j=1
+
+wj Eθ∼N (a∗  
+
+> j,Γj)
+
+(∥θ∥− Rk)q
+
+> +
+
+.
+
+For each component j, let θ = a∗ 
+
+> j
+
++ ϵj , where ϵj ∼ N (0d, Γ∗ 
+
+> j
+
+). Define ¯γ2 := max j≤k∗ ∥Γ∗ 
+
+> j
+
+∥
+
+and A∗ := max j≤k∗ ∥a∗ 
+
+> j
+
+∥. By the triangle inequality, we have ∥θ∥≤ A∗ + ∥ϵj ∥. Thus, the distance to Sk is bounded by: 
+
+dSk (θ) ≤ (A∗ + ∥ϵj ∥− Rk)+.
+
+54 For a conservative upper bound, we observe that for any Rk ≥ 0:
+
+dSk (θ)q ≤ (A∗ + ∥ϵj ∥)q.
+
+∥ϵj ∥− E∥ϵj ∥ is sub-Gaussian with parameter ¯γ and E∥ϵj ∥≤ ptr(Γ j ) ≤ √d¯γ. Using the property of sub-Gaussian moments, for q ≥ 1:
+
+E(∥ϵj ∥q)1/q ≤ Cp¯γ(d + q)
+
+for some universal constant C > 0. Therefore, by Minkowski’s inequality: 
+
+E[dSk (θ)q]1/q ≤ A∗ + Cp¯γ(d + q).
+
+Substituting this back into the mixture sum: 
+
+EG0 [dSk (θ)q] ≤
+
+> k∗
+
+X
+
+> j=1
+
+wj
+
+
+
+A∗ + Cp¯γ(d + q)
+
+q
+
+=
+
+
+
+A∗ + Cp¯γ(d + q)
+
+q
+
+Now, consider the ratio with M q. Let M be chosen such that M ≳ √log K as before. Therefore, the term of interest becomes negligible as K is assumed to diverge. This com-pletes the proof of Theorem 4.2. 
+
+Proof of Theorem 4.3. Since the posterior mean is the Bayes rule under squared loss, 
+
+R(Θ o, Θ) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E tr 
+
+n
+
+Var G0 (θk| ˆθk)
+
+o
+
+= 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E tr 
+
+n
+
+Var G0 (θk| ˆθk)
+
+o
+
+≤ 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E∥ ˆθk − θk∥2≤ d¯sn .
+
+Under Assumption 1, the prior density g0 is well behaved and the Gaussian family {φ(k)(·; θ) : 
+
+θ ∈ Rd} is dominated with C1 dependence on θ. Therefore the multivariate van Trees in-equality of Gassiat and Stoltz [2024] applies with prior G0, ψ(θ) = θ, and S = ˆθk. Since 
+
+R ∇ψ dG0 = Id, its Schur-complement form yields 
+
+E
+
+h
+
+( ˆθk − √nkθk)( ˆθk − √nkθk)⊤
+
+i
+
+⪰  J0 + EG0
+
+Iobs  
+
+> k
+
+(θk) −1 .
+
+Taking traces gives the scalar lower bound. It remains to bound Iobs  
+
+> k
+
+. Under the diagonal covariance model, 
+
+Σk(θ) = diag( σk, 1(θ)2, . . . , σ k,d (θ)2),
+
+55 so for x ∈ Rd,
+
+log φ(k)(x; θ) ∝ − 12
+
+> d
+
+X
+
+> ℓ=1
+
+
+
+log σk,ℓ (θ)2 + (xℓ − √nkθℓ)2
+
+σk,ℓ (θ)2
+
+
+
+,
+
+where Ck(θ) does not depend on x. Hence, for each coordinate i ≤ d,
+
+∂i log φ(k)(x; θ) = (xi − √nkθi)
+
+σk,i (θ)2 + 12
+
+> d
+
+X
+
+> ℓ=1
+
+∂i log σk,ℓ (θ)2
+
+(xℓ − √nkθℓ)2
+
+σk,ℓ (θ)2 − 1
+
+
+
+.
+
+If Zk,ℓ := ( xℓ − √nkθℓ)/σ k,ℓ (θ), then the random variables Zk, 1, . . . , Z k,d are independent standard Gaussians. Using EZk,ℓ = 0 , E(Z2 
+
+> k,ℓ
+
+− 1) = 0 , and E(Z2 
+
+> k,ℓ
+
+− 1) 2 = 2 , the odd cross-terms vanish and we obtain 
+
+Iobs  
+
+> k
+
+(θ) = nkΣk(θ)−1 + Bk(θ), Bk(θ) = 12
+
+> d
+
+X
+
+> ℓ=1
+
+gk,ℓ (θ)gk,ℓ (θ)⊤,
+
+where gk,ℓ (θ) := ∇ log σk,ℓ (θ)2. Therefore, for any u ∈ Rd,
+
+u⊤Bk(θ)u = 12
+
+> d
+
+X
+
+> ℓ=1
+
+(u⊤gk,ℓ (θ)) 2 ≤ 12∥u∥2
+
+> d
+
+X
+
+> ℓ=1
+
+∥gk,ℓ (θ)∥2≤ dL 2Σ
+
+2 ∥u∥2,
+
+and Assumption 1 gives Σk(θ)−1 ⪯ s−1Id. Hence 
+
+Iobs  
+
+> k
+
+(θ) ⪯
+
+nk
+
+s + dL 2Σ
+
+2
+
+
+
+Id.
+
+Also, by symmetry 
+
+J0 + EG0
+
+Iobs  
+
+> k
+
+(θk) ⪯
+
+
+
+∥J 0∥+nk
+
+s + dL 2Σ
+
+2
+
+
+
+Id,
+
+so for the oracle posterior mean θok = E(θk | ˆθk) = E(θk | ˆθk),
+
+E∥θok − θk∥2≥ d
+
+∥J 0∥+¯ n/s + dL 2Σ/2.
+
+Averaging over k yields the lower bound on R(Θ o, Θ) , while the upper bound was proved in the total-risk decomposition above. 
+
+# B Technical Results 
+
+Proof of Lemma 3.1. First, we have the following [Soloff et al., 2025, Lemma 1]: 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+fk,G ( ˆθk)
+
+fk, ˆG( ˆθk) ≤ 1 ∀ G ∈ P (Rd)
+
+56 and it suffices to check D( ˆG, t) ≤ 0. For the first claim, define 
+
+C := 
+
+n
+
+f1,G ( ˆθ1), ..., f k,G ( ˆθK ); G ∈ P (Rd)
+
+o
+
+∪ { 0}
+
+and observe that 
+
+C = conv( L) where L := 
+
+n
+
+φ(1) ( ˆθ1; θ), ..., φ (K)( ˆθK ; θ); θ ∈ Rd
+
+o
+
+.
+
+L is compact and closed by the continuity and decaying tails of φ(k). Hence C is compact and convex, and PKk=1 log fk, ˆG( ˆθk) is strictly concave and coordinate-wise monotone over 
+
+C. Thus, NPMLE is a unique boundary point ∂C. By Carathéodory’s Theorem, such a point admits a convex combination Pˆkj=1 ˆwj φ(k)( ˆθk; aj ) for some ˆk ≤ K. The second claim follows directly from Soloff et al. [2025]. 
+
+Proof of Lemma 3.2. With frozen covariances Sk, the conclusion directly follows from Ray and Lindsay [2005, Theorem 1]. 
+
+B.1 Convergence of the pseudo-EM under Lipschitz covariances 
+
+Lemma B.1. Let 
+
+rK := 
+
+r2¯ sn log ( eτ d/ 2K).
+
+Under Assumption 1, every NPMLE ˆG solving (3) satisfies 
+
+supp( ˆG) ⊆ ˜M := 
+
+> K
+
+[
+
+> k=1
+
+¯BrK ( ˆθk).
+
+In particular, ˜M is compact with diam( ˜M) ≤ R + 2 rK , where R := max k,ℓ ∥ ˆθk − ˆθℓ∥.Proof. By Lemma 3.1, supp( ˆG) ⊆ { θ : D( ˆG, θ) = 0 }, so it suffices to show that D( ˆG, θ) < 0
+
+whenever min k≤K ∥θ − ˆθk∥> r K . An exact NPMLE satisfies (18), since K−1δˆθk + (1 −
+
+K−1) ˆG ∈ P (Rd) does not improve on a global maximizer. So, (22) gives 
+
+fk, ˆG( ˆθk) ≥ ρ0 = (2 π¯s)−d/ 2
+
+eK , k ≤ K. (31) Also, Assumption 1 gives 
+
+φ(k)( ˆθk; θ) ≤ (2 πs )−d/ 2 exp −∥√nkθ − ˆθk∥2
+
+2¯ s
+
+!
+
+.
+
+57 Combining the two displays, bounding the average by the maximum, and using nk ≥ n,
+
+D( ˆG, θ) + 1 ≤ (2 πs )−d/ 2
+
+ρ0
+
+max  
+
+> k≤K
+
+exp −∥√nkθ − ˆθk∥2
+
+2¯ s
+
+!
+
+≤ eKτ d/ 2e− 12¯ s min k≤K ∥√nk θ− ˆθk ∥2
+
+.
+
+The right-hand side is strictly less than 1 precisely when 
+
+min  
+
+> k≤K
+
+∥√nkθ − ˆθk∥2> 2¯ s log  eτ d/ 2K ,
+
+which proves the inclusion. Compactness of ˜M is clear, and the diameter bound follows from the triangle inequality. 
+
+Proof of Lemma 3.3. Write Pk(a) := nkΣk(a)−1, A(a) := PKk=1 w(t) 
+
+> kj
+
+Pk(a), and b(a) := 
+
+PKk=1 w(t) 
+
+> kj
+
+Pk(a) ˆθk, so ¯ψj (a) = A(a)−1b(a).
+
+Second claim. The resolvent identity and sId ⪯ Σk ⪯ ¯sId give 
+
+∥Σk(a1)−1 − Σk(a2)−1∥≤ LΣ
+
+s2 ∥a1 − a2∥. (32) From A ¯ψj = b, differencing at two points gives 
+
+¯ψj (a1) − ¯ψj (a2) = A(a1)−1
+
+> K
+
+X
+
+> k=1
+
+w(t) 
+
+> kj
+
+[Pk(a1) − Pk(a2)]( ˆθk − ¯ψj (a2)) .
+
+As we have A(a1) ⪰ P 
+
+> k
+
+w(t) 
+
+> kj
+
+nk ¯s−1Id = ( nwj /¯s)Id, it follows that ∥A(a1)−1∥= λmin [A(a1)] −1 ≤
+
+¯s/n wj . Also, ∥Pk(a1) − Pk(a2)∥≤ nkLΣ∥a1 − a2∥/s 2, so we have 
+
+∥ ¯ψj (a1) − ¯ψj (a2)∥ ≤ ¯sL Σ
+
+s2
+
+> K
+
+X
+
+> k=1
+
+w(t) 
+
+> kj
+
+nk
+
+nwj
+
+∥ ˆθk − ¯ψj (a2)∥
+
+!
+
+∥a1 − a2∥.
+
+Write αk := w(t) 
+
+> kj
+
+nk/n wj , so that P 
+
+> k
+
+αk = 1 . Because A(a2)−1 P 
+
+> k
+
+w(t) 
+
+> kj
+
+Pk(a2) = Id, for every 
+
+u ∈ Rd,
+
+¯ψj (a2) − u =
+
+> K
+
+X
+
+> k=1
+
+A(a2)−1w(t) 
+
+> kj
+
+Pk(a2)( ˆθk − u),
+
+and using ∥A(a2)−1∥≤ ¯s/n wj together with ∥Pk(a2)∥≤ nk/s ,
+
+∥ ¯ψj (a2) − u∥≤ τ
+
+> K
+
+X
+
+> k=1
+
+αk∥ ˆθk − u∥ (33) for the condition number τ = ¯ s/s . Combining (33) with the triangle inequality ∥ ˆθk −
+
+¯ψj (a2)∥≤ ∥ ˆθk − u∥+∥u − ¯ψj (a2)∥ and averaging over k with weights αk,
+
+> K
+
+X
+
+> k=1
+
+αk∥ ˆθk − ¯ψj (a2)∥≤ (1 + τ )
+
+> K
+
+X
+
+> k=1
+
+αk∥ ˆθk − u∥.
+
+58 Taking the infimum over u ∈ Rd gives 
+
+> K
+
+X
+
+> k=1
+
+w(t) 
+
+> kj
+
+nk
+
+nwj
+
+∥ ˆθk − ¯ψj (a2)∥≤ (1 + τ ) Rwj ,
+
+and therefore ∥ ¯ψj (a1) − ¯ψj (a2)∥≤ L ¯ψ,j ∥a1 − a2∥ for L ¯ψ,j = τ (1 + τ )Rwj LΣ/s . If L ¯ψ,j < 1,Banach’s fixed-point theorem yields uniqueness and linear convergence at rate L ¯ψ,j .
+
+First claim. For the first claim, note that 
+
+A(a)−1 X
+
+> k
+
+w(t) 
+
+> kj
+
+Pk(a) = Id,
+
+so ¯ψj (a) is a matrix-weighted average of { ˆθk} with weight matrices summing to the identity. By (33), applied at u = ˆθ1, every value of the map satisfies ∥ ¯ψj (a) − ˆθ1∥≤ τ R , uniformly in a. Hence ¯ψj maps the compact convex ball Bτ R ( ˆθ1) into itself, and it is continuous. Brouwer fixed-point theorem yields a fixed point a∗ 
+
+> j
+
+such that ¯ψj (a∗ 
+
+> j
+
+) = a∗ 
+
+> j
+
+, which is the stationarity equation itself. Now we bound Rwj under (1). It is convenient to work with the second-order radius 
+
+Rw, 2 
+
+> j
+
+:= 
+
+
+
+inf 
+
+> u∈Rd
+> K
+
+X
+
+> k=1
+
+αk∥ ˆθk − u∥2
+
+1/2
+
+≥ Rwj ,
+
+from Cauchy–Schwarz. Write Tkj := P
+
+> ℓ
+
+(ˆθk,ℓ − √nka(t) 
+
+> j,ℓ
+
+)2/σ k,ℓ (a(t) 
+
+> j
+
+)2. First we acknowledge that the responsibility in Algorithm 1 is rkj = ˆwj φ(k)( ˆθk ;a(tj )ˆLk
+
+and P 
+
+> j
+
+rkj = 1 . In the M-step, we are solving an equation P 
+
+> j
+
+rkj sk(a) = 0d to update the atoms hence it is natural to choose w(t) 
+
+> kj
+
+= rkj /P 
+
+> k′
+
+rk′j , so for wk = ˆL−1 
+
+> k
+
+/P 
+
+> i
+
+ˆL−1 
+
+> i
+
+,
+
+w(t) 
+
+> kj
+
+∝ wkφ(k)( ˆθk; a(t) 
+
+> j
+
+) = wk(2 π)−d/ 2
+
+ dY
+
+> ℓ=1
+
+σk,ℓ (a(t) 
+
+> j
+
+)
+
+−1
+
+exp( −Tkj /2) .
+
+Note that sd/ 2 ≤ Q 
+
+> ℓ
+
+σk,ℓ ≤ ¯sd/ 2, while wk/w k′ = ˆLk′ / ˆLk ≤ eKτ d/ 2 because ˆLk′ ≤ (2 πs )−d/ 2
+
+and ˆLk ≥ ρ0 = (2 π¯s)−d/ 2/(eK ) by assumption. Hence, for any pair k, k ′,
+
+w(t)
+
+> kj
+
+w(t)
+
+> k′j
+
+≤ eKτ d/ 2 exp 
+
+
+
+−12(Tkj − Tk′j )
+
+
+
+. (34) Let k∗ = k∗(j) ∈ arg min kTkj and take u = ˆθk∗ in the definition of Rw, 2 
+
+> j
+
+. With the threshold 
+
+Λ := 2 log( eτ d/ 2K2n(1 + R)2), split the clients into Nj := {k : Tkj ≤ Tk∗j + Λ } and its complement. 59 For k / ∈ N j , (34) applied with k′ = k∗ gives w(t) 
+
+> kj
+
+≤ w(t) 
+
+> k∗j
+
+/(Kn (1 + R)2), so, using αk ≤
+
+(¯ n/n )w(t) 
+
+> kj
+
+and ∥ ˆθk − ˆθk∗ ∥≤ R, the far clients contribute at most (¯ n/n )R2/(n(1+ R)2) ≤ ¯n/n 2
+
+to (Rw, 2 
+
+> j
+
+)2.For k ∈ N j , we have n∥ ˆθk − a(t) 
+
+> j
+
+∥2/¯s ≤ Tkj ≤ Tk∗j + Λ , so 
+
+∥ ˆθk − ˆθk∗ ∥≤ ∥ ˆθk − a(t) 
+
+> j
+
+∥+∥ ˆθk∗ − a(t) 
+
+> j
+
+∥≤ 2
+
+s
+
+¯s(Tk∗j + Λ) 
+
+n .
+
+Moreover, Tk∗j ≤ ¯n D 2 
+
+> j
+
+/s with Dj := min k∥ ˆθk − a(t) 
+
+> j
+
+∥. Combining the two regimes, 
+
+Rw, 2 
+
+> j
+
+≲
+
+s
+
+¯sn
+
+ ¯nD 2
+
+> j
+
+s + 2 log( eτ d/ 2K2n(1 + R)2)
+
+
+
++
+
+√¯nn . (35) We assume that a(t) 
+
+> j
+
+∈ ˜M = S 
+
+> k
+
+¯BrK ( ˆθk), which implies Dj ≤ rK . Since ¯n/n = O(1) , (35) leads to 
+
+Rwj = OP
+
+r ¯sτ n log( eτ d/ 2K2n(1 + R)2)
+
+
+
+.
+
+Hence L ¯ψ,j = oP (1) as n → ∞ whenever log K(1 + R) = oP (n).
+
+Order of the random diameter R Write εk := √nk( ˆθk −θk) and Rθ := max k,ℓ ∥θk −θℓ∥.The triangle inequality gives 
+
+Rθ − 2 max  
+
+> k
+
+n−1/2 
+
+> k
+
+∥εk∥≤ R ≤ Rθ + 2 max  
+
+> k
+
+n−1/2 
+
+> k
+
+∥εk∥.
+
+Under our working model (1), the Gaussian concentration bound gives P(∥εk∥> √¯s(√d +
+
+t)) ≤ e−t2/2 for t > 0 and a union bound over k ≤ K yields 
+
+max  
+
+> k≤K
+
+n−1/2 
+
+> k
+
+∥εk∥= OP
+
+(s 
+
+¯s(d + log K)
+
+n
+
+)
+
+. (36) It remains to bound Rθ under conditions on G0. Note that we proceed under K = o(en).(a) If Rθ ≤ D0 a.s., then R ≤ D0 + OP (p¯s(d + log K)/n ) = OP (1) and log(1 + R) = 
+
+OP (1) .(b) If G0 is σ20 -sub-Gaussian with mean μ, then P(∥θ − μ∥> σ 0(√d + t)) ≤ 2e−t2/2. A union bound gives max k∥θk − μ∥= OP (σ0
+
+√d + log K), so Rθ = OP (σ0
+
+√d + log K).Combined with (36), 
+
+R = OP {log( d + log K)} .
+
+So, log K(1 + R) = oP (n) under considered cases and the condition K = o(en) hence 
+
+L ¯ψ,j = oP (1) .60 Last claim. Write fj (a) := PKk=1 w(t) 
+
+> kj
+
+sk(a) for the full frozen-weight score and write 
+
+rk(a) := 
+
+> d
+
+X
+
+> ℓ=1
+
+((ˆθk,ℓ − √nkaℓ)2
+
+σk,ℓ (a)2 − 1
+
+)
+
+∇σk,ℓ (a)
+
+σk,ℓ (a) , ρj (a) := 
+
+> K
+
+X
+
+> k=1
+
+w(t) 
+
+> kj
+
+rk(a).
+
+So, 
+
+fj (a) = A(a)( ¯ψj (a) − a) + ρj (a). (37) Because A(a) is invertible, fj (a) = 0d if and only if a is a fixed point of the perturbed map 
+
+Φj (a) := ¯ψj (a) + A(a)−1ρj (a).
+
+We therefore only need to show that Φj , a perturbation of ¯ψj , has a fixed point near a∗ 
+
+> j
+
+.Put T 2 
+
+> kj
+
+(a) := P
+
+> ℓ
+
+(ˆθk,ℓ − √nkaℓ)2/σ k,ℓ (a)2 and T 2 
+
+> j
+
+(a) := P 
+
+> k
+
+w(t) 
+
+> kj
+
+T 2 
+
+> kj
+
+(a), and abbreviate 
+
+T 2 
+
+> j
+
+:= T 2 
+
+> j
+
+(a∗ 
+
+> j
+
+). Assumption 1 bounds ∥∇ log σ2
+
+> k,ℓ
+
+∥≤ LΣ, i.e. ∥∇ σk,ℓ ∥/σ k,ℓ ≤ LΣ/2, so by the triangle inequality and |u − 1|≤ u + 1 ,
+
+∥rk(a)∥≤ LΣ
+
+2
+
+T 2 
+
+> kj
+
+(a) + d , ∥A(a)−1ρj (a)∥≤ ¯sL Σ
+
+2nwj
+
+T 2 
+
+> j
+
+(a) + d . (38) Note that 
+
+T 2 
+
+> j
+
+= X
+
+> k
+
+w(t) 
+
+> kj
+
+T 2 
+
+> kj
+
+≤ nwj
+
+s
+
+X
+
+> k
+
+αk∥ ˆθk − a∗ 
+
+> j
+
+∥2.
+
+Let u∗ attain the infimum defining Rw, 2 
+
+> j
+
+= inf u
+
+P 
+
+> k
+
+αk∥ ˆθk − u∥2. Using a∗ 
+
+> j
+
+= ¯ψj (a∗ 
+
+> j
+
+) and (33) at u = u∗ gives ∥a∗ 
+
+> j
+
+− u∗∥≤ τ P 
+
+> k
+
+αk∥ ˆθk − u∗∥≤ τ R w, 2 
+
+> j
+
+by applying Cauchy-Schwarz on √αk ,
+
+n√αk( ˆθk − u∗)
+
+o
+
+. Therefore, 
+
+X
+
+> k
+
+αk∥ ˆθk − a∗ 
+
+> j
+
+∥2≤ 2( Rw, 2 
+
+> j
+
+)2 + 2 ∥u∗ − a∗ 
+
+> j
+
+∥2≤ 2(1 + τ 2)( Rw, 2 
+
+> j
+
+)2
+
+hence 
+
+T 2 
+
+> j
+
+= OP
+
+nwj τ 2(1 + τ 2)
+
+n log( eτ d/ 2K2n(1 + R)2)
+
+
+
+. (39) Set 
+
+¯εj := ¯sL Σ
+
+2nwj
+
+(2 τ T 2 
+
+> j
+
++ d + 2) , ϱj := ¯εj
+
+1 − L ¯ψ,j 
+
+,
+
+and write Llog := log( eτ d/ 2K2n(1 + R)2). From (39) and L ¯ψ,j = oP (1) ,
+
+ϱj = OP
+
+ ¯sL Σ
+
+n
+
+
+
+τ 2(1 + τ 2) Llog + d
+
+
+
+= OP
+
+Llog 
+
+n
+
+
+
+. (40) 61 The condition needed below is ϱj
+
+p¯n/s ≤ 1. Since p¯n/s ≍ √n,
+
+ϱj
+
+r ¯ns = OP (Llog /√n).
+
+For a ∈ Bϱj (a∗ 
+
+> j
+
+), we have 
+
+Σk(a)−1/2( ˆθk − √nka) = Σ k(a)−1/2Σk(a∗ 
+
+> j
+
+)1/2 · Σk(a∗ 
+
+> j
+
+)−1/2( ˆθk − √nka∗ 
+
+> j
+
+)+ √nk Σk(a)−1/2(a∗ 
+
+> j
+
+− a)
+
+hence 
+
+Tkj (a) = ∥Σk(a)−1/2( ˆθk − √nka)∥≤ ∥ Σk(a)−1/2Σk(a∗ 
+
+> j
+
+)1/2∥· Tkj (a∗ 
+
+> j
+
+) + √nk ∥Σk(a)−1/2∥ ∥ a∗ 
+
+> j
+
+− a∥.
+
+Further, on 
+
+n
+
+ϱj
+
+p¯n/s ≤ 1
+
+o
+
+, we have 
+
+Tkj (a) ≤ √τ T kj (a∗ 
+
+> j
+
+) + 1 ,
+
+using ∥Σk(a)−1/2Σk(a∗ 
+
+> j
+
+)1/2∥≤ √τ . Squaring and averaging over w(t) 
+
+> kj
+
+gives T 2 
+
+> j
+
+(a) ≤ 2τ T 2 
+
+> j
+
++2 ,so (38) yields ∥A(a)−1ρj (a)∥≤ ¯εj throughout the ball. Using ¯ψj (a∗ 
+
+> j
+
+) = a∗ 
+
+> j
+
+and the Lipschitz bound of Step 3, 
+
+∥Φj (a) − a∗ 
+
+> j
+
+∥≤ ∥ ¯ψj (a) − ¯ψj (a∗ 
+
+> j
+
+)∥+¯ εj ≤ L ¯ψ,j ϱj + ¯ εj = ϱj .
+
+Thus Φj maps the compact convex ball Bϱj (a∗ 
+
+> j
+
+) into itself and is continuous, so Brouwer’s fixed-point theorem yields a fixed point a∗ 
+
+> j0
+
+in that ball. In particular 
+
+∥a∗ 
+
+> j0
+
+− a∗ 
+
+> j
+
+∥≤ ϱj , (41) which is (9) by (40). This completes the proof. 
+
+Proof of Proposition 3.1. For each j ∈ [ˆk], let Cj ∈ H such that ˆaj ∈ Cj . Fix u ∈ 1√nk · Cj
+
+and k ∈ [K], and let 
+
+zj (u) := Σ k(u)−1/2( ˆθk − ˆaj ), yj (u) := Σ k(u)−1/2(√nku − ˆaj ).
+
+Let Hj be a positive distribution supported on the corners of Cj such that Hj (Cj ) = ˆ wj
+
+and 
+
+Z
+
+> Cj
+
+(1 + ⟨yj (u), zj (u)⟩) |2πΣk(u)|−1/2exp 
+
+
+
+−∥zj (u)∥2
+
+2
+
+
+
+dHj (u)
+
+n
+
+= ˆ wj φ(k)( ˆθ; ˆ aj )
+
+o
+
+=
+
+Z
+
+> Cj
+
+φ(k)( ˆθk; u)d ˆGj (u)
+
+62 for all k ≤ K where ˆGj := ˆwj δˆaj . By definitions ∥yj ∥≤ 
+
+qds δ and ∥zj ∥≤ 
+
+q1 
+
+> s
+
+D hence 
+
+⟨zj , yj ⟩2 ≤ 1 by construction. Let ϕd(·) denote the density of a N (0 , I d) distribution. First, we note that 
+
+φ(k)( ˆθk; u) = |Σk(u)|−1/2ϕd(zj − yj )= |Σk(u)|−1/2ϕd(zj ) exp( ⟨zj , yj ⟩ − ∥ yj ∥2/2) 
+
+and following Jiang and Zhang [2009, A.27]: 
+
+(e−∥ yj ∥2/2 − 1) e⟨zj ,yj ⟩ ≤ e−∥ yj ∥2/2+ ⟨zj ,yj ⟩ − (1 + ⟨zj , yj ⟩)
+
+≤ ⟨ zj , yj ⟩2 e⟨zj ,yj ⟩−∥ yj ∥2/2
+
+| {z }
+
+> =: g
+
+,
+
+(∴) g(1 − e∥yj ∥2/2) ≤ g − (1 + ⟨zj , zj ⟩) ≤ ⟨ zj , yj ⟩2g
+
+so we arrive at 
+
+φ(k)( ˆθk; u)(1 − e∥yj ∥2/2) ≤ φ(k)( ˆθk; u) − (1 + ⟨zj , yj ⟩)|Σk(u)|−1/2ϕd(zj )
+
+≤ ⟨ zj , yj ⟩2φ(k)( ˆθk; u) ≤ φ(k)( ˆθk; u).
+
+Hence, since R 
+
+> Cj
+
+φ d ˆGj = ˆ wj φ(k)( ˆθk; ˆ aj ) is a single-atom evaluation while R 
+
+> Cj
+
+φ dHj averages over corners, the sandwich above gives 
+
+ˆwj φ(k)( ˆθk; ˆ aj ) −
+
+Z
+
+> Cj
+
+φ(k)( ˆθk; u)d Hj (u)
+
+≤ dD 2δ2
+
+s2 ˆwj φ(k)( ˆθk; ˆ aj ) + 
+
+Z
+
+> Cj
+
+
+
+e∥yj ∥2/2 − 1
+
+
+
+φ(k)( ˆθk; u)Hj (u)
+
+≤ dD 2δ2
+
+s2
+
+Z
+
+> Cj
+
+φ(k)( ˆθk; u)d ˆGj (u) + 
+
+
+
+edδ 2/(2 s) − 1
+
+ Z
+
+> Cj
+
+φ(k)( ˆθk; u)d Hj (u).
+
+Let H = Pˆkj=1 Hj and let ˆG = Pˆkj=1 ˆwj δˆaj . Summing the above inequality over j,
+
+fk, ˆG( ˆθk) − fk,H ( ˆθk) ≤ dD 2δ2
+
+s2 fk, ˆG( ˆθk) + 
+
+
+
+edδ 22s − 1
+
+
+
+fk,H ( ˆθk), i.e., fk, ˆG( ˆθk)
+
+
+
+1 − dD 2δ2
+
+s2
+
+
+
+≤ edδ 2/(2 s)fk,H ( ˆθk).
+
+As H is supported on A, by optimality: 
+
+> K
+
+Y
+
+> k=1
+
+fk, ˆGA ( ˆθk) ≥
+
+> K
+
+Y
+
+> k=1
+
+fk,H ( ˆθk).
+
+63 Combining our findings, 
+
+> K
+
+Y
+
+> k=1
+
+fk, ˆGA ( ˆθk) ≥ e−Kdδ 2/(2 s) Y
+
+> k
+
+
+
+1 − dD 2δ2
+
+s2
+
+ KY
+
+> k=1
+
+fk, ˆG( ˆθk).
+
+An elementary inequality 1 − x ≥ e−2x (for x ≤ 3/4) gives 
+
+> K
+
+Y
+
+> k=1
+
+fk, ˆGA ( ˆθk) ≥ exp 
+
+
+
+−Kdδ 2
+
+2s − 2KdD 2δ2
+
+s2
+
+ KY
+
+> k=1
+
+fk, ˆG( ˆθk)
+
+under the given upper limit for δ.
+
+Lemma B.2. Fix a probability measure G on Rd. We have 
+
+1¯s
+
+∥qk,G ( ˆθk)∥
+
+fk,G ( ˆθk)
+
+!2
+
+≤ tr Id + ∇qk,G ( ˆθ)
+
+fk,G ( ˆθk)
+
+!
+
+≤ log (2 πs )−d
+
+fk,G ( ˆθk)2 . (42) 
+
+Also for every ˆθk ∈ Rd and a measure G′ on Rd, we have 
+
+∥qk,G ( ˆθk)∥
+
+fk,G ( ˆθk) ∨ ρ ≤
+
+s
+
+¯s log 1(2 πs )dρ2 (43) 
+
+for ρ ≤ 1√e(2 πs )d/ 2 .Proof. If θ ∼ G and ˆθk|θ ∼ N  √nkθ, Σk(θ), then it follows that 
+
+qk,G ( ˆθk)
+
+fk,G ( ˆθk) = E
+
+√nkθ − ˆθk| ˆθk
+
+
+
+and 
+
+∇qk,G ( ˆθk)
+
+fk,G ( ˆθk) = −Id + E
+
+h
+
+(√nkθ − ˆθk)( √nkθ − ˆθk)′Σk(θ)−1| ˆθk
+
+i
+
+. (44) It follows that 
+
+tr Id + ∇qk,G ( ˆθk)
+
+fk,G ( ˆθk)
+
+!
+
+= E[∥Σk(θ)−1/2(√nkθ − ˆθk)∥2| ˆθk] ≥ ∥qk,G ( ˆθk)∥2
+
+¯sf k,G ( ˆθk)2
+
+and 
+
+exp 
+
+12E[∥Σk(θ)−1/2(√nkθ − ˆθk)∥2| ˆθk]
+
+
+
+≤ E
+
+
+
+e12 ∥Σk (θ)−1/2( ˆθk −√nk θ)∥2
+
+| ˆθk
+
+
+
+=
+
+Z |2πΣk(u)|−1/2
+
+fk,G ( ˆθk) dG(u) ≤ (2 πs )−d/ 2
+
+fk,G ( ˆθk)
+
+so that we have 
+
+tr Id + ∇qk,G ( ˆθk)
+
+fk,G ( ˆθk)
+
+!
+
+≤ log (2 πs )−d
+
+fk,G ( ˆθk)2 .
+
+64 To prove (43), note first from (42) that 
+
+∥qk,G ( ˆθ)∥
+
+fk,G ( ˆθk) ∨ ρ ≤
+
+s
+
+¯s log (2 πs )−d
+
+fk,G ( ˆθk)2
+
+fk,G ( ˆθk)
+
+fk,G ( ˆθk) ∨ ρ
+
+=
+
+q
+
+¯s log (2 πs )−d  
+
+> fk,G ( ˆθk)2
+
+≤
+
+q
+
+¯s log 1(2 πs )dρ2 if fk,G ( ˆθk) > ρ 
+
+q
+
+¯s log (2 πs )−d   
+
+> fk,G ( ˆθk)2
+> fk,G ( ˆθk)
+> ρ
+
+o/w. The function v 7 →
+
+q
+
+log (2 πs )−d 
+
+> v2
+
+v is non-decreasing on (0 , 1 
+
+> e(2 πs )d
+
+] hence when fk,G ( ˆθk)2 ≤
+
+ρ2 ≤ 1 
+
+> e(2 πs )d
+
+, the inequality 
+
+s
+
+¯s log (2 πs )−d
+
+fk,G ( ˆθk)2
+
+fk,G ( ˆθk)
+
+ρ ≤
+
+s
+
+¯s log 1(2 πs )dρ2
+
+holds and this proves (43). The following lemma establishes a Lipschitz-type bound for the heteroskedastic Gaus-sian kernels that has no analogue in the fixed-covariance literature. Unlike the standard setting where the covariance is fixed, the gradient with respect to the parameter u now requires controlling the Jacobian of the variance function. This bound is the key new ingredient in our metric entropy estimates (Lemma C.3). 
+
+Lemma B.3. Let ∇u denote ∂∂u and J := 
+
+ 
+
+> ∂σ k, 1(u)
+> ∂u 1
+
+... ∂σ k, 1(u)
+
+> ∂u d
+
+... . . . ... 
+
+> ∂σ k,d (u)
+> ∂u 1
+
+... ∂σ k,d (u)
+
+> ∂u d
+
+. For any points x, a, b ∈
+
+Rd, we have 
+
+φ(k)(x; a) − φ(k)(x; b) ≤d ∥a − b∥√¯n + 2 d3/2 ¯s′
+
+s(d+1) /2
+
+for ¯s′ := ∥J∥.Proof. Let ϕd denote the density of a d-dimensional standard normal distribution. We use mean value theorem: there exists some u which is some linear interpolation of za := Σk(a)−1/2  x − √nka, zb such that 
+
+ϕd(za)
+
+|Σk(a)|1/2 − ϕd(zb)
+
+|Σk(b)|1/2 = ∇u
+
+ ϕd(zu)
+
+|Σk(u)|1/2
+
+′
+
+(a − b)
+
+∴ φ(k)(x; a) − φ(k)(x; b) ≤ ∥ a − b∥ sup 
+
+> u∈Rd
+
+∇u
+
+ ϕd(zu)
+
+|Σk(u)|1/2
+
+
+
+.
+
+Now, observe that 
+
+∇u
+
+ ϕd(zu)
+
+|Σk(u)|1/2
+
+
+
+= 1
+
+|Σk(u)|12
+
+
+
+∇uϕd(zu) − d
+
+2 ϕd(zu)∇u log |Σk(u)|
+
+
+
+(45) 65 and using 
+
+∇uzu = −√nkΣk(u)−1/2 − Σk(u)−1/2 diag( zu)
+
+
+
+∇u′ σk, 1(u)
+
+...
+
+∇u′ σk,d (u)
+
+
+
+> d×d
+
+,
+
+we have 
+
+∥∇ uϕd(zu)∥= ϕd(zu)2 ∇u∥zu∥2 ≤ ϕd(zu)22∥zu∥
+
+s1/2 (√nk + ∥J∥·∥ zu∥) .
+
+Also, 
+
+∥∇ u log |Σk(u)|∥ = 2 J′Σ( u)−1/21d ≤ 2√ds1/2 ∥J∥
+
+hence 
+
+∥(45) ∥≤ ϕd(zu)
+
+sd+1 2
+
+∥zu∥(√nk + ¯ s′∥zu∥) + d3/2 ¯s′ ≤d
+
+1
+
+s(d+1) /2
+
+√¯n
+
+√e + 2¯ s′
+
+e + d3/2 ¯s′
+
+
+
+≤√¯n + 2 d3/2 ¯s′
+
+s(d+1) /2
+
+uniformly over u ∈ Rd.
+
+Lemma B.4. For a probability measure G on Rd and ρ > 0, let 
+
+˜∆k(G, ρ ) := 
+
+Z 
+
+1 − fk,G 
+
+fk,G ∨ ρ
+
+2 ∥qk,G ∥2
+
+fk,G 
+
+.
+
+Then, 1. ˜∆k(G, ρ ) ≤ d¯s for all k ≤ K.2. Suppose G = Pmj=1 wj Hj for some measures H1, . . . , H m and weights w1, . . . , w m.Then 
+
+˜∆k(G, ρ ) ≤
+
+> m
+
+X
+
+> j=1
+
+wj ˜∆k (Hj , ρ/w j ) . (46) 
+
+Proof of Lemma B.4. Let us suppress the client index (k) for simplicity. Note that if θ ∼ G
+
+and ˆθ|θ ∼ N (√nθ, Σk(θ)) , then 
+
+qk,G ( ˆθ)
+
+fk,G ( ˆθ) = E
+
+√nθ − ˆθ| ˆθ
+
+
+
+.
+
+66 As a result 
+
+˜∆k(G, ρ ) ≤
+
+Z
+
+> Rd
+
+∥E
+
+√nθ − ˆθ| ˆθ
+
+
+
+∥2fk,G ( ˆθ)d ˆθ = E[∥E(√nθ − ˆθ| ˆθ)∥2]
+
+≤ E[∥√nθ − ˆθ∥2] = tr E[Σ k(θ)] .
+
+The convexity inequality (46) is a direct consequence of the mixture decomposition in Saha and Guntuboyina [2020, Lemma F.7], which applies unchanged to our setting since it only involves the pointwise relationship between fk,G and qk,G .
+
+Lemma B.5. Fix a probability measure G on Rd and let 0 < ρ ≤ (2 π¯s)−d/ 2e−8/s . Let 
+
+L(ρ) := 
+
+q
+
+s log 1(2 π¯s)dρ2 . Then, for every compact set S ⊆ Rd, we have 
+
+˜∆k (G, ρ ) ≤d,s, ¯s N
+
+ 4
+
+√nkL(ρ), S 
+
+
+
+ρL (ρ)d + G(Sc). (47) 
+
+Proof of Lemma B.5. The bound follows by the same localization argument as Saha and Guntuboyina [2020, Lemma 4.3]: one decomposes ˜∆k into contributions from {fk,G ≤ ρ}
+
+and its complement, controls the posterior mean on the former using the Gaussian tail, and covers the support of G with balls of radius 4/{√nkL(ρ)}. The heteroskedastic covariance enters only through the uniform eigenvalue bounds s, ¯s, so the calculation carries over with the same constants. 
+
+Lemma B.6. For every pair of probability measures G and G0 on Rd, 1 ≤ i ≤ d, j ≥ 1,
+
+and k = 1 , ..., K , we have 
+
+Z
+
+> Rd
+
+n
+
+∂ji
+
+ ˜fk,G,i (x) − ˜fk,G 0,i (x)
+
+o 2
+
+dx
+
+≤ ¯s
+
+(2 πs )d/ 2 inf 
+
+> a≥√2j−1
+
+np 2πsa 2j−1e−a2s + a2j h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o 
+
+.
+
+(48) 
+
+Therefore, for a small enough Hellinger accuracy we have 
+
+∥qk,G − qk,G 0 ∥2 
+
+> L2
+
+≤d,s, ¯sdX
+
+> i=1
+
+h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+log 
+
+> d
+
+X
+
+> i=1
+
+h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+for ∥f ∥2 
+
+> L2
+
+:= R ∥f (x)∥2dx ∀f : Rd → Rd.
+
+The second conclusion can be derived for any non-negative, small enough h(x) such that 1/h (x) ≥ e2j−1 and a = max 
+
+√2j − 1, p− log h(x)
+
+
+
+:
+
+a2j−1e−a2
+
++ a2j h(x) ≤ 2a2j h(x) ≤ 2h(x) log j 1/h (x).
+
+67 Proof. The Plancherel-based approach adapts Saha and Guntuboyina [2020, Lemma F.2] to the variance-weighted densities ˜fk,G,i . The key modification is that Fourier transforms now act on σk,i (θ)2-weighted kernels, which introduces an additional factor of ¯s in the tail bound; the algebraic structure of the iteration is otherwise unchanged. It suffices to prove the inequality for the ˜fi, • functions, as the score components follow by differentiation under the integral sign. Fix a ≥ √2j − 1 and assume, without loss of generality, that i = 1 . Let 
+
+¯fk,G,i ′ (u) := 
+
+Z
+
+eiux 1 ˜fk,G,i ′ (x)d x1
+
+denote the Fourier transform of ˜fk,G,i treated as a univariate function. Plancherel’s identity gives 
+
+2π
+
+Z n
+
+∂j
+
+> 1
+
+ ˜fk,G,i (x) − ˜fk,G 0,i (x)
+
+o 2
+
+dx1 =
+
+Z
+
+u2j ¯fk,G,i (u) − ¯fk,G 0,i (u) 2 du
+
+≤ a2j
+
+Z
+
+¯fk,G,i (u) − ¯fk,G 0,i (u) 2 du +
+
+Z
+
+> |u|>a
+
+u2j ¯fk,G,i (u) − ¯fk,G 0,i (u) 2 du
+
+= 2 πa 2j
+
+Z  ˜fk,G,i (x) − ˜fk,G 0,i (x)
+
+2
+
+dx1 +
+
+Z
+
+> |u|>a
+
+u2j ¯fk,G,i (u) − ¯fk,G 0,i (u) 2 du
+
+(49) for every a > 0. Also, 
+
+¯fk,G,i (u) = 
+
+Z Z 
+
+eiux 1 σk,i (θ)2|2πΣk(θ)|−1/2exp 
+
+(
+
+−
+
+> d
+
+X
+
+> j=1
+
+(xj − √nkθj )2
+
+2σk,j (θ)2
+
+)
+
+dx1dG(θ)
+
+≤
+
+Z
+
+xs ¯sp2πσ k, 1(θ)2
+
+|2πΣk(θ)|1/2 e− P    
+
+> j̸=1 (xj−√nk θj)22σk,j (θ)2
+
+Z eiux 1
+
+p2πσ k, 1(θ)2 e− (x1−√nk θ1)22σk, 1(θ)2
+
+dx1dG(θ)=
+
+Z ¯s(2 π)−(d−1) /2
+
+Q  
+
+> j̸=1
+
+σk,j (θ) exp 
+
+
+
+iu √nkθ1 − u2σk, 1(θ)2
+
+2
+
+
+
+exp 
+
+(
+
+− X 
+
+> j̸=1
+
+(xj − √nkθj )2
+
+2σk,j (θ)2
+
+)
+
+dG(θ)
+
+so that 
+
+¯fk,G,i (u) ≤ e−u2s/ 2
+
+Z (2 π)−(d−1) /2
+
+Q  
+
+> j̸=1
+
+σk,j (θ) exp 
+
+(
+
+− X 
+
+> j̸=1
+
+(xj − √nkθj )2
+
+2σk,j (θ)2
+
+)
+
+dG(θ).
+
+Similarly, we have 
+
+¯fk,G (u) = 
+
+Z Z 
+
+eiux 1 |2πΣk(θ)|−1/2exp 
+
+(
+
+−
+
+> d
+
+X
+
+> j=1
+
+(xj − √nkθj )2
+
+2σk,j (θ)2
+
+)
+
+dx1dG(θ)
+
+≤
+
+Z
+
+xs
+
+p2πσ k, 1(θ)2
+
+|2πΣk(θ)|1/2 e− P    
+
+> j̸=1 (xj−√nk θj)22σk,j (θ)2
+
+Z eiux 1
+
+p2πσ k, 1(θ)2 e− (x1−√nk θ1)22σk, 1(θ)2
+
+dx1dG(θ)=
+
+Z (2 π)−(d−1) /2
+
+Q  
+
+> j̸=1
+
+σk,j (θ) exp 
+
+
+
+iu √nkθ1 − u2σk, 1(θ)2
+
+2
+
+
+
+exp 
+
+(
+
+− X 
+
+> j̸=1
+
+(xj − √nkθj )2
+
+2σk,j (θ)2
+
+)
+
+dG(θ).
+
+68 So, the second term in (49) can be bounded from above as 
+
+Z
+
+> |u|>a
+
+u2j ¯fk,G,i (u) − ¯fk,G 0,i (u) 2 du
+
+≤ 2
+
+Z ¯s(2 π)−(d−1) 
+
+Q  
+
+> j̸=1
+
+σk,j (θ)2 exp 
+
+(
+
+− X 
+
+> j̸=1
+
+(xj − √nkθj )2
+
+σk,j (θ)2
+
+)
+
+d( G + G0)( θ)
+
+Z
+
+> |u|>a
+
+u2j e−u2sdu. 
+
+Noting that 
+
+Z Z 2¯ s(2 π)−(d−1) 
+
+Q  
+
+> j̸=1
+
+σk,j (θ)2 exp 
+
+(
+
+− X 
+
+> j̸=1
+
+(xj − √nkθj )2
+
+σk,j (θ)2
+
+)
+
+dx−1d( G + G0)( θ)=
+
+Z 2¯ s(2 π)(1 −d)/2
+
+Q  
+
+> j̸=1
+
+σk,j (θ) d( G + G0)( θ) ≤ 4¯ s(2 π)(1 −d)/2
+
+s(d−1) /2 ,
+
+we deduce that 
+
+Z n
+
+∂j
+
+> 1
+
+ ˜fk,G,i (x) − ˜fk,G 0,i (x)
+
+o 2
+
+dx ≤ 2πa 2j
+
+Z  ˜fk,G,i − ˜fk,G 0,i 
+
+2
+
++ 4¯ s(2 π/s )(d−1) /2
+
+Z
+
+> |u|>a
+
+u2j e−u2sdu. 
+
+Note that Z
+
+> |u|>a
+
+u2j e−u2sdu ≤ a2j−1e−a2s
+
+for a ≥ √2j − 1 by integration by parts and deduction. Also, by (a−b)2 = ( √a−√b)2(√a+
+
+√b)2,
+
+Z  ˜fk,G,i − ˜fk,G 0,i 
+
+2
+
+≤ ¯s
+
+(2 πs )d/ 2 h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+as ˜fk,G is bounded above by ¯s (2 πs )−d/ 2 for any G.
+
+Theorem B.7. For any measures G and G0 on Rd and 0 < ρ ≤
+
+q 1(2 π¯s)de , the quantity 
+
+Eˆθk ∼fk,G 0
+
+qk,G 0 ( ˆθk)
+
+fk,G 0 ( ˆθk) ∨ ρ − qk,G ( ˆθk)
+
+fk,G ( ˆθk) ∨ ρ
+
+> 2
+
+(50) 
+
+is bounded above by 
+
+> d
+
+X
+
+> i=1
+
+max 
+
+(
+
+log (2 πs )−d
+
+ρ2
+
+3
+
+, log h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+ )
+
+h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
++h2(fk,G , f k,G 0 ) log (2 πs )−d
+
+ρ2 (51) 
+
+up to the multiplication by a constant that depends on s, ¯s only. 
+
+69 Proof. For functions u ; Rd → Rd, we let 
+
+∥u∥0,k := 
+
+Z 
+
+∥u(x)∥2fk,G 0 (x)d x
+
+1/2
+
+.
+
+Set 
+
+mk := fk,G + fk,G 0 , mρ,k := fk,G ∨ ρ + fk,G 0 ∨ ρ
+
+so that, 
+
+qk,G 0
+
+fk,G 0 ∨ ρ − qk,G 
+
+fk,G ∨ ρ 0,k 
+
+= qk,G 0
+
+fk,G 0 ∨ ρ + −2qk,G 0 + 2 qk,G 0 − 2qk,G + 2 qk,G 
+
+mρ,k 
+
+− qk,G 
+
+fk,G ∨ ρ 0,k 
+
+≤ 2 max 
+
+> H∈{ G,G 0}
+
+qk,H |fk,G ∨ ρ − fk,G 0 ∨ ρ|
+
+(fk,H ∨ ρ)mρ,k 0,k 
+
++ 2 qk,G − qk,G 0
+
+mρ,k 0,k 
+
+which is the standard T1/T2 decomposition of Saha and Guntuboyina [2020, Theorem E.1], applied here to the variance-weighted score qk,G . Write the RHS above by T1 and T2
+
+respectively so that we have (50) ≲ E(T 21 ) + E(T 22 ).
+
+We shall now bound T1 and T2 separately. 
+
+Bound on T 21 . For T1, we use inequality (43) in Lemma B.2 (note that ρ ≤
+
+q 1(2 π¯s)de ). That is, 
+
+E(T 21 ) = max 
+
+> H∈{ G,G 0}
+
+Z ∥qk,H ∥2(fk,G ∨ ρ − fk,G 0 ∨ ρ)2
+
+(fk,H ∨ ρ)2 m2
+
+> ρ,k
+
+fk,G 0
+
+≤ ¯s log 1(2 πs )dρ2
+
+Z (fk,G − fk,G 0 )2
+
+m2
+
+> ρ,k
+
+fk,G 0
+
+= ¯ s log 1(2 πs )dρ2
+
+Z p fk,G − pfk,G 0
+
+2  p fk,G + pfk,G 0
+
+2
+
+m2
+
+> ρ,k
+
+fk,G 0
+
+≤ ¯s log 1(2 πs )dρ2
+
+Z p fk,G − pfk,G 0
+
+2 2mkfk,G 0
+
+m2
+
+> ρ,k
+
+≤ ¯s log 1(2 πs )dρ2
+
+Z p fk,G − pfk,G 0
+
+2
+
+= ¯ s log 1(2 πs )dρ2 · h2 (fk,G , f k,G 0 ) .
+
+70 Bound on T 22 . Now, recalling that qk,G (·) = 
+
+
+
+∂1 ˜fk,G (·)
+
+...
+
+∂d ˜fk,G (·)
+
+, start by writing 
+
+E(T 22 ) = 
+
+Z ∥qk,G − qk,G 0 ∥2
+
+m2
+
+> ρ,k
+
+fk,G 0 ≤
+
+Z ∥qk,G − qk,G 0 ∥2
+
+mρ,k 
+
+=
+
+> d
+
+X
+
+> i=1
+
+Z n
+
+∂i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+mρ,k 
+
+=: 
+
+> d
+
+X
+
+> i=1
+
+D2
+
+> i, 1
+
+(52) where, for 1 ≤ i ≤ d and j ≥ 0,
+
+D2 
+
+> i,j
+
+:= 
+
+Z n
+
+∂ji
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+mρ,k 
+
+with ∂ji := ∂j
+
+∂(·)ji
+
+.
+
+We bound D2 
+
+> i, 1
+
+via a recursive inequality relating consecutive orders Di,j −1, D i,j , D i,j +1 (cf. the iteration in Saha and Guntuboyina [2020, Theorem E.1], applied here to ˜fk,G,i ). First, we acknowledge that 
+
+D2 
+
+> i, 0
+
+=
+
+Z  ˜fk,G,i − ˜fk,G 0,i 
+
+2
+
+mρ,k 
+
+≤ 2
+
+Z q 
+
+˜fk,G,i −
+
+q
+
+˜fk,G 0,i 
+
+2 ˜fk,G,i + ˜fk,G 0,i 
+
+mρ,k 
+
+≤ 2
+
+Z q 
+
+˜fk,G,i −
+
+q
+
+˜fk,G 0,i 
+
+2 ¯sm k
+
+mρ,k 
+
+≤ 2¯ sh 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+. (53) Integration by parts gives, for j ≥ 1,
+
+D2 
+
+> i,j
+
+= −
+
+Z h
+
+∂j−1
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+i h 
+
+∂ji
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+i 
+
+∂i
+
+ 1
+
+mρ,k 
+
+
+
+−
+
+Z h
+
+∂j−1
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+i h 
+
+∂j+1 
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+i 
+
+mρ,k 
+
+. (54) Almost surely, we have 
+
+∂i
+
+ 1
+
+mρ,k 
+
+
+
+≤ |∂ifk,G |+|∂ifk,G 0 |
+
+m2
+
+> ρ,k
+
+≤ |∂ifk,G |/f k,G ∨ ρ + |∂ifk,G 0 |/f k,G 0 ∨ ρmρ,k 
+
+≤ ∥∇ fk,G ∥/f k,G ∨ ρ + ∥∇ fk,G 0 ∥/f k,G 0 ∨ ρmρ,k 
+
+≤ 2
+
+mρ,k 
+
+s
+
+¯s log 1(2 πs )dρ2
+
+by applying (43) in Lemma B.2. Therefore, 
+
+D2 
+
+> i,j
+
+≤ 2
+
+s
+
+¯s log 1(2 πs )dρ2
+
+Z ∂j−1
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+
+
+∂ji
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+
+
+mρ,k 
+
++
+
+Z ∂j−1
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+
+
+∂j+1 
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+
+
+mρ,k 
+
+.
+
+71 Cauchy-Schwarz inequality gives us 
+
+D2 
+
+> i,j
+
+≤ 2
+
+s
+
+¯s log 1(2 πs )dρ2
+
+vuutZ n
+
+∂j−1
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+mρ,k 
+
+vuutZ n
+
+∂ji
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+mρ,k 
+
++
+
+vuutZ n
+
+∂j−1
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+mρ,k 
+
+vuutZ n
+
+∂j+1 
+
+> i
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+mρ,k 
+
+,
+
+i.e., 
+
+Di,j 
+
+Di,j −1
+
+≤ Υ + Di,j +1 
+
+Di,j 
+
+, j ≥ 1 (55) where Υ := 2 
+
+q
+
+¯s log 1(2 πs )dρ2 . Fix an integer j0 ≥ 1 and a real number β > 0. We can use the same arguments as in Saha and Guntuboyina [2020] to consider cases where j ≤ j0
+
+satisfies Di,j +1 ≤ βD i,j and Di,j +1 > βD i,j . We record them succinctly as follows. Case 1. Suppose an integer 1 ≤ j ≤ j0 satisfies Di,j +1 ≤ βD i,j . Then applying (55) recursively for 1, . . . , j and (53), we have 
+
+Di, 1 ≤ √2¯ s (j0Υ + β) h
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+. (56) Case 2. Now suppose that Di,j +1 > βD i,j for every integer 1 ≤ j ≤ j0. We can deduce from (55) and by recursive evaluation again: 
+
+Di, 1
+
+Di, 0
+
+≤
+
+
+
+1 + Υ
+
+β
+
+j Di,j +1 
+
+Di,j 
+
+, j ≤ j0.
+
+Geometric averaging for j = 0 , 1, . . . , j 0 then gives 
+
+Di, 1 ≤
+
+
+
+1 + Υ
+
+β
+
+j0/2
+
+Di,j 0+1  
+
+> 1
+> j0+1
+
+Di, 0 
+
+> j0
+> j0+1
+
+.
+
+From Lemma B.6, we deduce that 
+
+D2 
+
+> i,j
+
+≤ 1
+
+ρ
+
+Z n
+
+∂ji
+
+ ˜fk,G,i − ˜fk,G 0,i 
+
+o 2
+
+≤d
+
+¯sρ(2 πs )d/ 2
+
+np 2πsa 2j−1e−a2s + a2j h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o 
+
+(57) for a ≥ √2j − 1. Now using (53) and the bound (57) (with j = j0 + 1 ), we obtain 
+
+Di, 1 ≤
+
+
+
+1 + Υ
+
+β
+
+j02  ¯sρ(2 πs )d/ 2
+
+np 2πsa 2j0+1 e−a2s + a2( j0+1) h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o  1/2
+
+> j0+1
+
+×
+
+n
+
+2¯ sh 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o j0/2
+
+> j0+1
+
+(58) for every a ≥ √2j0 + 1 .72 The bound for Di, 1 is the maximum of cases 1 and 2. β will be chosen as β = j0Υ so that (56) ≤ 3√¯sj 0Υh
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+and (58) ≤ √e
+
+a2j0+1 
+
+ρ/ ¯s
+
+ τ
+
+2π
+
+d/ 2 n
+
+ah 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
++ p2πse −a2s
+
+o 1/2 
+
+> j0+1
+
+n
+
+¯sh 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o j0/2
+
+> j0+1
+
+.
+
+Noting that  1(2 πs )d/ 2ρ
+
+ 1/2
+
+> j0+1
+
+= exp Υ2/(2¯ s) 1/2 
+
+> j0+1
+
+,
+
+take j0 := min {j ∈ N ; j + 1 ≥ Υ2/(2¯ s)}. Then, the above term is bounded by √e. Finally, take a as 
+
+a := max 
+
+p2j0 + 1 ,
+
+r−1
+
+s log h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+, p2πs 
+
+
+
+so that e−a2s ≤ h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+hence (58) can then be further bounded by 
+
+ea j0+1 /2
+
+> j0+1
+
+n
+
+a¯sh 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
++ ¯ sp2πsh 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o 1/2 
+
+> j0+1
+
+n
+
+¯sh 2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+o j0/2
+
+> j0+1
+
+≤ ea j0+1 /2
+
+> j0+1
+
+
+
+a + p2πs 
+
+ 1/2 
+
+> j0+1
+
+√¯sh 
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+≤ ea √¯sh 
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+.
+
+Because a ≥ 1 and Di, 1 is bounded by max ((56),(58)), we get 
+
+Di, 1 ≲ √¯s max ( j0Υ, a ) h
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+.
+
+Our choice of j0 also satisfies j0 ≤ Υ2 
+
+> 2¯ s
+
+so j0Υ ≤ Υ3/¯s = 8¯s
+
+
+
+¯s log 1(2 πs )dρ2
+
+3/2
+
+gives 
+
+Di, 1 ≤¯s,s max 
+
+(
+
+log 1(2 πs )dρ2
+
+32
+
+,
+
+r1
+
+s log h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+ )
+
+h
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+.
+
+Combining with (52), we deduce that 
+
+E(T 22 ) ≤d, ¯s,s dX
+
+> i=1
+
+max 
+
+
+
+log 3 (2 πs )−d
+
+ρ2 , log h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+ 
+
+h2
+
+ ˜fk,G,i , ˜fk,G 0,i 
+
+
+
+.
+
+Combine the above finding with the bound for T 21 to finish the proof. The following lemma extends the tail moment bound of Soloff et al. [2025, Lemma 15] to our heteroskedastic kernels. 73 Lemma B.8. For any λ ∈ (0 , 1 ∧ q] and M > 1,
+
+E
+
+h
+
+dS ( ˆθk)λ1dS ( ˆθk )≥M
+
+i
+
+≤ 2CdM d+λ−2 ¯s1−d/ 2e−M 2/(8¯ s) + M λ
+
+2μk,q (S, G 0)
+
+M
+
+q
+
+where μk,q (S, G 0) := Eθ∼G0
+
+dS (√nkθ)q1/q .Proof. Note that ˆθk = √nkθk + Σ k(θk)1/2zk where zk ∼ N d(0 , Id). The proof adapts Soloff et al. [2025, Lemma 15]; the only modification is that Σk(θk)1/2 replaces the fixed scale matrix, which is absorbed by the uniform bound ¯s. Since distance dS is 1-Lipschitz, 
+
+E
+
+h
+
+dS ( ˆθk)λ1dS ( ˆθk )≥M
+
+i
+
+≤ E (2 ∥Σk(θk)1/2zk∥)λ12∥Σk (θk )1/2zk ∥≥ M
+
+ + E (2 dS (√nkθk)) λ12dS (√nk θk )≥M
+
+ .
+
+The first term is bounded above by 
+
+2M λ−1E
+
+h
+
+Σk(θk)1/2zk 1∥Σk (θk )1/2zk ∥≥M/ 2
+
+i
+
+≤ 2M λ−1√¯sE
+
+
+
+∥zk∥1n  
+
+> ∥zk∥≥ M
+> 2¯ s1/2
+> o
+
+
+
+≤ 2CdM λ−1√¯s
+
+ M
+
+¯s1/2
+
+d−1
+
+e−M 2/(8¯ s).
+
+Since λ < q , applying Hölder yields 
+
+E (2 dS (√nkθk)) λ12dS (√nk θk )≥M
+
+ ≤ M λ
+
+2μk,q (S, G 0)
+
+M
+
+q
+
+where μk,q (S, G 0) denotes the q-th moment of dS (√nkθk).
+
+# C Control of Metric Entropy 
+
+To bound the metric entropy of the induced marginal classes, we adopt the moment-matching techniques. 
+
+Lemma C.1. (Moment matching I) Let a > 0 and G, H ∈ P (Rd). Suppose A ⊂ Rd is such that 
+
+Ba( ˆθk) ⊆ A ⊆ Bca ( ˆθk), c ≥ 1
+
+for all k ≤ K and 
+
+Z
+
+> A
+
+Qdl=1 θαl
+
+> l
+
+Qdj=1 σk,j (θ)2βj +1 d( G − H)( θ) = 0 , k = 1 , . . . , K (59) 74 for all multi-indices α, β ∈ Nd 
+
+> ≥0
+
+such that ∥α∥1≤ 2m + 1 , ∥β∥1≤ m. Then, 
+
+max  
+
+> 1≤k≤K
+
+fk,G ( ˆθk) − fk,H ( ˆθk) ≤ 2(2 πs )d/ 2
+
+( ec 2 ¯na 2
+
+2s(m + 1) 
+
+m+1 
+
++ e−na 2/(2¯ s)
+
+)
+
+and 
+
+max  
+
+> 1≤k≤K
+
+qk,G ( ˆθk) − qk,H ( ˆθk) ≤ 2√¯na 
+
+(2 πs )d/ 2
+
+(
+
+c
+
+ ec 2 ¯na 2
+
+2s(m + 1) 
+
+m+1 
+
++
+
+r ¯se¯na 2 + e−na 2/(2¯ s)
+
+)
+
+.
+
+Proof. For each k ∈ [K], we have 
+
+fk,G ( ˆθk) − fk,H ( ˆθk) = 
+
+Z
+
+> A∪Ac
+
+φ(k)( ˆθk; θ)d( G − H)( θ).
+
+When θ ∈ Ac, ∥ ˆθk − θ∥≥ a hence ∥ ˆθk − √nkθk∥≥ √nka, so 
+
+Z
+
+> Ac
+
+φ(k)( ˆθk; θ)d( G − H)( θ) ≤ 2e−nk a2/(2¯ s)
+
+(2 πs )d/ 2 .
+
+Next, write zk, θ := Σ k(θ)−1/2
+
+ ˆθ − θ
+
+
+
+. The remainder term of the polynomial expansion of 
+
+|2πΣk(θ)|1/2φ(k)( ˆθk; θ) = exp  −nk∥zk, θ∥2/2
+
+with degree m, P (zk, θ) = P    
+
+> j≤m
+> (−nk∥zk, θ∥2)j
+> 2jj!
+
+, satisfies [Saha and Guntuboyina, 2020, Lemma D.2]: 
+
+|R(zk, θ)|≤ (nk∥zk, θ∥2/2) m+1 
+
+(m + 1)! ≤
+
+en k∥zk, θ∥2
+
+2( m + 1) 
+
+m+1 
+
+≤
+
+(
+
+en k∥ ˆθ − θ∥2
+
+2s(m + 1) 
+
+)m+1 
+
+.
+
+Now, 
+
+φ(k)( ˆθk; θ) = |2πΣk(θ)|−1/2{P (zk, θ) + R(zk, θ)}
+
+and since R
+
+> A
+
+|Σk(θ)|−1/2P (zk, θ) d( G − H)( θ) = R
+
+> A
+
+|Σk(θ)|−1/2θiP (zk, θ) d( G − H)( θ) = 0 for 
+
+i = 1 , ..., d ,
+
+Z
+
+> A
+
+φ(k)( ˆθk; θ)d( G − H)( θ) ≤
+
+Z
+
+> A
+
+|2πΣk(θ)|−1/2R(zk, θ)d( G − H)( θ)
+
+≤ 2(2 πs )d/ 2
+
+ en kc2a2
+
+2s(m + 1) 
+
+m+1 
+
+.
+
+Next, recall that qk,G ( ˆθk) = R (√nkθ − ˆθk)φ(k)( ˆθk; θ)d G(θ). We have 
+
+Z
+
+> Ac
+
+∥√nkθ − ˆθk∥φ(k)( ˆθk; θ)|d( G − H)( θ)|≤ sup  
+
+> u≥√nka
+
+2ue −u2/(2¯ s)
+
+(2 πs )d/ 2 .
+
+75 Case-by-case analysis of the last term depends on whether the starting point √nka lies before or after the critical point √¯s. In short, we have 
+
+sup  
+
+> u≥√nka
+
+ue −u2/(2¯ s)
+
+(2 πs )d/ 2 =
+
+p¯s/e 
+
+(2 πs )d/ 2 1n
+
+> a≤
+
+√¯s/n k 
+
+> o
+
++
+
+√nkae −nk a2/(2¯ s)
+
+(2 πs )d/ 2 1n
+
+> a>
+
+√¯s/n k
+
+> o
+
+.
+
+Finally, 
+
+Z
+
+> A
+
+|2πΣk(θ)|−1/2( ˆθk − √nkθ)φ(k)( ˆθk; θ)d( G − H)( θ)
+
+≤
+
+Z
+
+> A
+
+|2πΣk(θ)|−1/2( ˆθk − √nkθ)R(zk, θ)d( G − H)( θ)
+
+≤ 2√nkca 
+
+(2 πs )d/ 2
+
+ en kc2a2
+
+2s(m + 1) 
+
+m+1 
+
+.
+
+Lemma C.2. (Moment matching II) For any G ∈ P (Rd), there exists a discrete distribu-tion H supported on Sa with at most 
+
+l := ( ⌊27¯ na 2/s ⌋ + 2) dN (a, S a) + 1 , a > 0
+
+atoms such that 
+
+∥f•,G − f•,H ∥∞,S a ≤ 4e−na 2/(2¯ s)
+
+(2 πs )d/ 2 , ∥q•,G − q•,H ∥∞,S a ≤ 6a
+
+(2 πs )d/ 2
+
+(r ¯se + 2 √¯ne −na 2/(2¯ s)
+
+)
+
+.
+
+Proof. The covering argument follows Saha and Guntuboyina [2020, Lemma D.3]; the moment-matching condition (59) now involves the variance functions σk,j (θ), and the re-mainder bounds must absorb the heteroskedastic kernel via the uniform eigenvalue bounds. Let ˚Sa := ∪ˆθ∈S Boa( ˆθ) be the open a-neighborhood of S, where Boa( ˆθ) denotes an open ball of radius a centered at ˆθ. Let L := N (a, ˚Sa) be its covering number, which satisfies 
+
+L ≤ N (a, S a). Given a collection of closed balls B1, . . . , B L of radius a that cover ˚Sa, we can construct a disjoint partition of ˚Sa by defining E1 := B1 ∩ ˚Sa and Ei := ( Bi \ ∪ j<i Bj ) ∩ ˚Sa
+
+for i = 2 , . . . , L . By construction, ∪Li=1 Ei = ˚Sa.Suppose that a probability measure H is chosen so that G and H satisfy (59) on each set Ei for i = 1 , . . . , L . So, after setting c = 3 and m = ⌊13 .5¯ na 2/s ⌋, we obtain 
+
+max  
+
+> 1≤k≤K
+
+fk,G ( ˆθk) − fk,H ( ˆθk) ≤ 2(2 πs )d/ 2
+
+( 9e¯na 2
+
+2s(m + 1) 
+
+m+1 
+
++ e−na 2/(2¯ s)
+
+)
+
+76 and 
+
+max  
+
+> 1≤k≤K
+
+qk,G ( ˆθk) − qk,H ( ˆθk) ≤ 6√¯na 
+
+(2 πs )d/ 2
+
+( 9e¯na 2
+
+2s(m + 1) 
+
+m+1 
+
++
+
+r ¯se¯na 2 + e−na 2/(2¯ s)
+
+)
+
+.
+
+Since m + 1 ≥ 13 .5¯ na 2/s ,
+
+ 9e¯na 2
+
+2s(m + 1) 
+
+m+1 
+
+≤
+
+ e
+
+3
+
+m+1 
+
+≤ e−(m+1) /12 ≤ exp 
+
+
+
+−13 .5¯ na 2
+
+12 s
+
+
+
+≤ e−¯na 2/(2 s).
+
+Then, the result for the first inequality follows. This also gives 
+
+max  
+
+> 1≤k≤K
+
+qk,G ( ˆθk) − qk,H ( ˆθk) ≤ 6√¯na 
+
+(2 πs )d/ 2
+
+(
+
+e−¯na 2/(2 s) +
+
+r ¯se¯na 2 + e−na 2/(2¯ s)
+
+)
+
+≤ 6a
+
+(2 πs )d/ 2
+
+(r ¯sea 2 + 2 √¯ne −na 2/(2¯ s)
+
+)
+
+.
+
+Finally, we control the covering number of Sa under a pseudo metric. 
+
+Lemma C.3. Assume that ¯n/n tends to some positive constant as n → ∞ . There exists a positive constant n0 > 0 such that for any n > n 0 and every compact set S ⊂ Rd, M > 0
+
+and η ≤ s−d/ 2 ∧ e−1, we have 
+
+log N (η, F, ∥·∥ ∞,S a ) ∨ N (η, Fq, ∥·∥ ∞,S a ) ≤d N (a, S a) log d+1 cd,s, ¯s, ¯s′
+
+η (60) 
+
+for a =
+
+q2¯ sn log 1 
+
+> η
+
+.Proof. Let G ∈ P (Rd), and obtain a discrete distribution H supported on Sa with at most 
+
+l as in Lemma C.2. 
+
+First inequality. We write C to denote a minimal ζ-net of Sa, and let H′ be supported on the elements of C that are closest to atoms of H. Writing H = Plj=1 wj δaj and H′ =
+
+Plj=1 wj δbj , we have 
+
+∥f•,H − f•,H ′ ∥∞,S a = max 
+
+> k∈[K]
+
+sup 
+
+> x∈Sa
+
+|fk,H (x) − fk,H ′ (x)|≤ max  
+
+> k∈[K]
+
+sup 
+
+> x∈Sa
+
+X
+
+> j
+
+wj φ(k)(x; aj ) − φ(k)(x; bj )
+
+≤d
+
+√¯n + 2 d3/2 ¯s′
+
+s(d+1) /2 ζ. 
+
+77 In the third line, we used Lemma B.3 and ∥aj − bj ∥≤ ζ. Let D denote a minimal ξ-net of 
+
+∆l−1 = {w ∈ Rl 
+
+> +
+
+; Plj=1 wj = 1 } in the ℓ1 norm, and approximate the weights w by their closest element v ∈ D . Writing H′′ = Plj=1 vj δbj ,
+
+∥f•,H ′ − f•,H ′′ ∥∞,S a = max  
+
+> k∈[K]
+
+sup 
+
+> x∈Sa
+
+|fk,H ′ (x) − fk,H ′′ (x)|≤ max  
+
+> k∈[K]
+
+sup 
+
+> x∈Sa
+
+X
+
+> j
+
+|wj − vj || φ(k)(x; bj )|≤ d s−d/ 2ξ. 
+
+Applying the triangle inequality to the past three displays, 
+
+∥f•,G − f•,H ′′ ∥∞,S a ≤d,s, ¯s′ e−na 2/(2¯ s) + ( √¯n + 1) ζ + ξ. 
+
+Letting ξ := η, ζ := ξ√¯n+1 , and selecting a =
+
+q2¯ sn log 1 
+
+> ξ
+
+yields the convergence rate ∥f•,G −
+
+f•,H ′′ ∥∞,S a ≤ Cd,s, ¯s′ η. To take a as such, we let η < 1 
+
+> e
+
+so that log(1 /ξ ) > 1.The number of possible H′′ is 
+
+|C|·|D| = N (ξ, ∆l−1)
+
+N (ζ, S a)
+
+l
+
+
+
+≤
+
+ 
+
+1 + 2
+
+ξ
+
+ eN (ζ, S a)
+
+l
+
+l
+
+by Stirling’s lower bound and standard arguments. From the previous Lemma, 
+
+l =
+
+ 27¯ na 2
+
+s
+
+
+
++ 2 
+
+d
+
+N (a, S a) + 1 >
+
+54 τ ¯nn + 1 
+
+d
+
+N (a, S a) + 1 ≥d
+
+τ ¯nn
+
+d
+
+N (a, S a)
+
+with a, ξ, η selected as above, so using the arguments in Saha and Guntuboyina [2020], 
+
+N (ζ, S a)
+
+l ≤
+
+ nτ ¯n
+
+
+
+1 + aζ
+
+ d
+
+≤
+
+n
+
+¯n + 2 
+
+r ¯sn 
+
+¯nη 3
+
+d
+
+≤
+
+
+
+1 + 2 
+
+r ¯sη3
+
+d
+
+.
+
+So, as 1/η > e ,
+
+log N (Cd,s, ¯s′ η, F,∥·∥ ∞,S ) = log 
+
+ 
+
+1 + 2
+
+ξ
+
+ eN (ζ, S a)
+
+l
+
+l
+
+≤ l
+
+
+
+log 3
+
+Cd,s, ¯s′ ηeN (ζ, S a)
+
+l
+
+
+
+≤d N (a, S a)
+
+ ¯nn log(1 /η )
+
+d
+
+log 
+
+
+
+3
+
+Cd,s, ¯s′ η 1 + 2 
+
+s
+
+1
+
+Cd,s, ¯s′ η3
+
+!d
+
+≤ N (a, S a)
+
+ ¯nn
+
+d
+
+log d 1
+
+η log cd,s, ¯s′
+
+η1+3 d/ 2
+
+≤d N (a, S a) log d+1 
+
+cd,s, ¯s′
+
+η
+
+
+
+.
+
+78 Second inequality. We use the same covering argument to prove the second inequality as well. For C, a minimal ζ-net of Sa and H′, the approximate of H with closest element from C, H = Plj=1 wj δaj and H′ = Plj=1 wj δbj , we have 
+
+∥q•,H − q•,H ′ ∥∞,S a ≤ max  
+
+> k∈[K]
+
+sup 
+
+> x∈Sa
+
+X
+
+> j
+
+wj ∥(√nkaj − x)φ(k)(x; aj ) − (√nkbj − x)φ(k)(x; bj )∥≤ max  
+
+> k∈[K]
+
+sup    
+
+> x∈Sa,uj∈I(aj,bj)
+
+X
+
+> j
+
+wj ∥√nk(aj − bj )φ(k)(x; aj ) + ( √nkbj − x)⟨bj − aj , ∇uj φ(k)(x; uj )⟩∥ ≤ ζ max 
+
+> k∈[K]
+
+(√nk
+
+sd/ 2 + sup 
+
+> x∈Sa
+
+sup    
+
+> uj∈I(aj,bj)
+
+(∥x − √nkuj ∥+√nk∥uj − bj ∥) · ∥∇ uj φ(k)(x; uj )∥
+
+)
+
+≤ ζ max 
+
+> k∈[K]
+
+(√nk
+
+sd/ 2 +
+
+√nkζ(√nk + 2 d1.5 ¯s′)
+
+s(d+1) /2 + sup 
+
+> x∈Sa
+
+sup    
+
+> uj∈I(aj,bj)
+
+∥x − √nkuj ∥·∥∇ uj φ(k)(x; uj )∥
+
+)
+
+where I(aj , bj ) denotes a set of linear interpolations between aj , bj . In the third line, we used (45) and Lemma B.3. Plus, for zuj := Σ k(uj )−1/2(x − √nkuj ), we have 
+
+sup 
+
+> x∈Sa
+
+sup    
+
+> uj∈I(aj,bj)
+
+∥Σk(uj )1/2zuj ∥· ∇uj
+
+ϕd(zuj )
+
+|Σk(uj )|1/2
+
+≤ ¯s1/2
+
+s(d+1) /2 sup 
+
+> u≥0
+
+u u  √¯n + ¯ s′u + d1.5 ¯s′ ϕ1(u)
+
+≤ 2¯ s1/2
+
+√es (d+1) /2
+
+ √¯n + ¯ s′d1.5 .
+
+So, we obtain 
+
+∥q•,H − q•,H ′ ∥∞,S a ≤√¯nζ sd/ 2
+
+
+
+1 + (ζ + 2¯ s1/2)(1 + 2 d1.5 ¯s′/√¯n)
+
+s1/2
+
+
+
+.
+
+Now, D denotes a minimal ξ-net of ∆l−1 = {w ∈ Rl 
+
+> +
+
+; Plj=1 wj = 1 } in the ℓ1 norm, and approximate the weights w by their closest element v ∈ D . Writing H′′ = Plj=1 vj δbj ,
+
+∥q•,H ′ − q•,H ′′ ∥∞,S a = max  
+
+> k∈[K]
+
+sup 
+
+> x∈Sa
+
+X
+
+> j
+
+(wj − vj )∥(√nkbj − x)φ(k)(x; bj )∥≤ X
+
+> j
+
+|wj − vj | ¯s1/2
+
+sd/ 2 sup 
+
+> u≥0
+
+uϕ 1(u) ≤d ¯s1/2s−d/ 2ξ. 
+
+Finally, aggregating the inequalities for large enough ¯n,
+
+∥q•,G − q•,H ′′ ∥∞,S a ≤d,s, ¯s, ¯s′
+
+√¯n
+
+
+
+ae −na 2/(2¯ s) + 1 + ξ
+
+√¯n + ζ (ζ + 1) 
+
+
+
+.
+
+Now we set ξ = η, ζ = η/ √¯n, and η < 1/e . Then, a =
+
+q2¯ sn log 1 
+
+> ξ
+
+yields the convergence rate ∥q•,G − q•,H ′′ ∥∞,S a ≤ Cd,s, ¯s, ¯s′
+
+√¯n(a + 1 /√¯n)η =: ˜ η (so ˜η ≤¯s
+
+√¯naη ). 79 Next, we had 
+
+|C|·|D|≤ 
+
+ 
+
+1 + 2
+
+ξ
+
+ eN (ζ, S a)
+
+l
+
+l
+
+, l ≥d
+
+τ ¯nn
+
+d
+
+N (a, S a)
+
+and 
+
+N (ζ, S a)
+
+l ≤
+
+ nτ ¯n
+
+
+
+1 + aζ
+
+ d
+
+≤
+
+
+
+1 + 
+
+r2n¯s
+
+¯nξ 3
+
+d
+
+≤
+
+> n→∞
+
+s
+
+Cd, ¯s
+
+η3
+
+!d
+
+.
+
+So, as 1/η > e ,
+
+log N (˜ η, Fq,∥·∥ ∞,S ) ≤ l
+
+
+
+log 3
+
+ξeN (ζ, S a)
+
+l
+
+
+
+≤d N (a, S a) {log(1 /ξ )}d log 
+
+ C′
+
+> d, ¯s
+
+η1+3 d/ 2
+
+
+
+≤d N (a, S a) log d+1 C′
+
+> d, ¯s
+
+η
+
+hence 
+
+log N (η, Fq, ∥·∥ ∞,S ) ≤d N (a, S a) log d+1 
+
+√¯naC ′
+
+> d,s, ¯s, ¯s′
+
+η ≤ N (a, S a) log d+1 C′
+
+> d,s, ¯s, ¯s′
+
+η .
+
+80 Algorithm 3: AdaMix Baseline [Ozkara et al., 2023] 
+
+Input: Local MLEs {xk}Kk=1 ; client covariances { ˆΣk}Kk=1 ; component number L;outer iterations T ; learning rate η ∈ (0 , 1] 
+
+Output: Personalized estimates { ˆθk}Kk=1  
+
+> 1
+
+Fit initial spherical GMM on { ˆθ(0)  
+
+> k
+
+} with L components  
+
+> 2
+
+for t = 0 , . . . , T − 1 do  
+
+> 3
+
+Compute responsibilities r(t) 
+
+> kℓ
+
+= Pr( ℓ| ˆθ(t) 
+
+> k
+
+) and component scales τ 2,(t) 
+
+> ℓ
+
+from the current GMM  
+
+> 4
+
+Extract diagonal observation precisions: dk := diag( ˆΣk)−1 
+
+> 5
+
+for k = 1 , . . . , K do  
+
+> 6
+
+α(t) 
+
+> k
+
+← PLℓ=1  
+
+> r(t)
+> kℓ
+> τ2,(t)
+> ℓ
+
+, b(t) 
+
+> k
+
+← PLℓ=1  
+
+> r(t)
+> kℓ
+> τ2,(t)
+> ℓ
+
+ˆμ(t) 
+
+> ℓ
+> 7
+
+MAP solution ( ⊘ denotes elementwise division): 
+
+˜θ(t) 
+
+> k
+
+← (dk ⊙ xk + b(t) 
+
+> k
+
+) ⊘ (dk + α(t) 
+
+> k
+
+1d) 
+
+> 8
+
+Damped update: ˆθ(t+1)  
+
+> k
+
+← ˆθ(t) 
+
+> k
+
++ η( ˜θ(t) 
+
+> k
+
+− ˆθ(t) 
+
+> k
+
+) 
+
+> 9
+
+Refit spherical GMM on { ˆθ(t+1)  
+
+> k
+
+} 
+
+> 10
+
+return { ˆθ(T ) 
+
+> k
+
+}Kk=1 
+
+# D Additional algorithms, figures, and tables E Remark on AdaMix 
+
+Algorithm 3 adapts the AdaMix idea of Ozkara et al. [2023] to the summary-statistics setting. There are several distinct aspects that we clarify here. • The original AdaMix operates on local datasets and runs gradient steps on a full person-alized objective that includes the local training loss. In Algorithm 3 clients have already transmitted low-dimensional MLEs { ˆθk}, so the MAP fusion replaces the gradient loop entirely. • Because the observation model is Gaussian given (estimated) covariance, the MAP step admits the closed-form coordinate-wise solution. This is an instance of the standard Gaussian conjugate posterior [Efron, 2014]. • The original assumes a single scalar observation variance per client. Algorithm 3’s MAP 81 Algorithm 4: VANEB-Full: Empirical Bayes Personalization with Full Network Weights 
+
+Input: Clients k = 1 , . . . , K ; rounds T ; initial model ˆθ(0) ; atoms m; local epochs 
+
+E; damping λ
+
+Output: Personalized models { ˆθv, (t) 
+
+> k
+
+} 
+
+> 1
+
+for t = 0 , . . . , T − 1 do  
+
+> 2
+
+Server broadcasts ˆθ(t); 
+
+> 3
+
+foreach client k in parallel do  
+
+> 4
+
+Train locally for E epochs ⇒ ˆθk; 
+
+> 5
+
+Compute ˆFk = 1
+
+> nk
+
+Pnk 
+
+> i=1
+
+gki g⊤ 
+
+> ki
+
+using local gradients gki ; 
+
+> 6
+
+Set ˆΣk = diag (( ˆFk + λI)−1); 
+
+> 7
+
+Send ( ˆθk, ˆΣk, n k) to server;  
+
+> 8
+
+Initialize atoms {aj }mj=1 and weights πj = 1 /m ; 
+
+> 9
+
+Set Σk(aj ) ← ˆΣk for all k, j , or learn function through polynomial regression;  
+
+> 10
+
+for s = 0 , . . . , S − 1 do 
+
+// E-step  
+
+> 11
+
+foreach k, j do  
+
+> 12
+
+rkj ∝ πj φ( ˆθk; aj , Σk(aj )/n k); 
+
+> 13
+
+Normalize {rkj }j ;
+
+// M-step  
+
+> 14
+
+for j = 1 , . . . , m do  
+
+> 15
+
+πj ← 1
+
+> K
+
+PKk=1 rkj ; 
+
+> 16
+
+aj ←
+
+PKk=1 rkj nkΣk(aj )−1
+
+−1 PKk=1 rkj nkΣk(aj )−1 ˆθk; 
+
+> 17
+
+Update Σk(aj ) for all k, j ; 
+
+> 18
+
+foreach client k do  
+
+> 19
+
+ˆθvk ← Pmj=1 rkj aj ; 
+
+> 20
+
+ˆθ(t+1) ← PKk=1  
+
+> nkP
+> ℓnℓ
+
+ˆθvk ; 
+
+> 21
+
+return { ˆθv, (t) 
+
+> k
+
+};step uses the diagonal of the client-reported Fisher covariance estimate [Jhunjhunwala et al., 2024]. 82 • The original fits a full Gaussian mixture with component-specific covariances. We use a spherical GMM (isotropic per-component variance), which is more regularized and avoids ill-conditioning when K is moderate. Spherical mixtures have been advocated as a practical prior for federated shrinkage in Kotelevskii et al. [2022]. The damped update is a proximal relaxation that prevents the iterates from chasing the moving GMM fit; the step size η plays the same stabilizing role as the learning rate in the gradient-based version. 83

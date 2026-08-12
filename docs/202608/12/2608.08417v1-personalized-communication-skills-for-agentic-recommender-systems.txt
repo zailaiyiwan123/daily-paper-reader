@@ -1,0 +1,1029 @@
+Title: Personalized Communication Skills for Agentic Recommender Systems
+
+URL Source: https://arxiv.org/pdf/2608.08417v1
+
+Published Time: Tue, 11 Aug 2026 01:01:43 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# Personalized Communication Skills for Agentic Recommender Systems 
+
+# Zongwei Wang 
+
+zongwei@cqu.edu.cn Chongqing University Chongqing, China 
+
+# Min Gao ∗
+
+gaomin@cqu.edu.cn Chongqing University Chongqing, China 
+
+# Guangyu Hu 
+
+huguangyu@stu.cqu.edu.cn Chongqing University Chongqing, China 
+
+# Xinyi Gao 
+
+xinyi.gao@uq.edu.au The University of Queensland Brisbane, Australia 
+
+# Junliang Yu 
+
+jl.yu@uq.edu.au The University of Queensland Brisbane, Australia 
+
+## Abstract 
+
+Agentic recommender systems increasingly employ large language model-based UserAgents to evaluate candidate items through sim-ulated feedback before recommendations are delivered. However, existing UserAgents typically reason in isolation based on lim-ited personal histories, which may lead to perspective narrowing :the agent evaluates candidates from a local and incomplete view, overlooks relevant preference facets, and consequently produces inaccurate judgments. A natural way to alleviate this problem is to introduce other users as advisor agents, whose diverse histo-ries provide complementary evidence that helps the target user reconsider overlooked preference signals. Nevertheless, a generic user-advisor communication process is insufficient, as different user decision states require different forms of external advice. Based on this insight, we propose AgentCom, a personalized communica-tion skill framework for agentic recommender systems. AgentCom organizes reusable communication skills into a shared why–what– how–who skill bank: why identifies the decision deficiency that necessitates communication, what specifies the information task, 
+
+how determines the advisor interaction protocol, and who retrieves advisors capable of executing that protocol. To make the shared skill bank personalized at use time and adaptive over time, Agent-Com introduces two complementary mechanisms: personalized skill routing and failure-driven skill evolution. Personalized skill routing constructs a communication path by sequentially selecting suitable skills for each user and recommendation context. Failure-driven skill evolution learns from unsuccessful communication cases and enriches the shared bank with reusable skills that ad-dress previously uncovered communication needs. Experiments on multiple benchmarks show that AgentCom consistently improves recommendation performance across traditional, social, and agentic recommenders.  
+
+> ∗Corresponding author Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> © 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+## Keywords 
+
+Large Language Model, Agent, Skill, Recommender Systems 
+
+ACM Reference Format: 
+
+Zongwei Wang, Min Gao, Guangyu Hu, Xinyi Gao, and Junliang Yu. 2018. Personalized Communication Skills for Agentic Recommender Systems. In 
+
+Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 11 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Recommender systems have traditionally followed a one-shot pre-diction paradigm, in which a model infers user preferences from past behaviors and directly produces a ranked list of items [11, 31]. While this paradigm has achieved widespread success, it treats recommendation as a static mapping and provides limited opportu-nities to verify whether the inferred preferences are accurate after the results are generated. Recent advances in large language models (LLM) enable autonomous agents to simulate user responses [29, 30], introducing a new paradigm in which recommendations can be evaluated before delivery. In this setting, the UserAgents assess can-didate items according to the user’s profile and interaction history, and their feedback guides the recommender to revise the results, helping identify preference mismatches and improve recommenda-tion quality [17, 33, 39]. Nevertheless, existing UserAgents typically make such judg-ments independently, relying primarily on their own interaction histories and internally generated reasoning [5, 15]. This isolated process may lead to perspective narrowing [6, 16]: the agent evalu-ates candidates from a local and incomplete view constrained by limited personal evidence. Figure 1 illustrates this limitation and how agent communication can alleviate it. As shown in Figure 1(a), the target UserAgent relies on familiar male pop/R&B evidence and incorrectly selects Justin Bieber while overlooking other relevant preference facets. In contrast, the advisor agents in Figure 1(b) in-troduce complementary evidence about female pop-rock, teen-pop, and crossover preferences, providing support that is unavailable in the target user’s independent reasoning. Consequently, advi-sor communication enables the target UserAgent to reconsider its initial judgment by combining its own preferences with evidence supplied by advisor agents, rather than simply preserving existing biases. The effectiveness of such advisor-assisted judgment is also supported by studies of human advice taking [36, 37]. arXiv:2608.08417v1 [cs.IR] 9 Aug 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Trovato et al. 
+
+> (a) Independent judgment paradigm.
+> (b) Advisor-assisted agent communication paradigm.
+
+Figure 1: Comparison between independent judgment and advisor-assisted judgment through agent communication. 
+
+However, directly applying the same communication process across different decision states may be suboptimal, as communi-cation is useful for different reasons in different decision states. A cold-start user may need evidence that compensates for a sparse history [19], a hesitant user may need help distinguishing several plausible candidates [28], and a user facing an unfamiliar item may need evidence about novelty and risk [14]. These needs suggest that effective communication should not follow a fixed procedure, but instead be composed from reusable communication skills that can be selectively invoked and combined according to the current decision state. Once the system identifies why communication is needed, it should determine what information is required, how the discussion should be organized, and who can execute the selected protocol. Inspired by Lasswell’s classical communication model [13], we decompose agent communication into four observable decision layers: why , which identifies the decision deficiency that makes external advice necessary; what , which converts that deficiency into a concrete information task; how , which specifies the advisor interaction protocol and thereby determines the required commu-nication shape; and who , which retrieves advisors with relevant or complementary evidence. Building on these insights, we propose AgentCom, a personal-ized Com munication skill framework for Agent ic recommender systems. AgentCom maintains a shared hierarchical communica-tion skill bank organized by the why–what–how–who dimensions. Each user accesses the bank through personalized skill routing that selects a communication path according to the current decision state and available advisor evidence. Because an initialized skill bank cannot anticipate every communication need, AgentCom ana-lyzes failed decisions to locate the responsible layer and determine why the current communication failed. It then either refines an existing skill for a more specific case or introduces a new skill for a communication strategy not covered by the bank. The affected users are subsequently rerouted over the evolved bank. Our contributions can be summarized as follows: 
+
+• To the best of our knowledge, we are the first to introduce agent communication as personalized skills into agentic recommender systems, enabling each UserAgent to acquire and execute com-munication strategies tailored to its decision state. 
+
+• We propose AgentCom, which organizes reusable capabilities into a hierarchical why–what–how–who skill bank, constructs personalized routes over shared skills, and evolves the bank from failed decisions through skill refinement and generation. 
+
+• Experiments on three datasets show that AgentCom consistently improves recommendation performance across traditional, social, and agentic recommenders, demonstrating the importance of agent communication in recommendation. 
+
+## 2 Preliminary 
+
+We first formulate the independent judgment process used by ex-isting UserAgents over a recommender-provided candidate set. We then introduce an advisor-assisted extension that preserves the same judgment interface while allowing the target UserAgent to revise its initial decision using external evidence from other users. 
+
+## 2.1 Independent UserAgent Judgment 
+
+Let U and I denote the sets of users and items, respectively. For each user 𝑢 ∈ U , let ℎ𝑢 denote the historical interaction sequence. At recommendation turn 𝑡 , a base recommender produces a candi-date set C𝑢,𝑡 ⊆ I . The base recommender may be a conventional recommendation model or an agentic recommender. Let M𝑢,𝑡 −1
+
+denote the interaction memory accumulated before the current turn. Given these inputs, the UserAgent independently evaluates the candidate set and forms an initial judgment: 
+
+q(0) 
+
+> 𝑢,𝑡
+
+=
+
+
+
+𝑖 (0) 
+
+> 𝑢,𝑡
+
+, 𝑑 (0) 
+
+> 𝑢,𝑡
+
+, 𝑗 (0) 
+
+> 𝑢,𝑡
+
+, H (0)
+
+> 𝑢,𝑡
+
+
+
+∼ 𝜋 user 
+
+ · | ℎ𝑢 , C𝑢,𝑡 , M𝑢,𝑡 −1
+
+ , (1) where 𝜋 user denotes the UserAgent policy, 𝑖 (0) 
+
+> 𝑢,𝑡
+
+∈ C 𝑢,𝑡 is the item that the UserAgent prefers most among all candidates in C𝑢,𝑡 , and 
+
+𝑗 (0) 
+
+> 𝑢,𝑡
+
+is the rationale supporting this choice. The variable 𝑑 (0) 
+
+> 𝑢,𝑡
+
+∈{0, 1} represents the decision status: 𝑑 (0) 
+
+> 𝑢,𝑡
+
+= 1 indicates that the UserAgent is willing to commit to its current choice, whereas 𝑑 (0) 
+
+> 𝑢,𝑡
+
+=
+
+0 indicates that the judgment remains unresolved. The hesitation set H (0) 
+
+> 𝑢,𝑡
+
+⊆ C 𝑢,𝑡 \ { 𝑖 (0) 
+
+> 𝑢,𝑡
+
+} contains plausible alternatives that the UserAgent cannot reliably distinguish from its current choice. Without advisor communication, the initial judgment directly serves as the final judgment. In this case, the UserAgent directly returns its selected item, decision status, and supporting rationale, while the hesitation set H (0) 
+
+> 𝑢,𝑡
+
+is not used for any subsequent com-munication or judgment revision: 
+
+mind  
+
+> 𝑢,𝑡
+
+=
+
+
+
+𝑖 (0) 
+
+> 𝑢,𝑡
+
+, 𝑑 (0) 
+
+> 𝑢,𝑡
+
+, 𝑗 (0)
+
+> 𝑢,𝑡
+
+
+
+, (2) and the judgment is incorporated into the interaction memory: 
+
+M𝑢,𝑡 = Update 
+
+
+
+M𝑢,𝑡 −1, C𝑢,𝑡 , q(0)
+
+> 𝑢,𝑡
+
+
+
+. (3) This process allows the UserAgent to examine and potentially revise the item prioritized by the base recommender. However, the judgment is derived entirely from the target user’s history, previ-ous memory, and the UserAgent’s internal reasoning. The agent therefore lacks external evidence with which to verify, complement, or challenge its interpretation of the candidates. This isolated rea-soning process may lead to perspective narrowing , in which limited personal evidence constrains the judgment and encourages the UserAgent to preserve the same local view. Personalized Communication Skills for Agentic Recommender Systems Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+## 2.2 Advisor-Assisted UserAgent Judgment 
+
+Advisor-assisted judgment retains the same candidate set, recom-mendation input, and initial UserAgent judgment defined in Eq. (1). The only difference is that q(0) 
+
+> 𝑢,𝑡
+
+is treated as a provisional rather than final judgment. Before committing to a final choice, the target UserAgent may obtain complementary evidence from one or more other users. Let 𝐾 𝑢,𝑡 denote the number of user–advisor communication rounds conducted for user 𝑢 at turn 𝑡 . At communication round 
+
+𝑘 ∈ { 1, . . . , 𝐾 𝑢,𝑡 }, the system selects an advisor group according to the target user’s latest judgment: 
+
+V (𝑘 ) 
+
+> 𝑢,𝑡
+
+= SelectAdvisors 
+
+
+
+𝑢, q(𝑘 −1) 
+
+> 𝑢,𝑡
+
+, C𝑢,𝑡 , U \ { 𝑢 }
+
+
+
+, (4) where V (𝑘 ) 
+
+> 𝑢,𝑡
+
+⊆ U \ { 𝑢 } contains either a single advisor or multiple advisors. A basic selection policy may rely on random sampling, social relations, preference similarity, or candidate-related experi-ence. The selected advisor agents inspect the latest UserAgent judg-ment using their own interaction histories and produce comple-mentary evidence: 
+
+a(𝑘 ) 
+
+> 𝑢,𝑡
+
+∼ 𝜋 adv 
+
+
+
+· | { ℎ𝑣 }𝑣 ∈ V (𝑘 )
+
+> 𝑢,𝑡
+
+, q(𝑘 −1) 
+
+> 𝑢,𝑡
+
+, C𝑢,𝑡 
+
+
+
+, (5) where 𝜋 adv denotes the advisor policy and a(𝑘 ) 
+
+> 𝑢,𝑡
+
+contains candidate-level support, objections, comparisons, or other evidence relevant to the current judgment. After receiving this evidence, the target UserAgent revises its judgment while preserving the same output structure as in Eq. (1): 
+
+q(𝑘 ) 
+
+> 𝑢,𝑡
+
+=
+
+
+
+𝑖 (𝑘 ) 
+
+> 𝑢,𝑡
+
+, 𝑑 (𝑘 ) 
+
+> 𝑢,𝑡
+
+, 𝑗 (𝑘 ) 
+
+> 𝑢,𝑡
+
+, H (𝑘 )
+
+> 𝑢,𝑡
+
+
+
+∼ 𝜋 user 
+
+
+
+· | ℎ𝑢 , C𝑢,𝑡 , M𝑢,𝑡 −1, q(𝑘 −1) 
+
+> 𝑢,𝑡
+
+, a(𝑘 )
+
+> 𝑢,𝑡
+
+
+
+.
+
+(6) The revised choice 𝑖 (𝑘 ) 
+
+> 𝑢,𝑡
+
+may retain or overturn the previous choice, while H (𝑘 ) 
+
+> 𝑢,𝑡
+
+records the alternatives that remain unresolved after incorporating the newly obtained advisor evidence. After 𝐾 𝑢,𝑡 communication rounds, the final judgment is q(𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+,and the advisor-assisted UserAgent returns: 
+
+madv  
+
+> 𝑢,𝑡
+
+=
+
+
+
+𝑖 (𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+, 𝑑 (𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+, 𝑗 (𝐾 𝑢,𝑡 )
+
+> 𝑢,𝑡
+
+
+
+. (7) The complete judgment and communication trace is then added to the interaction memory: 
+
+M𝑢,𝑡 = Update M𝑢,𝑡 −1, C𝑢,𝑡 , q(0) 
+
+> 𝑢,𝑡
+
+,
+
+n 
+
+V (𝑘 ) 
+
+> 𝑢,𝑡
+
+, a(𝑘 ) 
+
+> 𝑢,𝑡
+
+, q(𝑘 )
+
+> 𝑢,𝑡
+
+o 𝐾 𝑢,𝑡 
+
+> 𝑘 =1
+
+!
+
+. (8) Nevertheless, merely adding advisors does not specify how use-ful communication should be constructed. Without a why mech-anism, the system cannot diagnose the deficiency that makes ex-ternal evidence necessary. Without what , advisors may provide information unrelated to the target UserAgent’s actual uncertainty. Without how , the system cannot determine whether the task re-quires one advisor or multiple advisors interacting independently, cooperatively, or competitively. Finally, without a context-aware 
+
+who mechanism, the system may select advisors who lack relevant experience or complementary evidence. We therefore introduce 
+
+AgentCom , which structures advisor-assisted judgment through reusable why–what–how–who communication skills. 
+
+## 3 Methodology 
+
+AgentCom organizes agent communication as reusable skills rather than constructing a new communication prompt for every user and recommendation. Its central component is a shared public commu-nication skill bank structured along four dimensions: why , what ,
+
+how , and who . For each recommendation, AgentCom selects a com-plete path through these dimensions, executes the resulting advisor communication, and returns structured evidence to the target User-Agent for re-decision. Figure 2 presents the overall framework. A base recommender first generates a candidate set, and the target UserAgent forms an initial judgment. AgentCom then selects a per-sonalized communication path from the public bank and executes the corresponding advisor interaction. If the final decision is unsuc-cessful, the communication trace is analyzed to identify whether the current route is unsuitable or the bank lacks a reusable capabil-ity. The resulting update is incorporated into subsequent routing. We first introduce the communication skill bank in Section 3.1, then describe the process of AgentCom in Section 3.2. 
+
+## 3.1 Communication Skill Bank 
+
+AgentCom maintains a hierarchical public bank so that communi-cation capabilities can be reused across users and recommendation contexts. At evolution round 𝑟 , the bank is represented as: 
+
+B𝑟 = {B why  
+
+> 𝑟
+
+, Bwhat  
+
+> 𝑟
+
+, Bhow  
+
+> 𝑟
+
+, Bwho  
+
+> 𝑟
+
+}, (9) where each sub-bank represents one decision in the communication process. A complete communication path for user 𝑢 at turn 𝑡 is: 
+
+p𝑢,𝑡 =  𝑠 why  
+
+> 𝑢,𝑡
+
+, 𝑠 what  
+
+> 𝑢,𝑡
+
+, 𝑠 how  
+
+> 𝑢,𝑡
+
+, 𝑠 who 
+
+> 𝑢,𝑡
+
+. (10) To support systematic selection and evolution, each communica-tion skill is formalized as a structured node: 
+
+𝑠 = (𝑐 𝑠 , 𝑎 𝑠 , 𝑜 𝑠 ) , (11) where 𝑐 𝑠 is the applicability condition, 𝑎 𝑠 is the executable instruc-tion, and 𝑜 𝑠 is the output contract. The applicability condition de-scribes the observable circumstances where the node is suitable. The executable instruction specifies the operation performed after selection. The output contract specifies the information that the node should return. It enables outputs to be consistently summa-rized and used by the target UserAgent. Within each dimension, the nodes are organized hierarchically rather than stored as a flat collection. A parent node represents a general communication capability, while its children specialize that capability for more specific conditions. Nodes sharing the same parent represent alternative strategies for the same communication need. For example, a general multi-advisor capability can contain cooperative and competitive protocols as alternative child nodes. This structure preserves the relationships among skills at different levels of granularity. It also provides a basis for later expansion: a new capability can be introduced as either a specialized child or an alternative sibling without modifying other skills in the bank. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Trovato et al. 
+
+Figure 2: Overview of AgentCom. The target UserAgent first evaluates recommender-generated candidates. AgentCom selects a personalized why–what–how–who path from the public communication skill bank, executes the corresponding advisor interaction, and returns structured evidence for user re-decision. Failed communication cases are further used to refine personalized routes or expand the public bank. 
+
+## 3.2 AgentCom Process 
+
+Given the bank structure above, AgentCom first initializes a com-pact version B0. Each capability is instantiated as a structured node following Eq. (11). The goal is to provide a reusable starting space that can be subsequently extended, rather than to enumerate all possible communication strategies. The complete initialization is presented in Appendix A. Based on B0, AgentCom then proceeds through personalized skill routing and failure-driven skill evolution. 
+
+3.2.1 Personalized Skill Routing. The public bank defines the com-munication capabilities available to AgentCom, but a separate mech-anism is still required to determine how these capabilities should be composed for each user. AgentCom therefore adopts a shared-capability, personalized-routing design: the skill definitions are stored globally in B𝑟 , while their ordering and selection are dynam-ically adapted to the context of each user. At turn 𝑡 , the target UserAgent first forms an initial judgment q(0)
+
+> 𝑢,𝑡
+
+over the candidate set. The judgment contains its current choice, decision status, supporting rationale, and unresolved alternatives. An LLM-based router analyzes this judgment together with the user’s history and selects the why node that best characterizes the dominant deficiency. Every interaction selects a why node and proceeds through a complete communication path. The remaining layers are resolved through conditional ordered lists. Let X𝑢,𝑡 denote the routing context, including the user his-tory ℎ𝑢 , the initial judgment q(0) 
+
+> 𝑢,𝑡
+
+, the candidate set C𝑢,𝑡 , and the advisor evidence currently available for these candidates. Given an upstream node 𝑥 , the LLM router receives X𝑢,𝑡 and the descriptions and applicability conditions of all active public nodes in the next layer. It then returns these nodes in descending order: 
+
+𝐿 ℓ𝑢,𝑡 [𝑥 ] = Rank LLM 
+
+ Bℓ𝑟 | 𝑥, X𝑢,𝑡 
+
+ , (12) where ℓ ∈ { what , how , who } and Rank LLM (·) denotes the above LLM-based analysis and ordering process. The resulting list 𝐿 ℓ𝑢,𝑡 [𝑥 ]
+
+places the most relevant and executable node first, followed by progressively less suitable alternatives. Moreover, the ranking is conditional because the selected node in the current layer becomes part of the input for ranking the next layer. Specifically, the selected why node conditions the what 
+
+ranking, the selected what node conditions the how ranking, and the selected how node conditions the who ranking. The routing process is therefore formulated as: 
+
+𝑠 what  
+
+> 𝑢,𝑡
+
+= Select 
+
+
+
+𝐿 what  
+
+> 𝑢,𝑡
+
+[𝑠 why  
+
+> 𝑢,𝑡
+
+]
+
+
+
+,𝑠 how  
+
+> 𝑢,𝑡
+
+= Select 
+
+
+
+𝐿 how  
+
+> 𝑢,𝑡
+
+[𝑠 what  
+
+> 𝑢,𝑡
+
+]
+
+
+
+,𝑠 who  
+
+> 𝑢,𝑡
+
+= Select 
+
+
+
+𝐿 who  
+
+> 𝑢,𝑡
+
+[𝑠 how  
+
+> 𝑢,𝑡
+
+]
+
+
+
+,
+
+(13) where Select (·) traverses an ordered list and returns the first node whose applicability condition is satisfied. If a highly ranked node cannot be applied, the router continues to the next node rather than reconstructing the entire path. The final selections form the communication path p𝑢,𝑡 in Eq. (10). Different users can therefore use the same public nodes while fol-lowing different paths. Once p𝑢,𝑡 is selected, AgentCom converts the four nodes into an executable communication plan. After com-munication, AgentCom organizes the advisor responses according to the output contracts of the selected nodes. The resulting evidence packet A𝑢,𝑡 records candidate-level support, risks, disagreements, corrections, and remaining evidence gaps. The packet summarizes Personalized Communication Skills for Agentic Recommender Systems Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+the discussion without replacing the target UserAgent’s author-ity. The UserAgent combines this external evidence with its initial judgment and personal history to produce the final decision. 
+
+3.2.2 Failure-Driven Skill Evolution. The initialized bank provides a starting point, but it cannot anticipate every communication need across different users and recommendation contexts. Failure analy-sis therefore aims not only to identify an incorrect final decision, but also to locate the communication layer responsible for the fail-ure and determine whether an existing skill should be specialized or a new communication capability should be introduced. During training, let 𝐾 𝑢,𝑡 denote the number of communication and re-decision rounds completed by user 𝑢 at turn 𝑡 . The complete sequence of UserAgent judgments is represented as: 
+
+Q𝑢,𝑡 =
+
+
+
+q(0) 
+
+> 𝑢,𝑡
+
+, q(1) 
+
+> 𝑢,𝑡
+
+, . . . , q(𝐾 𝑢,𝑡 )
+
+> 𝑢,𝑡
+
+
+
+, (14) where q(0) 
+
+> 𝑢,𝑡
+
+is the initial judgment and q(𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+is the final judgment after all communication rounds. Let 𝑖 (𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+denote the item selected in the final judgment and let 
+
+𝑖 ∗ 
+
+> 𝑢,𝑡
+
+denote the ground-truth item. A failure case is identified by: 
+
+𝐹 𝑢,𝑡 = I
+
+h
+
+𝑖 (𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+≠ 𝑖 ∗
+
+> 𝑢,𝑡
+
+i
+
+. (15) For each failure, AgentCom constructs a trace containing the com-plete decision trajectory, the selected communication skills, the advisor communication process, and the ground-truth item: 
+
+T𝑢,𝑡 =  Q𝑢,𝑡 , p𝑢,𝑡 , D𝑢,𝑡 , A𝑢,𝑡 , 𝑖 ∗
+
+> 𝑢,𝑡
+
+ , (16) where D𝑢,𝑡 collects the advisor messages and synthesized evidence generated throughout communication. An LLM-based failure analyzer reviews this trace together with the current skill bank and produces a structured diagnosis: 
+
+ ℓ∗ 
+
+> 𝑢,𝑡
+
+, 𝜅 𝑢,𝑡 , 𝛿 𝑢,𝑡 
+
+ = Analyze LLM 
+
+ T𝑢,𝑡 , B𝑟 
+
+ , (17) where ℓ∗ 
+
+> 𝑢,𝑡
+
+∈ { why , what , how , who } identifies the layer responsible for the failure. The variable 𝜅 𝑢,𝑡 specifies the failure type, while 𝛿 𝑢,𝑡 
+
+provides an evidence-grounded explanation that describes what was inadequate in the selected path and what communication capability was required instead. The analyzer distinguishes three failure types and determines the corresponding evolution action: 
+
+𝛼 𝑢,𝑡 =
+
+
+
+SkillUpdate , 𝜅 𝑢,𝑡 = skill insufficiency ,
+
+SkillGeneration , 𝜅 𝑢,𝑡 = capability gap ,
+
+ReRouting , 𝜅 𝑢,𝑡 = routing mismatch .
+
+(18) 
+
+Skill update. A skill insufficiency indicates that the selected skill addresses the correct general communication need but is too broad or incomplete for the failed case. Let 𝑠 base  
+
+> 𝑢,𝑡
+
+= 𝑠 ℓ∗ 
+
+> 𝑢,𝑡
+> 𝑢,𝑡
+
+denote the skill selected at the diagnosed failure layer ℓ∗ 
+
+> 𝑢,𝑡
+
+. Directly modifying this skill could reduce its usefulness for more general cases. AgentCom therefore applies an LLM-based refinement operation: 
+
+𝑠 child = Refine LLM 
+
+
+
+𝑠 base  
+
+> 𝑢,𝑡
+
+, 𝛿 𝑢,𝑡 , T𝑢,𝑡 
+
+
+
+, (19) where Refine LLM compares the selected skill with the diagnosed failure reason 𝛿 𝑢,𝑡 and its supporting trace T𝑢,𝑡 . It then produces a specialized skill: 
+
+𝑠 child =  𝑐 𝑠 child , 𝑎 𝑠 child , 𝑜 𝑠 child 
+
+ , (20) where 𝑐 𝑠 child restricts the skill to the diagnosed failure pattern, 𝑎 𝑠 child 
+
+introduces the additional operation required to address that pattern, and 𝑜 𝑠 child specifies the evidence that should be returned. The refined skill is added as a child of 𝑠 base  
+
+> 𝑢,𝑡
+
+:parent 
+
+
+
+𝑠 child 
+
+= 𝑠 base  
+
+> 𝑢,𝑡
+
+, Bℓ∗  
+
+> 𝑢,𝑡
+> 𝑟 +1
+
+= Bℓ∗ 
+
+> 𝑢,𝑡
+> 𝑟
+
+∪ 𝑠 child . (21) Here, parent (𝑠 ) denotes the immediate parent of 𝑠 in the hier-archical bank. Thus, 𝑠 child preserves the general purpose of the selected skill while specializing it for a narrower communication need. The original skill remains unchanged and can still be used for general cases. 
+
+Skill generation. A capability gap indicates that the required communication strategy cannot be obtained by specializing an existing skill. AgentCom therefore applies an LLM-based generation operation: 
+
+𝑠 new = Generate LLM 
+
+ ℓ∗ 
+
+> 𝑢,𝑡
+
+, 𝛿 𝑢,𝑡 , T𝑢,𝑡 
+
+ , (22) where Generate LLM constructs a new communication capability directly from the responsible layer, the diagnosed failure reason, and the supporting trace. The generated skill is represented as: 
+
+𝑠 new = (𝑐 𝑠 new , 𝑎 𝑠 new , 𝑜 𝑠 new ) , (23) where its applicability condition, executable instruction, and out-put contract are generated to address the previously uncovered communication need. To place 𝑠 new in the hierarchy, AgentCom identifies the most closely related existing skill in the responsible layer, denoted by 
+
+𝑠 anchor . The anchor determines only the structural position of the new skill. Because 𝑠 new represents an alternative strategy rather than a specialization of 𝑠 anchor , the two skills are placed under the same parent: parent (𝑠 new ) = parent 
+
+
+
+𝑠 anchor 
+
+, Bℓ∗  
+
+> 𝑢,𝑡
+> 𝑟 +1
+
+= Bℓ∗ 
+
+> 𝑢,𝑡
+> 𝑟
+
+∪ { 𝑠 new } . (24) Therefore, 𝑠 new becomes a sibling of 𝑠 anchor and provides an alternative capability at the same layer. If no related anchor exists, it is inserted as a new top-level skill. 
+
+Routing correction. A routing mismatch indicates that the public bank already contains a suitable skill for addressing the diagnosed communication need, but the personalized router selected an inap-propriate skill at layer ℓ∗ 
+
+> 𝑢,𝑡
+
+. In this case, the failure does not reveal a deficiency in the existing skill definitions and therefore does not require the bank to be modified or expanded. Instead, AgentCom uses the failure diagnosis 𝛿 𝑢,𝑡 as corrective routing guidance and reruns personalized skill routing: 
+
+ep𝑢,𝑡 = ReRoute LLM 
+
+ B𝑟 , X𝑢,𝑡 , p𝑢,𝑡 , ℓ ∗ 
+
+> 𝑢,𝑡
+
+, 𝛿 𝑢,𝑡 
+
+ , (25) where p𝑢,𝑡 is the originally selected communication path and ep𝑢,𝑡 
+
+is the corrected path. Rerouting starts from the diagnosed layer 
+
+ℓ∗ 
+
+> 𝑢,𝑡
+
+, replaces the unsuitable skill with a more appropriate existing skill, and reconstructs all downstream selections because each sub-sequent layer is conditioned on the preceding routing decisions. The corrected path is then executed to obtain new advisor evidence and support a new UserAgent decision. After failure analysis, AgentCom either specializes an existing capability through a child node, introduces an alternative capability through a sibling node, or corrects an unsuitable route by reusing Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Trovato et al. 
+
+existing skills. Skill update and skill generation modify the public bank, whereas routing correction leaves the bank unchanged. The users involved in the corresponding failure cases are then rerouted over the resulting bank and re-execute the communication process. The overall algorithm of AgentCom can be found in Appendix B. 
+
+## 4 Experiments 4.1 Experimental Settings 
+
+4.1.1 Datasets. We conduct experiments on three public datasets with different domains and social structures. LastFM [4] contains artist-listening interactions and user friendship relations. Epin-ions [2] contains user–item interactions from a product-review platform together with user trust links. LibraryThing [40] contains book-related interactions and social connections among readers. These datasets are suitable for our study because they provide both historical preference evidence and inter-user relations that can be used to construct advisor pools. Table 1 reports their statistics. 
+
+Table 1: Statistics of the experimental datasets.                 
+
+> Dataset #Users #Items #Interactions #Social Links LastFM 1,877 17,612 90,924 25,218 Epinions 1,026 9,590 11,996 15,337 LibraryThing 860 25,251 54,306 6,187
+
+4.1.2 Compared Methods. We select baselines from three recom-mendation paradigms. This design examines whether AgentCom only benefits LLM-based agents or can serve as a general communi-cation layer over different recommendation backbones. The three categories also represent different evidence sources: 
+
+• Traditional sequential recommendation. SASRec [11] mod-els a user’s ordered interaction history with self-attention and predicts the next item directly. It provides a representative non-social, non-agentic sequential backbone. 
+
+• Social recommendation. GBSR [35] incorporates social rela-tions into recommendation, allowing us to compare AgentCom with a model that already uses inter-user connections at the rep-resentation level. The comparison tests whether explicit advisor communication offers value beyond social-graph modeling. 
+
+• Agentic recommendation. We include three agentic recom-menders. AFL [3] uses an agent feedback loop to evaluate and re-vise candidate recommendations. iAgent [34] formulates recom-mendation as an interactive agent decision process. MemRec [5] further uses explicit interaction memory to support candidate evaluation and refinement. 
+
+4.1.3 Evaluation Metric. We evaluate recommendation performance using Hit@1, which measures whether the final selected item matches the ground-truth next item. A larger Hit@1 indicates more accurate final recommendation decisions. 
+
+4.1.4 Implementation Details. We use deepseek-4-flash [8] as the language model for all LLM-based user and advisor agents. The system is implemented as an agentic reranking framework built on top of a general recommender. Specifically, we first tune SASRec on 
+
+Table 2: Performance comparison in terms of Hit@1. AgentCom-enhanced variants are highlighted in blue, with their results shown in bold.                                           
+
+> Category Backbone Variant LastFM Epinions LibraryThing Sequential SASRec Original 0.0155 0.0010 0.0151
+> + AgentCom 0.2019 0.1784 0.2098
+> Social GBSR Original 0.1630 0.1589 0.1395
+> + AgentCom 0.2375 0.2273 0.1930
+> Agentic AFL Original 0.1460 0.1140 0.1174
+> + AgentCom 0.2071 0.2297 0.1814
+> iAgent Original 0.2205 0.2193 0.2023
+> + AgentCom 0.2675 0.2347 0.2291
+> MemRec Original 0.2648 0.2427 0.2430
+> + AgentCom 0.2696 0.2485 0.2634
+
+each dataset and use its best-performing hyperparameter configura-tion to construct the candidate pool. For each test instance, SASRec generates a 20-item candidate set consisting of the ground-truth item and the 19 highest-ranked non-ground-truth items. As the candidate-generation baseline, SASRec directly takes its top-ranked item as the final recommendation, whereas all other compared methods evaluate or rerank the same 20-item candidate set. Hit@1 is then computed based on the final item selected by each method. This shared-candidate protocol controls the upstream retrieval space, ensuring that performance differences primarily arise from how each method evaluates and selects among the available can-didates. For methods augmented with AgentCom, the backbone first produces a provisional judgment. AgentCom then selects and executes a personalized why–what–how–who communication path, aggregates the resulting advisor evidence, and asks the target User-Agent to make the final decision. Most stages of this process are performed through the reasoning capabilities of the underlying language model. Advisor selection additionally incorporates struc-tured signals from the recommendation data. Specifically, social advisors are selected according to the observed social relations provided by the corresponding datasets, while peer similarity is measured using the similarity between user embeddings learned by SASRec. We use identical candidate information, user histories, and language-model configurations across all agentic methods to ensure a fair comparison. 
+
+## 4.2 Performance Comparison 
+
+This experiment examines whether AgentCom can consistently im-prove recommendation accuracy across different backbone models and whether its benefits generalize across sequential, social, and agentic recommendation paradigms. For each backbone, we com-pare its original result with the result obtained after adding Agent-Com, denoted by + AgentCom . Both variants operate on the same candidate set. The original backbone provides the initial candidate ordering or user judgment, after which AgentCom performs person-alized advisor communication and allows the target UserAgent to make the final selection. This comparison isolates the contribution of AgentCom from that of the underlying recommender. Table 2 reports Hit@1 on the three datasets. Personalized Communication Skills for Agentic Recommender Systems Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+• AgentCom improves Hit@1 across different datasets and con-ventional non-agentic recommenders, showing that UserAgent evaluation and external advisor evidence can substantially revise the initial ranking produced by a sequential model and social recommendation model. 
+
+• AgentCom also consistently improves existing agentic recom-menders. AFL gains 0.0611, 0.1157, and 0.0640 across the three datasets, while iAgent gains 0.0470, 0.0154, and 0.0268. Thus, in-ternal agent reasoning and generic feedback loops do not fully exploit the complementary evidence available from other users. Personalized communication skills provide an additional mecha-nism for identifying and correcting preference mismatches. 
+
+• MemRec is the strongest original backbone on all three datasets, leaving less room for improvement. Nevertheless, AgentCom increases its Hit@1 from 0.2648 to 0.2696 on LastFM, from 0.2427 to 0.2485 on Epinions, and from 0.2430 to 0.2634 on Library-Thing, corresponding to relative improvements of 1.8%, 2.4%, and 8.4%. MemRec with AgentCom achieves the best result on every dataset, demonstrating that cross-user communication comple-ments rather than replaces interaction memory. 
+
+## 4.3 Ablation Study 
+
+We conduct an ablation study to examine how each layer con-tributes to the communication process. Specifically, we remove the 
+
+why , what , how , and who layers separately. In w/o why , the router selects a communication task directly from the current decision state. In w/o what , advisors receive no task-specific instruction and comment freely on the candidates. In w/o how , the system randomly adopts either single-advisor or multi-advisor communication with-out selecting a suitable interaction protocol. In w/o who , advisors are selected randomly. In w/o evolution , the framework retains the initialized communication skill bank but disables failure-driven updates, including the refinement of existing skills and the intro-duction of new skills. Finally, w/o all replaces the entire structured communication skill with generic dialogue. All variants use the same SASRec candidate sets, number of communication rounds, and Hit@1 evaluation setting. As shown in Figure 3, the complete AgentCom achieves the best performance on all three datasets. 
+
+• Removing any individual layer of the why–what–how–who struc-ture causes a performance decrease, confirming that each layer contributes a distinct function to the communication process. The why layer identifies the decision deficiency that motivates communication; the what layer translates this deficiency into a focused evidence request; the how layer selects an appropriate protocol for organizing advisor interactions; and the who layer retrieves advisors capable of providing relevant and reliable evi-dence. These results show that effective communication requires not only additional information, but also a structured process for determining why it is needed, what should be discussed, how it should be exchanged, and who should provide it. 
+
+• Removing the evolution mechanism keeps the initialized com-munication skill bank fixed throughout training. Although the predefined skills already provide effective general communica-tion routes, they cannot fully cover user-specific decision failures or communication patterns that are absent from the initial design. The consistent performance decrease across all three datasets shows that failure-driven evolution further improves the frame-work by refining existing skills and introducing new skills for previously uncovered communication needs. 
+
+• Removing all four layers reduces communication to generic di-alogue without a structured connection between the decision deficiency, information task, interaction protocol, and advisor source. Errors arising at these stages can accumulate: the dis-cussion may address the wrong issue, collect scattered opinions, and involve advisors whose evidence is irrelevant to the target user. Accordingly, w/o all performs substantially worse than the complete framework, showing that AgentCom benefits from co-ordinating why–what–how–who as an integrated communication process rather than simply introducing additional dialogue. 
+
+Figure 3: Ablation results of AgentCom on three datasets. The dashed arrows indicate the performance improvements of the complete AgentCom over w/o all .
+
+## 4.4 Hyperparameter Analysis 
+
+We investigate communication depth through two hyperparam-eters: the maximum number of user–advisor interaction rounds 
+
+𝐾 max and the number of internal advisor discussion rounds 𝐺 . Here, 
+
+𝐾 max is the upper bound on the actual number of user–advisor com-munication rounds. Experiments are conducted on three datasets with SASRec as the backbone, while the remaining settings are kept unchanged. The results are presented in Figure 4. 
+
+• With the number of internal advisor discussion rounds fixed at 
+
+𝐺 = 1, we vary the maximum number of user–advisor interaction rounds 𝐾 max from 1 to 4. Increasing 𝐾 max improves Hit@1 on all three datasets, indicating that additional interaction rounds allow the UserAgent to progressively incorporate advisor evidence and refine its previous decision. However, the marginal gain becomes smaller after the third round. Increasing 𝐾 max from 1 to 3 yields gains of 0.0117, 0.0088, and 0.0181 on three datasets, whereas the fourth round contributes less. Since each interaction round also requires additional LLM calls for advisor communication and UserAgent re-decision, we set 𝐾 max = 3 by default to balance recommendation accuracy and communication cost. 
+
+• With the maximum number of user–advisor interaction rounds fixed at 𝐾 max = 3, we vary the number of internal advisor discus-sion rounds 𝐺 from 1 to 3. Increasing 𝐺 decreases Hit@1 on all three datasets, indicating that additional advisor-only discussion does not necessarily provide more useful evidence for the UserA-gent. Increasing 𝐺 from 1 to 2 causes absolute performance drops of 0.0048, 0.0039, and 0.0140 on three datasets, while increasing 
+
+𝐺 to 3 enlarges the corresponding drops to 0.0058, 0.0069, and 0.0154. The degradation is particularly pronounced on Library-Thing, suggesting that repeated advisor discussion may introduce Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Trovato et al. 
+
+redundant information, amplify secondary preference signals, or shift attention away from the user’s current decision needs. Since additional discussion rounds incur more LLM calls while consistently reducing recommendation accuracy, we set 𝐺 = 1by default. 
+
+Figure 4: Effect of the maximum number of user–advisor interaction rounds 𝐾 max and the number of internal advisor discussion rounds 𝐺 .
+
+## 4.5 Case Study 
+
+We present three representative cases from LibraryThing to illus-trate how AgentCom affects the UserAgent’s decision, including two successful cases and one unsuccessful case.          
+
+> Successful Case 1: Correcting Perspective Narrowing (Ground-truth: Black Talk, Prediction: Black Talk) User9508, Decision: Black Talk . Reason: The UserAgent initially favors The Cage because of the user’s interest in war memoirs. How-ever, the advisors point out that the user’s history also contains niche non-fiction essays and works centered on social and political commen-tary. While The Cage mainly matches the war-related theme, Black Talk covers race, politics, and social identity in an essay-based form, providing a broader match to the user’s reading preferences. The UserAgent therefore revises its initial choice and selects Black Talk .
+
+Analysis: This case succeeds because the initial decision considers only the most obvious preference signal. The advisors recover other relevant evidence from the user’s history, giving the UserAgent a more complete view of the user’s interests and helping it correct the initial judgment.           
+
+> Successful Case 2: Clarifying Ambiguous Preference (Ground-truth: Water Elephants, Prediction: Water Elephants) User19584, Decision: Water Elephants . Reason: The UserAgent initially hesitates between Hashish and Water Elephants under the vague preference for a “classic” work. The advisors make this prefer-ence more concrete by comparing the candidates in terms of classic status, optimistic tone, and narrative appeal. They find that Hashish
+> is more clearly a classic but has an uncertain tone, while Water Ele-phants provides stronger evidence of a hopeful and character-driven narrative. Based on this better-supported evidence, the UserAgent selects Water Elephants .
+
+Analysis: The initial hesitation comes from using the broad label “classic” as the main criterion. The advisors decompose this am-biguous preference into several comparable dimensions and avoid treating uncertain attributes as confirmed evidence. This allows the UserAgent to rely on the better-supported narrative and emotional preferences and make the correct judgment.           
+
+> Unsuccessful Case: Overemphasis on Secondary Preferences (Ground-truth: Passion, Prediction: Nightshade) User25209, Decision: Nightshade . Reason: The UserAgent initially selects the correct item Passion . The advisors identify that Passion has a stronger romantic subplot, but they also emphasize that Nightshade
+> offers stronger suspense, a darker atmosphere, and easier series entry. As these secondary advantages of Nightshade receive increasing at-tention in later communication, they gradually outweigh the stronger romantic evidence supporting Passion . The UserAgent consequently overturns its initial correct decision and selects Nightshade .
+
+Analysis: This case fails because the communication repeatedly reinforces the suspense, dark atmosphere, and accessibility of Night-shade , although these are secondary to the user’s stronger romantic preference. The repeated emphasis distorts the relative importance of the available evidence and causes the UserAgent to replace an initially correct choice with an incorrect one. 
+
+## 5 Related Work 
+
+Traditional recommender systems learn user preferences from his-torical interactions and directly rank candidate items. Sequential models capture temporal dependencies in user behavior [11, 27], while graph-based collaborative filtering methods propagate prefer-ence signals over user–item graphs [10]. Despite their increasingly powerful representations, these methods generally follow a one-shot prediction paradigm and provide no user-side mechanism for examining or revising a recommendation after it is generated. The emergence of LLMs has shifted recommendation toward agentic systems. Early studies primarily employed LLM-powered agents to construct user profiles and simulate user behaviors, sup-porting interactive evaluation and environment modeling [29, 38]. Other works equipped recommendation agents with planning, tool use, and autonomous reasoning capabilities [30, 41]. These develop-ments gradually extended the UserAgent from a passive behavior simulator to an active participant that evaluates recommendations and provides natural-language feedback. Recent methods further integrate UserAgents into the recommendation process. AFL con-structs an iterative feedback loop in which the recommendation agent proposes items and the UserAgent evaluates them, jointly im-proving recommendation and user simulation [3]. iAgent positions a user-side agent as a shield between the user and the platform, combining user instructions, external knowledge, self-reflection, and dynamic memory to rerank recommendations according to individual interests [34]. MemRec introduces collaborative memory and extracts high-signal context from a user–item memory graph for downstream recommendation reasoning [5]. Although these methods improve agentic recommendation through feedback, pro-tection, or memory, they do not formulate communication among UserAgents as reusable skills. AgentCom addresses this gap by routing and evolving advisor communication for each target user. Personalized Communication Skills for Agentic Recommender Systems Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+## 6 Conclusion 
+
+In this work, we introduced AgentCom, a personalized communi-cation skill framework for agentic recommendation. AgentCom addresses perspective narrowing by allowing a target UserAgent to obtain complementary evidence from other users before making its final decision. Specifically, AgentCom organizes reusable capabili-ties into a shared why–what–how–who skill bank. A personalized router determines why communication is needed, what evidence should be requested, how advisors should interact, and who can ex-ecute the selected protocol. A failure-driven evolution mechanism further attributes unsuccessful outcomes and accordingly refines existing public skills or expands the shared skill bank. In the future, we will investigate how to make agent communi-cation more efficient and cost-effective by reducing unnecessary interaction rounds, prioritizing high-value evidence, and balancing communication cost against expected recommendation gains. We will also explore whether complementary evidence can be obtained without direct communication among UserAgents, such as through reusable shared knowledge or compact preference representations. Finally, we will examine the privacy and security risks of cross-user communication, including unintended preference disclosure, unreliable or malicious advisors, and the propagation of biased or manipulated evidence. 
+
+## References 
+
+[1] Dirk Bollen, Bart P Knijnenburg, Martijn C Willemsen, and Mark Graus. 2010. Understanding choice overload in recommender systems. In Proceedings of the fourth ACM conference on Recommender systems . 63–70. [2] Chenwei Cai, Ruining He, and Julian McAuley. 2017. SPMC: Socially-aware personalized Markov chains for sparse sequential recommendation. arXiv preprint arXiv:1708.04497 (2017). [3] Shihao Cai, Jizhi Zhang, Keqin Bao, Chongming Gao, Qifan Wang, Fuli Feng, and Xiangnan He. 2025. Agentic feedback loop modeling improves recommendation and user simulation. In Proceedings of the 48th International ACM SIGIR conference on Research and Development in Information Retrieval . 2235–2244. [4] Iván Cantador, Peter Brusilovsky, and Tsvi Kuflik. 2011. Second workshop on information heterogeneity and fusion in recommender systems (HetRec2011). In 
+
+Proceedings of the fifth ACM conference on Recommender systems . 387–388. [5] Weixin Chen, Yuhan Zhao, Jingyuan Huang, Zihe Ye, Mingxuan Ju, Tong Zhao, Neil Shah, Li Chen, and Yongfeng Zhang. 2026. Memrec: Collaborative memory-augmented agentic recommender system. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) .44515–44544. [6] Yilun Du, Shuang Li, Antonio Torralba, Joshua B Tenenbaum, and Igor Mordatch. 2024. Improving factuality and reasoning in language models through multiagent debate. In Proceedings of the 41st International Conference on Machine Learning .11733–11763. [7] Mark S Granovetter. 1973. The strength of weak ties. American journal of sociology 
+
+78, 6 (1973), 1360–1380. [8] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Peiyi Wang, Qihao Zhu, Runxin Xu, Ruoyu Zhang, Shirong Ma, Xiao Bi, et al. 2025. DeepSeek-R1 in-centivizes reasoning in LLMs through reinforcement learning. Nature 645, 8081 (2025), 633–638. [9] John R Hauser and Birger Wernerfelt. 1990. An evaluation cost model of consid-eration sets. Journal of consumer research 16, 4 (1990), 393–408. [10] Xiangnan He, Kuan Deng, Xiang Wang, Yan Li, Yongdong Zhang, and Meng Wang. 2020. Lightgcn: Simplifying and powering graph convolution network for recommendation. In Proceedings of the 43rd International ACM SIGIR conference on research and development in Information Retrieval . 639–648. [11] Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recom-mendation. In 2018 IEEE international conference on data mining (ICDM) . IEEE, 197–206. [12] Richard P Larrick. 2004. Debiasing. Blackwell handbook of judgment and decision making (2004), 316–338. [13] Harold D Lasswell. 1948. The structure and function of communication in society. 
+
+The communication of ideas 37, 1 (1948), 136–139. [14] Kyle Lewis. 2004. Knowledge and performance in knowledge-worker teams: A longitudinal study of transactive memory systems. Management science 50, 11 (2004), 1519–1533. [15] Bingqian Li, Xiaolei Wang, Junyi Li, Weitao Li, Long Zhang, Sheng Chen, Wayne Xin Zhao, and Ji-Rong Wen. 2026. RecNet: Self-Evolving Preference Propagation for Agentic Recommender Systems. arXiv preprint arXiv:2601.21609 
+
+(2026). [16] Tian Liang, Zhiwei He, Wenxiang Jiao, Xing Wang, Yan Wang, Rui Wang, Yujiu Yang, Shuming Shi, and Zhaopeng Tu. 2024. Encouraging divergent thinking in large language models through multi-agent debate. In Proceedings of the 2024 conference on empirical methods in natural language processing . 17889–17904. [17] Jiahao Liu, Shengkang Gu, Dongsheng Li, Guangping Zhang, Mingzhe Han, Hansu Gu, Peng Zhang, Tun Lu, Li Shang, and Ning Gu. 2025. AgentCF++: Memory-enhanced LLM-based Agents for Popularity-aware Cross-domain Rec-ommendations. In Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval . 2566–2571. [18] George Loewenstein. 1994. The psychology of curiosity: A review and reinter-pretation. Psychological bulletin 116, 1 (1994), 75. [19] Hao Ma, Irwin King, and Michael R Lyu. 2009. Learning to recommend with social trust ensemble. In Proceedings of the 32nd international ACM SIGIR conference on Research and development in information retrieval . 203–210. [20] Jessica R Mesmer-Magnus and Leslie A DeChurch. 2009. Information sharing and team performance: a meta-analysis. Journal of applied psychology 94, 2 (2009), 535. [21] Camille Morvan and Alexander O’Connor. 2017. An analysis of Leon Festinger’s a theory of cognitive dissonance . Macat Library. [22] Charlan Nemeth and John Rogers. 1996. Dissent and the search for information. 
+
+British Journal of Social Psychology 35, 1 (1996), 67–76. [23] John W Payne, James R Bettman, and Eric J Johnson. 1993. The adaptive decision maker . Cambridge university press. [24] Paul Resnick, Neophytos Iacovou, Mitesh Suchak, Peter Bergstrom, and John Riedl. 1994. Grouplens: An open architecture for collaborative filtering of netnews. In Proceedings of the 1994 ACM conference on Computer supported cooperative work . 175–186. [25] Andrew I Schein, Alexandrin Popescul, Lyle H Ungar, and David M Pennock. 2002. Methods and metrics for cold-start recommendations. In Proceedings of the 25th annual international ACM SIGIR conference on Research and development in information retrieval . 253–260. [26] Janet A Sniezek and Lyn M Van Swol. 2001. Trust, confidence, and expertise in a judge-advisor system. Organizational behavior and human decision processes 84, 2 (2001), 288–307. [27] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential recommendation with bidirectional encoder rep-resentations from transformer. In Proceedings of the 28th ACM international conference on information and knowledge management . 1441–1450. [28] Amos Tversky and Eldar Shafir. 1992. Choice under conflict: The dynamics of deferred decision. Psychological science 3, 6 (1992), 358–361. [29] Lei Wang, Jingsen Zhang, Hao Yang, Zhi-Yuan Chen, Jiakai Tang, Zeyu Zhang, Xu Chen, Yankai Lin, Hao Sun, Ruihua Song, et al. 2025. User behavior simulation with large language model-based agents. ACM Transactions on Information Systems 43, 2 (2025), 1–37. [30] Yancheng Wang, Ziyan Jiang, Zheng Chen, Fan Yang, Yingxue Zhou, Eunah Cho, Xing Fan, Yanbin Lu, Xiaojiang Huang, and Yingzhen Yang. 2024. Recmind: Large language model powered agent for recommendation. In Findings of the Association for Computational Linguistics: NAACL 2024 . 4351–4364. [31] Zongwei Wang, Min Gao, Wentao Li, Junliang Yu, Linxin Guo, and Hongzhi Yin. 2023. Efficient bi-level optimization for recommendation denoising. In Proceedings of the 29th ACM SIGKDD conference on knowledge discovery and data mining .2502–2511. [32] Stacy L Wood and C Page Moreau. 2006. From fear to loathing? How emotion influences the evaluation and early use of innovations. Journal of Marketing 70, 3 (2006), 44–57. [33] Yu Xia, Sungchul Kim, Tong Yu, Ryan A Rossi, and Julian McAuley. 2025. Multi-Agent Collaborative Filtering: Orchestrating Users and Items for Agentic Recom-mendations. arXiv preprint arXiv:2511.18413 (2025). [34] Wujiang Xu, Yunxiao Shi, Zujie Liang, Xuying Ning, Kai Mei, Kun Wang, Xi Zhu, Min Xu, and Yongfeng Zhang. 2025. iagent: Llm agent as a shield between user and recommender systems. In Findings of the Association for Computational Linguistics: ACL 2025 . 18056–18084. [35] Yonghui Yang, Le Wu, Zihan Wang, Zhuangzhuang He, Richang Hong, and Meng Wang. 2024. Graph bottlenecked social recommendation. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining .3853–3862. [36] Ilan Yaniv. 2004. Receiving other people’s advice: Influence and benefit. Organi-zational behavior and human decision processes 93, 1 (2004), 1–13. [37] Ilan Yaniv and Maxim Milyavsky. 2007. Using advice from multiple sources to revise and improve judgments. Organizational Behavior and Human Decision Processes 103, 1 (2007), 104–120. [38] An Zhang, Yuxin Chen, Leheng Sheng, Xiang Wang, and Tat-Seng Chua. 2024. On generative agents in recommendation. In Proceedings of the 47th international Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Trovato et al. 
+
+ACM SIGIR conference on research and development in Information Retrieval . 1807– 1817. [39] Junjie Zhang, Yupeng Hou, Ruobing Xie, Wenqi Sun, Julian McAuley, Wayne Xin Zhao, Leyu Lin, and Ji-Rong Wen. 2024. Agentcf: Collaborative learning with autonomous language agents for recommender systems. In Proceedings of the ACM Web Conference 2024 . 3679–3689. [40] Tong Zhao, Julian McAuley, and Irwin King. 2015. Improving latent factor models via personalized feature projection for one class recommendation. In Proceed-ings of the 24th ACM international on conference on information and knowledge management . 821–830. [41] Yuyue Zhao, Jiancan Wu, Xiang Wang, Wei Tang, Dingxian Wang, and Maarten De Rijke. 2024. Let me do it for you: Towards llm empowered recommendation via tool learning. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1796–1806. Personalized Communication Skills for Agentic Recommender Systems Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Algorithm 1: Overall Training Algorithm of AgentCom 
+
+Input: Training interactions Dtr , user histories {ℎ𝑢 }, candidate sets { C 𝑢,𝑡 }, communication-round counts {𝐾 𝑢,𝑡 }, and maximum evolution rounds 𝑅 
+
+Output: Evolved communication skill bank B𝑅  
+
+> 1
+
+Initialize the theory-guided skill bank B0; 
+
+> 2
+
+for 𝑟 ← 0 to 𝑅 − 1 do  
+
+> 3
+
+Initialize the failure set F𝑟 ← ∅ ; 
+
+> 4
+
+Set B𝑟 +1 ← B 𝑟 ; 
+
+> 5
+
+foreach (𝑢, 𝑡, C𝑢,𝑡 , 𝑖 ∗ 
+
+> 𝑢,𝑡
+
+) ∈ D tr do  
+
+> 6
+
+Obtain the initial judgment q(0) 
+
+> 𝑢,𝑡
+
+according to Eq. (1);  
+
+> 7
+
+Construct the routing context X𝑢,𝑡 ; 
+
+> 8
+
+Route over B𝑟 to obtain p𝑢,𝑡 ; 
+
+> 9
+
+Execute p𝑢,𝑡 for 𝐾 𝑢,𝑡 communication rounds to obtain the communication trace D𝑢,𝑡 , evidence packet A𝑢,𝑡 , and decision trajectory Q𝑢,𝑡 ; 
+
+> 10
+
+Extract the final choice 𝑖 (𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+from q(𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+; 
+
+> 11
+
+if 𝑖 (𝐾 𝑢,𝑡 ) 
+
+> 𝑢,𝑡
+
+≠ 𝑖 ∗ 
+
+> 𝑢,𝑡
+
+then  
+
+> 12
+
+Construct the failure trace T𝑢,𝑡 according to Eq. (16);  
+
+> 13
+
+Add (𝑢, 𝑡, X𝑢,𝑡 , p𝑢,𝑡 , T𝑢,𝑡 ) to F𝑟 ; 
+
+> 14
+
+foreach (𝑢, 𝑡, X𝑢,𝑡 , p𝑢,𝑡 , T𝑢,𝑡 ) ∈ F 𝑟 do  
+
+> 15
+
+Obtain (ℓ∗ 
+
+> 𝑢,𝑡
+
+, 𝜅 𝑢,𝑡 , 𝛿 𝑢,𝑡 ) through failure analysis;  
+
+> 16
+
+Determine the action 𝛼 𝑢,𝑡 according to Eq. (18);  
+
+> 17
+
+if 𝛼 𝑢,𝑡 = SkillUpdate then  
+
+> 18
+
+Set 𝑠 base  
+
+> 𝑢,𝑡
+
+← 𝑠 ℓ ∗ 
+
+> 𝑢,𝑡
+> 𝑢,𝑡
+
+; 
+
+> 19
+
+Generate 𝑠 child according to Eq. (19);  
+
+> 20
+
+Set parent (𝑠 child ) ← 𝑠 base  
+
+> 𝑢,𝑡
+
+and update the responsible sub-bank;  
+
+> 21
+
+Reroute from layer ℓ∗ 
+
+> 𝑢,𝑡
+
+over B𝑟 +1 to obtain ep𝑢,𝑡 ; 
+
+> 22
+
+else if 𝛼 𝑢,𝑡 = SkillGeneration then  
+
+> 23
+
+Generate 𝑠 new according to Eq. (22);  
+
+> 24
+
+Place 𝑠 new according to Eq. (24) and update the responsible sub-bank;  
+
+> 25
+
+Reroute from layer ℓ∗ 
+
+> 𝑢,𝑡
+
+over B𝑟 +1 to obtain ep𝑢,𝑡 ; 
+
+> 26
+
+else  
+
+> 27
+
+Obtain the corrected path ep𝑢,𝑡 according to Eq. (25);  
+
+> 28
+
+Re-execute ep𝑢,𝑡 for 𝐾 𝑢,𝑡 communication rounds to obtain the corrected UserAgent decision;  
+
+> 29
+
+return B𝑅 ;
+
+Table 4: Average LLM API cost per user in USD. AgentCom-enhanced variants are highlighted in blue, with their costs shown in bold.                                           
+
+> Category Backbone Variant LastFM Epinions LibraryThing Sequential SASRec Original 0.0000 0.0000 0.0000
+> + AgentCom 0.0033 0.0037 0.0039
+> Social GBSR Original 0.0000 0.0000 0.0000
+> + AgentCom 0.0037 0.0040 0.0037
+> Agentic AFL Original 0.0025 0.0027 0.0034
+> + AgentCom 0.0060 0.0065 0.0072
+> iAgent Original 0.0010 0.0008 0.0010
+> + AgentCom 0.0048 0.0049 0.0049
+> MemRec Original 0.0038 0.0040 0.0042
+> + AgentCom 0.0077 0.0083 0.0083
+
+## A Theory-Guided Skill Bank Initialization 
+
+Table 3 lists the public nodes used to initialize AgentCom before failure-driven evolution. The layers follow the same execution order as the personalized router: why–what–how–who .
+
+Table 3: Theory-guided initialization of the public communi-cation skill bank. 
+
+Layer Initial skills Why Cold start [25]; candidate conflict [1, 28]; novelty uncer-tainty [18, 32]; internal–prior conflict [12, 21]. What Reduce the hesitation set [1, 9]; find an interested sub-set [9]; compare remaining candidates [9, 23]; check the user’s reasoning [12]. How Single advisor [36]; multi-advisor cooperation [20]; multi-advisor competition [22]. Who Trusted users [19, 26]; similar users [24, 26]; experi-enced users [26]; friend-of-friend advisors [7]. 
+
+## B Overall Algorithm 
+
+Algorithm 1 summarizes the training procedure of AgentCom. Start-ing from the theory-guided skill bank B0, each evolution round applies personalized routing and communication execution to the training interactions and collects unsuccessful cases. For each fail-ure, the analyzer identifies the responsible layer ℓ∗ 
+
+> 𝑢,𝑡
+
+, failure type 𝜅 𝑢,𝑡 ,and explanation 𝛿 𝑢,𝑡 . A skill insufficiency is addressed by adding a specialized child, a capability gap by introducing an alternative sibling, and a routing mismatch by selecting a more appropriate existing skill without modifying the bank. The affected interaction is then rerouted from the diagnosed layer and re-executed. After 𝑅 
+
+evolution rounds, the resulting skill bank is fixed for inference. 
+
+## C LLM Cost Analysis Experiments 
+
+In this section, we quantify the LLM inference overhead introduced by AgentCom and examine whether it is justified by the resulting recommendation gains. All variants are evaluated on the same test users and candidate sets, and all LLM-based components use the same language-model configuration. Table 4 reports the estimated API cost per user. The zero values for SASRec and GBSR indicate that their original recommendation procedures do not invoke an LLM. Therefore, the reported values reflect LLM usage rather than the total computational cost of the recommender. Although AgentCom incurs additional LLM API cost for each user, the resulting overhead remains practically acceptable for two reasons. First, under the adopted API pricing, the additional cost is less than $0.01 per user and varies only marginally across different backbones, making it modest and predictable. Second, the commu-nication overhead is accompanied by substantial improvements in recommendation performance, especially for lightweight and non-agentic recommenders. These results suggest that the LLM inference cost is well justified by the corresponding accuracy gains, although the performance–cost trade-off is more favorable for light-weight backbones than for already strong agentic recommenders. 
+
+Received 20 February 2007; revised 12 March 2009; accepted 5 June 2009

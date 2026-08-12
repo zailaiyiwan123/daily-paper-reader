@@ -1,0 +1,1436 @@
+Title: Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation
+
+URL Source: https://arxiv.org/pdf/2608.07816v1
+
+Published Time: Tue, 11 Aug 2026 00:19:32 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+# Donald Loveland 
+
+Snap Inc. Bellevue, WA, USA dloveland@snapchat.com 
+
+# Liam Collins 
+
+Snap Inc. Bellevue, WA, USA lcollins2@snapchat.com 
+
+# Bhuvesh Kumar 
+
+Snap Inc. Bellevue, WA, USA bkumar4@snapchat.com 
+
+# Danai Koutra 
+
+University of Michigan Ann Arbor, MI, USA dkoutra@umich.edu 
+
+# Neil Shah 
+
+Snap Inc. Bellevue, WA, USA nshah@snapchat.com 
+
+## Abstract 
+
+Recent advances in generative recommendation (GR) leverage large language models (LLMs) as recommender backbones, enabling LLMs to directly generate recommendations conditioned on item-interaction histories. In these systems, items are often represented through semantic IDs (SIDs) added to the LLM vocabulary as spe-cial tokens. Ideally, SIDs imbue item token representations with semantic priors, thereby improving model generalization. However, standard vocabulary expansion typically initializes these tokens as random Gaussian vectors, discarding the SIDs’ underlying continu-ous geometry and forcing the LLM to relearn token relationships from interaction data. To demonstrate the consequences of this design, we first show that training from this initialization tends to organize SID embeddings around item popularity rather than semantics. We further show that, despite partially reducing the reliance on popularity and improving cold item performance, the computationally expensive process of continual pretraining (CPT) fails to reliably recover the original semantic geometry. To address these findings, we propose a simple, parameter-free intervention that initializes SID token embeddings directly from their corre-sponding centroids in the semantic embedding space. Requiring only a few lines of code and no additional training or inference overhead, this drop-in approach improves pure-SFT Recall@5 by up to 16% , reaches peak performance with up to 40% fewer SFT steps, and improves cold-item Recall@5 by up to 60% . Moreover, on datasets that benefit from additional CPT, centroid initialization reaches comparable performance while requiring half as many CPT epochs . Together, our findings show that preserving SID geometry, beyond shared-prefix structure, provides a simple and effective semantic prior for LLM-based GR. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems ; • Comput-ing methodologies → Natural language generation .
+
+## Keywords 
+
+Generative Recommendation, Semantic IDs, Initialization 
+
+## 1 Introduction 
+
+Recommender systems play a central role in connecting users with relevant items across large and complex catalogs [6, 8, 15, 23, 33]. With the rise of transformer architectures, recommendation has increasingly shifted toward generative recommendation (GR), a for-mulation in which transformer-based models autoregressively gen-erate items conditioned on item-interaction histories [3, 32, 36, 42]. Building on this paradigm, advances in pretrained LLMs have moti-vated their adoption as generative backbones, giving rise to LLM-based GR [14, 17, 19, 25]. This extension promises to combine col-laborative signals from item interactions with semantic knowl-edge acquired during LLM pretraining [5, 39, 43]. Realizing this promise, however, is nontrivial, and recent research and large-scale systems have adopted increasingly complex, multi-stage training pipelines to align item representations with the LLM while preserv-ing the collaborative structure needed for accurate recommendation [1, 21, 25, 35]. Central to LLM-based GR is the interface between catalog items and the LLM token space [7, 12]. Importantly, this interface must allow the LLM to encode item histories and generate valid items without incurring catalog-scale memory and inference costs [31]. Semantic IDs (SIDs) have emerged as the standard solution, repre-senting each item as a short sequence of discrete codes obtained by quantizing a content-derived item embedding [13, 16, 32, 34]. The standard LLM-based GR pipeline exposes these identifiers to the LLM by adding each SID code to its vocabulary as a special token, commonly referred to as vocabulary expansion [11, 25, 43]. Through the composition of a small number of codes across hi-erarchical levels, SIDs can encode extremely large sets of items with only modest vocabulary expansion, e.g., three levels with 256 codes each can uniquely express up to 16 .8 million items while adding only 768 tokens. Therefore, SIDs effectively decouple the LLM vocabulary size from the total number of items, satisfying the memory and computational constraints required for scalable GR. Beyond vocabulary expansion, standard LLM-based GR relies on multi-stage training to integrate the newly added SID tokens. This recipe is built on two foundational phases: (a) continual pre-training (CPT), also sometimes referred to as itemic alignment (IA), to ground the SID embeddings in the natural language space, and (b) supervised fine-tuning (SFT) to teach the recommendation task [9–11, 25, 43]. 1 However, an overlooked aspect of this pipeline is the initialization of the SID token embeddings, which we posit  
+
+> 1While some pipelines employ subsequent post-training for task-specific goals (e.g., reinforcement learning to elicit thinking [25, 41]), we focus on CPT and SFT as they constitute the foundational phases that establish the underlying item representations. arXiv:2608.07816v1 [cs.IR] 7 Aug 2026 Loveland et al. SID Creation
+> embeddings SIDs
+> Add SID tokens to LLM vocab
+> Current: Random Init
+> CB0_46
+> CB0_222
+> CB0_82
+> CB0_89
+> CB0_252
+> Ours: Centroid Init
+> CB0_46
+> CB0_222
+> CB0_82
+> CB0_89
+> CB0_252
+> CB0_46
+> CB0_222
+> CB0_82
+> PC2 PC1
+> Organized by Popularity
+> Random Init
+> PC2 PC1
+> Semantics Preserved
+> Centroid Init
+
+Post-SFT Embeddings  
+
+> popularity item category
+
+Figure 1: Learned embedding geometry for Amazon Beauty dataset after SFT. Top: Standard LLM vocabulary expansion discards the semantic geometry, whereas our proposed cen-troid initialization preserves it. Bottom: After SFT, randomly initialized embeddings strongly encode popularity, while centroid-initialized embeddings retain semantics. 
+
+dictates how these representations evolve during training and im-pacts their downstream performance. Ideally, SIDs should imbue the token representations with rich semantic priors from the mo-ment they are introduced [30]. Yet, standard vocabulary expansion does not support this goal [4]; instead, it initializes new SID tokens as random Gaussian vectors whose mean and covariance match the pre-existing word tokens. While this strategy keeps the new tokens in-distribution of the vocabulary, it actively discards the original semantic geometry established at SID construction, forcing the model to relearn these relationships from interaction data during CPT and SFT [1, 9, 25]. This raises our first research question: In the absence of their original geometry, what do the SID embeddings learn, and are the underlying semantics recovered? 
+
+To answer this question, we start with a series of diagnostic anal-yses to examine what signals SID embeddings capture. Across both SFT and CPT+SFT, we find that the semantic geometry, discarded during vocabulary expansion, is not recovered. Even more con-cerning, we demonstrate that the SID embeddings tend to become organized primarily by popularity (as shown in Figure 1). We mathe-matically explain this phenomenon through a gradient analysis, and also demonstrate that this learned structure reinforces downstream popularity bias. Furthermore, while we show that CPT can partially dilute this reliance on popularity and improve tail-item recall, CPT still fails to reliably recover the original semantic geometry while incurring a large training overhead [1, 9, 25]. These findings to-gether reveal that standard pipelines leave the continuous semantic prior of the SIDs largely underutilized. More broadly, by defaulting to simpler signals like popularity, these systems regress to inherit-ing the well-known biases of traditional recommenders [22, 26, 27], undermining the goal of better semantic utilization provided by LLMs [24, 34, 37]. To overcome this limitation, we pose our second research ques-tion: How can we enable an LLM-based GR model to directly exploit the continuous semantic structure of its SIDs? Our answer focuses on simplicity: rather than relying on costly CPT to recover semantics under standard random initialization, we inject the SIDs’ under-lying semantic geometry directly into the LLM. Specifically, we propose a straightforward strategy of initializing each SID token’s embedding directly from its corresponding centroid in the original semantic space. Acting as a direct bridge between the item seman-tics and the LLM, this intervention incurs zero additional training or inference overhead while requiring only a few lines of code. Across five datasets, centroid initialization improves pure-SFT Recall@5 by 6.5% while reducing the number of SFT steps by 27% on average. Additionally, these gains are largest on cold items, where Recall@5 improves by 37% on average without CPT. Furthermore, on datasets where random initialization benefits from deeper CPT, centroid initialization reaches comparable performance with only 1-4 CPT epochs (rather than 6-10). More broadly, we argue that preserving the geometry of the semantic embeddings moves the field closer to the true promise of LLM-based GR, enabling recommenders to more directly leverage knowledge of item content, rather than overindex-ing on signals like popularity. Our contributions are below: 
+
+• Diagnosing SID Embedding Properties. We uncover a previ-ously overlooked training dynamic in LLM-based GR models where the SID embeddings discard their original semantic ge-ometry, organizing instead around item popularity. We then explain how random initialization promotes the encoding of popularity and show its influence on popularity bias. 
+
+• Geometry-Preserving Vocabulary Expansion. We introduce centroid initialization, a parameter-free intervention that trans-fers SID centroids directly into the corresponding SID token embeddings. As a drop-in replacement for standard initializa-tion, it preserves SID geometry through a one-time embedding assignment, requiring no auxiliary training or architectural changes. 
+
+• Empirical Benefits and Regimes of Effectiveness. Across datasets, centroid initialization improves pure-SFT Recall@5 by 6.5%, reaches peak performance with 27% fewer SFT steps, and improves cold-item Recall@5 by 37% on average. On the datasets that benefit from deeper CPT, it also reaches compara-ble performance with 1-4 CPT epochs rather than 6-10, while retaining a 14% cold-item advantage after one epoch. 
+
+## 2 Preliminaries and Notation 
+
+In this section, we formalize the LLM-based GR framework used throughout the paper. At a high level, the core objective of LLM-based GR is to predict a user’s next item based on their histori-cal interactions. Formally, given a sequence of item interactions 
+
+𝐻 = (𝑖 1, . . . , 𝑖 |𝐻 | ), the model aims to generate the subsequent item Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+𝑖 |𝐻 |+ 1. To ensure the model generates valid items without causing an explosion in vocabulary size, SIDs are utilized both to encode the interaction history and to define the generation target. The remain-der of this section details SID construction, standard vocabulary expansion, training objectives, and the inference process. While we discuss some related work in this section, further details are provided in Section A. 
+
+Semantic IDs (SIDs). To generate SIDs, we first assume each item 𝑖 
+
+in the catalog is represented by a continuous semantic embedding 
+
+z𝑖 ∈ R𝑑 , typically extracted from a pretrained encoder. To map these vectors into discrete token sequences, we apply residual 𝑘 -means quantization with 𝐿 semantic levels and 𝐾 codes per level. At each level ℓ ∈ { 0, . . . , 𝐿 − 1}, let Cℓ = {cℓ,𝑘 }𝐾 −1 
+
+> 𝑘 =0
+
+denote the level-ℓ
+
+codebook, where cℓ,𝑘 ∈ R𝑑 is the centroid indexed by code 𝑘 . Then, for an embedding z𝑖 , the residual is initialized as r0 = z𝑖 . Once initialized, the following recursive process is run at each level ℓ: the quantizer normalizes the current residual, assigns it to the nearest centroid, and computes the new residual for the next level. This is expressed as, 
+
+uℓ = rℓ
+
+∥rℓ ∥2
+
+, 𝑘 ℓ (𝑖 ) = arg min   
+
+> 𝑘 ∈ { 0,...,𝐾 −1}
+
+∥uℓ −cℓ,𝑘 ∥22, rℓ+1 = uℓ −cℓ,𝑘 ℓ (𝑖 ) ,
+
+(1) producing a sequence of codes 𝑘 0 (𝑖 ), . . . , 𝑘 𝐿 −1 (𝑖 ). The level-0 code 
+
+𝑘 0 (𝑖 ) captures the item’s coarse semantics, while subsequent codes capture increasingly fine-grained details. However, due to the dis-crete nature of the quantization space, multiple items with similar semantics can map to the same sequence of codes. To disambiguate these collisions, we append an additional deduplication code 𝑘 𝐿 (𝑖 ).Unlike the preceding codes, this final identifier is not associated with a semantic centroid. The resulting SID for item 𝑖 is the ordered tuple of these codes: SID (𝑖 ) =  𝑘 0 (𝑖 ), . . . , 𝑘 𝐿 −1 (𝑖 ), 𝑘 𝐿 (𝑖 ).
+
+To process these sequences, each code index 𝑘 at level ℓ is mapped to a discrete token in the LLM’s expanded vocabulary. 
+
+Vocabulary Expansion and Initialization. To allow the LLM to natively process and generate SIDs, the discrete codes represent-ing the items must be added to the model’s vocabulary. Let Vbase 
+
+denote the original vocabulary, Vnew the newly added tokens, and 
+
+VSID ⊆ V new the subset corresponding to SID codes. The expanded vocabulary is V = Vbase ∪ V new . Let E ∈ R| V | × 𝑑 model denote the LLM’s token embedding matrix, which maps discrete tokens into continuous 𝑑 model -dimensional representations (where the LLM hidden dimension 𝑑 model may differ from the original semantic em-bedding dimension 𝑑 ). Expanding the vocabulary entails appending a new row e𝑡 ∈ R𝑑 model to E for each token 𝑡 ∈ V new .A common vocabulary expansion strategy in LLMs is to initialize newly added token embeddings to match the distribution of the pre-trained vocabulary embeddings [28, 38]. This strategy is designed to minimize disruption with respect to the model’s pre-training. In LLM-based GR, a similar practice is typically followed [9, 10, 25]. Specifically, let 𝝁 base and 𝚺 base denote the empirical mean and co-variance of the embeddings for Vbase . Newly added SID embeddings are then initialized by sampling from a scaled normal distribution: 
+
+e𝑡 ∼ N ( 𝝁 base , 𝜀 𝚺 base ), (2) where 𝜀 is a small variance scaling factor. While this strategy, which we refer to throughout the paper as random initialization , is reason-able for general NLP tasks, we argue that it introduces a potential bottleneck for GR. Given the random Gaussian vectors are agnostic to the items’ semantic meaning, the SIDs are initially treated as arbitrary tokens. As a result, the embeddings must reconstruct the semantic structure entirely from scratch during training, relying solely on patterns like shared prefixes or interaction co-occurrence. 
+
+Training Stages. For a given an item-interaction history 𝐻 and a target item 𝑖 represented by its SID sequence 𝑦 = (𝑦 0, . . . , 𝑦 𝐿 ),where 𝑦 𝑗 = 𝑘 𝑗 (𝑖 ), the recommendation model is trained to minimize the standard autoregressive next-token prediction loss: L( 𝜃 ) =
+
+− Í𝐿 𝑗 =0 log 𝑝 𝜃 
+
+ 𝑦 𝑗 | 𝑦 < 𝑗 , 𝐻 . As the newly added SID tokens lack a meaningful initial geometry, standard LLM-based GR pipelines optimize this objective through a two-stage training process. At a high-level, the first stage is designed to encourage the LLM to relearn the semantic structure, whereas the second stage trains the LLM to perform next item prediction. Details on these stages are below, with prompts detailed in Section C: (1) Continual Pre-Training (CPT): As the standard initializa-tion discards the items’ original structure, CPT aims to enable the relearning of these relationships. Typically, during CPT, the LLM backbone is frozen, and only the newly added token embeddings ( 𝜃 CPT = {e𝑡 : 𝑡 ∈ V new }) are updated. Learning occurs over SID-text pairs with the goal of predicting the text of an item given its SID, effectively grounding the SIDs in natural language. (2) Supervised Fine-Tuning (SFT): Once the token embeddings are sufficiently warmed up, SFT aims to enable the LLM to perform recommendation. In this phase, all model parameters 
+
+𝜃 are unfrozen and updated. Training utilizes item interactions, tasking the model to autoregressively predict the target item’s SID conditioned on a historical context of previously interacted SIDs. Throughout the paper, we refer to training with the second stage alone as pure SFT , and the application of both stages as CPT+SFT .
+
+Generation. The model generates recommendations by sampling from 𝑝 𝜃 (· | 𝐻 ). However, unconstrained generation risks generat-ing sequences of SID tokens that do not map to an existing item. To ensure that the generated sequences correspond to valid items, we enforce constrained generation. Specifically, at each generation step 𝑗 , the vocabulary is masked such that the probability of tokens that are not valid children of the previously generated prefix 𝑦 <𝑗 
+
+is set to zero. We apply this constrained beam search to generate multiple valid SIDs, then rank the SIDs by their log-probability to output the top-𝑘 items. 
+
+## 3 What do SID Embeddings Encode in Standard LLM-based GR Pipelines? 
+
+In this section, we perform a series of diagnostic analyses to under-stand how LLM-based GR models behave under standard random initialization and subsequent training. We focus our study on the embedding parameters of the injected SID tokens, which, due to the typical use of weight tying, govern both how the model interprets historical SIDs and how it generates recommendations. At a high Loveland et al. 
+
+level, we organize our analysis into three steps. First, we test the assumption that SIDs successfully impart semantics into the LLM by evaluating the semantic retention of the learned token embed-dings. After discovering that this semantic information is largely discarded, we investigate what the embeddings actually encode, revealing a bias toward popularity. Finally, we provide a gradient analysis to explain why this bias emerges. 
+
+Datasets. In this section, and the rest of the paper, we evaluate across five diverse sequential recommendation datasets including three domains from Amazon (Beauty, Sports, Toys), one from gam-ing (Steam), and one from movies (MovieLens). Details about the datasets are provided in Section B. 
+
+Experimental Setup. We conduct our experiments using Qwen3-1.7B as the base LLM backbone [39], following recent LLM-based GR studies and reflecting the use of compact models for scalable GR [2, 11, 25, 44]. For each dataset, we expand the LLM vocabulary with SID tokens via standard random initialization (with mean and covariance of the base vocabulary) and evaluate the learned embeddings under two training paradigms: pure-SFT and CPT+SFT. Details on dataset processing and hyperparameters are provided in Section B. For each diagnostic, we focus on the level-0 codebook 
+
+C0 as, under residual quantization, losing semantic geometry at level 0 inherently prevents the LLM from preserving meaningful semantics in deeper levels. 
+
+Relation to Existing Pipelines. We emphasize that the configura-tions evaluated in our experiments capture the common stages used by recent LLM-based GR systems. As prior work uses varying terminology for closely related stages, often bundling them with method-specific prompts or objectives, we label configurations by their underlying operations rather than individual method names. Our pure-SFT setting captures vocabulary expansion followed di-rectly by task fine-tuning, a standard paradigm used either directly or as a vanilla baseline in prior work [1, 30, 43]. Similarly, our 
+
+CPT+SFT setting captures the strategy of grounding SID tokens via language supervision prior to fine-tuning, leveraging the frozen-backbone optimization of GTI [1] and OneRec-Think [25]. Likewise, our prompting strategy mirrors OneRec-Think [25], and closely aligns with PLUM’s user behavior CPT prompts [9]. This operation-based framing allows us to cleanly evaluate centroid initialization as a drop-in replacement across the foundational steps that govern modern LLM-based GR systems. 
+
+## 3.1 Probing SID Embedding Geometry 
+
+For our first analysis, we evaluate how well the LLM captures the categorical structure of the items as a measure of semantic infor-mation. Given that the premise of SIDs is that the discrete tokens reflect underlying item semantics, we expect well-trained SID em-beddings within the LLM to exhibit local semantic coherence, e.g. two tokens with similar embeddings map to similar item categories. To test whether standard LLM-based GR training fulfills this expec-tation, we introduce a metric to quantify the semantic geometry of the learned tokens, detailed below. 
+
+Local Semantic Neighborhoods. To quantify how well the SID embeddings capture semantics, we define a neighborhood purity metric over the level-0 SID tokens. Let N𝑚 (𝑘 ) represent the 𝑚 Beauty Sports Toys Steam MovieLens     
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> P10  (category purity)
+> 0.93 0.91 0.80 0.58 0.79 0.37 0.33 0.25 0.24 0.33 0.23 0.17 0.07 0.15 0.19
+> Semantic Embedding Neighbors Random CPT+SFT Learned Neighbors Random Neighbors
+
+Figure 2: Neighborhood purity ( 𝑃 10 ) of learned SID embed-dings under CPT+SFT, compared to a random baseline (gray) and the original semantic embeddings (green). While the semantic embeddings exhibit strong categorical coherence, standard random initialization fails to preserve this struc-ture. 
+
+nearest neighbors (via L2 distance) of code index 𝑘 ∈ { 0, . . . , 𝐾 − 1}
+
+within the learned embedding space. We then compute the fraction of those neighbors that share the same ground-truth category as 𝑘 :
+
+𝑃 𝑚 = 1
+
+𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑘 =0
+
+1
+
+𝑚 ∑︁ 𝑘 ′ ∈ N 𝑚 (𝑘 )
+
+1[cat 0 (𝑘 ′) = cat 0 (𝑘 )] . (3) Intuitively, 𝑃 𝑚 measures the semantic similarity of local regions in the embedding space. A high 𝑃 𝑚 indicates that the model has organized the embeddings to reflect semantics, whereas a low 𝑃 𝑚 
+
+suggests that the semantics were not encoded during training. 
+
+Semantic Loss. When evaluating the embeddings learned un-der random initialization with CPT+SFT, we find that they fail to maintain semantic purity. As illustrated in Figure 2, across all five datasets, the 10-nearest neighbor purity ( 𝑃 10 ) remains low, peaking at just 0.37 for Beauty and falling to 0.24 and 0.25 for Steam and Toys, respectively. Importantly, these values offer only a marginal improvement over drawing ten neighbors at random and computing 
+
+𝑃 10 (gray bars), and sit far below the purity in the original seman-tic embedding space (green bars). Thus, even after CPT, a stage designed to align SIDs with text and recover semantics, the embed-dings do not possess this information. In the next section, we build on this finding to investigate what information the embeddings actually encode. 
+
+## 3.2 Properties Encoded into SID Embeddings 
+
+Having established that the SID embeddings fail to retain seman-tic relationships, we now investigate what structural properties they acquire during training. Notably, the recommendation objec-tive is driven by item-interaction sequences, providing a strong collaborative signal. Consequently, we hypothesize that without meaningful semantics, the LLM over-indexes on collaborative pat-terns, allowing behavioral artifacts (e.g., popularity) to dominate the recommendations. To test this hypothesis, we measure a series Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+Table 1: For the level-0 SID tokens, we report 𝜎 geo , 𝑅 2 
+
+> 𝑞
+
+(Tpop ),and 𝑅 2 
+
+> 𝑞
+
+(Tsem ). Bold denotes strong encoding ( > 0.75 ). Standard initialization produces embeddings that strongly encode pop-ularity, discarding semantics even when CPT is applied. 
+
+𝑅 2 
+
+> 𝑞
+
+(Tpop ) 𝑅 2 
+
+> 𝑞
+
+(Tsem )
+
+Dataset Training 𝜎 geo 𝑞 =1 𝑞 =3 𝑞 =5 𝑞 =1 𝑞 =3 𝑞 =5Beauty pure-SFT 0.16 0.00 0.88 0.89 0.01 0.15 0.25 CPT+SFT 0.39 0.01 0.84 0.86 0.01 0.13 0.36 Sports pure-SFT 0.05 0.01 0.80 0.82 0.00 0.22 0.39 CPT+SFT 0.44 0.00 0.22 0.81 0.00 0.22 0.35 Toys pure-SFT 0.04 0.00 0.85 0.93 0.01 0.05 0.13 CPT+SFT 0.36 0.01 0.37 0.77 0.01 0.06 0.15 Steam pure-SFT 0.05 0.00 0.87 0.91 0.00 0.09 0.17 CPT+SFT 0.43 0.01 0.78 0.79 0.00 0.07 0.11 MovieLens pure-SFT 0.06 0.00 0.83 0.92 0.00 0.02 0.12 CPT+SFT 0.44 0.00 0.78 0.80 0.00 0.05 0.18 of complementary properties of the learned embeddings, detailed in the next sections. 
+
+Spectral Scale. First, we evaluate the capacity of the learned em-bedding space. Formally, let X ∈ R𝐾 ×𝑑 model denote the centered embedding matrix for the level-0 SID tokens, with singular values 
+
+𝜎 1 ≥ · · · ≥ 𝜎 𝑟 > 0. Then, we characterize the scale of the learned embeddings via: 
+
+𝜎 geo (X) =
+
+> 𝑟
+
+Ö
+
+> 𝑖 =1
+
+𝜎 𝑖 
+
+!1/𝑟 
+
+.
+
+An increase in 𝜎 geo signifies that the embedding space has expanded beyond the tightly compressed cluster created at initialization. 
+
+Relation to Previous Studies. We explicitly adopt this scale-based metric to complement existing spectral analyses. While prior works have evaluated the spectral properties of SID embedding tables in LLMs, they typically focus on effective rank, demonstrating that the learned SID embeddings tend to collapse into low-dimensional sub-spaces [1]. However, effective rank is fundamentally scale-invariant, meaning it captures the distribution of variance but ignores the ab-solute spread of the embeddings. Consequently, effective rank can make random SID initializations appear structurally informative when, in reality, they merely form a small, compact ball of isotropic noise. In contrast, 𝜎 geo reveals the true scale of the embedding space. 
+
+Latent Signal Encoding. Next, we investigate which underlying signals govern the principal components (PCs) of the learned em-bedding space. Let Z𝑞 ∈ R𝐾 ×𝑞 contain the top-𝑞 left singular vectors of X. We define two centered, per-code target matrices: Tpop cap-turing code-level log popularity (aggregated over each code’s item set), and Tsem capturing the items’ product category. Further details on how the targets are computed are provided in Section B.1. Then, for a given target T ∈ { Tpop , Tsem }, we quantify its relationship with Z𝑞 by computing the fraction of the target signal captured by the subspace spanned by Z𝑞 . This is expressed as: 
+
+𝑅 2 
+
+> 𝑞
+
+(T) = ∥Z𝑞 Z⊤ 
+
+> 𝑞
+
+T∥2
+
+> 𝐹
+
+∥T∥2
+
+> 𝐹
+
+.
+
+Findings. In Table 1, we report 𝜎 geo and the variance fractions 
+
+𝑅 2 
+
+> 𝑞
+
+(T) for 𝑞 ∈ { 1, 3, 5}. First, we find that embeddings learned under the standard random initialization are constrained in scale and largely dominated by popularity . In the pure-SFT setting, all datasets remain tightly compressed ( 𝜎 geo ≤ 0.16), and require only three PCs to capture the majority of the popularity signal (e.g., 
+
+𝑅 23 (Tpop ) ≥ 0.80). When considering CPT+SFT, we find similar properties, where CPT only partially expands the embedding scale (𝜎 geo ≈ 0.4) and hardly impacts the dominance of popularity, as the top five PCs still heavily encode the popularity signal ( 𝑅 25 (Tpop ) ≥ 
+
+0.77). Semantic encoding also remains low across both settings, where the top five PCs capture negligible categorical signal. This loss of semantics, even with CPT, exposes a fundamental issue with random initialization as the LLM over-indexes on heuristics like popularity. 
+
+## 3.3 How Training Can Encode Popularity 
+
+To provide intuition on how popularity is encoded, we analyze the gradient descent updates applied to the SID token embeddings. Then, by aggregating this update across multiple steps we explore a global approximation of the optimization behavior. 
+
+Setup. Fix a level ℓ and consider the SID tokens associated with its codebook Cℓ . For each code index 𝑣 ∈ { 0, . . . , 𝐾 − 1}, let x(𝑡 ) 
+
+> 𝑣
+
+∈
+
+R𝑑 model denote its mean-centered output embedding at optimizer step 𝑡 . Let e𝑛 𝑣 = 𝑛 𝑣 − ¯𝑛 denote its mean-centered supervision count, where 𝑛 𝑣 is the number of times code 𝑣 appears as a target and ¯𝑛 is the average target count across the level-ℓ codebook. Finally, let ¯h(𝑡 ) ∈ R𝑑 model denote the average final-layer hidden state used to predict any target token associated with Cℓ , taken across all sequences in the training set. Theorem 3.1 (Popularity Accumulation in SID Embeddings). 
+
+Suppose an SID embedding is trained for 𝑆 steps using full-batch gradient descent with fixed step size 𝜂 on the summed cross-entropy loss. Then, for a code 𝑣 ∈ { 0, . . . , 𝐾 − 1}, its mean-centered embedding is given by 
+
+x(𝑆 ) 
+
+> 𝑣
+
+= x(0) 
+
+> 𝑣
+
++ 𝜂 e𝑛 𝑣 𝑆 −1∑︁ 
+
+> 𝑡 =0
+
+¯h(𝑡 ) + 𝜂  
+
+> 𝑆 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝚫 (𝑡 ) 
+
+> 𝑣
+
+, (4) 
+
+where the vector 𝚫 (𝑡 ) 
+
+> 𝑣
+
+∈ R𝑑 model is a term capturing the context- and model-dependent gradient dynamics specific to code 𝑣 .
+
+The proof and 𝚫 (𝑡 ) 
+
+> 𝑣
+
+details are provided in Section F. □
+
+Prediction-Time Implication. The theorem above characterizes a training-time accumulation mechanism. Let s = Í𝑆 −1 
+
+> 𝑡 =0
+
+¯h(𝑡 ) de-note the sum of the average final hidden states. Then, the term 
+
+𝜂 e𝑛 𝑣 s encodes a popularity-aligned axis into the embedding space. Geometrically, this component shifts every code along the shared direction s by a distance dictated by its relative popularity. Codes appearing more often than average ( e𝑛 𝑣 > 0) are pushed forward along +s, while rarer codes ( e𝑛 𝑣 < 0) are pushed in the opposite direction. Loveland et al. 
+
+Algorithm 1 Pseudocode for Centroid Init. We mean-shift RQ centroids into the pretrained token space and map them to SID rows.              
+
+> 1# C: RQ centroids [num_codes, hidden_dim]
+> 2# sid_ids: SID token indices in vocab (not de-dup tokens)
+> 3# V: number of pre-existing, non-SID vocabulary rows
+> 45# Standard SID vocabulary expansion
+> 6model.resize_token_embeddings(len(tok), mean_resizing=True)
+> 78# (Ours) Centroid initialization with Matryoshka
+> 9E = model.get_input_embeddings().weight
+> 10 C = torch.load("centroids.pt").to(E)
+> 11 C = C - C.mean(0) + E[:V].mean(0)
+> 12 with torch.no_grad(): E[sid_ids] = C
+> 13 14 # Existing pure-SFT or CPT+SFT training is unchanged
+> 15 for history, target_sid in dataloader:
+> 16 ...
+
+To understand the implications of this behavior, consider the final-layer hidden state h produced by the trained LLM at prediction-time . As the LLM computes logits via inner products with h, this operation can effectively read out the popularity information en-coded during training. Specifically, for the codebook-centered logit 
+
+e𝑧 𝑣 (h) = ⟨h, x(𝑆 ) 
+
+> 𝑣
+
+⟩, the frequency-driven contribution is: 
+
+𝛿𝑧 𝑣, freq (h) = 𝜂 e𝑛 𝑣 ⟨h, s⟩ .
+
+Then, the relative score between two codes 𝑢 and 𝑣 is: 
+
+𝛿 (𝑧 𝑢 (h) − 𝑧 𝑣 (h)) freq = 𝜂 (𝑛 𝑢 − 𝑛 𝑣 ) ⟨ h, s⟩ .
+
+Thus, if code 𝑢 is more popular than 𝑣 (𝑛 𝑢 > 𝑛 𝑣 ), 𝛿𝑧 𝑢, freq (h) can boost the logit of 𝑢 relative to 𝑣 whenever ⟨h, s⟩ > 0. Importantly, while the final exact logits depend on the interplay of all three terms in Theorem 3.1, this decomposition isolates a distinct, training-induced component that structurally favors popular SID codes. We further discuss the scope of this analysis in Section F. 
+
+## 4 Preserving Semantics via SID Centroids 
+
+In Section 3, we showed that standard LLM-based GR pipelines fail to preserve the underlying semantics of the items, encoding popularity instead. To address this issue, we consider how one can directly imbue the expanded vocabulary with the embeddings used to derive the SIDs, minimizing the loss of semantics. Our philosophy for this intervention centers on avoiding changes to the training objectives, model architecture, or inference procedure, for easy adoption. Thus, by injecting this prior, we provide the LLM with a rich geometric structure, preserving item semantics for free .
+
+## 4.1 Mean-Shifted Centroid Initialization 
+
+Geometrically, an SID token represents a volume in the semantic em-bedding space, defined by the boundaries induced by the quantizer. Consequently, the ideal proxy for this volume is its most represen-tative point, i.e., its centroid. Therefore, we focus on leveraging these centroids to create a bridge between the original semantic space and the LLM’s embedding space. To minimize overhead, we propose a straightforward intervention of initializing the SID token embeddings with their corresponding centroids , providing the LLM with a semantic prior for training. Formally, under residual 𝑘 -means, Beauty Sports Toys Steam MovieLens   
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> P10  (category purity)
+> 0.82 0.68 0.61 0.54 0.58
+> Centroid CPT+SFT Learned Neighbors Random CPT+SFT Learned Neighbors
+> 2.2 ×
+> 2.1 ×
+> 2.4 ×
+> 2.3 ×1.7 ×
+
+Figure 3: Neighborhood purity ( 𝑃 10 ) of SID embeddings under centroid initialization and CPT+SFT, vs. random initializa-tion. Values above bars indicate the increase in purity. Cen-troid initialization enhances the semantic structure of the latent space. 
+
+let SID code index 𝑘 at level ℓ correspond to a centroid cℓ,𝑘 ∈ R𝑑 
+
+in the semantic embedding space. Additionally, assume the LLM has embedding matrix E ∈ R| V | × 𝑑 model . To effectively bridge these two spaces, our initialization strategy is guided by two core design principles: (1) Dimension Matching: As 𝑑 and 𝑑 model typically differ, we apply a mapping from the text embedding space to the LLM space. (2) Optimization Stability: To inherit the stable training of stan-dard random initialization, we apply a mean-shift translation that aligns the centroids with the pre-trained token distribution. Combining these, we mathematically define the initialized embed-ding ecent  
+
+> ℓ,𝑘
+
+for each semantic code 𝑘 at level ℓ ∈ { 0, . . . , 𝐿 − 1} as: 
+
+ecent  
+
+> ℓ,𝑘
+
+= Φ𝑑 model (cℓ,𝑘 − ¯c) + 𝝁 base , (5) where ¯ c is the mean across all semantic centroids, 𝝁 base is the mean of the original LLM token embeddings, and Φ𝑑 model (·) represents a function that projects a vector down to 𝑑 model .While Φ can theoretically be any learned projection, introducing parametric transformations risks distorting the original semantic geometry. To bypass this, our key insight is to exploit the Ma-tryoshka Representation Learning (MRL) property in modern text embeddings [18, 20, 29]. As MRL places critical information into the leading dimensions, we define Φ𝑑 model (·) as a truncation to the first 
+
+𝑑 model dimensions, retaining the embeddings’ semantics with zero computational overhead and no additional parameters. This trun-cation also informs our choice of standard residual 𝑘 -means over parametric quantizers like RQ-VAE. While RQ-VAE projects items into a learned latent space, 𝑘 -means operates directly within the native semantic embedding space, allowing us to exploit MRL. For deduplication tokens, which do not correspond to any clusters, we use random initialization. Pseudocode can be found in Algorithm 1. Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+## 4.2 Re -Probing SID Embeddings 
+
+To verify that the concerns in Section 3 are resolved, we re-perform the diagnostic analyses after training with centroid initialization. 
+
+Recovering Semantics. First, we evaluate whether the learned em-beddings approach the category purity of the semantic embeddings seen in Figure 2. As illustrated in Figure 3, we find that centroid initialization significantly improves the neighbor purity ( 𝑃 10 ) of the learned representations. Compared to random initialization, where embeddings barely outperformed random chance even after CPT, directly injecting the semantic prior allows the embeddings to form meaningful categorical clusters, often doubling the baseline purity. 
+
+Restoring Scale. Next, we examine the scale occupied by the level-0 SID tokens under centroid initialization. As shown in Table 2, for pure-SFT, the embedding scale expands significantly, e.g., 𝜎 geo 
+
+increases from 0 .16 with random initialization to 0 .29 on Beauty. When combined with CPT, the space expands even further to 𝜎 geo >
+
+0.50 across all datasets, signifying better utilization. 
+
+Overcoming Popularity. In Table 2, we show centroid initializa-tion dampens the encoding of popularity in the learned embeddings. Across all datasets, the popularity variance captured by the lead-ing PCs drops drastically, e.g., 𝑅 25 (Tpop ) goes from 0 .89 to 0 .06 for Beauty trained with pure-SFT. In its place, the leading PCs shift to encoding item category information, with the captured seman-tic variance ( 𝑅 25 (Tsem )) increasing to 0 .64 for Beauty and 0 .54 for MovieLens. Together, these results show that centroid initializa-tion enables the LLM to better retain item semantics rather than encoding popularity. 
+
+## 5 Practical Benefits of Centroid Initialization 
+
+Having established that centroid initialization successfully encour-ages the encoding of semantics, we now verify that this new geom-etry supports recommendation. We focus on three core areas: 
+
+Table 2: For the level-0 SID tokens, we report the change ( Δ) in 
+
+𝜎 geo , 𝑅 2 
+
+> 𝑞
+
+(Tpop ), and 𝑅 2 
+
+> 𝑞
+
+(Tsem ) relative to random initialization (Table 1). Desired outcomes (increases in scale/semantics, decreases in popularity) are colored green, while undesired outcomes (increases in popularity) are colored red. Color is scaled to the maximum observed value in Tpop and Tsem .
+
+Δ𝑅 2 
+
+> 𝑞
+
+(Tpop ) Δ𝑅 2 
+
+> 𝑞
+
+(Tsem )
+
+Dataset Stage Δ𝜎 geo 𝑞 =1 𝑞 =3 𝑞 =5 𝑞 =1 𝑞 =3 𝑞 =5Beauty pure-SFT +0.13 0.00 -0.88 -0.83 +0.18 +0.37 +0.39 CPT+SFT +0.14 -0.01 -0.83 -0.82 +0.18 +0.42 +0.29 Sports pure-SFT +0.21 0.00 -0.74 -0.70 +0.23 +0.19 +0.07 CPT+SFT +0.13 +0.02 -0.11 -0.62 +0.23 +0.21 +0.12 Toys pure-SFT +0.21 0.00 -0.83 -0.90 +0.04 +0.13 +0.14 CPT+SFT +0.13 0.00 -0.34 -0.73 +0.04 +0.12 +0.13 Steam pure-SFT +0.14 +0.12 -0.59 -0.62 +0.09 +0.21 +0.18 CPT+SFT +0.09 +0.33 -0.22 -0.22 +0.09 +0.21 +0.22 MovieLens pure-SFT +0.09 +0.03 -0.73 -0.53 +0.21 +0.38 +0.42 CPT+SFT +0.06 +0.02 -0.54 -0.10 +0.03 +0.31 +0.31 
+
+• Pure-SFT: We show that centroid initialization can compensate for the lack of CPT, enabling recall gains and faster convergence. 
+
+• CPT+SFT: We show that centroid initialization can help reduce the number of CPT epochs needed to attain peak performance. 
+
+• Generalization: We demonstrate improvements for recall on cold items and benefits across backbone size scaling. 
+
+## 5.1 Improving LLM-based GR Training 
+
+In this section, we evaluate centroid initialization on recommenda-tion quality and overall training efficiency across LLM-based GR pipelines. The experimental setup matches Section 3.2, except for the scaling study where the Qwen3 backbone size varies. 
+
+Pure-SFT: A Semantic Warm Start. We first analyze the pure-SFT setting to cleanly isolate the impact of centroid initialization while also reflecting compute-limited environments where only SFT is feasible. As shown in Table 3, centroid initialization significantly improves over random initialization, producing increases in recall and training efficiency. Across all datasets, centroid initialization yields an average relative improvement of 6.5% in Recall@5 while simultaneously reducing the time-to-convergence by an average of 27%. More specifically, Beauty and Toys see Recall@5 improvements of 15.9% and 7.4%, while requiring 40% and 33% fewer training steps, respectively. We attribute these gains to the geometric warm start — as centroid initialization directly encodes semantics, the optimizer can skip this step and immediately learn from historical item interactions. Additional NDCG results can be found in Table 8. 
+
+CPT+SFT: Expediting Convergence. We next evaluate the full CPT+SFT pipeline, where the model undergoes semantic alignment prior to SFT. Since CPT enables the random baseline to partially encode semantic information, absolute accuracy gains are less pro-nounced than in the pure SFT regime. However, our intervention introduces a separate, useful benefit by reducing the number of CPT epochs required to achieve comparable performance. As illustrated in Figure 4, the centroid-initialized models reach their optimal Recall@5 in a fraction of the time required by the standard initial-ization. On average across the five datasets, a centroid-initialized model with just 1 to 4 epochs of CPT can match or exceed the peak 
+
+Table 3: Centroid initialization improves pure-SFT and reaches its peak earlier. Here, 𝑡 ★ is the optimizer step with the highest validation Recall@5. Bold is better. 
+
+Domain Init. Recall@5 Recall@10 peak step 𝑡 ★ ↓
+
+Beauty Random 0.044 0.067 6989 Centroid 0.051 0.073 4193 
+
+Sports Random 0.032 0.046 17799 Centroid 0.033 0.047 13349 
+
+Toys Random 0.054 0.075 10925 Centroid 0.058 0.081 7283 
+
+Steam Random 0.168 0.198 14930 Centroid 0.169 0.198 11940 
+
+MovieLens Random 0.132 0.177 18749 Centroid 0.139 0.187 15624 Loveland et al. 0 1 4 6 8 10 0.048 0.054                     
+
+> Beauty
+> 0146810 0.032 0.034 0.036
+> Sports
+> 0146810 0.054 0.057 0.060
+> Toys
+> 0146810 0.168 0.170 0.171
+> Steam
+> 0146810 0.135 0.140 0.145
+> MovieLens
+> centroid random
+> CPT depth (epochs)
+> Recall@5
+
+Figure 4: Recall@5 across varying CPT depths. Centroid-init can reach the random-init performance with fewer CPT epochs. 
+
+performance of a randomly initialized model trained for 6 to 10 epochs. Beauty is the one exception where the random baseline achieves slightly higher performance, though this requires 10 ×
+
+as many CPT epochs. We attribute this reduction directly to the geometric warm start, which natively encodes item semantics so the CPT phase only has to align the pre-existing structure with the LLM text space rather than rebuilding it. Additional Recall@10 and NDCG results can be found in Figure 11. 
+
+## 5.2 Centroids Improve Cold Item Generalization 
+
+To better understand how centroid initialization drives improve-ment, we focus on its ability to decouple item similarity from item-interaction history. Fundamentally, semantic priors allow the model to recognize related items, such as two products from the same niche hobby, without needing to observe direct co-purchases. Con-sequently, we hypothesize that centroid initialization should offer the most benefit for items with sparse interaction histories, where collaborative signals are weak and semantics are the only reliable proxy. To test this hypothesis, we isolate the performance on cold items by measuring a cohort-specific recall, focusing strictly on users whose target test items appear at most once as a supervision target in the training set. In Figure 5, we demonstrate that this intuition holds, with cen-troid initialization producing large performance gains for users with cold item targets. In the pure-SFT regime (zero CPT epochs), we find that centroid initialization improves Recall@5 on cold items, on average, by 37% compared to the random baseline. Specifically, on MovieLens and Steam, these gains reach 60% and 50%, respectively. Additionally, even with one epoch of CPT, the centroid-initialized models maintain a strong 14% cross-dataset advantage over stan-dard initialization. Beyond performance, this behavior also offers fundamental insight into the dynamics of CPT+SFT training. As seen in Section E, increasing the number of CPT epochs steadily im-proves cold-item performance even for randomly initialized models. Therefore, while the relative advantage of centroid initialization naturally diminishes at later epochs (e.g., 4 and 6), this convergence explicitly illustrates how our intervention saves compute. Rather than forcing the model to slowly learn how to align and recommend cold items across multiple CPT epochs, centroid initialization pro-vides that information upfront. Additional Recall@10 and NDCG results can be found in Figure 10. 0 1 4 6
+
+> CPT depth
+> 20
+> 020 40 60
+> Centroid vs. Random ( % Recall@5) on Cold Items  Beauty Sports Toys Steam MovieLens Cross-Dataset Mean
+> 37% 14% 5% -1%
+
+Figure 5: Relative Recall@5 gap (centroid − random) on cold targets (train-target freq. ≤ 1) versus the number of CPT epochs. With fewer CPT epochs, centroid initialization tends to produce larger cold-item recall gains. Robustness Across Scale. To investigate whether benefits persist across LLM backbone scales, we evaluate 0.6B and 4B Qwen3 models on the Amazon domains (Table 4). At 0.6B, centroid initialization consistently outperforms the random baseline across all regimes, suggesting the semantic prior provides value not fully recovered by CPT in smaller models. Furthermore, it significantly accelerates pure-SFT convergence, peaking 40% and 25% earlier on Toys and Sports, respectively, and reaching the baseline’s peak 29% earlier on Beauty. At the 4B scale, these convergence benefits further increase, with the model peaking 43%, 40%, and 17% earlier on Toys, Sports, and Beauty. In terms of 4B performance, centroid initialization improves pure-SFT Recall@5 on Toys (+9.8%) and Sports (+2.9%). While the random baseline attains marginally higher pure-SFT Recall@5 on Beauty, mirroring Figure 4, this edge requires roughly 20% more optimizer steps than the centroid model’s peak. Under the CPT+SFT regime at the 4B scale, centroid initialization provides small but consistent improvements to Recall@5 across all three domains, alongside Recall@10 improvements on Beauty and Sports. Together, these results demonstrate that the semantic prior delivers a robust benefit across model scales, where recall gains remain Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+Table 4: Scale study of Qwen3. We evaluate random vs. cen-troid initialization across pure-SFT and CPT+SFT at the 0.6B and 4B scales, reporting Recall@5 and Recall@10 and high-lighting centroid improvements in bold. 
+
+Training Init Beauty Sports Toys R@5 R@10 R@5 R@10 R@5 R@10 0.6B Pure-SFT Random 0.047 0.068 0.032 0.047 0.051 0.073 Centroid 0.051 0.074 0.033 0.047 0.056 0.078 
+
+CPT+SFT Random 0.054 0.077 0.033 0.048 0.056 0.080 Centroid 0.056 0.078 0.034 0.049 0.058 0.083 
+
+4B Pure-SFT Random 0.051 0.075 0.033 0.047 0.053 0.077 Centroid 0.050 0.072 0.034 0.047 0.058 0.082 
+
+CPT+SFT Random 0.056 0.079 0.033 0.048 0.060 0.086 Centroid 0.058 0.082 0.035 0.049 0.061 0.085 prominent at lower capacities while convergence acceleration scales effectively with model size. 
+
+## 6 Conclusion 
+
+In this work, we investigated the behavior of LLM-based GR models, seeking to uncover what SID embeddings learn during training. Through comprehensive analyses, we found that the practice of using randomly initialized SID token embeddings failed to recover the original semantics of the item corpus, regressing instead to the well-known biases of traditional recommenders. To overcome this, we introduced a simple yet effective strategy: directly injecting the centroids of the original SID embedding space into the LLM’s token space. Empirically, this unlocked several beneficial properties, including (i) accelerated training convergence, (ii) a reduced need for explicit pre-training, and (iii) recall improvements, particularly for cold items. Given our findings, we believe this semantically informed initialization moves the field closer to the true promise of LLM-based GR, enabling better utilization of both collaborative and semantic signals. 
+
+## References 
+
+[1] Daiwei Chen, Zhoutong Fu, Chengming Jiang, Haichao Zhang, Ran Zhou, Tan Wang, Chunnan Yao, Guoyao Li, Rui Cai, Yihan Cao, Ruijie Jiang, Fedor Borisyuk, Jianqiang Shen, Jingwei Wu, and Ramya Korlakai Vinayak. 2026. Grounded Token Initialization for New Vocabulary in LMs for Generative Recommendation. arXiv:2604.02324 [cs.CL] https://arxiv.org/abs/2604.02324 [2] Xiangyi Chen, Zelun Wang, Xinyi Li, Yi-Ping Hsu, Jaewon Yang, and Jiajing Xu. 2026. LLMs Need Encoders for Semantic IDs Too. arXiv preprint arXiv:2606.00324 
+
+(2026). [3] Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. 2025. OneRec: Unifying Retrieve and Rank with Genera-tive Recommender and Iterative Preference Alignment. arXiv:2502.18965 [cs.IR] https://arxiv.org/abs/2502.18965 [4] Konstantin Dobler and Gerard de Melo. 2023. FOCUS: Effective Embedding Ini-tialization for Monolingual Specialization of Multilingual Models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing . Asso-ciation for Computational Linguistics, 13440–13454. doi:10.18653/v1/2023.emnlp-main.829 [5] Zhiang Dong, Liya Hu, Jingyuan Chen, Zhihua Wang, and Fei Wu. 2025. Com-prehend Then Predict: Prompting Large Language Models for Recommendation with Semantic and Collaborative Data. ACM Trans. Inf. Syst. 43, 5, Article 115 (July 2025), 26 pages. doi:10.1145/3716499 [6] Wenqi Fan, Yao Ma, Qing Li, Yuan He, Eric Zhao, Jiliang Tang, and Dawei Yin. 2019. Graph Neural Networks for Social Recommendation. In The World Wide Web Conference (San Francisco, CA, USA) (WWW ’19) . Association for Computing Machinery, New York, NY, USA, 417–426. doi:10.1145/3308558.3313488 [7] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In Proceedings of the 16th ACM conference on recommender systems . 299–315. [8] Carlos A. Gomez-Uribe and Neil Hunt. 2016. The Netflix Recommender System: Algorithms, Business Value, and Innovation. ACM Trans. Manage. Inf. Syst. 6, 4, Article 13 (Dec. 2016), 19 pages. doi:10.1145/2843948 [9] Ruining He, Lukasz Heldt, Lichan Hong, Raghunandan Keshavan, Shifan Mao, Nikhil Mehta, Zhengyang Su, Alicia Tsai, Yueqi Wang, Shao-Chuan Wang, Xinyang Yi, Lexi Baugher, Baykal Cakici, Ed Chi, Cristos Goodrow, Ningren Han, He Ma, Romer Rosales, Abby Van Soest, Devansh Tandon, Su-Lin Wu, Weilong Yang, and Yilin Zheng. 2026. PLUM: Adapting Pre-trained Language Models for Industrial-scale Generative Recommendations. In Proceedings of the ACM Web Conference 2026 (United Arab Emirates) (WWW ’26) . Association for Computing Machinery, New York, NY, USA, 8093–8104. doi:10.1145/3774904.3792802 [10] Yinhan He, Liam Collins, Bhuvesh Kumar, Jundong Li, Neil Shah, and Donald Loveland. 2026. Implicit Reasoning for Large Language Model-based Generative Recommendation. arXiv:2606.14142 [cs.CL] https://arxiv.org/abs/2606.14142 [11] Yingzhi He, Yan Sun, Junfei Tan, Yuxin Chen, Xiaoyu Kong, Chunxu Shen, Xiang Wang, An Zhang, and Tat-Seng Chua. 2026. Reasoning over semantic ids enhances generative recommendation. arXiv preprint arXiv:2603.23183 (2026). [12] Min Hou, Le Wu, Yuxin Liao, Yonghui Yang, Zhen Zhang, Yu Wang, Chang-long Zheng, Han Wu, and Richang Hong. 2026. A Survey on Generative Recommendation: Data, Model, and Tasks. arXiv:2510.27157 [cs.IR] https: //arxiv.org/abs/2510.27157 [13] Yupeng Hou, Zhankui He, Julian McAuley, and Wayne Xin Zhao. 2023. Learning vector-quantized item representation for transferable sequential recommenders. In Proceedings of the ACM Web Conference 2023 . 1162–1171. [14] Yupeng Hou, Junjie Zhang, Zihan Lin, Hongyu Lu, Ruobing Xie, Julian McAuley, and Wayne Xin Zhao. 2024. Large language models are zero-shot rankers for recommender systems. In European conference on information retrieval . Springer, 364–381. [15] Wei Jin, Haitao Mao, Zheng Li, Haoming Jiang, Chen Luo, Hongzhi Wen, Haoyu Han, Hanqing Lu, Zhengyang Wang, Ruirui Li, et al. 2024. Amazon-m2: A multilingual multi-locale shopping session dataset for recommendation and text generation. Advances in Neural Information Processing Systems 36 (2024). [16] Clark Mingxuan Ju, Liam Collins, Leonardo Neves, Bhuvesh Kumar, Louis Yufeng Wang, Tong Zhao, and Neil Shah. 2025. Generative Recommendation with Seman-tic IDs: A Practitioner’s Handbook. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management . 6420–6425. [17] Xiaoyu Kong, Leheng Sheng, Junfei Tan, Yuxin Chen, Jiancan Wu, An Zhang, Xiang Wang, and Xiangnan He. 2025. MiniOneRec: An Open-Source Framework for Scaling Generative Recommendation. arXiv:2510.24431 [cs.IR] [18] Aditya Kusupati, Gantavya Bhatt, Aniket Rege, Matthew Wallingford, Aditya Sinha, Vivek Ramanujan, William Howard-Snyder, Kaifeng Chen, Sham Kakade, Prateek Jain, et al. 2022. Matryoshka representation learning. Advances in Neural Information Processing Systems 35 (2022), 30233–30249. [19] Lei Li, Yongfeng Zhang, Dugang Liu, and Li Chen. 2024. Large language models for generative recommendation: A survey and visionary discussions. In Pro-ceedings of the 2024 joint international conference on computational linguistics, language resources and evaluation (LREC-COLING 2024) . 10146–10159. [20] Mingxin Li, Yanzhao Zhang, Dingkun Long, Keqin Chen, Sibo Song, Shuai Bai, Zhibo Yang, Pengjun Xie, An Yang, Dayiheng Liu, et al. 2026. Qwen3-VL-Embedding and Qwen3-VL-Reranker: A Unified Framework for State-of-the-Art Multimodal Retrieval and Ranking. arXiv preprint arXiv:2601.04720 (2026). [21] Fake Lin, Binbin Hu, Zhi Zheng, Xi Zhu, Ziqi Liu, Zhiqiang Zhang, Jun Zhou, and Tong Xu. 2026. Token-level Collaborative Alignment for LLM-based Generative Recommendation. In Proceedings of the ACM Web Conference 2026 (United Arab Emirates) (WWW ’26) . Association for Computing Machinery, New York, NY, USA, 6909–6919. doi:10.1145/3774904.3792727 [22] Siyi Lin, Chongming Gao, Jiawei Chen, Sheng Zhou, Binbin Hu, Yan Feng, Chun Chen, and Can Wang. 2025. How Do Recommendation Models Amplify Pop-ularity Bias? An Analysis from the Spectral Perspective. In Proceedings of the Eighteenth ACM International Conference on Web Search and Data Mining (Han-nover, Germany) (WSDM ’25) . Association for Computing Machinery, New York, NY, USA, 659–668. doi:10.1145/3701551.3703579 [23] Huafeng Liu, Jingxuan Wen, Liping Jing, and Jian Yu. 2019. Deep gener-ative ranking for personalized recommendation. In Proceedings of the 13th ACM Conference on Recommender Systems (Copenhagen, Denmark) (RecSys ’19) .Association for Computing Machinery, New York, NY, USA, 34–42. https: //doi.org/10.1145/3298689.3347012 [24] Zhenghao Liu, Sen Mei, Chenyan Xiong, Xiaohua Li, Shi Yu, Zhiyuan Liu, Yu Gu, and Ge Yu. 2023. Text matching improves sequential recommendation by reducing popularity biases. In Proceedings of the 32nd ACM international Loveland et al. 
+
+conference on information and knowledge management . 1534–1544. [25] Zhanyu Liu, Shiyao Wang, Xingmei Wang, Rongzhou Zhang, Jiaxin Deng, Honghui Bao, Jinghao Zhang, Wuchao Li, Pengfei Zheng, Xiangyu Wu, Yifei Hu, Qigen Hu, Xinchen Luo, Lejian Ren, Zixing Zhang, Qianqian Wang, Kuo Cai, Yunfan Wu, Hongtao Cheng, Zexuan Cheng, Lu Ren, Huanjie Wang, Yi Su, Ruiming Tang, Kun Gai, and Guorui Zhou. 2025. OneRec-Think: In-Text Reasoning for Generative Recommendation. arXiv:2510.11639 [cs.IR] https://arxiv.org/abs/2510.11639 [26] Donald Loveland, Mingxuan Ju, Tong Zhao, Neil Shah, and Danai Koutra. 2025. On the Role of Weight Decay in Collaborative Filtering: A Popularity Perspective. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 . 1975–1986. [27] Masoud Mansoury, Himan Abdollahpouri, Mykola Pechenizkiy, Bamshad Mobasher, and Robin Burke. 2020. Feedback Loop and Bias Amplification in Recommender Systems. In Proceedings of the 29th ACM International Confer-ence on Information & Knowledge Management (Virtual Event, Ireland) (CIKM ’20) . Association for Computing Machinery, New York, NY, USA, 2145–2148. doi:10.1145/3340531.3412152 [28] Nandini Mundra, Aditya Nanda Kishore Khandavally, Raj Dabre, Ratish Pudup-pully, Anoop Kunchukuttan, and Mitesh M Khapra. 2024. An Empirical Com-parison of Vocabulary Expansion and Initialization Approaches For Language Models. In Proceedings of the 28th Conference on Computational Natural Language Learning , Libby Barak and Malihe Alikhani (Eds.). Association for Computational Linguistics, Miami, FL, USA, 84–104. doi:10.18653/v1/2024.conll-1.8 [29] Zach Nussbaum, John Xavier Morris, Andriy Mulyar, and Brandon Duderstadt. 2024. Nomic Embed: Training a Reproducible Long Context Text Embedder. 
+
+Transactions on Machine Learning Research (2024). [30] Gustavo Penha, Edoardo D’Amico, Marco De Nadai, Enrico Palumbo, Alexandre Tamborrino, Ali Vardasbi, Max Lefarov, Shawn Lin, Timothy Heath, Francesco Fabbri, et al. 2025. Semantic ids for joint generative search and recommendation. In Proceedings of the Nineteenth ACM Conference on Recommender Systems . 1296– 1301. [31] Haohao Qu, Wenqi Fan, Zihuai Zhao, and Qing Li. 2025. Tokenrec: Learning to tokenize id for llm-based generative recommendations. IEEE Transactions on Knowledge and Data Engineering (2025). [32] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al. 2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [33] J. Ben Schafer, Joseph Konstan, and John Riedl. 1999. Recommender systems in e-commerce. In Proceedings of the 1st ACM Conference on Electronic Commerce 
+
+(Denver, Colorado, USA) (EC ’99) . Association for Computing Machinery, New York, NY, USA, 158–166. doi:10.1145/336992.337035 [34] Anima Singh, Trung Vu, Nikhil Mehta, Raghunandan Keshavan, Maheswaran Sathiamoorthy, Yilin Zheng, Lichan Hong, Lukasz Heldt, Li Wei, Devansh Tandon, et al. 2024. Better generalization with semantic ids: A case study in ranking for recommendations. In Proceedings of the 18th ACM Conference on Recommender Systems . 1039–1044. [35] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2024. Learnable item tokenization for generative recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 2400–2409. [36] Ye Wang, Jiahao Xun, Minjie Hong, Jieming Zhu, Tao Jin, Wang Lin, Haoyuan Li, Linjun Li, Yan Xia, Zhou Zhao, et al. 2024. Eager: Two-stream generative recommender with behavior-semantic collaboration. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 3245–3254. [37] Yunjia Xi, Weiwen Liu, Jianghao Lin, Xiaoling Cai, Hong Zhu, Jieming Zhu, Bo Chen, Ruiming Tang, Weinan Zhang, and Yong Yu. 2024. Towards open-world recommendation with knowledge augmentation from large language models. In 
+
+Proceedings of the 18th ACM Conference on Recommender Systems . 12–22. [38] Atsuki Yamaguchi, Aline Villavicencio, and Nikolaos Aletras. 2026. How Can We Effectively Expand the Vocabulary of LLMs with 0.01GB of Target Language Text? 
+
+Computational Linguistics 52, 1 (March 2026), 295–330. doi:10.1162/coli.a.581 [39] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jing Zhou, Jingren Zhou, Junyang Lin, Kai Dang, Keqin Bao, Kexin Yang, Le Yu, Lianghao Deng, Mei Li, Mingfeng Xue, Mingze Li, Pei Zhang, Peng Wang, Qin Zhu, Rui Men, Ruize Gao, Shixuan Liu, Shuang Luo, Tianhao Li, Tianyi Tang, Wenbiao Yin, Xingzhang Ren, Xinyu Wang, Xinyu Zhang, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yinger Zhang, Yu Wan, Yuqiong Liu, Zekun Wang, Zeyu Cui, Zhenru Zhang, Zhipeng Zhou, and Zihan Qiu. 2025. Qwen3 Technical Report. arXiv:2505.09388 [cs.CL] https://arxiv.org/abs/2505.09388 [40] Liu Yang, Fabian Paischer, Kaveh Hassani, Jiacheng Li, Shuai Shao, Zhang Gabriel Li, Yun He, Xue Feng, Nima Noorshams, Sem Park, Bo Long, Robert D Nowak, Xiaoli Gao, and Hamid Eghbalzadeh. 2025. Unifying Generative and Dense Retrieval for Sequential Recommendation. Transactions on Machine Learning Research (2025). [41] Qihang Yu, Kairui Fu, Zheqi Lv, Shengyu Zhang, Xinhui Wu, Chen Lin, Feng Wei, Bo Zheng, and Fei Wu. 2026. ThinkRec: Thinking-based recommendation via LLM. In Proceedings of the ACM Web Conference 2026 . ACM, 5698–5709. doi:10.1145/3774904.3792070 [42] Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Jiayuan He, et al. 2024. Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommenda-tions. In International Conference on Machine Learning . PMLR, 58484–58509. [43] Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming Chen, and Ji-Rong Wen. 2024. Adapting large language models by integrating collaborative semantics for recommendation. In 2024 IEEE 40th International Conference on Data Engineering (ICDE) . IEEE, 1435–1448. [44] Guorui Zhou, Honghui Bao, Jiaming Huang, Jiaxin Deng, Jinghao Zhang, Junda She, Kuo Cai, Lejian Ren, Lu Ren, Qiang Luo, et al. 2025. OpenOneRec Technical Report. arXiv preprint arXiv:2512.24762 (2025). 
+
+## A Additional Related Work 
+
+In this section, we expand on the related work introduced through-out the main text. We focus on two core sections: generative recom-mendation paradigms and alignment strategies, which most closely resemble our work. 
+
+Generative Recommendation Paradigms. While this work fo-cuses specifically on LLM-based GR pipelines, the broader gen-erative recommendation landscape encompasses a wide array of architectures. In their simplest form, from-scratch sequential rec-ommenders, such as HSTU, recast recommendation as a sequential transduction over raw action sequences [42]. To accommodate larger catalogs, TIGER established the use of SIDs to represent items, training an encoder-decoder transformer from scratch [32]. Building on this, EAGER introduces parallel behavior and semantic decoders [36], while the OneRec family scales to industrial settings using unified encoder-decoder architectures refined through itera-tive preference alignment [3, 17, 44]. Closest to our setting, PLUM adapts pretrained LLMs for YouTube-scale recommendation using the exact multi-stage recipe (SID tokenization, CPT, and task fine-tuning) that our study dissects [9]. Orthogonally, a parallel line of work leverages LLMs without generating item identifiers, e.g., acting as zero-shot rankers [14], prompt-tuned predictors [5], or external knowledge generators [37]. Throughout the evolution of these designs, a primary motivation for adopting pretrained LLMs over from-scratch architectures is their capacity for rich semantic understanding. While our evaluation centers on standard LLM-based GR pipelines to better evoke their semantic capabilities, our findings highlight a more fundamental principle: whenever SIDs are integrated into a GR model, preserving their semantic geome-try at initialization can be a valuable means of fully realizing this semantic promise, rather than allowing the architecture to regress to standard collaborative biases. 
+
+Aligning SID Tokens with the LLM Vocabulary. Given the pre-vailing strategy of randomly initializing SID token embeddings, prior works have proposed increasingly complex training pipelines to align this new vocabulary with the LLM. For instance, LC-Rec introduced auxiliary alignment tasks to ground SIDs in language and collaborative semantics [43], a recipe that more recent pipelines have consolidated into their CPT (itemic alignment) stage [9]. Clos-est to our diagnostic analysis, GTI similarly observes that mean-initialized SID tokens collapse into a degenerate subspace [1]. How-ever, while GTI identifies this structural collapse (measured via ef-fective rank), its proposed remedy is an entirely separate grounding Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+Table 5: Statistics for datasets used throughout the paper. 
+
+Domain users items interactions avg. len Beauty 22363 12101 194687 8.7 Sports 35598 18357 249017 7.0 Toys 19412 11924 136091 7.0 Steam 47761 12012 599620 12.6 MovieLens 50000 26744 7212178 144.2 stage that trains the new token rows over paired item-text prompts. This exact strategy is also adopted via OneRec-Think in their CPT stage [25]. In contrast, our proposed centroid initialization directly reuses the continuous geometry already established during SID con-struction, providing a one-time operation that bypasses the need for auxiliary gradient steps, specialized data curation, or additional tuning. Beyond explicit pre-training, other alignment mechanisms intro-duce large architectural or decoding complexities to the GR pipeline. TCA4Rec injects collaborative signals through soft next-token la-bels distilled from a teacher model [21], while Prefixmem treats SIDs as a distinct modality by attaching a prefix-conditioned encoder [2]. More recently, a wave of research has focused on eliciting reasoning around SID generation, whether through explicit reasoning traces [41], reinforcement learning [11], or implicit reasoning [10]. Finally, hybrid architectures such as LIGER interpolate between dense and generative retrieval, in part to recover the cold-start performance that pure SID decoding typically loses [40]. However, our findings trace this cold-start gap to the semantic geometry discarded during standard vocabulary expansion. Thus, by resolving this directly at initialization, our approach improves tail-item performance with-out relying on auxiliary encoders, teacher models, or hybrid dense towers. 
+
+## B Datasets, Hyperparameters, and Experimental Details 
+
+In this section, we detail our experimental setup. Table 6 summa-rizes the shared settings across all experiments, with individual runs differing only in their dataset, backbone scale, SID embedding initialization (Equation (2) vs. Equation (5)), and number of CPT epochs. 
+
+Datasets and Preprocessing. We evaluate our approach across five distinct datasets (Table 5). The three Amazon product datasets (Beauty, Sports, Toys) follow the standard 5-core preprocessing used in prior GR work [7, 32], where each item is described by its title, categorization, and price. Steam contains video-game inter-actions in which each game carries a title and a list of community tags. For MovieLens, we subsample 50,000 users from ML-20M. For scalability, we truncate all item sequences to their most recent 21 interactions. All datasets use the standard leave-one-out protocol, where, for each user, the final interaction is the test target, the penultimate interaction is the validation target, and all preceding interactions form the training sequence. 
+
+> 1For MovieLens, we use a 50K-user subsample of ML-20M.
+
+Table 6: Hyperparameter and Experimental Setup.                                 
+
+> Backbone and Vocabulary Expansion
+> Backbone Qwen3 (of varying size) Added Tokens 4×256 SID codes ( <s_a_k> –<s_d_k> )
+> +2 delimiters ( <|sid_begin|> ,<|sid_end|> )Random Init. HF resize_token_embeddings , mean resizing Centroid Init. Equation (5) on the 3 ×256 semantic codes; dedup codes and delimiters remain random
+> Semantic embeddings and SIDs
+> Content Encoder Qwen3-Embedding-8B Dimensionality 4096 Native, Matryoshka-truncated to 𝑑 model
+> Quantizer Residual 𝑘 -means, 𝐿 =3 semantic levels, 𝐾 =256
+> CPT (Phase 1, Alignment)
+> Epochs / LR / decay ≤10 / 10 −4(AdamW) / 0 Effective Batch 64 Precision BF16 Trainable Params Newly added rows only (PEFT TrainableTokens) LR Warmup None Max Seq. Length 4096 Grad. Clipping Max Norm 1.0
+> SFT (Phase 2, Next-item Prediction)
+> Epochs / LR / decay ≤12 / 10 −5(AdamW) / 0.01 Effective batch 16 Precision FP32 Weights, BF16-mixed for Optimizer Trainable Params Full Fine-Tune LR Warmup Starting LR 10%, Then Constant Max Seq. Length 1024 Grad. Clipping Max Norm 1.0
+> Evaluation
+> Decoding Trie-constrained Beam Search Beams 10
+
+Semantic Embeddings. Item semantic embeddings are generated by Qwen3-Embedding-8B [39]. Each item’s text (Section C) is passed into the encoder with no task instruction, tokenized to a maximum length of 256 with right padding, and embedded by extracting the final-layer hidden state at the last non-padding token. Exploiting the encoder’s Matryoshka property [18], the 4096-dimensional output is truncated to its leading 2048 dimensions prior to quantization, ensuring the centroids directly match the Qwen3-1.7B embedding width. For the Qwen3-0.6B scale study, these identical centroids are further truncated to their leading 1024 dimensions. 
+
+SID Construction. SIDs are generated via residual 𝑘 -means over the truncated item embeddings using 𝐿 =3 semantic levels of 𝐾 =256 codes, with residual normalization at each level (Equation (1)). For Beauty, Sports, and Toys, each level is fit using mini-batch 𝑘 -means (𝑘 -means++ initialization, 3,000 optimization steps at a batch size of 2,048). For Steam and MovieLens, each level is fit with full-batch Lloyd’s algorithm run to convergence, yielding better code utiliza-tion. Collisions among the 3-code semantic prefixes are resolved by the deterministic deduplication code 𝑘 𝐿 (𝑖 ), resulting in a strictly unique 4-code SID per item. 
+
+Vocabulary Expansion and Initialization. The tokenizer is ex-panded with 1,026 special tokens: <s_a_k> , <s_b_k> , and <s_c_k> 
+
+represent the semantic levels ℓ = 0, 1, 2, respectively, while <s_d_k> Loveland et al. 
+
+represents the deduplication code 𝑘 𝐿 (𝑖 ); each uses 𝑘 ∈ { 0, . . . , 𝐾 −1}
+
+with 𝐾 = 256. We additionally introduce the delimiter tokens 
+
+<|sid_begin|> and <|sid_end|> . The random, mean-initialized baseline uses the standard HuggingFace mean-resizing default, initializing each new row from the scaled Gaussian defined in Equation (2). Centroid initialization overwrites the semantic levels 
+
+ℓ ∈ { 0, . . . , 𝐿 −1} via Equation (5), computing 𝝁 base over the original vocabulary rows Vbase . Deduplication codes and delimiters retain their mean-resized initialization. As the Qwen3 architecture ties its input embeddings to the language-modeling head, this write initializes both the input and output representations for every SID token. 
+
+CPT Configuration. The CPT phase trains for up to 10 epochs using AdamW ( 𝛽 = (0.9, 0.999 ), 𝜖 = 10 −8) at a constant learning rate of 10 −4, employing no weight decay and no warmup. Only the 1,026 newly added embedding rows are trainable (via PEFT Train-ableTokens). The effective batch size is 64. Sequences are capped at 4,096 tokens, and gradient checkpointing is enabled. Training examples consist of item-interaction histories rendered as inter-leaved SID-text descriptions (Section C) optimized with a standard next-token objective, training the LLM to generate an item’s text from its accompanying SID. Note that this prompting strategy and objective directly match OneRec-Think’s CPT [25] and the user behavior CPT for PLUM [9]. For the CPT-epoch sweeps, SFT is performed from intermediate checkpoints after {1, 4, 6, 8, 10 } CPT epochs. 
+
+SFT Configuration. The SFT phase trains all model parameters for up to 12 epochs (with early stopping monitored via validation Recall@5, patience 5) using AdamW at a learning rate of 10 −5 and a weight decay of 0.01. The learning rate schedule uses a warmup ratio of 0.1 followed by a constant rate. Master weights are stored in fp32 with bf16-mixed autocast, and gradients are clipped to a max-norm of 1.0. The effective batch size is 16. Prompts adhere to the ChatML format detailed in Section C, again following OneRec-Think [25]. To focus on generation, the loss is computed only from the user turn onward, masking the system prompt. Sequences are capped at 1,024, utilizing left-truncation to preserve the most recent interactions. 
+
+Evaluation Protocol. Item generation is executed via constrained beam search over a trie built on each dataset’s valid item SIDs. At each generation step, the logits of tokens that do not extend a valid SID prefix are masked to −∞ , guaranteeing that every generated sequence corresponds to a real item. For performance, we report Recall@ 𝑘 , which measures whether the ground-truth SID is present among the top-𝑘 beams. Following standard practice, we monitor Recall after every SFT epoch using 10 beams evaluated on the leave-one-out validation targets and retain the checkpoint with the highest validation Recall@5. All final evaluations are performed on the test targets using the same 10-beam configuration. The convergence step 𝑡 ★ reported in Table 3 is the exact optimizer step at which this validation monitor peaks. 
+
+Hardware. All training and evaluation are performed with 4 NVIDIA A100-80GB GPUs. Under this setup, a full CPT phase can take up to approximately one day per dataset, highlighting the practical value of strategies that can reduce or eliminate the need for CPT. 
+
+## B.1 Latent Signal Encoding Targets 
+
+In this section, we formalize the construction of the target matrices 
+
+Tpop and Tsem used for the latent signal encoding analysis presented in Section 3.2. Both targets are defined over the 𝐾 =256 level-0 SID codes associated with C0.
+
+Popularity Target. Let 𝑓 𝑖 denote the number of training examples whose ground-truth next item is 𝑖 . Then, the aggregate popularity of level-0 code 𝑘 sums this frequency over all items assigned to it. To stabilize variance against the heavy-tailed frequency distribution, the popularity target applies a logarithmic transform: 
+
+𝑛 𝑘 =∑︁     
+
+> 𝑖 :𝑘 0(𝑖 )=𝑘
+
+𝑓 𝑖 , Tpop =  log (1 + 𝑛 𝑘 )𝐾 −1 
+
+> 𝑘 =0
+
+∈ R𝐾 ×1. (6) 
+
+Semantic Target. Assuming each item carries a single categorical label cat (𝑖 ) (detailed below), a level-0 code inherits the majority label of its assigned items: cat 0 (𝑘 ) = arg max 
+
+> 𝑐
+
+{ 𝑖 : 𝑘 0 (𝑖 ) = 𝑘, cat (𝑖 ) = 𝑐 } . (7) The semantic target is then defined as the one-hot indicator ma-trix over the 𝐶 cat observed code-level categories, yielding Tsem ∈
+
+R𝐾 ×𝐶 cat where [Tsem ]𝑘,𝑐 = 1[cat 0 (𝑘 ) = 𝑐 ]. Codes devoid of assigned items contribute zero vectors. To ensure 𝑅 2 
+
+> 𝑞
+
+(T) strictly measures variance captured around the mean, both targets are column-centered ( T ← T − ¯T) prior to evaluation. The basis Z𝑞 is derived from the identically centered embedding matrix. These same code-level labels cat 0 (𝑘 ) are also used to compute the neighborhood purity metric 𝑃 𝑚 .
+
+Category Construction per Dataset. For the Amazon domains, cat (𝑖 ) is the provided coarse category (e.g., extracting Hair Care 
+
+from “ Hair Care > Conditioners”). For MovieLens, cat (𝑖 ) maps to the first genre in the item’s genre list. Steam, by contrast, lacks a formal categorical taxonomy and instead carries free-form community tag lists. To derive a taxonomy, we segment each tag string by matching against a curated lexicon of known Steam tags. Once the tag strings are found, we discard any descriptive modifier tags (e.g., Indie , Free to Play , Singleplayer , 2D ). Then, exploiting Steam’s relevance-ordered tag convention, the first remaining tag is mapped into one of 11 genre buckets: Shooter, RPG, Strategy, Simulation, Action, Adventure, Puzzle & Casual, Horror & Survival, Sports & Racing, MMO, and Software. Items without any matched content tag are labeled Other and excluded from purity computations. 
+
+## C Example Prompts 
+
+In this section, we detail the prompt templates and provide examples with real items from Amazon Beauty. Throughout, orange denotes chat-template special tokens, purple denotes SID tokens, green 
+
+denotes item text. 
+
+Semantic Embedding Input. The input to Qwen3-Embedding-8B is the item’s text, passed with no task instruction (Figure 6). Item embeddings are read from the final-layer hidden state at the last non-padding token. 
+
+CPT Prompt. CPT examples are plain text sequences that in-terleave each item’s SID with its title and categories over item-interaction histories (Figure 7), trained with the standard next-token Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+Semantic Embedding Input    
+
+> Title: OPI Nail Lacquer, Simmer and Shimmer, 0.5-Fluid Ounce ; Brand: OPI ; Categories: [ ’Beauty’, ’Makeup’, ’Nails’, ’Nail Polish’ ]; Price: 12.0 ;
+
+Figure 6: Input to the embedding model. For Beauty, this includes an item’s title, brand, category path, and price, with-out any instruction. 
+
+CPT Prompt Structure    
+
+> The user has purchased the following items: <|sid_begin|> <s_a_147><s_b_129><s_c_3><s_d_0><|sid_end|> , its title is "Phyto Phytocitrus Restructuring Mask for Unisex, 6.7 Ounce ", its categories are " Beauty > Hair Care > Conditioners "; <|sid_begin|><s_a_45><s_b_12><s_c_231> <s_d_0><|sid_end|> , its title is " Matrix Biolage Colorcaretherapie Color Care Shampoo and Conditioner Set 33.8oz 1 Liter ", its categories are " Beauty > Hair Care > Shampoo & Conditioner Sets "; <|sid_begin|><s_a_130> <s_b_111><s_c_88><s_d_3><|sid_end|> , its title is " Raw African Black Soap from Ghana 1 Lb ", its categories are "Beauty > Bath & Body > Cleansers > Soaps "; . . . ;
+
+Figure 7: CPT example for Amazon Beauty: A plain causal-LM sequence interleaving each history item’s SID with its title and category path. 
+
+objective. This matches the CPT objectives in OneRec-Think [25] and PLUM [9]. 
+
+SFT Prompt. SFT examples use the ChatML format (Figure 8), fol-lowing OneRec-Think [25]. The user turn contains the interaction history as a SID-only sequence, and the assistant turn contains an empty think block followed by the target item’s SID. The loss is computed from the user turn onward. At inference, the prompt ends immediately after the think block, and constrained beam search generates the recommended SIDs. 
+
+## D Resolving Item-Level vs. Token-Level Popularity 
+
+In this section, we directly address the relationship between our token-level diagnostics and item-level behavioral popularity bias. Specifically, our analyses evaluate popularity through two gran-ularities: item-level popularity 𝑓 𝑖 and token-level popularity 𝑛 𝑘 =
+
+Í𝑖 ∈ I 𝑘 𝑓 𝑖 , where I𝑘 = {𝑖 : 𝑘 0 (𝑖 ) = 𝑘 } is the set of items assigned to level-0 code 𝑘 . While token-level popularity is derived from item popularity, we note that relying on a single codebook level introduces ambiguity because aggregate frequency conceals the distribution of constituent items within a code. Mathematically, level-0 code frequency factors into cluster size and average item popularity ( 𝑛 𝑘 = |I 𝑘 | · ¯𝑓 𝑘 ). Figure 9 illustrates how these under-lying factors behave across datasets. For instance, on Steam and MovieLens, average item popularity spreads widely, meaning a SFT Prompt Structure   
+
+> <|im_start|>system
+> You are a professional recommendation expert who needs to recommend the next possible purchase for users based on their purchase history. Please predict the most likely next product that the user will purchase based on the user’s historical purchase information. <|im_end|> <|im_start|>user
+> The user has purchased the following items: <|sid_begin|> <s_a_147><s_b_129><s_c_3><s_d_0><|sid_end|> ;
+> <|sid_begin|><s_a_45><s_b_12><s_c_231><s_d_0> <|sid_end|> ;<|sid_begin|><s_a_130><s_b_111><s_c_88> <s_d_3><|sid_end|> ; . . . ; <|im_end|> <|im_start|>assistant <think> </think> <|sid_begin|><s_a_46><s_b_84><s_c_144><s_d_0> <|sid_end|><|im_end|>
+
+Figure 8: SFT example for Amazon Beauty: Uses ChatML format where the user turn carries the SID-only interaction history, and the assistant turn carries an empty think block followed by the ground-truth next item’s SID. 
+
+level-0 code’s frequency strongly reflects the popularity of its as-signed items. Conversely, on the Amazon domains, average item popularity is more concentrated, meaning variance in level-0 code frequency is a mixture of cluster size and actual item popularity. On the surface, this divergence might suggest that a model en-coding codebook-level aggregate popularity cannot exploit item popularity, potentially severing the link between our geometric di-agnostic (Section 3.2) and downstream popularity bias (Section 5.2). However, this discrepancy arises only when evaluating a single codebook level in isolation. Instead, given the LLM traverses the complete SID hierarchy during generation, it is able to implicitly learn conditional token probabilities. Then, the product of these conditional probabilities is able to recover the exact item popularity: 
+
+𝑓 𝑖 
+
+𝑁 =
+
+> 𝐿
+
+Ö
+
+> 𝑗 =0
+
+𝑝 data 
+
+ 𝑘 𝑗 (𝑖 ) | 𝑘 < 𝑗 (𝑖 ), (8) where 𝑁 is the total number of prediction examples, 𝑝 data is the empirical conditional distribution, and 𝑘 < 𝑗 (𝑖 ) = (𝑘 0 (𝑖 ), . . . , 𝑘 𝑗 −1 (𝑖 )) 
+
+denotes the SID prefix preceding level 𝑗 . To quantify this recovery, let 𝑎 𝑖 = log (1 + 𝑓 𝑖 ) and let ¯ 𝑎 𝑔 denote the mean of 𝑎 𝑖 over items sharing prefix 𝑔 . We perform a one-way variance decomposition by partitioning the catalog according to 𝑘 <𝜌 (𝑖 ) for each semantic-prefix length 𝜌 ∈ { 1, . . . , 𝐿 }:EV 𝜌 = Var 𝑖 
+
+ ¯𝑎 𝑘 <𝜌 (𝑖 )
+
+
+
+Var 𝑖 [𝑎 𝑖 ] . (9) Intuitively, the explained-variance ratio EV 𝜌 measures the percent-age of an item’s log-popularity that can be explained by knowing its SID prefix. Consequently, grouping items by increasingly longer prefixes captures a steadily growing share of this variance, achiev-ing near-recovery across the three semantic levels (e.g., EV 𝜌 on Loveland et al. 0 2 4 6 8        
+
+> log(1 + nk)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> fraction of codes  x (ECDF)  Total popularity mass
+> Beauty Sports Toys Steam MovieLens
+> 012345
+> log(1 + nk/| k|)
+> Average item popularity
+
+Figure 9: Token frequency vs. average item popularity for the level-0 codebook C0. Left: Total code popularity mass ( log (1 + 𝑛 𝑘 ))is broadly dispersed across all datasets, confirming it as an informative geometric target. Right: Average item popularity (log (1 + 𝑛 𝑘 /|I 𝑘 |) ) spreads widely on Steam and MovieLens. While the Amazon domains exhibit tighter concentration (steep curves), the distribution is not perfectly uniform; this subtle variance ensures that a measurable, albeit weak, popularity signal remains encoded even at level 0. 
+
+Beauty scales 0 .06 → 0.51 → 0.86 for prefixes through levels 0, 1, and 2, while Steam scales 0 .28 → 0.85 → 0.99). This property highlights that token-level popularity and item-level popularity are equivalent signals viewed at different granularities of the genera-tive sequence. Thus, while our codebook-level diagnostics probe just a single level, item-level popularity bias inevitably emerges as a cumulative consequence of decoding the full SID hierarchy. 
+
+## E CPT as Popularity Debiasing 
+
+Table 7: Recall@5 for Head (top 20%) and Tail (bottom 80%) items across CPT depths prior to SFT under random initial-ization. The declining Head/Tail ratio (shaded gray) demon-strates that deeper CPT mitigates popularity bias by boosting tail performance up to peak validation depth.                                                                                                  
+
+> Dataset Metric no CPT 146810 Beauty head@5 0.079 0.097 0.097 0.098 0.095 0.099 tail@5 0.017 0.020 0.024 0.022 0.023 0.026 head/tail 4.60 4.80 3.96 4.37 4.19 3.76 Sports head@5 0.058 0.063 ––––tail@5 0.007 0.011 ––––head/tail 8.06 5.71 ––––Toys head@5 0.087 0.088 0.093 0.093 0.094 –tail@5 0.029 0.033 0.035 0.038 0.039 –head/tail 2.99 2.67 2.65 2.43 2.41 –Steam head@5 0.192 0.200 0.201 0.199 ––tail@5 0.004 0.006 0.006 0.007 ––head/tail 51.28 34.83 34.88 27.51 ––MovieLens head@5 0.154 0.168 0.167 0.166 ––tail@5 0.013 0.019 0.019 0.020 ––head/tail 12.20 8.94 8.76 8.50 ––
+
+In Section 5.2, we noted that additional CPT epochs tend to improve performance on colder items, even under random initial-ization. In Table 7, we demonstrate this trend by decomposing Recall along the popularity axis. Specifically, we partition the cata-log by training frequency into a head (top 20% of items) and a tail (bottom 80%), assign each test example the tier of its ground-truth target, and report Recall@5 per tier for randomly initialized models across different numbers of CPT epochs. The head-to-tail Recall ratio (shaded rows) summarizes the discrepancy between these two cohorts, where a perfectly neutral model would drive this ratio toward one. Our analysis reveals two key trends. First, head-cohort gains are modest and saturate quickly ; on Beauty, head Recall jumps from 0.079 to 0.097 after just one CPT epoch, but barely improves (0.099) after ten. Second, tail-cohort gains scale with CPT depth , yielding 34% to 75% relative improvements across datasets. Consequently, deeper CPT significantly improves the head/tail performance ratio over the baseline. Ultimately, standard random initialization struggles with data-sparse tail items, forcing models to waste CPT epochs relearning missing semantics. Centroid initialization bypasses this bottleneck by supplying semantic priors upfront, driving large pure-SFT gains on tail items (Section 5.2) and accelerating overall convergence (Figure 4). 
+
+## F Proof for Theorem 3.1 
+
+In this section, we provide the proof for Theorem 3.1 by deriving the update to a (mean-centered) SID token embedding. The high-level goal is to isolate an explicit contribution of code popularity while retaining all context- and model-dependent effects in a residual term, which we further characterize at the end. With this in mind, the proof is meant to provide intuition on how popularity can become encoded within the LLM embeddings, not state that it will 
+
+become encoded. Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+Setup. We first consider a semantic level ℓ with codebook Cℓ . Then, we identify each code index 𝑣 ∈ { 0, . . . , 𝐾 − 1} with its correspond-ing token in the expanded LLM vocabulary. Let V denote this expanded vocabulary. At optimizer step 𝑡 , let o(𝑡 ) 
+
+> 𝑢
+
+∈ R𝑑 model denote the output embedding of any token 𝑢 ∈ V . We assume that the output embedding table is untied from the input embedding table, so each output row affects the loss only through the output log-its. Next, let Q denote the set of all supervised positions included in the training objective. For each 𝑞 ∈ Q , let 𝜏 𝑞 ∈ V denote the correct target token and let h(𝑡 ) 
+
+> 𝑞
+
+∈ R𝑑 model denote the final-layer hidden state used to predict 𝜏 𝑞 . The output logits, probabilities, and summed supervised loss are then given by 
+
+𝑧 (𝑡 ) 
+
+> 𝑞,𝑢
+
+=  h(𝑡 )
+
+> 𝑞
+
+To(𝑡 ) 
+
+> 𝑢
+
+, 𝑝 (𝑡 ) 
+
+> 𝑞,𝑢
+
+= exp  𝑧 (𝑡 )
+
+> 𝑞,𝑢
+
+Í𝑤 ∈ V exp  𝑧 (𝑡 )
+
+> 𝑞,𝑤
+
+ , L (𝑡 ) = −∑︁  
+
+> 𝑞 ∈ Q
+
+log 𝑝 (𝑡 ) 
+
+> 𝑞,𝜏 𝑞
+
+.
+
+(10) Additionally, for a level-ℓ code 𝑣 , define its supervision count as 
+
+𝑛 𝑣 = Í𝑞 ∈ Q 1[𝜏 𝑞 = 𝑣 ] and let 𝑁 ℓ = Í𝐾 −1 
+
+> 𝑢 =0
+
+𝑛 𝑢 > 0 denote the total number of level-ℓ targets. The average and mean-centered counts for 𝑣 are ¯𝑛 = 𝑁 ℓ
+
+𝐾 , e𝑛 𝑣 = 𝑛 𝑣 − ¯𝑛. (11) As each occurrence of item 𝑖 contributes its level-ℓ code 𝑘 ℓ (𝑖 ) as a target, 𝑛 𝑣 = Í𝑖 𝑓 D 
+
+> 𝑖
+
+1[𝑘 ℓ (𝑖 ) = 𝑣 ], where 𝑓 D 
+
+> 𝑖
+
+denotes the number of times item 𝑖 appears as a supervised target in the training corpus 
+
+D. Thus, 𝑛 𝑣 is the aggregate popularity of the items assigned to code 𝑣 .
+
+Gradient with Respect to o(𝑡 ) 
+
+> 𝑣
+
+. We begin by deriving the gradi-ent of the loss with respect to the output embedding o(𝑡 ) 
+
+> 𝑣
+
+. For a supervised position 𝑞 ∈ Q , the position-level loss can be written as 
+
+L (𝑡 ) 
+
+> 𝑞
+
+= − log 𝑝 (𝑡 ) 
+
+> 𝑞,𝜏 𝑞
+
+= − h(𝑡 )
+
+> 𝑞
+
+To(𝑡 ) 
+
+> 𝜏 𝑞
+
++ log ∑︁  
+
+> 𝑤 ∈ V
+
+exp 
+
+ h(𝑡 )
+
+> 𝑞
+
+To(𝑡 )
+
+> 𝑤
+
+
+
+.
+
+(12) Since o(𝑡 ) 
+
+> 𝑣
+
+only impacts the loss through the output logits, the hidden state h(𝑡 ) 
+
+> 𝑞
+
+can be treated as fixed when differentiating with respect to o(𝑡 ) 
+
+> 𝑣
+
+. As such, the gradient contribution from position 𝑞 
+
+is 
+
+𝜕 L (𝑡 )
+
+> 𝑞
+
+𝜕 o(𝑡 )
+
+> 𝑣
+
+=
+
+
+
+𝑝 (𝑡 ) 
+
+> 𝑞,𝑣
+
+− 1[𝜏 𝑞 = 𝑣 ]
+
+
+
+h(𝑡 ) 
+
+> 𝑞
+
+.
+
+As L (𝑡 ) = Í𝑞 ∈ Q L (𝑡 ) 
+
+> 𝑞
+
+, linearity of differentiation gives 
+
+g(𝑡 ) 
+
+> 𝑣
+
+= 𝜕 L (𝑡 )
+
+𝜕 o(𝑡 )
+
+> 𝑣
+
+=∑︁ 
+
+> 𝑞 ∈ Q
+
+
+
+𝑝 (𝑡 ) 
+
+> 𝑞,𝑣
+
+− 1[𝜏 𝑞 = 𝑣 ]
+
+
+
+h(𝑡 ) 
+
+> 𝑞
+
+. (13) 
+
+Gradient Descent Step. For each level-ℓ code 𝑣 , define 
+
+s(𝑡 ) 
+
+> 𝑣
+
+=∑︁  
+
+> 𝑞 ∈ Q
+> 𝜏 𝑞 =𝑣
+
+h(𝑡 ) 
+
+> 𝑞
+
+,
+
+a(𝑡 ) 
+
+> 𝑣
+
+=∑︁ 
+
+> 𝑞 ∈ Q
+
+𝑝 (𝑡 ) 
+
+> 𝑞,𝑣
+
+h(𝑡 ) 
+
+> 𝑞
+
+. (14) Here, s(𝑡 ) 
+
+> 𝑣
+
+aggregates the hidden states at positions where 𝑣 is the correct target, whereas a(𝑡 ) 
+
+> 𝑣
+
+aggregates the hidden states across all supervised positions according to the probability assigned to 𝑣 .Thus, 
+
+g(𝑡 ) 
+
+> 𝑣
+
+= a(𝑡 ) 
+
+> 𝑣
+
+− s(𝑡 ) 
+
+> 𝑣
+
+.
+
+Given we are interested in the relative geometry among the 𝐾 
+
+level-ℓ output rows, which determines their pairwise logit differ-ences for a fixed hidden state, define ¯o(𝑡 ) = 1
+
+𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑢 =0
+
+o(𝑡 ) 
+
+> 𝑢
+
+, x(𝑡 ) 
+
+> 𝑣
+
+= o(𝑡 ) 
+
+> 𝑣
+
+− ¯o(𝑡 ) ,
+
+¯a(𝑡 ) = 1
+
+𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑢 =0
+
+a(𝑡 ) 
+
+> 𝑢
+
+, ¯s(𝑡 ) = 1
+
+𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑢 =0
+
+s(𝑡 ) 
+
+> 𝑢
+
+. (15) For a learning rate 𝜂 > 0, gradient descent updates each output row as 
+
+o(𝑡 +1) 
+
+> 𝑣
+
+= o(𝑡 ) 
+
+> 𝑣
+
+− 𝜂 g(𝑡 ) 
+
+> 𝑣
+
+.
+
+Averaging this update over the 𝐾 level-ℓ rows gives ¯o(𝑡 +1) = ¯o(𝑡 ) − 𝜂 𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑢 =0
+
+g(𝑡 ) 
+
+> 𝑢
+
+.
+
+Subtracting the mean update from the update for row 𝑣 gives 
+
+x(𝑡 +1) 
+
+> 𝑣
+
+= x(𝑡 ) 
+
+> 𝑣
+
+− 𝜂 
+
+"
+
+g(𝑡 ) 
+
+> 𝑣
+
+− 1
+
+𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑢 =0
+
+g(𝑡 )
+
+> 𝑢
+
+#
+
+= x(𝑡 ) 
+
+> 𝑣
+
++ 𝜂 
+
+
+
+s(𝑡 ) 
+
+> 𝑣
+
+− ¯s(𝑡 ) 
+
+− 𝜂 
+
+
+
+a(𝑡 ) 
+
+> 𝑣
+
+− ¯a(𝑡 ) 
+
+. (16) This identity shows that only code-specific differences in the target and probability terms affect the relative geometry, i.e., any update shared by all code rows cancels under centering. To isolate the target-frequency contribution, define ¯h(𝑡 ) = 1
+
+𝑁 ℓ𝐾 −1∑︁ 
+
+> 𝑢 =0
+
+s(𝑡 ) 
+
+> 𝑢
+
+, d(𝑡 ) 
+
+> 𝑣
+
+= s(𝑡 ) 
+
+> 𝑣
+
+− 𝑛 𝑣 ¯h(𝑡 ) . (17) Because ¯s(𝑡 ) = 𝑁 ℓ
+
+𝐾 ¯h(𝑡 ) = ¯𝑛 ¯h(𝑡 ) ,
+
+we have 
+
+s(𝑡 ) 
+
+> 𝑣
+
+− ¯s(𝑡 ) = e𝑛 𝑣 ¯h(𝑡 ) + d(𝑡 ) 
+
+> 𝑣
+
+. (18) The first term isolates an explicit contribution of 𝑣 ’s relative target frequency, while d(𝑡 ) 
+
+> 𝑣
+
+captures how its target contexts differ from the codebook average. Similarly, define the centered probability contribution as 
+
+R(𝑡 ) 
+
+> 𝑣
+
+= a(𝑡 ) 
+
+> 𝑣
+
+− ¯a(𝑡 )
+
+=∑︁  
+
+> 𝑞 ∈ Q
+
+
+
+𝑝 (𝑡 ) 
+
+> 𝑞,𝑣
+
+− ¯𝑝 (𝑡 )
+
+> 𝑞
+
+
+
+h(𝑡 ) 
+
+> 𝑞
+
+, ¯𝑝 (𝑡 ) 
+
+> 𝑞
+
+= 1
+
+𝐾  
+
+> 𝐾 −1
+
+∑︁ 
+
+> 𝑢 =0
+
+𝑝 (𝑡 ) 
+
+> 𝑞,𝑢
+
+. (19) Substituting these decompositions into Equation (16) yields 
+
+x(𝑡 +1) 
+
+> 𝑣
+
+= x(𝑡 ) 
+
+> 𝑣
+
++ 𝜂 e𝑛 𝑣 ¯h(𝑡 ) + 𝜂 𝚫 (𝑡 ) 
+
+> 𝑣
+
+, 𝚫 (𝑡 ) 
+
+> 𝑣
+
+= d(𝑡 ) 
+
+> 𝑣
+
+− R(𝑡 ) 
+
+> 𝑣
+
+. (20) Here, the first update term depends explicitly on the relative target frequency of 𝑣 , i.e., its relative popularity, while the residual retains variation in both its target contexts and its predicted probabilities. 
+
+Accumulation Across Steps Under the full-batch setting of Theo-rem 3.1, the training positions and supervision counts remain fixed across steps. In particular, e𝑛 𝑣 does not depend on 𝑡 , although the hidden states, probabilities, and residual generally evolve as the Loveland et al. 
+
+model is updated. Rearranging Equation (20) and summing from 
+
+𝑡 = 0 to 𝑆 − 1 gives  
+
+> 𝑆 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+
+
+x(𝑡 +1) 
+
+> 𝑣
+
+− x(𝑡 )
+
+> 𝑣
+
+
+
+= 𝜂 e𝑛 𝑣 𝑆 −1∑︁ 
+
+> 𝑡 =0
+
+¯h(𝑡 ) + 𝜂  
+
+> 𝑆 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝚫 (𝑡 ) 
+
+> 𝑣
+
+. (21) The left-hand side simplifies to x(𝑆 ) 
+
+> 𝑣
+
+− x(0) 
+
+> 𝑣
+
+. Therefore, 
+
+x(𝑆 ) 
+
+> 𝑣
+
+= x(0) 
+
+> 𝑣
+
++ 𝜂 e𝑛 𝑣 𝑆 −1∑︁ 
+
+> 𝑡 =0
+
+¯h(𝑡 ) + 𝜂  
+
+> 𝑆 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝚫 (𝑡 ) 
+
+> 𝑣
+
+. (22) In aggregate, the second term identifies an explicit frequency-dependent component where every code is shifted along the shared direction Í𝑆 −1 
+
+> 𝑡 =0
+
+¯h(𝑡 ) by an amount proportional to its relative popu-larity e𝑛 𝑣 . □
+
+Remark on the Initial Residual. Suppose the untied output rows are initialized independently using the rule in Equation (2). As these rows are identically distributed, no level-ℓ code is systematically assigned a probability above or below the codebook average when conditioned on the hidden states. Formally, 
+
+Einit 
+
+h
+
+𝑝 (0) 
+
+> 𝑞,𝑣
+
+− ¯𝑝 (0) 
+
+> 𝑞
+
+{h(0) 
+
+> 𝑞
+
+}𝑞 ∈ Q 
+
+i
+
+= 0.
+
+Accordingly, R(0) 
+
+> 𝑣
+
+, which aggregates these centered probability dif-ferences, is conditionally zero-mean over random initializations. Random initialization further motivates, but does not guaran-tee, an early-stage context-homogeneity approximation. As the model has not yet learned distinct semantic representations for the SID tokens, the mean hidden states at positions targeting dif-ferent codes may be approximately code-independent. Under this approximation, 
+
+s(0) 
+
+> 𝑣
+
+≈ 𝑛 𝑣 ¯h(0) , and hence d(0) 
+
+> 𝑣
+
+≈ 0.
+
+Although context variations across different codes may weaken this approximation in practice, it reflects a natural symmetry at initialization. Notably, our proposal of centroid initialization is de-signed to break this symmetry by supplying code-specific semantic structure at initialization. Note that these symmetry arguments apply exclusively to the initial residual and do not constrain 𝚫 (𝑡 )
+
+> 𝑣
+
+as training progresses. 
+
+## G Additional Metric Results 
+
+To complement the main paper results, in this section we provide additional results for Recall@10, NDCG@5, and NDCG@10 to the Recall@5 results in Figure 4 and Figure 5. Additionally, we report NDCG@5 and NDCG@10 for Table 3. 
+
+Pure-SFT NDCG Metrics. In Table 8, we report NDCG across the five datasets from the pure-SFT experiments. Consistent with the recall improvements observed in the main text, centroid ini-tialization consistently outperforms the random baseline across all datasets for both NDCG@5 and NDCG@10. Notably, because NDCG is a rank-sensitive metric, these gains demonstrate that our semantic prior actively pushes the ground-truth SID higher up the ranked list, rather than merely surfacing it within the top-𝑘 . For example, on the Toys and Sports datasets, centroid initialization yields relative NDCG@5 improvements of 11.1% and 9.5%, respec-tively, showing that preserving the underlying semantic geometry translates directly into a higher-quality ranking distribution. 10     
+
+> 010 20 30 40 50 60 70
+> % Recall@10
+> Beauty Sports Toys Steam MovieLens cross-dataset mean
+> 32% 20% 4% 3%
+> 20
+> 020 40 60 80
+> % NDCG@5
+> 42% 19% 6% -1%
+> 0146
+> CPT depth
+> 20
+> 020 40 60
+> % NDCG@10
+> 37% 22% 5% 1%
+> Centroid vs. Random on Cold Items
+
+Figure 10: Relative metric gaps (centroid − random) on cold targets (train-target freq. ≤ 1) versus the number of CPT epochs. With fewer CPT epochs, centroid initialization tends to produce larger cold-item metric gains. Recall@10 and NDCG Across CPT Epochs. In Figure 11, we expand our CPT-epoch analysis to include Recall@10, NDCG@5, and NDCG@10. Consistent with the Recall@5 trends observed in the main text, centroid initialization generally accelerates conver-gence to peak performance across the wide range of metrics with Preserving Item Semantics for Free: Rethinking Token Initialization in LLM-Based Generative Recommendation 
+
+Table 8: NDCG counterpart of Table 3 (pure-SFT). NDCG@{5,10} with gain 1/log 2 (rank + 1) for the ground-truth item. Bold is better. 
+
+Domain Initialization NDCG@5 NDCG@10 Beauty Random 0.030 0.037 Centroid 0.034 0.041 
+
+Sports Random 0.021 0.026 Centroid 0.023 0.027 
+
+Toys Random 0.036 0.043 Centroid 0.040 0.047 
+
+Steam Random 0.073 0.078 Centroid 0.074 0.079 
+
+MovieLens Random 0.094 0.109 Centroid 0.100 0.115 
+
+fewer CPT epochs. For example, on the Toys, Steam, and Movie-Lens datasets, the centroid-initialized models achieve strong NDCG and Recall@10 metrics with just 1 to 4 CPT epochs, whereas the random baseline tends to require additional epochs to reach similar performance. Sports is the one exception where centroid initializa-tion yields a higher pure-SFT baseline at zero epochs but requires additional CPT epochs to perfectly match the random baseline’s peak. That said, the absolute performance differences in Sports at early CPT epochs are relatively small, often differing only in the fourth decimal place, suggesting that the practical impact of this delayed convergence is minimal. 
+
+Cold Item Recall@10 and NDCG. In Figure 10, we extend our cold-item analysis to include Recall@10, NDCG@5, and NDCG@10. Consistent with the Recall@5 trends observed in the main text, centroid initialization yields large relative gains in the pure-SFT regime, averaging 32% for Recall@10, 42% for NDCG@5, and 37% for NDCG@10 across the five datasets. The notably high improve-ment in NDCG@5 (42%) suggests that the semantic prior not only successfully retrieves cold items, but also actively pushes them to the top of the ranked list. Furthermore, we observe that as the num-ber of CPT epochs increases, the random baseline slowly aligns with the text space, causing the relative advantage to diminish. Even so, after one CPT epoch, the cross-dataset mean advantages remain strong at 20% for Recall@10, 19% for NDCG@5, and 22% for NDCG@10, before eventually converging near parity (3%, -1%, and 1%, respectively) by epoch 6. Ultimately, these metrics corrobo-rate our earlier findings that centroid initialization provides strong tail-item generalization, largely bypassing the need for costly CPT epochs to establish cold-item semantics. 
+
+## H Additional Ablations 
+
+To isolate the geometric properties of the centroid table from the specific code to centroid assignment it encodes, we evaluate a per-muted initialization where the 256 level-ℓ centroids are shuffled among the 256 level-ℓ codes using a fixed random permutation. As this is a permutation, all aggregate marginal properties of the initialization (i.e., per-level row norms, per-level means, and the 
+
+Table 9: Shuffled-centroid ablation. We measure the impact on recall ( Δ%) and convergence time (difference in number of training epochs before early stopping, measured as Δep) when shuffling code-to-centroid assignments. Shuffling con-sistently degrades both metrics (bold indicates degraded re-call or increased training time), demonstrating that semantic alignment is beneficial. 
+
+Orig. Centroid Shuffled Centroid Domain Stage Recall@5 Ep. Δ% ΔEp. Beauty pure-SFT 0.051 2 -5.3% +3 
+
+CPT+SFT 𝑑 1 0.057 4 -0.5% +0 CPT+SFT 𝑑 10 0.057 4 -2.8% -1 Sports pure-SFT 0.033 5 -3.6% +0 CPT+SFT 𝑑 1 0.036 3 -5.7% +0 CPT+SFT 𝑑 10 0.035 3 -0.5% +0 Toys pure-SFT 0.058 5 -1.8% +0 CPT+SFT 𝑑 1 0.059 4 -3.3% +1 
+
+CPT+SFT 𝑑 10 0.060 4 +1.2% -1 mean-shift frame of Equation (5)) are preserved, while the semantic correspondence between a code and its content is removed. Given the change in behavior between a CPT depth of 1 and 10, seen in the main text, we study both of these settings here as well (denoted 
+
+𝑑 1 and 𝑑 10). As shown in Table 9, this loss of semantic alignment consistently degrades performance. Specifically, eight of the settings suffer a drop in recall (reaching −5.7% on Sports CPT+SFT 𝑑 1), alongside some increases in convergence times (e.g., +3 epochs on Beauty pure-SFT). Although these aggregate metrics appear modest, we find that the embedding diagnostics reveal deeper structural prob-lems. First, we find that the trained SID embeddings barely deviate from their shuffled initializations, e.g., their similarity is ≥ 0.94 against the shuffled table, but ≈ 0 against the true centroids. On the surface, this appears beneficial, as the embeddings successfully re-tain a well-conditioned spectrum and avoid the popularity collapse characteristic of random initialization (pop-𝑅 2@3 = 0 .01). However, these embeddings also carry little category signal (cat-𝑅 2@3 = 0 .01). Consequently, on cold targets, we find that shuffling tends to re-move the benefits of the centroid structure, causing performance on Beauty to fall below random initialization (0 .012 for shuffled vs. 0.023 for the canonical centroid and 0 .016 for random). Likewise, this degradation scales with item rarity, yielding relative perfor-mance factors of ×0.97 for head items, ×0.85 for tail items, and ×0.53 for cold items. While a similar, but less severe, degradation occurs on Toys ( ×0.89 on cold items), the direction is consistent. Together, these results demonstrate that centroid initialization confers two distinct benefits: a well-conditioned, high-rank row geometry that does not encode popularity, and a code to content correspondence that benefits cold-item retrieval. Loveland et al. 0.066 0.072 0.078 
+
+> Recall@10
+
+Beauty 
+
+> 0.048 0.050
+
+Sports 
+
+> 0.075 0.080 0.085
+
+Toys 
+
+> 0.198 0.200 0.201
+
+Steam 
+
+> 0.184 0.192
+
+MovieLens 
+
+centroid random                          
+
+> 0.032 0.036 0.040
+> NDCG@5
+> 0.023 0.024
+> 0.036 0.039 0.042
+> 0.074 0.075 0.077
+> 0.096 0.100 0.104
+> 0146810 0.040 0.044 0.048
+> NDCG@10
+> 0146810 0.027 0.029 0.030
+> 0146810 0.044 0.048 0.052
+> 0146810 0.080 0.081
+> 0146810 0.110 0.115 0.120
+
+CPT depth (epochs) 
+
+Figure 11: Recall@10, NDCG@5, and NDCG@10 across numbers of CPT epochs. Centroid initialization often reaches the random-init performance with fewer CPT epochs across all metrics, supporting the findings of the main text.
