@@ -1,0 +1,1406 @@
+Making Collaborative Signals Count: Graph-Aware Large Language Models for
+Sequential Recommendation
+Fenglin Yan1∗, Bohao Wang1∗, Jian Zhang2, Yu Cui1,
+Tongya Zheng1, Ye Feng2, Can Wang1, Jiawei Chen1†
+1Zhejiang University
+Hangzhou, Zhejiang, China
+2University of Science and Technology of China
+Hefei, Anhui, China
+fenglin.yan@zju.edu.cn, bohao.wang@zju.edu.cn, zhangjian833@mail.ustc.edu.cn, cuiyu23@zju.edu.cn,
+doujiang_zheng@163.com, yefengustc@mail.ustc.edu.cn, wcan@zju.edu.cn, sleepyhunt@zju.edu.cn
+Abstract
+Large language models (LLMs) have been widely adopted
+as backbones for recommender systems. However, their
+language-centric pretraining makes it difficult to capture col-
+laborative signals implicit in user-item interactions, which
+are crucial for personalized recommendation. Existing meth-
+ods either inject collaborative representations produced by
+external recommenders or model only intra-sequence depen-
+dencies, limiting their ability to exploit global collaborative
+patterns. To address this limitation, we propose GALLM, a
+graph-aware LLM framework for sequential recommendation.
+GALLM constructs a collaborative graph over text tokens
+and item tokens, and models three types of relations: Text–
+Text relations for preserving semantic dependencies, Item–
+Text relations for aligning item tokens with their textual de-
+scriptions, and Item–Item relations derived from global item
+co-occurrence patterns. These relations are transformed into
+lightweight learnable attention biases and incorporated into
+the LLM attention mechanism, enabling collaborative-aware
+token interactions without introducing an additional graph en-
+coder. Experiments on four real-world benchmarks show that
+GALLM achieves the best performance among the compared
+baselines, improving over the strongest baseline by 9.76% on
+average in HR@5.
+Introduction
+Recommender systems (RS) aim to infer users’ preferences
+from their historical interactions. A key to effective recom-
+mendation lies in capturing collaborative filtering (CF) sig-
+nals from user–item interactions (Chen et al. 2020). Differ-
+ent approaches exploit such signals from distinct perspec-
+tives: sequential recommenders capture temporal dependen-
+cies among items in chronologically ordered interaction se-
+quences to model users’ evolving preferences (Wang et al.
+2019a; Yu et al. 2019; Vaswani et al. 2017), whereas graph-
+based recommenders propagate information over interaction
+graphs to capture global collaborative signals (He et al. 2020;
+Wang et al. 2019b).
+∗These authors contributed equally.
+†Corresponding author.
+Text tokens
+CF tokens
+Toy
+Clothing
+MovieLens
+Books
+0
+2
+4
+6
+8
+10
+Attribution scores
+5.14
+4.23
+8.77
+4.87
+0.05
+0.03
+0.04
+0.01
+(a) LLaRA
+Toy
+Clothing
+MovieLens
+Books
+0
+1
+2
+3
+4
+Attribution scores
+2.65
+3.58
+3.24
+1.98
+0.00
+0.09
+0.48
+0.21
+(b) HeLLM
+Figure 1: Attribution scores of Text tokens and CF tokens
+in LLaRA (Liao et al. 2024) and HeLLM (Guo et al. 2025).
+Higher scores indicate a greater influence on the generation
+of the target item.
+In recent years, Large Language Models (LLMs) have
+demonstrated remarkable capabilities in semantic under-
+standing, knowledge utilization, and reasoning (Achiam et al.
+2023; Hao et al. 2026b), motivating their increasing adop-
+tion in recommendation tasks (Bao et al. 2023; Liao et al.
+2024; Xu et al. 2025). A prominent line of research employs
+LLM as the backbone of RS (Zhang et al. 2025; Kim et al.
+2025; Zhang et al. 2024; Wang et al. 2026a), typically con-
+verting users’ interactions into natural language prompts and
+instructing the LLM to predict future interactions. By mod-
+eling fine-grained dependencies at the token level, LLMs can
+leverage semantic information to understand users’ interests,
+representing a promising direction for advancing RS (Hao
+et al. 2026a).
+Despite this promise, LLM-based RS remain limited in
+their capacity to model CF signals. This challenge arises from
+a mismatch between the token-level semantic dependencies
+modeled by LLMs and the item-level behavioral dependen-
+cies underlying CF signals. Recent studies have therefore ex-
+plored enhancing CF modeling in LLM-based RS, broadly
+following two directions:
+• Collaborative Injection via External Recommenda-
+tion Models. These methods employ auxiliary tradi-
+arXiv:2608.12184v1  [cs.IR]  12 Aug 2026
+
+
+…
+User Historical 
+Interactions
+LLM-based Recommender
+Night Fall
+before
+The
+Winner
+<item token844>
+Chance
+<item token136>
+Token Sequence
+Text–Text
+Item–Text
+Item–Item
+before
+<item token844>
+Chance
+<item token136>
+Collaborative Graph 
+Construction
+The
+before
+The
+Winner
+<item token844>
+Chance
+<item token136>
+before
+The
+Winner
+<item token844>
+Chance
+<item token136>
+Graph-Aware Attention Injection
+Null
+Winner
+The user has read the following books before: The Winner <item 
+token844>, Insomnia <item token1552>, Fall of Giants <item token435> , ... , 
+2nd Chance <item token136>. Please recommend a new book that the user 
+may like.
+…
+…
+…
+Figure 2: Overview of GALLM. Given a user’s historical interactions, we construct a collaborative graph containing Text–Text,
+Item–Text, and Item–Item relations. The graph structures are encoded as attention biases and incorporated into the LLM to
+enhance collaborative-aware recommendation.
+2nd
+Chance
+(1) Item-Item relations
+text 
+token1
+text 
+tokenn
+text 
+token2
+…
+The
+user
+Chance
+(3) Item-Text relations
+(2) Text-Text relations
+text 
+token9
+text 
+token10
+text 
+token11
+The
+ Winner 
+…
+Insomnia
+text 
+tokenn-1
+text 
+tokenn
+item 
+token1552
+item 
+token136
+item 
+token844
+item 
+token1552
+Insomnia
+�
+The Winner Insomnia
+2nd Chance
+…
+Fall of Giants
+item 
+token844
+item 
+token1552
+item 
+token136
+item 
+token435
+item ID844
+item ID1552
+item ID136
+item ID435
+The Winner
+item 
+token844
+item 
+token136
+2nd Chance
+item 
+token435
+Fall of Giants
+Edge width denotes the bucketed co-occurrence strength
+Figure 3: Illustration of the collaborative graph in GALLM,
+including Item–Item, Text–Text, and Item–Text relations.
+tional recommendation models (e.g., SASRec (Kang and
+McAuley 2018)) to capture CF signals, which are sub-
+sequently incorporated into LLMs through collaborative
+embeddings (Liao et al. 2024), predictive distributions
+(Lin et al. 2026), or model parameters (Liu et al. 2025).
+However, their effectiveness is inherently limited by the
+capacity of the external models. Moreover, effectively in-
+tegrating the extracted CF signals into LLMs remains
+challenging. A prevalent approach is to directly inject
+collaborative embeddings into the input of LLMs. How-
+ever, such an approach often suffers from a misalignment
+between collaborative and textual representation spaces,
+making it difficult for LLMs to fully exploit the injected
+signals. Our empirical analysis in Figure 1 further shows
+that collaborative embeddings contribute only marginally
+to model predictions and exert substantially less influence
+than textual tokens.
+• Collaborative Modeling via Attention Masking. Some
+studies introduce specialized attention-masking mecha-
+nisms to enhance item-level dependency modeling within
+LLMs (Cui et al. 2025; Zhang et al. 2026). Although these
+methods improve the modeling of sequential relationships
+among items, they primarily capture intra-sequence de-
+pendencies while overlooking crucial global collaborative
+dependencies across sequences.
+These limitations motivate an important question: How can
+LLMs effectively capture collaborative signals?
+Graph-based methods provide a natural framework for
+modeling CF signals by organizing user–item interactions
+into a global interaction structure. Such graph structures ex-
+pose collaborative information beyond individual interaction
+sequences and have been widely demonstrated to be effective
+in traditional recommendation systems (He et al. 2020; Wang
+et al. 2019b; Kang and McAuley 2018). This naturally raises
+a question: can such graph structures be directly integrated
+into LLMs, enabling them to capture collaborative signals in
+a manner similar to traditional graph-based recommenders?
+In this paper, we propose Graph-Aware LLM-based Rec-
+ommendation (GALLM), as illustrated in Figure 2. Follow-
+ing prior work (Liao et al. 2024), we represent each item us-
+ing both textual tokens and a dedicated item token. GALLM
+further introduces explicit attention biases in Transformer
+layers to model the heterogeneous dependencies among dif-
+ferent types of tokens. Specifically, we organize the resulting
+hybrid prompt as a token-level collaborative graph compris-
+ing three types of relations, as illustrated in Figure 3: (1)
+Item–Item relations, which are derived from global item co-
+occurrence patterns to encode collaborative dependencies
+among items; (2) Item–Text relations, which connect each
+item token to its associated textual tokens, thereby enhanc-
+ing the model’s ability to learn item-wise representations
+from the corresponding semantic context; and (3) Text–Text
+relations, which preserve the semantic dependencies among
+textual tokens.
+Despite its simplicity, this design enables each Trans-
+former layer to perform relation-aware token interactions
+
+
+over the collaborative graph. Through successive layers, the
+entire model can be treated as a base LLM equipped with an
+implicit multi-layer attention-based graph aggregation mech-
+anism, allowing GALLM to jointly model semantic and col-
+laborative signals without introducing an external graph en-
+coder. Moreover, GALLM introduces only a small number
+of trainable parameters with no structural modifications to
+the LLM backbone, making it efficient and compatible with
+existing LLM architectures. Extensive experiments on four
+public benchmarks demonstrate that GALLM consistently
+outperforms state-of-the-art methods, achieving an average
+improvement of 7.62% on NDCG@5 across all datasets.
+The contributions of this work are summarized as follows:
+• We identify the limitations of existing approaches to en-
+hance CF modeling in LLM-based RS propose integrating
+graph information into LLMs to address these limitations.
+• We propose GALLM, a graph-aware LLM framework
+with lightweight learnable attention biases that enables
+joint modeling of semantic and global collaborative in-
+formation within a unified LLM.
+• We conduct extensive experiments on four public bench-
+marks, demonstrating that GALLM consistently outper-
+forms state-of-the-art methods with an average improve-
+ment of 9.76% on HR@5.
+Preliminary
+Sequential Recommendation
+Let U and I denote the sets of users and items, respectively.
+For each user u ∈U, the historical interaction sequence
+is represented as Su = (i1, i2, . . . , in−1), where ik ∈I
+denotes the k-th item interacted with by user u. The goal
+of sequential recommendation is to predict the next item
+in based on the observed sequence Su. Based on user–item
+interactions, the global item co-occurrence between items i
+and j is defined as
+C(i, j) =
+X
+u∈U
+I(i ∈Su)I(j ∈Su).
+(1)
+A larger C(i, j) indicates that items i and j co-occur in
+more users’ interaction histories, suggesting a stronger col-
+laborative dependency between them.
+LLM-based Recommendation
+Following prior studies (Bao et al. 2025, 2023; Liao et al.
+2024; Lin et al. 2024; Cui et al. 2025; Bao et al. 2023), we also
+focus on the sequential recommendation task. LLM-based
+sequential recommendation employs an LLM as the recom-
+mender backbone. The items in Su are represented by textual
+descriptions (e.g., titles), which are serialized into a language
+prompt xu. Given xu, the LLM is instructed to autoregres-
+sively generate the textual description of the target item,
+denoted by y = (y1, y2, . . . , y|y|). At each generation step
+t, the next token is predicted according to Pθ(yt | xu, y<t)
+where θ denotes the model parameters and y<t represents
+the previously generated tokens. By operating over textual
+tokens, this token-level formulation enables the LLM to cap-
+ture fine-grained semantic patterns from the textualized in-
+teraction sequence.
+Graph Transformer
+Graph Transformers extend self-attention to graph-structured
+data by explicitly incorporating structural relations between
+nodes (Ying et al. 2021). Let G = (V, E) denote a graph,
+where V and E are the node and edge sets, respectively. For
+two nodes vi, vj ∈V, a relation function ϕ(vi, vj) character-
+izes their structural relationship, such as connectivity, edge
+type, graph distance, or relation strength.
+Formally,
+given
+the
+node
+representations
+Hl
+=
+{hl
+1, . . . , hl
+N} at the l-th layer, Graph Transformers augment
+the content-based compatibility between two nodes with a
+relation-specific structural bias. The resulting pre-softmax
+attention logit is defined as
+eal
+ij =
+(hl
+iWl
+Q)(hl
+jWl
+K)⊤
+√
+d
++ bl
+ϕ(vi,vj),
+(2)
+where bl
+ϕ(vi,vj) is a learnable scalar associated with the struc-
+tural relation between vi and vj. Wl
+Q and Wl
+K are learn-
+able query and key projection matrices, respectively, and
+d is the dimension of the projected representations. In this
+way, self-attention jointly considers representation similarity
+and graph structural relations when aggregating information
+across nodes.
+Methodology
+Overview
+In this work, we introduce GALLM, a graph-aware large lan-
+guage model framework for sequential recommendation, as
+illustrated in Figure 2. The key idea is to leverage a collab-
+orative graph to explicitly encode global collaborative struc-
+tures into LLMs, enabling the unified modeling of semantic
+knowledge and CF signals. Specifically, GALLM consists of
+three main components. First, we construct a hybrid recom-
+mendation prompt by integrating textual information with
+item tokens, allowing the model to simultaneously leverage
+semantic knowledge and collaborative signals. Second, we
+represent thehybrid promptas a collaborativegraph, inwhich
+heterogeneous relations among text and item tokens are ex-
+plicitly modeled and global item co-occurrence patterns are
+incorporated as complementary CF signals. Third, we intro-
+duce a relation-aware attention mechanism that transforms
+graph relations into learnable biases and injects them into
+LLM layers, enabling the model to capture collaborative de-
+pendencies while preserving its pretrained language capabil-
+ities.
+Hybrid Prompt Construction
+Given a user’s historical interaction sequence Su
+=
+(i1, i2, . . . , iL), GALLM constructs a hybrid prompt by aug-
+menting the conventional textual prompt with a dedicated
+Item token for each historical item. Specifically, for the k-th
+historical item ik, its textual description is tokenized into
+Text tokens:
+xT
+k = (xT
+k,1, xT
+k,2, . . . , xT
+k,mk),
+(3)
+where mk denotes the number of Text tokens associated
+with item ik. Meanwhile, an additional Item token xI
+k is
+
+
+introduced after the textual tokens of ik to represent its col-
+laborative information. The hybrid prompt is constructed by
+concatenating the instruction Text tokens xT
+ins with the item-
+specific token groups:
+x = (xT
+ins; xT
+1 , xI
+1; xT
+2 , xI
+2; . . . ; xT
+L, xI
+L),
+(4)
+where each Item token embedding is parameterized as
+eitem
+ik
+∈Rd for item ik. 1
+Collaborative Graph Construction
+GALLM organizes the tokens in each hybrid prompt into a
+collaborative graph G = (V, E). Its node set V = VT ∪VI
+consists of Text tokens and Item tokens, while its edge set
+E = ET T ∪EIT ∪EII comprises three types of relations.
+Specifically, VT contains the instruction Text tokens and
+item-specific Text tokens:
+VT = {xT
+ins} ∪
+L
+[
+k=1
+{xT
+k,j | 1 ≤j ≤mk},
+(5)
+while VI denotes the node set consisting of Item tokens:
+VI = {xI
+k | 1 ≤k ≤L}.
+(6)
+To enable the LLM to jointly model textual semantics
+and CF information, we construct heterogeneous relations
+between Text tokens and Item tokens. These relations are
+defined according to the functional roles of different token
+pairs: Item–Item relations introduce global CF signals, Text–
+Text relations preserve contextual semantics, and Item–Text
+relations align Item token with their textual descriptions.
+This role-aware design provides task-relevant structural pri-
+ors while preserving the original semantic modeling capa-
+bility of the LLM. The three relation types are illustrated in
+Figure 3 and detailed below.
+(1) Item–Item Relations encode global collaborative
+signals from user–item interactions. Items that frequently
+co-occur in users’ interaction histories are likely to share
+stronger behavioral dependencies.
+Specifically, for two Item tokens xI
+k and xI
+k′ corresponding
+to items ik and ik′, respectively, we characterize their relation
+using the global co-occurrence frequency C(ik, ik′). Since
+raw co-occurrence frequencies are sparse and highly skewed,
+we discretize them into a set of relation categories R using
+equal frequency binning:
+rkk′ = Bucket (C(ik, ik′)) ,
+rkk′ ∈R,
+(7)
+where Bucket(·) maps the co-occurrence frequency into pre-
+defined relation categories, and R denotes the set of discrete
+relation types. A larger relation index indicates stronger col-
+laborative dependency between the two items. The resulting
+Item–Item edge set is then represented as:
+EII =
+
+(xI
+k, xI
+k′, rkk′) | 1 ≤k, k′ ≤L
+	
+.
+(8)
+These Item–Item edges distinguish different levels of
+collaborative relevance among items, enabling GALLM
+1Item token embeddings can be initialized from pretrained rec-
+ommendation models (e.g., SASRec) via a lightweight MLP pro-
+jection, providing collaborative priors.
+to capture global collaborative dependencies beyond intra-
+sequence item relationships.
+(2) Text–Text Relations preserve semantic interactions
+among Text tokens in the hybrid prompt, allowing the LLM
+to retain its pretrained semantic modeling capability. The
+Text–Text edge set is defined over Text token nodes in VT :
+ET T = {(x, x′) | x, x′ ∈VT } .
+(9)
+By preserving these connections, the collaborative graph re-
+tains the textual dependencies acquired during LLM pretrain-
+ing and maintains the model’s semantic modeling capability.
+(3) Item–Text Relations connect each Item token to its
+corresponding Text tokens. Specifically, for the Item token
+xI
+k and the Text tokens of item ik, the Item–Text edge set is
+defined as:
+EIT =
+
+(xI
+k, xT
+k,j) | 1 ≤k ≤L, 1 ≤j ≤mk
+	
+.
+(10)
+These relations explicitly align each Item token with its item-
+specific textual context, facilitating the learning of coherent
+item-wise representations that integrate collaborative and se-
+mantic information.
+Through the collaborative graph, GALLM explicitly or-
+ganizes the hybrid prompt into a structured representation
+that captures semantic dependencies, collaborative signals,
+and their alignment, providing structural knowledge for the
+subsequent relation-aware attention mechanism.
+Graph-Aware Attention Injection
+To enable the LLM to leverage the structural information en-
+coded in the collaborative graph, we introduce a graph-aware
+attention mechanism. Inspired by Graph Transformers (Ying
+et al. 2021), GALLM introduces a graph-aware attention
+mechanism that encodes relation-specific graph information
+as learnable attention biases and incorporates them directly
+into the LLM self-attention computation.
+Specifically, for each Transformer layer l, given the hidden
+representations Hl = {hl
+1, . . . , hl
+m} of the input tokens,
+where m denotes the total number of Text and Item tokens
+in the hybrid prompt, GALLM modifies the attention logits
+by introducing a relation-specific bias:
+eal
+ij =
+(hl
+iWl
+Q)(hl
+jWl
+K)⊤
+√
+d
++ bl
+ϕ(xi,xj),
+(11)
+where Wl
+Q and Wl
+K denote the query and key projection
+matrices of the l-th Transformer layer. Here, xi, xj ∈V de-
+note two token nodes in the collaborative graph, ϕ(xi, xj)
+represents their relation type, and bl
+ϕ(xi,xj) is a learnable
+relation-specific bias. The attention distribution is then com-
+puted based on the enhanced attention logits.
+We define three groups of relation biases according to
+the collaborative graph: bl
+T T for Text–Text relations, bl
+IT for
+Item–Text relations, and bl
+II,R for Item–Item relations with
+different collaborative strengths. For all token pairs (i, j),
+the original causal mask is retained, and relation biases are
+applied only to causally visible positions.
+bl
+ϕ(xi,xj) =
+
+
+
+
+
+
+
+bl
+T T ,
+(xi, xj) ∈ET T ,
+bl
+IT ,
+(xi, xj) ∈EIT ,
+bl
+II,R,
+(xi, xj) ∈EII, R = rij,
+0,
+otherwise.
+(12)
+
+
+Dataset
+Toys
+Clothing
+Book
+MovieLens
+#User
+19124
+39230
+16559
+11230
+#Item
+11758
+22948
+6344
+10681
+#Interaction
+165247
+277534
+151928
+165126
+Density
+0.0735% 0.0308% 0.1446%
+0.0914%
+Table 1: Statistics of the datasets.
+By incorporating lightweight relation-specific biases into
+self-attention, each Transformer layer performs relation-
+aware information aggregation over the collaborative graph.
+As the layers are stacked, token representations are iteratively
+updated by aggregating information from structurally related
+nodes, forming an implicit multi-layer graph aggregationpro-
+cess within the LLM. This process allows collaborative struc-
+tural information to propagate across token representations
+while jointly modeling semantic and collaborative signals.
+Experiments
+We aim to answer the following research questions:
+• RQ1: How does GALLM perform compared with state-
+of-the-art recommendation methods?
+• RQ2: How do different components of GALLM con-
+tribute to the recommendation performance?
+• RQ3: How does GALLM influence the attention patterns
+of the LLM?
+Experimental Settings
+Datasets. Several widely used datasets, including Amazon
+Toys and Games, Amazon Clothing, Amazon Books,2 and
+MovieLens-10M3 are employed in our experiments. The
+statistics of the processed datasets are summarized in Ta-
+ble 1. For a fair comparison, we follow the preprocessing
+protocol of prior work (Wang et al. 2025a) and chronologi-
+cally split each processed sequence into training, validation,
+and test sets with an 8:1:1 ratio. Further details are provided
+in Appendix A.1.
+Baselines. The baseline methods are grouped into several
+distinct categories, details are provided in Appendix A.2.:
+• Traditional recommenders: SASRec (ICDM’18) (Kang
+and McAuley 2018) and LightGCN (SIGIR’20) (He et al.
+2020) are included as representative conventional recom-
+mendation methods.
+• LLM-based recommenders: BIGRec (TORS’25) (Bao
+et al. 2025) is included as a representative LLM-based
+RS that directly employs LLMs as recommendation back-
+bones without explicitly incorporating CF signals.
+• Graph-enhanced LLMs for recommendation: LLM-
+Rec (WSDM’24) (Wei et al. 2024), CORONA (SIGIR’25)
+(Chen et al. 2025), HeLLM (arXiv’25) (Guo et al. 2025),
+and G2Rec (arXiv’26) (Qiu et al. 2026) leverage graph to
+enhance LLM-driven RS.
+2https://nijianmo.github.io/amazon/index.html
+3https://grouplens.org/datasets/movielens/10m/
+• CF-enhanced LLMs for recommendation: LLaRA (SI-
+GIR’24) (Liao et al. 2024), HatLLM (arXiv’25) (Cui et al.
+2025), and TCA4Rec (WWW’26) (Lin et al. 2026) are de-
+signed to enhance the capability of LLMs to capture CF
+signals.
+Implementation Details. Following previous work (Wang
+et al. 2025a), we evaluate recommendation performance us-
+ing HR@K and NDCG@K, where K ∈{5, 10}. We im-
+plement all baselines using their publicly available source
+codes and follow the settings recommended in the original
+papers for fair comparisons. For methods involving LLMs,
+we use LLaMA-3.2-3B (Grattafiori et al. 2024) as the back-
+bone. Detailed implementation settings and hyperparameter
+configurations are provided in Appendix A.3.
+Performance Comparison (RQ1)
+Table 2 reports the overall performance on four real-world
+datasets. We make the following observations.
+Overall performance. GALLM achieves the best results
+across all datasets and metrics, outperforming the strongest
+baseline by 9.76% on average and by up to 16.30% in HR@5.
+This demonstrates the effectiveness of encoding collabora-
+tive relations into LLMs.
+Comparison with traditional and graph-enhanced rec-
+ommenders. Traditional recommenders SASRec and Light-
+GCN mainly learn collaborative patterns from interac-
+tion data but lack LLM-based semantic understanding.
+Graph-enhanced methods LLMRec, CORONA, HeLLM,
+and G2Rec introduce graph information into recommenda-
+tion, but often rely on external graph modules or graph-
+derived representations, limiting the direct integration of
+collaborative structures into LLM modeling.
+Comparison with LLM-based recommenders and CF-
+enhanced methods. BIGRec mainly leverages LLM seman-
+tic understanding without explicitly modeling collaborative
+signals. Existing collaborative-enhanced methods improve
+this limitation through external signal injection or attention-
+based mechanisms. However, injection methods LLaRA and
+TCA4Rec suffer from the difficulty of aligning CF repre-
+sentations with LLM semantic spaces, while attention-based
+methods HatLLM mainly capture local item dependencies
+within sequences and overlook global collaborative relations.
+Generalization across backbone scales. Table 3 further
+compares GALLM with representative LLM-based meth-
+ods using LLaMA3 backbones of different parameter scales.
+GALLM consistently outperforms BIGRec and LLaRA on
+both Toy and Clothing with the 1B, 3B, and 8B backbones.
+This consistent improvement demonstrates that the proposed
+graph-aware mechanism is effective across LLMs with dif-
+ferent model capacities.
+Ablation Study (RQ2)
+To investigate the contribution of different relations in the
+collaborative graph, we construct three variants of GALLM
+by removing Text–Text, Item–Text, and Item–Item relations,
+denoted as w/o T–T, w/o I–T, and w/o I–I. We also compare
+with LLaRA, which only injects collaborative item embed-
+dings without explicitly modeling graph relations.
+
+
+Method
+Toy
+Clothing
+Book
+MovieLens
+H@5
+N@5 H@10 N@10
+H@5
+N@5 H@10 N@10
+H@5
+N@5 H@10 N@10
+H@5
+N@5 H@10 N@10
+SASRec
+0.0186 0.0096 0.0327 0.0142 0.0069 0.0033 0.0144 0.0057
+0.0123 0.0074 0.0201 0.0099 0.0162 0.0094 0.0276 0.0130
+LightGCN
+0.0027 0.0017 0.0042 0.0021 0.0008 0.0006 0.0014 0.0008
+0.0027 0.0017 0.0050 0.0025 0.0064 0.0041 0.0122 0.0059
+LLMRec
+0.0104 0.0080 0.0148 0.0094 0.0039 0.0023 0.0060 0.0030
+0.0118 0.0075 0.0198 0.0101 0.0219 0.0143 0.0548 0.0233
+CORONA
+0.0142 0.0091 0.0264 0.0130 0.0090 0.0045 0.0154 0.0070
+0.0128 0.0072 0.0229 0.0105 0.0293 0.0173 0.0553 0.0256
+HeLLM
+0.0191 0.0133 0.0325 0.0176 0.0080 0.0040 0.0172 0.0070
+0.0135 0.0082 0.0201 0.0104 0.0358 0.0222 0.0620 0.0306
+G2Rec
+0.0211 0.0137 0.0346 0.0181 0.0082 0.0040 0.0174 0.0071
+0.0107 0.0060 0.0183 0.0085 0.0376 0.0238 0.0632 0.0319
+BIGRec
+0.0217 0.0138 0.0340 0.0177 0.0078 0.0038 0.0160 0.0067
+0.0123 0.0068 0.0228 0.0102 0.0302 0.0200 0.0542 0.0277
+LLaRA
+0.0227 0.0149 0.0365 0.0186 0.0056 0.0032 0.0172 0.0069
+0.0116 0.0071 0.0235 0.0109 0.0362 0.0234 0.0644 0.0324
+HatLLM
+0.0232 0.0153 0.0346 0.0187 0.0070 0.0036 0.0164 0.0066
+0.0132 0.0081 0.0224 0.0117 0.0372 0.0241 0.0624 0.0328
+TCA4Rec
+0.0221 0.0154 0.0355 0.0198 0.0090 0.0037 0.0166 0.0068
+0.0116 0.0060 0.0244 0.0102 0.0324 0.0195 0.0584 0.0279
+GALLM
+0.0252 0.0163 0.0386 0.0206 0.0096 0.0050 0.0190 0.0073
+0.0157 0.0088 0.0258 0.0120 0.0404 0.0256 0.0664 0.0340
+Impr.
+8.62% 5.84% 5.75% 4.04%
+6.67% 11.11% 9.20% 2.82%
+16.30% 7.32% 5.74% 2.56%
+7.44% 6.22% 3.11% 3.66%
+Table 2: Performance comparison on four real-world datasets. The best and second-best results are boldfaced and underlined,
+respectively. “H” and “N” denote HR and NDCG. “Impr.” denotes GALLM’s improvement over the strongest baseline.
+Backbone
+Method
+Toy
+Clothing
+H@10
+N@10
+H@10
+N@10
+LLaMA3-1B
+BIGRec
+0.0267
+0.0129
+0.0134
+0.0053
+LLaRA
+0.0298
+0.0135
+0.0132
+0.0054
+GALLM
+0.0315
+0.0159
+0.0152
+0.0063
+LLaMA3-3B
+BIGRec
+0.0340
+0.0177
+0.0160
+0.0067
+LLaRA
+0.0365
+0.0186
+0.0172
+0.0069
+GALLM
+0.0386
+0.0206
+0.0190
+0.0073
+LLaMA3-8B
+BIGRec
+0.0384
+0.0214
+0.0174
+0.0078
+LLaRA
+0.0419
+0.0224
+0.0186
+0.0076
+GALLM
+0.0461
+0.0244
+0.0198
+0.0081
+Table 3: Performance comparison using LLaMA3 backbones
+of different parameter scales.
+As shown in Table 4, removing any relation degrades
+performance, demonstrating that the three relations provide
+complementary information. Specifically, removing Text–
+Text relations causes performance drops on several datasets,
+indicating that preserving semantic dependencies among
+Text tokens is important for maintaining the LLM’s semantic
+modeling capability. Removing Item–Text relations leads to
+degradation by breaking the alignment between collaborative
+Item tokens and their corresponding textual representations,
+limiting the interaction between semantic and collabora-
+tive information. Removing Item–Item relations consistently
+harms performance, verifying that global item co-occurrence
+relations provide essential global collaborative signals be-
+yond directly observed interactions. Moreover, GALLM con-
+sistently outperforms LLaRA, showing that explicitly mod-
+eling heterogeneous relations within LLM attention is more
+effective than only injecting collaborative embeddings. Over-
+all, the complete GALLM benefits from jointly capturing
+semantic dependencies, semantic–collaborative alignment,
+and collaborative structures.
+GALLM
+LLaRA
+1
+4
+8
+12
+16
+20
+24
+28
+Decoder Layer
+0.000
+0.003
+0.006
+0.009
+0.012
+0.015
+0.018
+Item-Text Attention
+(a) Toy
+1
+4
+8
+12
+16
+20
+24
+28
+Decoder Layer
+0.000
+0.003
+0.006
+0.009
+0.012
+0.015
+0.018
+Item-Text Attention
+(b) Book
+Figure 4: Mean Item–Text attention weights of GALLM and
+LLaRA on the Toy and Book datasets.
+Attention Pattern Analysis (RQ3)
+To investigate whether the proposed graph-aware attention
+mechanism effectively guides token interactions, we ana-
+lyze post-softmax attention averaged over 28 decoder layers.
+For Item–Text attention, GALLM achieves higher alignment
+with textual descriptions than LLaRA across both datasets
+(Figures 4a and 4b), increasing from 0.0039 to 0.0060 on
+Toy and from 0.0053 to 0.0059 on Book, with relative in-
+creases of 54.2% and 10.0%, respectively. For Item–Item
+attention, as shown in Fig. 5, the average attention increases
+with co-occurrence strength across datasets, indicating that
+GALLM assigns higher weights to items with stronger col-
+laborative relationships. These results verify that GALLM
+effectively reshapes LLM attention patterns by enhancing
+item–text semantic alignment and capturing item-level col-
+laborative dependencies.
+Related Work
+Sequential Recommendation
+Sequential recommendation predicts users’ next interactions
+based on historical behaviors (Boka, Niu, and Neupane
+
+
+Dataset
+Metric GALLM w/o T–T w/o I–T w/o I–I LLaRA
+Toy
+H@5
+0.0252
+0.0246
+0.0246 0.0244 0.0227
+N@5
+0.0163
+0.0153
+0.0162 0.0157 0.0149
+H@10
+0.0386
+0.0353
+0.0367 0.0375 0.0365
+N@10
+0.0206
+0.0187
+0.0191 0.0200 0.0186
+Clothing
+H@5
+0.0096
+0.0068
+0.0058 0.0064 0.0056
+N@5
+0.0050
+0.0037
+0.0032 0.0034 0.0032
+H@10
+0.0190
+0.0170
+0.0172 0.0172 0.0172
+N@10
+0.0073
+0.0070
+0.0069 0.0068 0.0069
+Book
+H@5
+0.0157
+0.0153
+0.0148 0.0151 0.0116
+N@5
+0.0088
+0.0085
+0.0083 0.0080 0.0071
+H@10
+0.0258
+0.0251
+0.0257 0.0247 0.0235
+N@10
+0.0120
+0.0117
+0.0119 0.0115 0.0109
+MovieLens
+H@5
+0.0404
+0.0378
+0.0376 0.0370 0.0362
+N@5
+0.0256
+0.0250
+0.0240 0.0238 0.0234
+H@10
+0.0664
+0.0654
+0.0640 0.0644 0.0644
+N@10
+0.0340
+0.0338
+0.0324 0.0326 0.0324
+Table 4: Effect of different relation types in GALLM.
+2024). Early neural approaches employ recurrent or convo-
+lutional architectures, such as GRU4Rec (Hidasi et al. 2015)
+and Caser (Tang and Wang 2018). Recent self-attention-
+based models, including SASRec (Kang and McAuley 2018)
+and BERT4Rec (Sun et al. 2019), effectively capture sequen-
+tial dependencies among historical items.
+LLMs for Recommendation
+Large language models have recently been widely explored
+in recommendation due to their strong semantic understand-
+ing and knowledge transfer capabilities (Bao et al. 2023; Cui
+et al. 2022; Geng et al. 2022; Bao et al. 2025; Kim et al.
+2024; Liao et al. 2024; Zhang et al. 2025; Liu et al. 2025;
+Chen et al. 2025; Guo et al. 2025; Wang et al. 2026b). Recent
+studies have increasingly focused on incorporating collabo-
+rative signals into LLM-based recommendation, leading to
+two representative research directions.
+Graph-Enhanced LLMs for Recommendation. Recent
+studies have explored incorporating graph structures into
+LLM-based recommendation. One line of work leverages
+LLMs as auxiliary components to enhance graph-based rec-
+ommenders, such as augmenting user–item graphs with se-
+mantic knowledge or improving graph retrieval with LLM-
+generated knowledge (Wei et al. 2024; Ren et al. 2024; Chen
+et al. 2025; Zhou et al. 2026). Another line of work directly
+incorporates graph-derived collaborative information into
+LLMs, enabling LLMs to perform end-to-end recommen-
+dation. These methods introduce graph-based representa-
+tions, higher-order interaction relationships, or hypergraph-
+enhanced features into LLM inputs or attention mechanisms
+(Guan et al. 2025; Wang et al. 2025b; Guo et al. 2025; Qiu
+et al. 2026). However, existing approaches either treat LLMs
+as knowledge providers decoupled from the recommendation
+process or rely on shallow graph signal injection, limiting the
+integration between collaborative structures and LLM repre-
+sentations.
+CF-enhanced
+LLMs
+for
+Recommendation.
+This
+paradigm directly employs pretrained LLMs as recommenda-
+tion backbones and reformulates user interactions into tex-
+0
+1
+2
+3
+4
+MovieLens
+Book
+Clothing
+Toy
+Dataset
+0.015
+0.020
+0.025
+0.030
+0.035
+0.040
+0.045
+Bucket index
+Item-Item Attention
+Figure 5: Mean Item–Item attention under different co-
+occurrence strengths across four datasets.
+tual prompts. To enhance collaborative modeling, existing
+methods mainly follow two directions. One line of work
+injects collaborative signals extracted from external recom-
+mendation models into LLMs. LLaRA (Liao et al. 2024),
+CoLLM (Zhang et al. 2025), A-LLMRec (Kim et al. 2024),
+and BinLLM (Zhang et al. 2024) incorporate CF embeddings
+or collaborative representations into LLM inputs through
+different alignment strategies. CoRA (Liu et al. 2025) and
+GraphLoRA (Mu et al. 2026) further explore parameter-level
+injection to integrate collaborative knowledge into LLMs,
+while TCA4Rec (Lin et al. 2026) combines CF prediction
+distributions with LLM generation outputs. HatLLM (Cui
+et al. 2025) and IAM (Zhang et al. 2026) introduce atten-
+tion masking or item-aware attention mechanisms to capture
+item-level dependencies within user interaction sequences.
+Nevertheless, these methods either suffer from embedding in-
+compatibility when injecting external collaborative signals,
+or capture only intra-sequence dependencies while missing
+global collaborative dependencies cross-user collaborative
+patterns inherent in interaction graphs.
+Conclusion
+In this paper, we reveal that existing LLM-based recom-
+mender systems face a key limitation in effectively cap-
+turing collaborative filtering signals. To address this issue,
+we propose GALLM, a graph-aware LLM framework that
+injects collaborative graph structures into LLMs through
+lightweight relation-aware attention biases. By jointly mod-
+eling heterogeneous relations among text and item tokens,
+GALLM enables the unified modeling of semantic infor-
+mation and global CF signals. Extensive experiments on
+four real-world datasets demonstrate the effectiveness of our
+method. In the future, we will explore more adaptive graph
+construction strategies for graph-aware LLM recommenda-
+tion.
+
+
+References
+Achiam, J.; Adler, S.; Agarwal, S.; Ahmad, L.; Akkaya, I.;
+Aleman, F. L.; Almeida, D.; Altenschmidt, J.; Altman, S.;
+Anadkat, S.; et al. 2023. Gpt-4 technical report.
+Bao, K.; Zhang, J.; Wang, W.; Zhang, Y.; Yang, Z.; Luo, Y.;
+Chen, C.; Feng, F.; and Tian, Q. 2025. A bi-step ground-
+ing paradigm for large language models in recommendation
+systems. ACM Transactions on Recommender Systems, 3(4):
+1–27.
+Bao, K.; Zhang, J.; Zhang, Y.; Wang, W.; Feng, F.; and He, X.
+2023. Tallrec: An effective and efficient tuning framework
+to align large language model with recommendation.
+In
+Proceedings of the 17th ACM conference on recommender
+systems, 1007–1014.
+Boka, T. F.; Niu, Z.; and Neupane, R. B. 2024. A survey of
+sequential recommendation systems: Techniques, evaluation,
+and future directions. Information Systems, 125: 102427.
+Chen, J.; Wang, C.; Zhou, S.; Shi, Q.; Chen, J.; Feng, Y.; and
+Chen, C. 2020. Fast adaptively weighted matrix factorization
+for recommendation with implicit feedback. In Proceedings
+of the AAAI Conference on artificial intelligence, volume 34,
+3470–3477.
+Chen, J.; Yang, X.; Yang, C.; Bao, J.; Guo, Z.; Li, Y.; and
+Shi, C. 2025. Corona: A coarse-to-fine framework for graph-
+based recommendation with large language models. In Pro-
+ceedings of the 48th International ACM SIGIR Conference on
+Research and Development in Information Retrieval, 2048–
+2058.
+Cui, Y.; Liu, F.; Chen, J.; Jin, C.; Lou, X.; Zhang, C.; Wang,
+J.; Sun, Y.; and Wang, C. 2025. HatLLM: Hierarchical At-
+tention Masking for Enhanced Collaborative Modeling in
+LLM-based Recommendation.
+Cui, Z.; Ma, J.; Zhou, C.; Zhou, J.; and Yang, H. 2022. M6-
+rec: Generative pretrained language models are open-ended
+recommender systems.
+Geng, S.; Liu, S.; Fu, Z.; Ge, Y.; and Zhang, Y. 2022. Recom-
+mendation as language processing (rlp): A unified pretrain,
+personalized prompt & predict paradigm (p5). In Proceed-
+ings of the 16th ACM conference on recommender systems,
+299–315.
+Grattafiori, A.; Dubey, A.; Jauhri, A.; Pandey, A.; Kadian,
+A.; Al-Dahle, A.; Letman, A.; Mathur, A.; Schelten, A.;
+Vaughan, A.; et al. 2024. The llama 3 herd of models.
+Guan, Z.; Wu, L.; Zhao, H.; He, M.; and Fan, J. 2025. En-
+hancing collaborative semantics of language model-driven
+recommendations via graph-aware learning. IEEE Transac-
+tions on Knowledge and Data Engineering.
+Guo, X.; Zhang, T.; Wang, Y.; Wang, C.; Wang, F.; Wang,
+X.; Zhang, X.; Liu, X.; and Cui, Z. 2025.
+Multi-Modal
+Hypergraph Enhanced LLM Learning for Recommendation.
+arXiv:2504.10541.
+Hao, Z.; Wang, H.; Liu, H.; Luo, J.; Yu, J.; Dong, H.; Lin, Q.;
+Wang, C.; and Chen, J. 2026a. Rethinking entropy interven-
+tions in rlvr: An entropy change perspective. In Proceedings
+of the 64th Annual Meeting of the Association for Computa-
+tional Linguistics (Volume 1: Long Papers), 31105–31133.
+Hao, Z.; Wang, H.; Luo, J.; Zhang, J.; Zhou, Y.; Lin, Q.;
+Wang, C.; Dong, H.; and Chen, J. 2026b. Recreate: Rea-
+soning and creating domain agents driven by experience.
+In Proceedings of the 64th Annual Meeting of the Associa-
+tion for Computational Linguistics (Volume 1: Long Papers),
+31018–31046.
+He, X.; Deng, K.; Wang, X.; Li, Y.; Zhang, Y.; and Wang,
+M. 2020. Lightgcn: Simplifying and powering graph convo-
+lution network for recommendation. In Proceedings of the
+43rd International ACM SIGIR conference on research and
+development in Information Retrieval, 639–648.
+Hidasi, B.; Karatzoglou, A.; Baltrunas, L.; and Tikk, D. 2015.
+Session-based recommendations with recurrent neural net-
+works.
+Kang, W.-C.; and McAuley, J. 2018. Self-attentive sequential
+recommendation. In 2018 IEEE international conference on
+data mining (ICDM), 197–206. IEEE.
+Kim, S.; Kang, H.; Choi, S.; Kim, D.; Yang, M.; and Park,
+C. 2024. Large language models meet collaborative filter-
+ing: An efficient all-round llm-based recommender system.
+In Proceedings of the 30th ACM SIGKDD Conference on
+Knowledge Discovery and Data Mining, 1395–1406.
+Kim, S.; Kang, H.; Kim, K.; Kim, J.; Kim, D.; Yang, M.; Oh,
+K.; McAuley, J.; and Park, C. 2025. Lost in Sequence: Do
+Large Language Models Understand Sequential Recommen-
+dation? In Proceedings of the 31st ACM SIGKDD Conference
+on Knowledge Discovery and Data Mining V. 2, 1160–1171.
+Liao, J.; Li, S.; Yang, Z.; Wu, J.; Yuan, Y.; Wang, X.; and He,
+X. 2024. Llara: Large language-recommendation assistant.
+In Proceedings of the 47th International ACM SIGIR Confer-
+ence on Research and Development in Information Retrieval,
+1785–1795.
+Lin, F.; Hu, B.; Zheng, Z.; Zhu, X.; Liu, Z.; Zhang, Z.; Zhou,
+J.; and Xu, T. 2026. Token-level Collaborative Alignment for
+LLM-based Generative Recommendation. In Proceedings of
+the ACM Web Conference 2026, 6909–6919.
+Lin, J.; Shan, R.; Zhu, C.; Du, K.; Chen, B.; Quan, S.; Tang,
+R.; Yu, Y.; and Zhang, W. 2024. Rella: Retrieval-enhanced
+large language models for lifelong sequential behavior com-
+prehension in recommendation. In Proceedings of the ACM
+Web Conference 2024, 3497–3508.
+Liu, Y.; Zhang, J.; Dang, Y.; Liang, Y.; Liu, Q.; Guo, G.;
+Zhao, J.; and Wang, X. 2025. Cora: Collaborative infor-
+mation perception by large language model’s weights for
+recommendation. In Proceedings of the AAAI Conference
+on Artificial Intelligence, volume 39, 12246–12254.
+Mu, L.; Wang, G.; Ni, L.; Sang, L.; Wu, Z.; Jin, P.; and
+Zhang, Y. 2026. GraphLoRA: Structure-Aware Low-Rank
+Adaptation for Large Language Model Recommendation.
+Qiu, R.; Xia, Y.; Fu, D.; Zeng, H.; Chen, R.; Fan, X.; Li,
+H.; Yan, H.; and Tong, H. 2026. Structuring and Tokenizing
+Distributed User Interest Context for Generative Recommen-
+dation.
+Ren, X.; Wei, W.; Xia, L.; Su, L.; Cheng, S.; Wang, J.; Yin,
+D.; and Huang, C. 2024. Representation learning with large
+language models for recommendation. In Proceedings of the
+ACM web conference 2024, 3464–3475.
+
+
+Sun, F.; Liu, J.; Wu, J.; Pei, C.; Lin, X.; Ou, W.; and Jiang,
+P. 2019. BERT4Rec: Sequential recommendation with bidi-
+rectional encoder representations from transformer. In Pro-
+ceedings of the 28th ACM international conference on infor-
+mation and knowledge management, 1441–1450.
+Tang, J.; and Wang, K. 2018. Personalized top-n sequential
+recommendation via convolutional sequence embedding. In
+Proceedings of the eleventh ACM international conference
+on web search and data mining, 565–573.
+Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.;
+Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. Attention
+is all you need. Advances in neural information processing
+systems, 30.
+Wang, B.; Liu, F.; Chen, J.; Lou, X.; Zhang, C.; Wang, J.;
+Sun, Y.; Feng, Y.; Chen, C.; and Wang, C. 2025a. Msl: Not all
+tokens are what you need for tuning llm as a recommender. In
+Proceedings of the 48th international ACM SIGIR conference
+on research and development in information retrieval, 1912–
+1922.
+Wang, S.; Hu, L.; Wang, Y.; Cao, L.; Sheng, Q. Z.; and Orgun,
+M. 2019a.
+Sequential recommender systems: challenges,
+progress and prospects.
+Wang, T.; Jian, M.; Shi, G.; Wu, L.; and Wang, Y. 2026a.
+MSR-Rec: Multi-Step Reasoning-Enhanced LLM for Se-
+quential Recommendation. In Proceedings of the AAAI Con-
+ference on Artificial Intelligence, volume 40, 15877–15885.
+Wang, T.; Jian, M.; Shi, G.; Wu, L.; and Wang, Y. 2026b.
+MSR-Rec: Multi-Step Reasoning-Enhanced LLM for Se-
+quential Recommendation. In Proceedings of the AAAI Con-
+ference on Artificial Intelligence, volume 40, 15877–15885.
+Wang, X.; He, X.; Wang, M.; Feng, F.; and Chua, T.-S. 2019b.
+Neural graph collaborative filtering. In Proceedings of the
+42nd international ACM SIGIR conference on Research and
+development in Information Retrieval, 165–174.
+Wang, X.; Wu, L.; Hong, L.; Liu, H.; and Fu, Y. 2025b. LLM-
+Enhanced User–Item Interactions: Leveraging Edge Informa-
+tion for Optimized Recommendations. ACM Transactions on
+Intelligent Systems and Technology, 16(5): 1–24.
+Wei, W.; Ren, X.; Tang, J.; Wang, Q.; Su, L.; Cheng, S.;
+Wang, J.; Yin, D.; and Huang, C. 2024. Llmrec: Large lan-
+guage models with graph augmentation for recommendation.
+In Proceedings of the 17th ACM international conference on
+web search and data mining, 806–815.
+Xu, W.; Wu, Q.; Liang, Z.; Han, J.; Ning, X.; Shi, Y.; Lin,
+W.; and Zhang, Y. 2025. SLMRec: Distilling large language
+models into small for sequential recommendation. In Inter-
+national Conference on Learning Representations, volume
+2025, 35810–35831.
+Ying, C.; Cai, T.; Luo, S.; Zheng, S.; Ke, G.; He, D.; Shen, Y.;
+and Liu, T.-Y. 2021. Do transformers really perform badly
+for graph representation? Advances in neural information
+processing systems, 34: 28877–28888.
+Yu, Y.; Si, X.; Hu, C.; and Zhang, J. 2019. A review of recur-
+rent neural networks: LSTM cells and network architectures.
+Neural computation, 31(7): 1235–1270.
+Zhang, X.; He, B.; Chen, J.; Cui, Z.; and Ma, C. 2026. From
+Token to Item: Enhancing Large Language Models for Rec-
+ommendation via Item-aware Attention Mechanism. In Pro-
+ceedings of the ACM Web Conference 2026, 6700–6708.
+Zhang, Y.; Bao, K.; Yan, M.; Wang, W.; Feng, F.; and He,
+X. 2024. Text-like encoding of collaborative information in
+large language models for recommendation. In Proceedings
+of the 62nd Annual Meeting of the Association for Computa-
+tional Linguistics (Volume 1: Long Papers), 9181–9191.
+Zhang, Y.; Feng, F.; Zhang, J.; Bao, K.; Wang, Q.; and He, X.
+2025. Collm: Integrating collaborative embeddings into large
+language models for recommendation. IEEE Transactions on
+Knowledge and Data Engineering.
+Zhou, H.; Zhang, Y.; Chen, H.; Zhang, Q.; Shen, Q.; Huang,
+F.; and Huang, X. 2026. LLM Collaborative Filtering: User-
+Item Graph as New Language.
+
+
+A. Experiment Details
+A.1 Dataset Details
+We conduct experiments on three Amazon recommenda-
+tion datasets, including Amazon Toys and Games, Amazon
+Clothing, and Amazon Books, obtained from the Amazon
+Review Data (2018)4, as well as MovieLens-10M obtained
+from GroupLens5.
+For Amazon Toys and Games and Amazon Clothing,
+we first apply 5-core filtering. For Amazon Books and
+MovieLens-10M, we randomly retain 100,000 items and
+their associated interactions before preprocessing due to their
+large scale. Then, we apply a sliding window of length 11 to
+user interaction sequences longer than 11 interactions. The
+resulting sequences are sorted in ascending order by times-
+tamp and split into training, validation, and test sets with
+an 8:1:1 ratio. This chronological splitting ensures that each
+test interaction occurs after all training interactions, thereby
+preventing information leakage.
+A.2 Baseline Details
+This section briefly introduces the baseline methods accord-
+ing to the categories used in the main text.
+Traditional recommenders:
+• SASRec (ICDM’18) employs self-attention to model
+users’ evolving preferences from their historical interac-
+tion sequences.
+• LightGCN (SIGIR’20) learns user and item representa-
+tions by propagating collaborative information over the
+user–item interaction graph using simplified graph con-
+volution.
+LLM-based recommenders:
+• BIGRec
+(TORS’25)
+adopts
+a
+bi-step
+grounding
+paradigm that first fine-tunes an LLM to generate mean-
+ingful item tokens and then maps the generated tokens to
+actual items.
+Graph-enhanced LLMs for recommendation:
+• LLMRec (WSDM’24) employs LLMs to augment user–
+item interaction graphs with additional edges, node at-
+tributes, and user preferences, thereby improving graph-
+based recommendation.
+• CORONA (SIGIR’25) uses LLM-guided preference and
+intent modeling to progressively retrieve relevant user–
+item subgraphs, followed by GNN-based collaborative
+recommendation.
+• HeLLM (arXiv’25) combines hypergraph-enhanced
+multimodal representations with sequential behavioral in-
+formation to improve LLM-based recommendation.
+• G2Rec
+(arXiv’26)
+constructs
+a
+sparse
+item
+co-
+engagement graph and combines graph-derived user in-
+terest representations with supervised semantic tokeniza-
+tion for generative recommendation.
+CF-enhanced LLMs for recommendation:
+4https://nijianmo.github.io/amazon/index.html
+5https://grouplens.org/datasets/movielens/10m/
+• LLaRA (SIGIR’24) introduces hybrid prompting to
+align collaborative item embeddings learned by conven-
+tional recommenders with textual item representations in
+LLMs.
+• HatLLM (arXiv’25) employs hierarchical attention
+masking to emphasize intra-item semantic dependencies
+in shallow layers and cross-item collaborative dependen-
+cies in deeper layers.
+• TCA4Rec (WWW’26) projects item-level CF logits into
+token-level distributions and aligns them with LLM su-
+pervision through a soft next-token prediction objective.
+A.3 Evaluation and Implementation Details
+Baseline settings. We implement all baselines using their
+publicly available source code and follow the settings rec-
+ommended in the original papers whenever applicable. For
+the traditional recommenders, SASRec and LightGCN, we
+use the Adam optimizer with a learning rate of 0.001, an
+embedding dimension of 64, and a batch size of 256. For all
+methods involving LLMs, we uniformly adopt LLaMA-3.2-
+3B. Other method-specific components and training settings
+follow their official implementations.
+GALLM settings. We fine-tune LLaMA-3.2-3B using
+LoRA with a rank of 8, a scaling factor of α = 16, and
+a dropout rate of 0.05. Following LLaRA, the Item token
+embeddings are obtained from SASRec item representations
+and mapped into the LLM hidden space through a two-layer
+MLP. GALLM is optimized using Adam with a learning rate
+of 0.001 and a batch size of 64. The model is trained for 5
+epochs using the standard causal language modeling loss.
+The co-occurrence strengths of the Item–Item relations
+are discretized into five relation buckets indexed by R ∈
+{0, 1, 2, 3, 4}. We evaluate the model after each epoch and
+select the checkpoint achieving the highest NDCG@5 on
+the validation set. During inference, we use trie-constrained
+beam search with a beam size of 10, restricting the generated
+outputs to valid item candidates.
+Evaluation protocol. We evaluate all methods using HR@K
+and NDCG@K, where K ∈5, 10. No negative sampling
+is used during evaluation, and all methods retrieve or rank
+candidate items over the complete item space. All item co-
+occurrence statistics used to construct the Item–Item rela-
+tions are computed exclusively from the training split to pre-
+vent information leakage. All experiments are implemented
+in PyTorch and conducted on four NVIDIA RTX 5090 GPUs.
+Each experiment is independently repeated three times, and
+the average results are reported. Additional implementation
+details are included in the supplementary code.

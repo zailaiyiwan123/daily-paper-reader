@@ -1,0 +1,929 @@
+From Prompting to Behavioral Alignment: Personalized LLM
+Judges for Recommendation Evaluation
+Alireza S. Ziabari
+Netflix
+Los Angeles, USA
+asalkhordehziabari@netflix.com
+Kat Ellis
+Netflix
+Los Gatos, USA
+kkatherineellis@netflix.com
+Colleen Chan
+Netflix
+Los Gatos, USA
+colleenc@netflix.com
+Ding Tong
+Netflix
+Los Gatos, USA
+dingt@netflix.com
+Abstract
+Traditional offline recommendation evaluation relies heavily on
+complex, manually maintained feature pipelines that are difficult to
+scale. While Large Language Models (LLMs) offer a promising alter-
+native by predicting user engagement directly from raw text logs,
+empirical analysis in this study identifies a critical failure mode
+termed bidirectional rationalization. In a zero-shot setting, LLMs
+are found to convincingly argue for both positive and negative
+user engagement outcomes on the exact same item with identical
+evidence, highlighting the unreliability of off-the-shelf LLMs in
+predicting user engagement. To resolve this, we develop and apply
+a sequential behavioral alignment framework pairing fine-tuning
+with preference optimization over paired correct and counterfac-
+tual rationales. Evaluated on real-world homepage interaction logs,
+this aligned reasoning approach achieves a 32.19% lift in Macro-
+F1 score over the zero-shot baseline and matches the production
+feature-engineered baseline. The results demonstrate that behav-
+ioral alignment mitigates bidirectional rationalization while deliver-
+ing human-interpretable reasoning traces without manual pipeline
+overhead.
+Keywords
+Personalized recommendation evaluation; Large language models;
+Reasoning models; Offline evaluation
+1
+Introduction
+Recommendation systems are a core component of modern digital
+platforms, driving user engagement and long-term retention [4]. To
+continuously improve these systems, rapid and reliable evaluation
+frameworks are essential. While online A/B testing remains the
+gold standard for measuring true user satisfaction and business
+impact, it is inherently slow and computationally intensive and risks
+exposing users to suboptimal experiences. Consequently, industrial
+practitioners rely heavily on offline evaluation using historical
+interaction logs. However, traditional offline metrics (such as NDCG
+or Recall) often suffer from exposure bias and frequently fail to
+correlate strongly with online A/B test results [3]. This persistent
+gap between offline and online performance creates a significant
+bottleneck for rapid model iteration.
+To bridge this evaluation gap, the industry has increasingly
+adopted model-based evaluation: deploying learned models that
+estimate counterfactual outcomes and business metrics [15]. Fur-
+thermore, recent work has explored using LLMs as offline judges
+[17]. Unlike standard retrieval metrics, LLMs possess the semantic
+capacity to interpret complex contextual signals. Building on the
+promise of LLM-based evaluation, our work focuses on enhancing
+the rigor and discriminative capacity of these models. However,
+deploying LLMs for recommendation evaluation introduces the
+critical challenge of personalization. Traditional LLM judges assess
+general qualities, such as helpfulness or safety, based on global hu-
+man consensus. In contrast, recommendation quality is inherently
+subjective – an item’s relevance depends on individual user pref-
+erences rather than a universal standard. Consequently, generic
+evaluation criteria fail to capture true user intent, making scal-
+able, personalized evaluation a primary bottleneck for industrial
+applications.
+Within the context of the Netflix recommendation system, we
+frame this personalized evaluation as an engagement prediction
+task. Specifically, when a user is presented with a curated row of
+recommended titles on their homepage, the evaluator must analyze
+the user’s chronological viewing history and immediate session
+context to predict a binary behavioral outcome: whether the user
+will engage with the recommendation (a “play” action) or ignore the
+row entirely (a “skip” action). While out-of-the-box LLMs possess
+the semantic capability to read this serialized history, they inher-
+ently struggle to act as reliable judges. Without domain-specific
+alignment, these models exhibit biased evaluations [11]. Further-
+more, unaligned models often act as unconstrained rationalizers
+[8]; therefore, when evaluating generally high-quality recommen-
+dation rows, an unaligned LLM can effortlessly construct plausible
+justifications for either a “play” or a “skip” action, regardless of the
+true user intent.
+To address this, we propose an end-to-end framework that aligns
+an LLM judge’s reasoning to grounded user engagement. Rather
+than relying on zero-shot prompting, we train the model to gen-
+erate Chain-of-Thought (CoT) [12] reasoning traces anchored to
+actual user engagement outcomes, and systematically benchmark
+inference-time and parameter-level adaptation strategies for this
+task.
+In this paper, we characterize a personalization-specific failure
+mode of LLM-based evaluators, and show that behavioral alignment
+using preference optimization that anchors the LLM judge’s reason-
+ing to observed user engagement can match a feature-engineered
+arXiv:2608.11493v1  [cs.AI]  11 Aug 2026
+
+
+Ziabari et al.
+production baseline while preserving interpretability. Our main
+contributions are as follows:
+• We identify bidirectional rationalization as a personalization-
+specific failure mode of LLM judges that is structurally
+distinct from hallucination. This failure traces to founda-
+tional recommender-system trade-offs (e.g., short-term vs.
+long-term, accuracy vs. diversity, novelty vs. popularity,
+exploration vs. exploitation) each of which admits multiple
+defensible reasoning pathways that an unaligned model
+can elaborate into a fluent argument in either direction.
+After filtering rationale pairs for unfactual claims, the bidi-
+rectional disagreement patterns persist, showing that the
+failure is not reducible to fabrication.
+• Through a systematic comparison of prompting strategies,
+we find that reasoning-based prediction and the inclusion of
+immediate session context are the only consistent contribu-
+tors to LLM judge accuracy. However, prompt engineering
+alone is insufficient to close the gap between a zero-shot
+LLM judge and a heavily feature-engineered baseline, mo-
+tivating the move to parameter-level adaptation.
+• We propose an alignment recipe that first applies SFT on
+reasoning traces, and then applies offline preference op-
+timization over paired correct and counterfactual reason-
+ings grounded in true engagement outcomes. This recipe
+closes the remaining performance gap: the resulting text-
+based LLM evaluator matches the feature-engineered base-
+line on Netflix homepage engagement prediction without
+any manual feature engineering, while producing human-
+interpretable reasoning traces that reveal the user-history
+signals driving each prediction.
+2
+Related Work
+LLM-as-judge for recommendation evaluation. LLMs have been
+used as offline evaluators across a broad range of tasks, typically by
+issuing direct or pairwise judgments over candidate outputs [17].
+In the recommendation setting specifically, the Profile-Aware LLM
+judge [2] shows that prompting LLMs with user profiles can yield
+judgments that approximate human ratings. A complementary line
+evaluates LLM-based conversational recommender systems by mea-
+suring how closely the system’s recommendation strategies agree
+with those of human recommenders [13]. Our work extends these
+lines along two axes: the judgment target shifts from a human-
+annotated label to an observed behavioral outcome (whether the
+user engages with the recommended row), and the adaptation
+method moves from inference-time prompting to behavioral align-
+ment via preference optimization over reasoning rationales.
+Reasoning for recommendation tasks. A parallel line of work in-
+tegrates explicit reasoning into recommendation models, sharing
+our goal of improving both accuracy and interpretability. OneRec-
+Think [5] introduces chain-of-thought reasoning into generative
+recommendation, producing human-interpretable rationales along-
+side item predictions and demonstrating gains in live deployment.
+Related approaches such as ThinkRec [14] and Reason-to-Recommend
+[16] use supervised fine-tuning and reinforcement learning to in-
+still reasoning capabilities in generative recommenders, with the
+explicit reasoning traces serving as a transparency mechanism
+over the model’s decision process. Our work applies reasoning to
+the complementary problem of judging (offline evaluation) rather
+than generating recommendations: the reasoning trace produced
+by our judge is human-readable and exposes which user-history
+signals drove each predicted engagement outcome, providing an
+interpretable alternative to opaque feature-based evaluators.
+Bidirectional rationalization in LLM judges. Unaligned LLMs have
+been characterized as unconstrained rationalizers that can elabo-
+rate plausible justifications in either direction on ambiguous inputs
+[8]. Recent work shows that two reasoning models given oppos-
+ing positions on the same topic each produce confident, internally
+coherent arguments [6], and that chain-of-thought traces often do
+not faithfully reflect the actual decision process even on objective
+tasks with stable ground truth [1, 10]. We build on this literature in
+Section 3, arguing that the rationalizer failure mode takes a struc-
+turally different form in personalized recommendation evaluation
+than in the objective settings studied to date.
+3
+Preliminaries: Bidirectional Rationalization
+To understand the bottleneck in applying LLMs to recommendation
+evaluation, it is critical to characterize how unaligned models fail in
+personalized settings. Prior work has characterized rationalization,
+position bias, and sycophancy in settings with stable, externally
+verifiable ground truth. However, recommendation quality is in-
+herently subjective. To investigate failure modes of personalized
+recommendation evaluation, we conducted a qualitative analysis
+over model’s rational for their evaluation.
+To ground our analysis, we sampled real-world homepage inter-
+action logs where users were exposed to curated recommendation
+rows in Netflix homepage. Ground-truth engagement was deter-
+mined using a spatial scroll heuristic: if a user played an item from
+a specific row, that row was logged as a positive “play” event, while
+any rows positioned above it, which the user explicitly scrolled
+past, were logged as hard-negative “skip” events. Because all rec-
+ommended items were generally highly relevant to the user, these
+“skip” cases act as strong counterfactuals rather than trivial mis-
+matches. For a balanced set of these instances, we serialized the
+user’s interaction history, immediate session context, and the rec-
+ommended row, and provided them to a highly capable, unaligned
+LLM. By prompting the model to justify both candidate outcomes,
+we extracted one confident “play” rationale and one confident “skip”
+rationale per instance, creating a dataset where exactly one reason-
+ing path per pair matches the true user action.
+To rule out fabrication as the source of disagreement, we fil-
+tered out cases where either rationale contained mischaracterized
+recommended items, fabricated user-history events, or invented un-
+supported behavioral traits. Surprisingly, 77.0% (960 of 1,246) of the
+balanced pairs survived this factuality filter. This demonstrates that
+the failure mode is not hallucination; rather, the model is capable
+of constructing internally coherent, factually grounded arguments
+in opposite directions from identical evidence.
+Examining these persisting disagreements, we find that the
+bidirectional pathways correspond systematically to foundational
+recommender-system trade-offs:
+
+
+From Prompting to Behavioral Alignment: Personalized LLM Judges for Recommendation Evaluation
+Table 1: Same user history, same recommended row, two reasoning paths reaching opposite conclusions. After manually
+filtering rationale pairs for unfactual claims, these bidirectional disagreement patterns persist and trace to foundational
+recommender-system trade-offs. Each path’s predicted output and the true engagement label are annotated; reasoning excerpts
+are abridged from teacher-generated rationales.
+Category / Trade-off
+Reasoning for Play
+Reasoning for Skip
+Temporal lens
+Short-term vs. long-term
+User Engagement: SKIP
+Recent-anchored. “...Recent interactions show a
+preference for movies and TV shows that are light-hearted
+and inspiring... likely that the user will play the
+recommended movies, particularly those with romantic
+and comedic tones.”
+Long-term. “Strong preference for romance and drama,
+high engagement with titles with a strong emotional
+tone... the user’s viewing history suggests they prefer
+more intense and emotional content... likely to skip.”
+Multi-modal taste
+Calibration vs. Specialization
+User Engagement: PLAY
+Fantasy/drama lens. “Interest in fantasy, drama, and
+romance genre. The user watched <TITLE-1> for 96% of
+its duration, indicating strong engagement.”
+Action/thriller lens. “Preference for action-packed
+and thrilling content (<TITLE-2>, <TITLE-3>); also enjoys
+fantasy and romance. Recommended thrillers/dramas with
+darker tone don’t align.”
+Platform exposure
+Popularity vs. Novelty
+User Engagement: SKIP
+Popularity-leaning. “Strong preference for animated
+content, particularly from popular franchises like
+<TITLE-4>, <TITLE-5>, and <TITLE-6>... recommended
+kids content fits these preferences.”
+Niche-fit. “User has tendency to skip movies that are more
+serious or dramatic; <TITLE-7>, while popular, is gentle and
+child-friendly—it does not match the user’s specific
+humor/adventure preferences within the kids’ genre.”
+Interest extension
+Exploration vs. Exploitation
+User Engagement: PLAY
+Exploration framing. “Comedy and action fan with
+irreverent/deadpan tones... also watched documentary
+and thriller content, indicating willingness to explore
+different genres.”
+Exploitation framing. “Tendency to skip movies that
+are too long, intense, or have a dark tone. Favors
+comedies with lighter tone.”
+• Short-term vs. long-term (temporal lens). Recent watches
+and long-term history are both valid signals about the user
+at evaluation time.
+• Calibration vs. specialization (multi-modal taste). Users typ-
+ically exhibit multiple coexisting tastes, and recommended
+items are heterogeneous. A reasoning path can either cal-
+ibrate to the user’s full taste distribution [9] or a single
+facet.
+• Novelty vs. popularity (platform exposure). Engagement can
+be predicted by emphasizing the user’s engagement with
+popular, well-known items or the user’s preference for
+niche content.
+• Exploration vs. exploitation (interest extension). A user’s his-
+tory can support either exploration of new and serendipi-
+tous interests or exploitation of comfort-zone preferences.
+Among the 960 surviving pairs from factuality filters, 95.4% (916)
+exhibit contrasts that fit one or a combination of the four trade-offs
+above. Table 1 illustrates each trade-off with examples from our
+filtered rationale set.
+The underlying mechanism is bidirectional inference: the same
+observed user signal supports opposite conclusions about future
+engagement depending on which trade-off a reasoning path adopts.
+Because an unaligned LLM judge lacks behavioral alignment to
+real user engagement, it has no principled basis for resolving these
+trade-offs and acts as an unconstrained rationalizer.
+Because bidirectional rationalization survives fabrication-filtering,
+methods that only suppress hallucinations are insufficient. The
+model must learn which of the many locally valid framings most
+reliably predicts grounded user behavior. This structural challenge
+motivates the two primary research questions:
+• RQ1 (Inference-Time Adaptation): To what extent can
+prompt engineering mitigate bidirectional rationalization
+and improve the accuracy of personalized engagement pre-
+diction?
+• RQ2 (Parameter-Level Alignment): Which behavioral
+alignment paradigm (e.g., Supervised Fine-Tuning or Direct
+Preference Optimization) most effectively closes the per-
+formance gap and resolves the failure modes that prompt
+engineering cannot address?
+The fact that bidirectional rationalization survives fabrication-
+filtering has direct implications for alignment. Supervised fine-
+tuning that suppresses fabricated user traits or mischaracterized
+items addresses the hallucination failure mode but leaves the ra-
+tionalizer problem intact, because the bidirectional patterns we
+identify are not artifacts of invention but structural properties of
+the task. Behavioral alignment offers a targeted intervention: by
+exposing the model to paired correct and counterfactual rationales
+anchored to true engagement outcomes, preference optimization
+teaches the model which of the many locally-valid framings most
+reliably predicts grounded user behavior, collapsing the bidirectional
+rationalizer into a directional judge that resolves the named trade-
+offs in the direction real users exhibit. Behavioral alignment is
+therefore a critical component for reliable personalized LLM judges.
+4
+Behavioral Alignment
+We detail our methodology for delivering behavioral alignment to
+the LLM judge. The methodology moves incrementally from zero-
+shot LLM usage toward progressively stronger forms of adaptation.
+We first describe the task set-up and initial formulation of text
+
+
+Ziabari et al.
+Figure 1: Task set-up for user engagement prediction. LLM
+receives a structured prompt containing task instructions,
+session context, user history, and a row of recommended
+items, and outputs a binary play or skip prediction and op-
+tionally, reasoning, depending on the prompt template.
+prompts, then outline how we generate training datasets using a
+combination of user interaction data and a powerful reasoning LLM,
+and finally present training strategies implemented to adapt LLMs
+for this specific task.
+4.1
+Task Set-up
+We formulate our task as a binary prediction: given a recommended
+row of items, the user’s interaction history, and relevant contextual
+signals, predict whether the user will engage with at least one item
+from that row (ˆ𝑦= play) or ignore it (ˆ𝑦= skip).
+To enable the LLM to process this prediction task, we construct
+a structured natural language input prompt from the raw backend
+logs. This input prompt is composed of four main elements: the task
+instructions, the recommended row of items, the immediate session
+context (such as the current time and device), and the serialized
+user history. To construct the serialized user history, we convert
+historical interaction data such as timestamps, watch durations, and
+item titles into a chronological text sequence. Finally, to manage the
+model’s context window and evaluate the impact of sequence length
+on predictive performance, we enforce a fixed threshold on the user
+history (by number of events), truncating older interactions.
+4.2
+Inference and Prompting Formats
+To address RQ1, a diverse suite of prompting paradigms was evalu-
+ated, ranging from straightforward zero-shot classification to highly
+structured, feature-aligned reasoning frameworks. These config-
+urations are categorized into three broad tactical groups: direct
+label prediction (Simple and its inverted variant Simple-1), basic
+reasoning blocks (Reason and Reason-1), and specialized context-
+aware alignments targeting explicit behavioral signals (Evidence,
+Pros and Cons, Habit, Persona, Timing, and Pattern). The complete
+structural text prompts and specific JSON target schemas for all
+configurations are detailed in Table 2.
+While complex, multi-stage reasoning formats provide the dis-
+tinct operational advantage of producing rich natural-language
+rationales—serving as valuable side information for debugging and
+model interpretability—the primary objective of this evaluation
+remains the baseline predictive accuracy of the LLM judge. Conse-
+quently, during the inference phase, models are measured strictly
+on their downstream capability to accurately predict the final user
+engagement label under each respective prompting paradigm.
+4.3
+Training Configurations
+In RQ2, we aim to understand whether the LLM’s predictive accu-
+racy can be improved by training it on a task-specific dataset. We
+evaluated three training approaches: Supervised Fine-tuning (SFT),
+Direct Preference Optimization (DPO) [7], and a sequential regime
+consisting of SFT followed by DPO. For each training approach, we
+compared a simple prompt formulation with a prompt that included
+reasoning instructions.
+4.3.1
+Supervised Fine-Tuning (SFT). We fine-tuned the models us-
+ing both direct prediction (simple prompt) and reasoning-based
+prediction task formulations. In the direct prediction formulation,
+training data consisted of examples formatted with a simple prompt
+(no reasoning instructions) with output targets consisting of just the
+correct final label. In the reasoning formulation, training data con-
+sisted of examples formatted with a reasoning-instruction prompt
+and output targets consisting of both a ground truth reasoning path
+and a final label. Ground truth reasoning paths were generated by
+a larger LLM with reasoning capabilities (see Section 4.4).
+4.3.2
+Direct Preference Optimization (DPO). We also experimented
+with DPO to more explicitly align the model to prefer correct re-
+sponses over incorrect responses. As above, we tested both direct
+prediction (simple prompt) and reasoning-based prediction task
+formulations. In the simple formulation, preference pairs are in-
+duced by simply selecting the correct response over the incorrect
+response (e.g., “play” over “skip” if the user actually played). In the
+reasoning formulation, we constructed preference pairs by generat-
+ing reasoning paths for both potential outcomes, “play” or “skip”
+(see Section 4.4). For each training instance, the “chosen” response
+was the generated reasoning and label that matched the actual user
+action, while the “rejected” response was the generated reasoning
+and label for the opposite action.
+4.3.3
+SFT + DPO. We also tested a sequential training regime
+consisting of SFT followed by DPO. This regime is a common two-
+stage recipe used throughout the industry for aligning LLMs with
+product goals; SFT is used first to establish the structural format and
+domain vocabulary, then DPO further optimizes decision-making.
+4.4
+Generating Reasoning Traces
+To provide the behavioral alignment signal required for fine-tuning
+or preference optimization, we constructed a synthetic training
+dataset of paired correct and counterfactual rationales using a high-
+capacity reasoning LLM as a teacher. Because unaligned LLMs
+inherently function as bidirectional rationalizers (as characterized
+in Section 3), a single teacher model can reliably generate coherent,
+factually grounded arguments for both potential outcomes from
+the exact same user history.
+For each instance, we provided the teacher model with the se-
+rialized user history, the recommended row, and a candidate en-
+gagement label (“play” or “skip”). We then prompted the teacher
+
+
+From Prompting to Behavioral Alignment: Personalized LLM Judges for Recommendation Evaluation
+Template
+Description & Usecase
+Important Part of Prompt
+Output Format
+Simple
+or
+Simple-1
+Establishes a zero-shot classification
+baseline. Evaluates direct engagement
+prediction without reasoning overhead;
+toggles the target question framing to de-
+tect formatting symmetry and polarity
+bias.
+... Your task is to determine if the user is
+likely to play (or skip) any of the recommended
+movies based on their recent activity.
+...
+Based on the user’s recent activity, is the user
+likely to play any of the recommended movies?
+Please only respond with ’Yes’ or ’No’.
+’Yes’ or ’No’
+Reason
+or
+Reason-1
+Captures basic, unconstrained natural-
+language rationales. Tests if forcing an
+intermediate open-text justification bot-
+tleneck improves final label probability
+calibration.
+... Analyze user viewing patterns and predict if
+they’ll play (or skip) recommended movies.
+{
+"reasoning": "brief analysis",
+"result": "Play or Skip"
+}
+Evidence
+Enforces rigorous factual grounding. In-
+structs the judge to isolate explicit verifi-
+cation cues (such as duration bookmark
+triggers) from raw interaction logs to val-
+idate predictions.
+... Task: decide whether the user is LIKELY
+(probability >= 0.80) to play a movie from the
+recommended movies based on user recent
+interactions.
+...
+### Reasoning guidelines: ...
+{
+"evidence": [{
+"signal": "[name of cue]",
+"event_title": "[title]",
+"rec_title": "[title]",
+"details": "[under 40 chars]"}],
+"probability": "[0.00-1.00]",
+"result": "[Yes or No]"
+}
+Pros
+&
+Cons
+Targets bidirectional ambiguity. Ex-
+plicitly forces the model to extract,
+de-duplicate, and contrast competing
+counter-signals (skip-cues vs. play-cues)
+prior to label selection.
+... Your task is to evaluate the user’s recent
+interactions and the recommended movies to
+determine if the user is likely to play or skip
+any of the recommended movies.
+...
+{
+"skip_signals": [less than 25 words each],
+"play_signals": [less than 25 words each],
+"reasoning": "[less than 50 words]",
+"probability": "[0.00-1.00]",
+"result": "[Skip or Play]"
+}
+Habit
+Analyzes structured behavioral consis-
+tency. Directs the model to compute lon-
+gitudinal trends, applying exponential re-
+cency decay weights and verifying time-
+of-day/day-of-week context matching.
+... Task: Determine if the user is likely to
+play any recommended movies by analyzing
+temporal patterns and contextual viewing
+behavior.
+...
+### TEMPORAL ANALYSIS FRAMEWORK:
+- Temporal Context Patterns
+- Seasonal/Trend Considerations
+### ANALYSIS STEPS ...
+{
+"recent_patterns": ["pattern1", "pattern2"],
+"temporal_habits": ["habit1", "habit2"],
+"engagement_momentum": "high|medium|low",
+"temporal_match_score": "0.00-1.00",
+"recency_weighted_probability": "0.00-1.00",
+"result": "Play or Skip"
+}
+Persona
+Models macro-level user archetypes. Re-
+quires the judge to map past logs to an
+explicit behavioral persona (e.g., Binge
+Watcher, Explorer) and invoke targeted
+evaluation heuristics.
+... Task: First classify the user’s viewing
+persona, then apply persona-specific logic to
+predict if they’ll play any recommended movies.
+...
+### USER PERSONA CLASSIFICATION:
+- BINGE_WATCHER (Definition: ...)
+- GENRE_FOCUSED (Definition: ...)
+- CASUAL_VIEWER (Definition: ...) ...
+{
+"identified_persona": "...",
+"persona_confidence": "0.00-1.00",
+"persona_signals": ["signal1", "signal2"],
+"persona_logic": "reasoning for persona type",
+"recommendation_fit": "0.00-1.00",
+"result": "Play or Skip"
+}
+Timing
+Isolates transient session mechanics. An-
+chors predictions heavily on immediate
+temporal variables, current interaction
+spikes, and rolling short-term engage-
+ment momentum.
+... Task: Predict if the user will play any
+recommended movies by analyzing their recent
+viewing behavior and timing patterns.
+...
+Focus on recent activity (last 7 days get
+highest weight), viewing time patterns, and
+engagement momentum.
+...
+{
+"recent_activity": "high|medium|low",
+"timing_match": "good|fair|poor",
+"reasoning": "[40 words explaining decision]",
+"result": "Play or Skip"
+}
+Pattern
+Deduces nuanced structural dynamics.
+Guides the evaluator to isolate system-
+atic implicit signals from interaction his-
+tory, such as completion rates or re-
+watching loops.
+... Your task is to predict if user play or skip
+a row based on recent interactions.
+...
+#Guidelines to reasoning: consider genre,
+progress indicators, and rewatching tendencies
+...
+{
+"reason": "your reasoning here",
+"result": "Play or Skip"
+}
+Table 2: Prompt template formats for LLM recommendation evaluation. Templates range from baseline direct binary clas-
+sification to structured frameworks incorporating architectural use-cases such as temporal analysis, user persona tracking,
+evidence-grounded schemas, and explicit pattern extraction.
+
+
+Ziabari et al.
+to generate a definitive, step-by-step rationale explaining the can-
+didate outcome. By systematically generating reasoning paths for
+both potential outcomes, we obtained a pair of rationales for every
+instance: one matching the true user behavior and a counterfac-
+tual one arguing the opposite. During SFT, we trained the model
+exclusively on the rationales corresponding to the true user actions.
+For DPO, we leveraged the paired data, designating the rationale
+aligned with the true action as the “chosen” response and the coun-
+terfactual rationale as the “rejected” response.
+5
+Experimental Setup
+5.1
+Data
+We conducted our experiments using real-world historical interac-
+tion logs from a production recommendation system. Our dataset
+consists of verified impression events, capturing instances where a
+user is exposed to curated recommendation rows. To construct a
+reliable ground truth, we use a spatial heuristic based on how users
+scroll. When a user navigates a multi-row homepage and plays an
+item from a specific row, we assume the user saw that row and all
+the rows positioned above it. Consequently, the row containing the
+interacted item is logged as a positive “play” event; rows that the
+user scrolled past are logged as negative “skip” events. For each
+impression, our data captures the user’s chronological watch his-
+tory up to the impression event, the immediate session context, the
+specific items displayed in that single row, and its corresponding
+ground-truth label.
+5.2
+Baselines
+We evaluate our LLM-based judge against two baselines: (1) a zero-
+shot LLM-based evaluator using the simple prompt format, and (2)
+a heavily feature-engineered production baseline used internally
+for offline evaluation.
+For the zero-shot baseline, we use Llama 3.1 8B, which offers
+a favorable trade-off between capability and efficiency, delivering
+high-quality predictions while remaining small enough to be con-
+sidered as a candidate for deployment in production systems. In
+particular, the baseline zero-shot approach was three times more
+likely to predict a “play” result over a “skip” result in our balanced
+dataset (see Table 3). This bias resulted in high recall for play events
+but low overall precision, and demonstrates a key limitation of un-
+aligned LLM judges for personalized recommendation evaluation:
+pre-trained LLMs have no notion of the underlying baseline take
+rates of our particular recommendation task and therefore fail to
+reflect realistic selection probabilities.
+The production baseline combines an extensive, heavily engi-
+neered feature pipeline with a neural network producing a score
+between 0 and 1, representing the overall quality and relevance of
+a recommended row for a specific user. Comparison against the
+production baseline serves two purposes. First, it establishes ca-
+pability and provides clarity for the industry: can an LLM-based
+evaluator match or surpass the baseline’s accuracy using only raw,
+serialized text logs? Second, it surfaces qualitative benefits unique
+to the LLM approach: interpretable reasoning traces that expose
+the user-history signals driving each prediction, no manual fea-
+ture pipeline to maintain, and a unified evaluator adapts to new
+recommendation contexts without re-engineering features.
+Table 3: Macro-F1 lift (%) of each prompt format over the
+simple prompt baseline (higher is better) and Positive Bias
+(ratio of “Play” to “Skip” predictions; 1.0 indicates no bias).
+Results are evaluated in a zero-shot setting using Llama 3.1
+8B. See Table 2 for details on prompt formulations.
+Format
+Macro-F1 Lift (%)
+Positive Bias (×)
+Simple
+-
+3.01
+Simple-1
+-26.79
+20.08
+Reason
+4.21
+0.79
+Reason-1
+-7.39
+0.34
+Evidence
+-25.89
+24.20
+Pros & Cons
+0.76
+0.90
+Habit
+-28.83
+34.23
+Persona
+-18.40
+5.76
+Timing
+-13.75
+7.55
+Pattern
+-12.33
+5.14
+We report Macro F1-Score as our primary evaluation metric, as it
+balances recall and precision across both “Play” and “Skip” classes.
+6
+Results
+6.1
+Prompting Dynamics (RQ1)
+Through iterative prompt engineering, we identified several key
+dynamics regarding input design. First, we found that session con-
+text, such as the current time, proved to be among the most critical
+factors to include in the prompt. This finding is consistent with the
+literature on traditional, non–LLM-based recommender systems,
+which emphasizes the importance of context awareness for effective
+recommendation. In our setting, the LLM is able to infer and exploit
+the relevant context directly from the prompt and appears to rely
+strongly on this immediate context when predicting engagement.
+To understand whether positive class bias can be mitigated via
+prompt engineering, we tested an inverse version of the prompt,
+which presented the task as predicting whether a user will skip,
+rather than play, the recommended row. Surprisingly, this change
+further increased the positive class bias, and led to a large degrada-
+tion in overall performance (see Table 3). One hypothesis is that
+changing the task to predict whether the user will skip all recom-
+mended items in a row becomes more difficult than the original
+task of predicting whether the user will play any recommended
+item in a row.
+We also evaluated the impact of context length by varying the
+number of events included in the user history. Using a longer user
+history was associated with performance gains up to a certain point,
+after which performance plateaus. Adding more historical events
+beyond this threshold did not help the model, indicating a point of
+diminishing returns where the LLM struggles to effectively utilize
+overly long historical contexts. For the remaining experiments, we
+limited user history to 50 events.
+Finally, we found that prompting the model to reason before out-
+putting a final label yielded a noticeable improvement in predictive
+performance compared to direct label prediction. This increased
+
+
+From Prompting to Behavioral Alignment: Personalized LLM Judges for Recommendation Evaluation
+Table 4: Macro-F1 lift (%) over the Llama 3.1 8B zero-shot baseline (higher is better) and Positive Bias (ratio of “Play” to “Skip”
+predictions; 1.0 indicates no bias) for each training and inference configuration. The best Macro-F1 lift (bolded) is SFT+DPO
+with reasoning-based inference, at 32.19%.
+Macro-F1 lift (%)
+Positive Bias (×)
+Inference prompt
+Inference prompt
+Training paradigm
+Training prompt
+Simple
+Reason
+Simple
+Reason
+Zero-shot
+-
+0.0
+4.21
+3.01
+0.79
+SFT
+Simple
+12.23
+11.09
+1.79
+1.51
+SFT
+Reason
+-15.84
+11.35
+10.66
+1.61
+DPO
+Simple
+28.37
+20.40
+0.70
+0.54
+DPO
+Reason
+23.35
+23.56
+1.18
+1.18
+SFT + DPO
+Simple
+30.58
+19.41
+0.78
+0.89
+SFT + DPO
+Reason
+25.74
+32.19
+0.93
+1.05
+Macro-F1 score 4.21% over the baseline non-reasoning prompt in
+the zero-shot setting. Interestingly, the more structured reasoning
+instructions we tested (see Section 4.2) did not further improve
+performance over the simple reasoning prompt and in many cases
+severely degraded performance (see Table 3). For this reason, in the
+remaining experiments, we compare only the simple direct prompt
+with the basic reasoning prompt.
+While these prompt engineering choices improve accuracy over
+the zero-shot baseline, the best-performing prompted configura-
+tion still leaves a significant gap relative to the feature-engineered
+baseline, motivating the move to parameter-level adaptation.
+6.2
+Training Paradigms (RQ2)
+Supervised fine-tuning provided a significant boost to predictive
+performance, increasing Macro-F1 Score by 12.23% over the zero-
+shot baseline in the simple prompt setup. We hypothesize that the
+majority of this improvement comes from the LLM learning to more
+effectively calibrate baseline engagement probabilities, reducing the
+over-prediction of “play” events—after SFT the positive class bias
+reduces from 3x over-prediction of “play” events to only 1.79x (see
+Table 4). While the reasoning-prompt SFT paradigm also improved
+performance over the zero-shot baseline (+11.35%), we did not see
+any additional gains by training with a reasoning prompt and in-
+cluding synthetically generated reasoning paths in the training data
+when compared to the simple-prompt SFT paradigm. In fact, when
+prompted again with the simple non-reasoning prompt the model
+fine-tuned on reasoning traces performed substantially worse than
+zero-shot (-15.84%), showing signs of task-specific overfitting. In
+contrast, the model fine-tuned with the simple prompt set-up was
+still able to outperform the zero-shot reasoning prompt perfor-
+mance when prompted with a reasoning instruction at inference
+time (+11.09%).
+Training the model with DPO proved more effective than SFT
+alone, leading to an improvement of 28.37% in Macro-F1 score over
+the zero-shot baseline with the simple prompt setup (i.e., trained
+to prefer the correct “play” or “skip” response over the incorrect
+one). As was the case with SFT, the reasoning prompt training
+paradigm with DPO improved performance over the zero-shot
+baseline (+23.56%), but provided no additional gains over the simple
+prompt training paradigm.
+We achieved the best overall results in our experiments by se-
+quentially chaining the two methods: first utilizing SFT to estab-
+lish the domain vocabulary and formatting, followed by DPO to
+optimize the decision-making process based on accurate versus
+inaccurate reasoning. The SFT+DPO combination with reasoning-
+based prediction yields a 32.19% Macro-F1 lift over the zero-shot
+baseline—our best result, closing the gap to the feature-engineered
+production baseline by reaching statistical parity in Macro-F1 score
+(difference < 0.1%).
+7
+Conclusion
+In this work, we characterized bidirectional rationalization as a
+personalization-specific failure mode of LLM-based evaluators that
+is structurally distinct from hallucination and rooted in fundamen-
+tal recommender-system trade-offs. Because these trade-offs admit
+multiple defensible interpretations of the same user evidence, an
+unaligned judge can produce coherent rationales for opposing pre-
+dictions.
+We further show that prompt engineering is insufficient to elim-
+inate this failure mode. While prompt design can improve over
+a zero-shot LLM judge, it remains well below a heavily feature-
+engineered baseline. To close this gap, we use an alignment recipe
+that combines reasoning-based prediction with preference optimiza-
+tion over paired correct and counterfactual rationales anchored to
+observed engagement outcomes. The resulting text-based LLM eval-
+uator matches the feature-engineered baseline on Netflix homepage
+engagement prediction without manual feature engineering and
+produces human-interpretable reasoning traces that expose the
+user-history signals driving each predicted outcome.
+Overall, our results suggest that personalized LLM judges fail
+not because they fabricate evidence, but because they apply un-
+derspecified, competing framings of identical evidence. Behavioral
+alignment via paired-rationale preference is key to making such
+judges reliable.
+Future work will explore intermediate user profile generation to
+address the diminishing returns observed when extending raw user
+histories beyond 50 events. Instead of directly introducing extensive,
+raw interaction logs into the model’s context window, condensing
+
+
+Ziabari et al.
+long-term user tastes and behavioral patterns into concise, natural-
+language profiles could allow the evaluator to leverage much deeper
+historical signals without suffering from attention dilution.
+References
+[1] Yanda Chen, Joe Benton, Ansh Radhakrishnan, Jonathan Uesato, Carson Denison,
+John Schulman, Arushi Somani, Peter Hase, Misha Wagner, Fabien Roger, Vlad
+Mikulik, Samuel R. Bowman, Jan Leike, Jared Kaplan, and Ethan Perez. 2025.
+Reasoning Models Don’t Always Say What They Think. arXiv:2505.05410 [cs.CL]
+[2] Francesco Fabbri, Gustavo Penha, Edoardo D’Amico, Alice Wang, Marco
+De Nadai, Jackie Doremus, Paul Gigioli, Andreas Damianou, Oskar Stål, and
+Mounia Lalmas. 2025. Evaluating podcast recommendations with profile-aware
+llm-as-a-judge. In Proceedings of the Nineteenth ACM Conference on Recommender
+Systems. 1181–1186.
+[3] Alexandre Gilotte, Clément Calauzènes, Thomas Nedelec, Alexandre Abraham,
+and Simon Dollé. 2018. Offline a/b testing for recommender systems. In Proceed-
+ings of the eleventh ACM international conference on web search and data mining.
+198–206.
+[4] Carlos A Gomez-Uribe and Neil Hunt. 2015. The netflix recommender system:
+Algorithms, business value, and innovation. ACM Transactions on Management
+Information Systems (TMIS) 6, 4 (2015), 1–19.
+[5] Zhanyu Liu, Shiyao Wang, Xingmei Wang, Rongzhou Zhang, Jiaxin Deng,
+Honghui Bao, Jinghao Zhang, et al. 2025. OneRec-Think: In-Text Reasoning for
+Generative Recommendation. arXiv:2510.11639 [cs.IR]
+[6] Pradyumna Shyama Prasad and Minh Nhat Nguyen. 2025. When Two LLMs
+Debate, Both Think They’ll Win. arXiv:2505.19184 [cs.CL]
+[7] Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D Manning, Stefano
+Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language
+model is secretly a reward model. Advances in neural information processing
+systems 36 (2023), 53728–53741.
+[8] Mrinank Sharma, Meg Tong, Tomasz Korbak, David Duvenaud, Amanda Askell,
+Samuel R Bowman, Newton Cheng, Esin Durmus, Zac Hatfield-Dodds, Scott R
+Johnston, et al. 2023. Towards understanding sycophancy in language models.
+arXiv preprint arXiv:2310.13548 (2023).
+[9] Harald Steck. 2018. Calibrated Recommendations. In Proceedings of the 12th ACM
+Conference on Recommender Systems (RecSys ’18). 154–162. doi:10.1145/3240323.
+3240372
+[10] Miles Turpin, Julian Michael, Ethan Perez, and Samuel R. Bowman. 2023. Lan-
+guage Models Don’t Always Say What They Think: Unfaithful Explanations
+in Chain-of-Thought Prompting. In Advances in Neural Information Processing
+Systems (NeurIPS).
+[11] Peiyi Wang, Lei Li, Liang Chen, Zefan Cai, Dawei Zhu, Binghuai Lin, Yunbo Cao,
+Lingpeng Kong, Qi Liu, Tianyu Liu, et al. 2024. Large language models are not
+fair evaluators. In Proceedings of the 62nd Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers). 9440–9450.
+[12] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi,
+Quoc V Le, Denny Zhou, et al. 2022. Chain-of-thought prompting elicits reason-
+ing in large language models. Advances in neural information processing systems
+35 (2022), 24824–24837.
+[13] Dayu Yang, Fumian Chen, and Hui Fang. 2024. Behavior Alignment: A New
+Perspective of Evaluating LLM-based Conversational Recommender Systems.
+In Proceedings of the 47th International ACM SIGIR Conference on Research and
+Development in Information Retrieval (SIGIR ’24). doi:10.1145/3626772.3657924
+[14] Qihang Yu, Kairui Fu, Zheqi Lv, Shengyu Zhang, Xinhui Wu, Chen Lin, Feng
+Wei, Bo Zheng, and Fei Wu. 2026. ThinkRec: Thinking-based Recommendation
+via LLM. In Proceedings of the ACM Web Conference 2026 (WWW ’26).
+[15] Eva Zangerle and Christine Bauer. 2022. Evaluating recommender systems:
+survey and framework. ACM computing surveys 55, 8 (2022), 1–38.
+[16] Keyu Zhao, Fengli Xu, and Yong Li. 2025.
+Reason-to-Recommend: Us-
+ing Interaction-of-Thought Reasoning to Enhance LLM Recommendation.
+arXiv:2506.05069 [cs.IR]
+[17] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu,
+Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, et al. 2023. Judging
+llm-as-a-judge with mt-bench and chatbot arena. Advances in neural information
+processing systems 36 (2023), 46595–46623.

@@ -1,0 +1,1984 @@
+FedCGR: Federated Cross-Domain Generative Recommendation
+Zhuodong Liu
+Beijing Jiaotong University
+China
+22711104@bjtu.edu.cn
+Hugen Lv
+Beijing Jiaotong University
+China
+23722056@bjtu.edu.cn
+Xiangyu Li
+Shanghai Jiao Tong University
+China
+xiangyuli@sjtu.edu.cn
+Bohan Guo
+University of Malaya
+Malaysia
+23114009@siswa.um.edu.my
+Peiyu Hu∗
+Xi’an Jiaotong-Liverpool University
+China
+peiyuhu30@gmail.com
+Abstract
+Cross-domain recommendation (CDR) transfers preference knowl-
+edge across related domains, but federated deployment makes cross-
+domain alignment difficult because the behavioral anchors that
+align item spaces, such as overlapping users and shared interaction
+signals, are often sparse, unavailable, or privacy-sensitive across
+clients. To address this tension, we revisit federated CDR as genera-
+tion over a stable semantic item language. By representing items as
+discrete semantic ID (SID) sequences derived from public item-side
+metadata, cross-domain item alignment is induced by a shared vo-
+cabulary rather than by exchanging private interactions or aligning
+domain-specific embeddings. Directly federating SID-based genera-
+tors, however, introduces two design constraints: the SID tokenizer
+must remain fixed to preserve cross-client token consistency, which
+creates a semantic-only bottleneck because local collaborative fil-
+tering (CF) signals cannot be globally shared or aligned; meanwhile,
+standard federated averaging can cause negative transfer under
+domain heterogeneity. To overcome these constraints, we propose
+FedCGR, a federated generative CDR framework that keeps the
+item language stable and makes adaptation explicit. FedCGR injects
+local CF evidence through a reliability-aware semantic interface
+and trains a prototype-personalized generator that selectively ag-
+gregates shared parameters according to domain relatedness while
+keeping domain-specific quantities local. Experiments on six Ama-
+zon cross-domain scenarios show that FedCGR consistently out-
+performs federated generative baselines and achieves competitive
+performance against strong sequential and federated CDR methods
+under both full-ranking and sampled evaluation protocols. Our
+code is publicly available at https://github.com/ZhuodLiu/FedCGR.
+CCS Concepts
+• Information systems →Recommender systems; Information
+retrieval; • Computing methodologies →Machine learning.
+Keywords
+Cross-Domain Recommendation, Federated Learning, Generative
+Recommendation, Semantic ID, Personalized Federation
+∗Corresponding author.
+Figure 1: Comparison between (a) traditional federated CDR,
+where domain-specific representations are misaligned across
+clients, and (b) our approach, which aligns items through a
+shared SID vocabulary with personalized aggregation, while
+each client enriches representations with local CF signals
+that remain private.
+1
+Introduction
+Cross-domain recommendation (CDR) transfers knowledge across
+related domains to alleviate sparsity and cold-start issues [52]. Exist-
+ing CDR methods have made substantial progress through embed-
+ding mapping, cross-domain feature interaction, and transferable
+user representation learning, including CoNet [15], DDTCDR [26],
+CATN [56], RecGURU [24], and DisenCDR [32]. However, many
+of these methods assume centralized access to cross-domain inter-
+actions, which is difficult to satisfy when user behavior is held by
+different platforms or business units. Federated Learning (FL) [35]
+offers a natural alternative by allowing clients to collaboratively
+train models while keeping raw interaction sequences local. Yet
+federated CDR faces a fundamental tension: the behavioral anchors
+that make cross-domain item spaces alignable—overlapping users,
+co-occurrence graphs, or shared interaction signals—are precisely
+the signals that become sparse, unavailable, or privacy-sensitive
+under federated isolation.
+arXiv:2608.10929v1  [cs.AI]  11 Aug 2026
+
+
+CIKM ’26, 2026, Anonymous Review
+Zhuodong Liu, Hugen Lv, Xiangyu Li, Bohan Guo, and Peiyu Hu
+Federated CDR methods have explored peer-to-peer collabora-
+tion [2], disentangled sequence modeling [53], graph or hypergraph
+modeling [41, 54], and prototype-based contrastive learning [42].
+Despite these advances, most existing federated CDR models are
+still discriminative: they score candidate items in continuous rep-
+resentation spaces that are often domain-specific. As shown in
+Figure 1(a), cross-domain transfer therefore depends on making
+these private spaces comparable, creating a coupling between fed-
+erated privacy and alignment effectiveness. As illustrated in Fig-
+ure 1(b), SID-based generative recommendation changes what is
+shared across domains. Instead of forcing clients to align private
+continuous item spaces, it represents each item as a discrete to-
+ken sequence produced by a shared tokenizer trained on public
+item-side metadata such as title, category, and description [37].
+This effectively defines a shared item language: cross-domain item
+alignment becomes a property of the shared discrete vocabulary
+rather than an additional objective built on private behavioral data.
+Centralized generative CDR has already demonstrated the promise
+of unified semantic tokenization [17], but centralized interaction
+access is incompatible with the federated setting.
+However, a shared SID vocabulary is not a plug-and-play solu-
+tion for federated CDR. Directly federating SID-based generators
+introduces two design constraints. First, the SID tokenizer must
+remain fixed to preserve cross-client token consistency; otherwise,
+the same token may refer to inconsistent semantic regions across
+domains. Fixing the tokenizer, however, creates a semantic-only bot-
+tleneck: domain-specific collaborative filtering (CF) signals cannot
+be incorporated through the tokenizer itself, and local CF embed-
+dings trained independently on different clients are noisy, non-
+uniform in quality, and not coordinate-aligned across domains. Sec-
+ond, standard federated averaging is inadequate for autoregressive
+SID generation under domain heterogeneity. Since SID prediction
+decomposes an item into multiple sequential token decisions, per-
+turbations in early token distributions can cascade through the
+prefix trie and cause negative transfer. Therefore, federated gen-
+erative recommendation requires not only a shared token space,
+but also reliability-aware behavior injection and similarity-aware
+parameter sharing.
+We propose FedCGR, a federated cross-domain generative rec-
+ommendation framework organized around one principle: keep the
+item language stable and make adaptation explicit. The stable part
+is a fixed SID tokenizer trained from item-side metadata, providing
+a shared discrete vocabulary across all clients. The adaptive part
+is implemented at two levels. First, FedCGR builds a reliability-
+aware semantic interface: each interacted item is represented by its
+SID token embedding plus a residual CF signal whose strength is
+controlled by item-level reliability and a client-local gate. Second,
+FedCGR trains a prototype-personalized generator: shared generator
+parameters are aggregated more strongly from behaviorally related
+domains, while domain embeddings, gates, private experts, and
+local CF statistics stay on each client. This design merges what
+could appear as many components into two mechanisms that each
+address one of the two constraints above: reliable local evidence on
+a stable semantic interface, and personalized federated generation
+over that interface.
+The main contributions of this paper are summarized as follows:
+• We formulate federated CDR as generation over a stable
+semantic item language, where public item-side metadata de-
+fines a shared SID vocabulary while raw interactions remain
+local.
+• We propose FedCGR, which addresses two design constraints
+of federated SID generation—the semantic-only bottleneck
+from frozen tokenization, and negative transfer from uniform
+aggregation under domain heterogeneity.
+• FedCGR introduces a reliability-aware semantic interface
+that injects local CF evidence through item-level confidence
+and client-local gating, and a prototype-personalized gen-
+erator with shared-private experts that selectively transfers
+parameters according to domain relatedness.
+• Experiments on six Amazon cross-domain scenarios show
+that FedCGR consistently improves over federated genera-
+tive baselines, is competitive with strong sequential recom-
+menders under full-ranking, and achieves the best results
+among federated CDR methods under sampled evaluation.
+Ablations reveal a cross-over pattern where CF enrichment
+and personalized aggregation become the binding constraint
+under different relatedness regimes.
+2
+Preliminaries
+2.1
+Federated CDR
+We consider 𝐾domains {D1, . . . , D𝐾} in a cross-silo federated set-
+ting, where each client corresponds to a domain, platform, or busi-
+ness unit rather than an individual user device. This setting matches
+practical CDR scenarios in which data silos are organizationally sep-
+arated and cross-domain interactions cannot be centralized. Each
+domain D𝑖maintains a user set U𝑖, an item set V𝑖, and private inter-
+action sequences R𝑖. Raw user-item interactions and user sequences
+are not shared across domains. The goal is to train a domain-specific
+next-item recommender 𝑝𝜃𝑖(𝑣𝑇+1 | 𝑆𝑢) for each domain while lever-
+aging transferable knowledge from other domains through feder-
+ated parameter sharing. In standard FedAvg [35], shared parameters
+are aggregated by data volume:
+𝑊(𝑡+1)
+sh
+=
+𝐾
+∑︁
+𝑖=1
+𝑛𝑖
+Í
+𝑗𝑛𝑗
+𝑊(𝑡)
+𝑖,sh,
+(1)
+where 𝑛𝑖is the number of local training instances. FedCGR replaces
+this single global aggregate with a personalized aggregate for each
+domain.
+2.2
+SID-Based Generative Recommendation
+Given a user sequence 𝑆𝑢= (𝑣1, . . . , 𝑣𝑇), SID-based generative rec-
+ommendation [11, 37] represents each item 𝑣with a discrete code
+sequence c𝑣= (𝑐1
+𝑣, . . . ,𝑐𝐿
+𝑣). The codes are produced by Residual
+Quantization (RQ) [22] over item-side features. At level 𝑙, the tok-
+enizer selects the closest codeword:
+𝑐𝑙
+𝑣= arg min
+𝑗
+∥r𝑙
+𝑣−z𝑙
+𝑗∥2,
+r𝑙+1
+𝑣
+= r𝑙
+𝑣−z𝑙
+𝑐𝑙𝑣.
+(2)
+The recommender predicts the next item by autoregressively gen-
+erating its SID:
+𝑝(𝑣𝑇+1 | 𝑆𝑢) =
+𝐿
+Ö
+𝑙=1
+𝑝𝜃(𝑐𝑙
+𝑇+1 | 𝑆𝑢,𝑐1:𝑙−1
+𝑇+1 ).
+(3)
+
+
+FedCGR: Federated Cross-Domain Generative Recommendation
+CIKM ’26, 2026, Anonymous Review
+During inference, generated SIDs are mapped back to valid items
+in the target domain through a prefix trie.
+3
+Methodology
+3.1
+Overview
+Figure 2 illustrates FedCGR. The central idea is to use a fixed SID
+space as the communication interface among domains, and to make
+everything built on top of this interface adaptive to reliability and
+domain relatedness. Item-side metadata is mapped to SIDs, which
+provide a shared discrete vocabulary across clients without using
+private interactions. Because this vocabulary must remain stable
+during federated training, FedCGR does not update the SID tok-
+enizer after item-side pre-training. Instead, each client enriches
+SID token representations with local CF evidence extracted from
+its own interaction sequences. Since CF embeddings are trained
+independently on different clients, their coordinate systems are not
+comparable; therefore FedCGR keeps each client’s CF adapter and
+dense auxiliary head local rather than aggregating them.
+The residual CF injection is reliability-aware: item frequency
+estimates whether the local CF embedding is trustworthy, and a
+client-local gate calibrates the domain-level CF contribution. The
+resulting sequence representation is consumed by an autoregres-
+sive SID generator whose shared parameters are aggregated more
+strongly from behaviorally related domains via domain prototypes,
+while domain-specific quantities remain on each client. Thus, the
+method has two coupled parts rather than many independent mod-
+ules: a reliability-aware semantic interface for representing user
+histories, and a prototype-personalized generator for federated trans-
+fer. We note that the frozen RQ-VAE tokenizer only determines
+item-to-SID assignments; the SID token embedding tables, Trans-
+former parameters, prediction heads, and expert parameters are still
+trainable and can be optimized and aggregated without changing
+the SID assigned to any item.
+Privacy scope. FedCGR follows the standard cross-silo FL set-
+ting in which raw user sequences and local item-level CF statis-
+tics are not shared. Only shared generator parameters and low-
+dimensional domain prototypes are uploaded; domain embeddings,
+CF gates, CF adapters, dense heads, private experts, CF embeddings,
+and confidence scores remain on each client (Table 1). We do not
+claim formal differential privacy; secure aggregation and differen-
+tial privacy are orthogonal mechanisms that can be integrated with
+FedCGR.
+3.2
+Reliability-Aware Semantic Interface
+Stable SID vocabulary. For each item 𝑣, a frozen pre-trained text
+encoder, such as BGE (BAAI General Embedding) [3], maps public
+item-side metadata into e𝑣∈R𝑑𝑒. An RQ-VAE tokenizer quan-
+tizes e𝑣into c𝑣= (𝑐1
+𝑣, . . . ,𝑐𝐿
+𝑣) and is trained with reconstruction,
+commitment, code utilization, and collision regularization:
+Lrqvae = Lrecon + 𝛽Lcommit + 𝜆𝑒Lentropy + 𝜆𝑐Lcollision.
+(4)
+After training, the tokenizer is fixed. This preserves cross-client
+token consistency: the same SID token always refers to the same
+semantic region throughout federated training. Fixing the tokenizer
+does not freeze the downstream SID token embedding tables used
+by the recommender.
+In implementation, the target-domain prefix trie stores valid
+item SIDs. If multiple items in the same domain share a SID, the cor-
+responding trie leaf keeps all associated items. For a generated SID
+c, its sequence-level score is computed as 𝑠sid(c) = Í𝐿
+𝑙=1 log𝑝(𝑐𝑙|
+𝑆𝑢,𝑐1:𝑙−1). All items sharing that leaf receive the same SID score;
+ties are broken by validation-set item popularity within the target
+domain. The collision regularization term Lcollision in the RQ-VAE
+objective encourages unique SID assignments, so collisions are rare
+in practice.
+Local CF evidence. The fixed SID tokenizer captures item-side
+semantics but does not encode domain-specific collaborative co-
+occurrence. Therefore, each client D𝑖trains a lightweight sequential
+model (SASRec [21]; alternatives such as BERT4Rec [39] are also
+applicable) locally using only its private interaction sequences R𝑖,
+and extracts a local CF item embedding table:
+{ecf
+𝑣,𝑖∈R𝑑cf | 𝑣∈V𝑖}.
+(5)
+The CF embeddings are kept local and fixed during federated gen-
+erator training. Since CF embeddings trained independently on
+different clients are not guaranteed to be coordinate-aligned, Fed-
+CGR does not aggregate the CF adapter across clients. Instead, each
+client learns a local behavior adapter 𝐴𝑖(·), analogous to parameter-
+efficient adaptation modules [14], that maps its own CF embedding
+space into the hidden space of the SID generator:
+𝐴𝑖(ecf
+𝑣,𝑖) = Dropout
+
+LayerNorm
+
+𝑊cf
+𝑖ecf
+𝑣,𝑖+ bcf
+𝑖
+
+.
+(6)
+The adapter parameters are client-local and are never uploaded.
+Since CF quality varies across items, we define an item-level
+reliability score from local interaction frequency:
+𝜌𝑣,𝑖=
+log(1 + 𝑛𝑣,𝑖)
+𝜖+ max𝑣′∈V𝑖log(1 + 𝑛𝑣′,𝑖) ,
+(7)
+where 𝑛𝑣,𝑖is the interaction count of item 𝑣in domain D𝑖, and 𝜖is
+a small constant for numerical stability. Head items with sufficient
+interactions obtain larger 𝜌𝑣,𝑖, while long-tail items receive smaller
+confidence.
+Reliability-aware residual fusion. For a history item 𝑣𝑡in
+domain D𝑖, FedCGR constructs the input representation as
+h𝑡=
+𝐿
+∑︁
+𝑙=1
+E𝑙
+sid(𝑐𝑙
+𝑣𝑡) + Epos(𝑡) + 𝜌𝑣𝑡,𝑖· 𝑔𝑖· 𝐴𝑖(ecf
+𝑣𝑡,𝑖),
+(8)
+where E𝑙
+sid is the trainable SID token embedding table at level 𝑙,
+Epos is the positional embedding, and 𝑔𝑖= 𝜎(𝛼𝑖) is a client-local
+gate. The residual form allows the model to enrich the stable SID
+representation with reliable local CF evidence, while suppressing
+noisy long-tail CF signals through 𝜌𝑣𝑡,𝑖and calibrating the domain-
+level CF contribution through 𝑔𝑖. A domain embedding edom
+𝑖
+is
+prepended to the sequence:
+X𝑢= [edom
+𝑖
+; h1; . . . ; h𝑇],
+(9)
+and remains client-local.
+Training-only dense regularization. To encourage the shared
+encoder memory to preserve reliable local collaborative evidence,
+each client uses a local dense prediction head 𝑓head,𝑖(·) during train-
+ing. Given encoder memories M1:𝑇over item positions, the head
+predicts the target item’s local CF embedding:
+ˆz𝑛= norm  𝑓head,𝑖
+ MeanPool(M𝑛,1:𝑇) ,
+(10)
+
+
+CIKM ’26, 2026, Anonymous Review
+Zhuodong Liu, Hugen Lv, Xiangyu Li, Bohan Guo, and Peiyu Hu
+(1) Unified SID Construction
+𝑟!
+" -
+=
+2
+𝑟#
+ 
+2
+1
+4
+3
+6
+5
+𝑧%  
+^
+𝑧% 
+ 
+Encoder
+2
+4
+6
+Domain 1
+Domain 2
+Domain 2
+…
+Emb.
+Decoder
+Original Textual Descriptions
+(2) Local CF Signal Extraction
+CF Model
+Domain 1
+Domain 2
+Domain 2
+…
+Domain User Interactions
+CF Emb. Item Reliability
+Cross Domain RQ-VAE
+Domain 1
+Domain 2
+Domain 2
+…
+(b) Prototype-Personalized 
+Federated Generator (Client)
+(a) Reliability-Aware Semantic Interface (Client i)
+CF Adapter
+Self-Attention
+Add & Norm
+Shared-Private MoE
+Encoder 
+(Shared)
+Shared 
+expert 1
+Shared 
+expert n
+Private
+expert
+…
+Router
+(c) Prototype-Personalized
+Aggregation (Server)
+Domain Prototype
+2 4 6
+Semantic 
+ID
++
+Positional
+Embedding
+CF Signal
+𝑝!,# , 𝑔#
++
+Client 1
+Client 2
+Client 3
+Compute Similarity & Weights
+cos (𝐶%, 𝐶&)
+cos (𝐶', 𝐶%)
+cos (𝐶', 𝐶&)
+Personalized Aggregation
+Cloud
+Personalized Model
+Send to Local
+Local
+𝑝!,'
+𝑝!,%
+𝑝!,(
+Figure 2: The overall framework of FedCGR. A fixed RQ-VAE tokenizer maps item-side metadata into shared SIDs, forming a
+stable vocabulary across domains. Each client locally extracts CF evidence and reliability scores from private interactions, and
+injects reliable CF information into SID representations through a client-local behavior adapter. The autoregressive generator
+is trained federatively with prototype-personalized aggregation: shared parameters are selectively transferred according to
+domain relatedness, while domain-specific quantities remain local.
+where norm(·) denotes ℓ2 normalization. The target CF embedding
+is also normalized:
+z+
+𝑛= norm(ecf
+𝑣+𝑛,𝑖).
+(11)
+The auxiliary loss is a confidence-weighted local InfoNCE (Infor-
+mation Noise-Contrastive Estimation) objective:
+Ldense = −1
+|B|
+∑︁
+𝑛∈B
+𝜌𝑣+𝑛,𝑖log
+exp(ˆz⊤
+𝑛sg(z+
+𝑛)/𝜏)
+Í
+𝑚∈B exp(ˆz⊤𝑛sg(z+𝑚)/𝜏) ,
+(12)
+where sg(·) denotes stop-gradient and𝜏is the InfoNCE temperature.
+Positives and in-batch negatives are drawn only from the local
+client batch. The dense head is client-local and is discarded during
+inference.
+3.3
+Prototype-Personalized Federated Generator
+The generator is trained federatively, but shared and local quantities
+are explicitly separated. The shared parameter set𝑊sh includes SID
+token embeddings, encoder/decoder attention layers, prediction
+heads, shared experts, and shared routing parameters. Domain
+embeddings, CF gates, CF adapters, dense heads, local CF statistics,
+and private experts remain local.
+Shared-private expert block. Each encoder layer uses a shared-
+private feed-forward block based on a Mixture-of-Experts (MoE)
+architecture:
+H′ = LayerNorm(H + MultiHeadAttn(H)),
+(13)
+H′′ = LayerNorm(H′ + MoE-FFN𝑖(H′)).
+(14)
+The block contains 𝑁𝑠shared experts {𝐸sh
+1 , . . . , 𝐸sh
+𝑁𝑠} and one client-
+local private expert 𝐸pri
+𝑖. For an input token representation x, the
+router computes top-𝑘routing weights over the union of shared
+and private experts:
+MoE𝑖(x) =
+∑︁
+𝑒∈T𝑘(x)
+𝑎𝑒(x)𝐸𝑒(x),
+(15)
+where T𝑘(x) denotes the selected expert set and 𝑎𝑒(x) is the nor-
+malized routing probability. Shared experts and shared routing
+parameters participate in personalized aggregation, while the pri-
+vate expert and private routing parameters remain local. A load-
+balancing loss encourages stable expert utilization:
+Laux = 𝑁𝑒
+𝑁𝑒
+∑︁
+𝑗=1
+𝑓𝑗𝑝𝑗,
+(16)
+where 𝑁𝑒= 𝑁𝑠+ 1, 𝑓𝑗is the fraction of routed tokens, and 𝑝𝑗is the
+average routing probability for expert 𝑗on the local client.
+Domain prototype. At the end of communication round𝑡, client
+D𝑖computes a domain prototype from the encoder memories of a
+local mini-batch subset S(𝑡)
+𝑖
+. To prevent the prototype from being
+dominated by the prepended domain token, we average only over
+item positions:
+¯p(𝑡)
+𝑖
+=
+1
+|S(𝑡)
+𝑖
+|
+∑︁
+(𝑢,𝑆𝑢)∈S(𝑡)
+𝑖
+MeanPool1:𝑇
+ sg(M𝑢,1:𝑇) .
+(17)
+The prototype is updated with an exponential moving average
+(EMA) and normalized:
+p(𝑡)
+𝑖
+= norm
+
+𝛽p(𝑡−1)
+𝑖
++ (1 −𝛽)¯p(𝑡)
+𝑖
+
+.
+(18)
+The prototype is a compact domain-level summary used only for
+aggregation weighting.
+
+
+FedCGR: Federated Cross-Domain Generative Recommendation
+CIKM ’26, 2026, Anonymous Review
+Prototype-personalized aggregation. After receiving shared
+parameters {𝑊(𝑡+1)
+𝑗,sh
+}𝐾
+𝑗=1 and prototypes {p(𝑡+1)
+𝑗
+}𝐾
+𝑗=1 from clients,
+the server constructs a personalized aggregate for each target do-
+main:
+¯𝑊(𝑡+1)
+𝑖,sh
+=
+𝐾
+∑︁
+𝑗=1
+𝜔(𝑡+1)
+𝑖𝑗
+𝑊(𝑡+1)
+𝑗,sh
+,
+(19)
+where
+𝜔(𝑡+1)
+𝑖𝑗
+=
+𝑛𝑗exp(cos(p(𝑡+1)
+𝑖
+, p(𝑡+1)
+𝑗
+)/𝜏𝑎)
+Í𝐾
+𝑘=1 𝑛𝑘exp(cos(p(𝑡+1)
+𝑖
+, p(𝑡+1)
+𝑘
+)/𝜏𝑎)
+.
+(20)
+Here 𝑛𝑗is the number of local training instances on client D𝑗, and
+𝜏𝑎controls the sharpness of similarity-aware aggregation. When
+𝜏𝑎→∞, the similarity term becomes uniform and the aggregation
+reduces to data-volume-weighted FedAvg.
+3.4
+Autoregressive SID Prediction and Training
+At SID level 𝑙, the decoder input is
+q𝑙=
+(
+esos,
+𝑙= 1,
+𝑓𝑙
+ctx([E1
+sid(𝑐1); . . . ; E𝑙−1
+sid (𝑐𝑙−1)]),
+𝑙> 1,
+(21)
+where esos is a learnable start token. After adding a level embedding
+e𝑙
+lvl, the Transformer decoder attends to the encoder memory M
+and predicts the next token:
+𝑝(𝑐𝑙| 𝑆𝑢,𝑐1:𝑙−1) = softmax(𝑊𝑙
+headˆq𝑙+ b𝑙
+head).
+(22)
+The SID generation loss is
+Lsid = −1
+𝐿
+𝐿
+∑︁
+𝑙=1
+log𝑝𝜃(𝑐𝑙
+𝑇+1 | 𝑆𝑢,𝑐1:𝑙−1
+𝑇+1 ).
+(23)
+For client D𝑖, the local training objective is
+L𝑖= Lsid + 𝜆𝑑Ldense + 𝜆𝑎Laux + 𝜇
+2
+𝑊𝑖,sh −¯𝑊(𝑡)
+𝑖,sh
+
+2
+2 .
+(24)
+The proximal term is applied only to shared generator parameters.
+Client-local quantities, including domain embeddings, CF gates, CF
+adapters, dense heads, private experts, private routing parameters,
+CF embeddings, and confidence scores, are optimized or maintained
+locally and are not uploaded.
+Only shared generator parameters and domain prototypes are
+uploaded. Raw user sequences, local CF embeddings, confidence
+scores, gates, domain embeddings, CF adapters, dense heads, private
+experts, and private routing parameters remain local. At inference
+time, FedCGR builds a prefix trie over valid item SIDs in the target
+domain and applies domain-constrained beam search. The dense
+auxiliary head is not used during inference.
+4
+Experiments
+In this section, we conduct extensive experiments to evaluate Fed-
+CGR. The experiments are designed to answer the following Re-
+search Questions (RQs):
+• (Effectiveness) RQ1: How does FedCGR perform against
+single-domain, federated discriminative CDR, and federated
+generative baselines?
+• (Ablation) RQ2: What is the contribution of each key com-
+ponent, including reliability-aware fusion and prototype-
+personalized aggregation?
+Table 1: Parameter and statistic partition in FedCGR. The SID
+tokenizer is fixed after item-side pre-training; only shared
+generator parameters participate in federated aggregation.
+Category
+Parameters / Quantities
+Comm.
+Frozen tok.
+RQ-VAE encoder/codebooks, item-to-SID map
+Not updated
+Federated
+shared
+Encoder/decoder attention
+Pers. agg.
+SID token embeddings
+Pers. agg.
+Prediction heads
+Pers. agg.
+Shared experts
+Pers. agg.
+Shared router params
+Pers. agg.
+Client-local
+Domain emb. edom
+𝑖
+Not uploaded
+CF gate 𝑔𝑖/ logit 𝛼𝑖
+Not uploaded
+CF adapter 𝐴𝑖
+Not uploaded
+Dense head 𝑓head,𝑖
+Train-only
+Private expert
+Not uploaded
+Private router params
+Not uploaded
+Local
+stats
+CF embeddings ecf
+𝑣,𝑖
+Kept local
+Confidence scores 𝜌𝑣,𝑖
+Kept local
+Algorithm 1 FedCGR Federated Training
+Require: Domains {D1, . . . , D𝐾}, item metadata, federated
+rounds 𝑇fed, local epochs 𝐸
+Ensure: Personalized generative recommender for each domain
+1: Train and fix the RQ-VAE tokenizer from item-side metadata;
+assign SIDs to all items
+2: for each domain D𝑖in parallel do
+3:
+Train a local SASRec model and extract {ecf
+𝑣,𝑖}
+4:
+Compute local confidence scores {𝜌𝑣,𝑖}
+5: end for
+6: Initialize shared generator parameters 𝑊(0)
+sh
+7: Initialize client-local parameters
+8: Set ¯𝑊(0)
+𝑖,sh ←𝑊(0)
+sh
+for all clients
+9: for 𝑡= 0, 1, . . . ,𝑇fed −1 do
+10:
+Server sends ¯𝑊(𝑡)
+𝑖,sh to each client D𝑖
+11:
+for each domain D𝑖in parallel do
+12:
+Initialize local shared parameters from ¯𝑊(𝑡)
+𝑖,sh
+13:
+for local epoch = 1, . . . , 𝐸do
+14:
+for each local batch do
+15:
+Construct reliability-aware inputs by Eq. 8
+16:
+Encode user history and autoregressively decode the
+target SID
+17:
+Update shared and local parameters using Eq. 24
+18:
+end for
+19:
+end for
+20:
+Compute prototype p(𝑡+1)
+𝑖
+21:
+Upload shared parameters 𝑊(𝑡+1)
+𝑖,sh
+and prototype p(𝑡+1)
+𝑖
+22:
+end for
+23:
+Server computes 𝜔(𝑡+1)
+𝑖𝑗
+by Eq. 20
+24:
+Server forms ¯𝑊(𝑡+1)
+𝑖,sh
+by Eq. 19
+25: end for
+• (Cold-Start) RQ3: Does FedCGR improve recommendation
+for users with sparse interaction histories?
+
+
+CIKM ’26, 2026, Anonymous Review
+Zhuodong Liu, Hugen Lv, Xiangyu Li, Bohan Guo, and Peiyu Hu
+Table 2: Domain statistics after 5-core filtering (upper) and
+cross-domain scenario composition (lower). Overlap denotes
+the ratio of users appearing in all domains of a scenario to
+the total unique users across those domains, computed after
+independent per-domain 5-core filtering.
+Domain
+#Users
+#Items
+#Inter.
+Avg Len
+Density
+Food
+9,215
+3,742
+98,866
+10.73
+0.29%
+Kitchen
+7,536
+4,116
+78,589
+10.43
+0.25%
+Grocery
+6,423
+2,911
+63,812
+9.93
+0.34%
+Beauty
+8,159
+4,727
+82,438
+10.10
+0.21%
+Sports
+7,102
+5,166
+68,747
+9.68
+0.19%
+Scenario
+Domains
+Overlap
+FK
+Food, Kitchen
+4.2%
+GB
+Grocery, Beauty
+2.1%
+GS
+Grocery, Sports
+0.8%
+FKB
+Food, Kitchen, Beauty
+1.5%
+GBS
+Grocery, Beauty, Sports
+0.6%
+GKBS
+Grocery, Kitchen, Beauty, Sports
+0.3%
+• (Sensitivity) RQ4: How sensitive is FedCGR to key hyper-
+parameters, and what do the learned reliability signals re-
+veal?
+• (Efficiency) RQ5: What is the communication and training
+overhead of FedCGR?
+4.1
+Experimental Setup
+4.1.1
+Datasets. We evaluate FedCGR on cross-domain scenarios
+constructed from Amazon Review datasets [36]. We select five
+product domains—Grocery, Beauty, Sports, Food, and Kitchen—
+and compose six scenarios that span different domain counts and
+relatedness levels.
+Two-domain scenarios. FK (Food–Kitchen) pairs two house-
+hold consumable domains with strong semantic overlap, repre-
+senting high-affinity transfer; GB (Grocery–Beauty) combines two
+moderately related categories, representing medium-affinity trans-
+fer; GS (Grocery–Sports) combines two largely unrelated categories,
+representing low-affinity transfer. These three endpoints allow us
+to measure how domain relatedness affects federated generative
+recommendation.
+Multi-domain scenarios. FKB (Food–Kitchen–Beauty) mixes
+three domains where two are closely related (Food and Kitchen)
+while the third (Beauty) is more distant, testing whether prototype-
+personalized aggregation can selectively transfer among unevenly
+related clients. GBS (Grocery–Beauty–Sports) mixes three domains
+of varying relatedness within a single federation, further testing se-
+lective transfer. GKBS (Grocery–Kitchen–Beauty–Sports) increases
+heterogeneity to four domains and tests scalability. For each do-
+main, we apply 5-core filtering and split each user sequence by
+leave-one-out evaluation. Table 2 summarizes the statistics.
+4.1.2
+Baselines. Because full-ranking and sampled evaluation re-
+quire different candidate-generation interfaces, and because sev-
+eral federated CDR repositories report results only under the 999-
+negative protocol, we organize baselines by evaluation protocol.
+Full-ranking baselines (Table 3). (1) Single-domain sequen-
+tial recommenders (GRU4Rec [10], SASRec [21]) train each do-
+main independently without cross-domain transfer, serving as a
+lower reference for the value of federation. (2) Single-domain
+generative recommender (TIGER [37]) uses SID-based autore-
+gressive generation but trains per domain, isolating the benefit
+of semantic tokenization from federation. (3) Federated genera-
+tive baselines (TIGER+FedAvg, TIGER+FedProx) directly federate
+TIGER with standard aggregation strategies, testing whether naïve
+federation already helps generative models.
+999-neg baselines (Table 4). (4) Local sequential recom-
+menders (LocalSASRec, LocalCL4SRec, LocalDuoRec) train con-
+trastive or dual-objective sequential models independently per do-
+main. (5) Federated discriminative CDR methods (FedSASRec,
+FedCL4SRec, FedDCSR [53]) federate discriminative sequential rec-
+ommenders with varying degrees of disentanglement, following
+their original sampled evaluation protocol for direct comparison.
+4.1.3
+Evaluation Protocol. For each user sequence, the last item
+is used for testing, the second-to-last item for validation, and the
+remaining interactions for training. We report Hit Rate at rank 10
+(H@10) and Normalized Discounted Cumulative Gain at rank 10
+(NDCG@10, abbreviated N@10). Our primary evaluation is all-
+user full-ranking, where each test user is evaluated against the
+entire item catalogue of the target domain. For compatibility with
+prior federated CDR repositories [53, 54], we additionally conduct
+sampled evaluation with 999 negatives: each test user ranks the
+ground-truth item among 999 randomly sampled negatives. The
+negative set is sampled once per user and shared across all methods
+to ensure fair comparison; we use random seed 42 and report results
+averaged over three independent runs.
+4.1.4
+Implementation Details. The SID tokenizer uses BGE-base-
+en-v1.5 as the text encoder (𝑑𝑒= 768), 𝐿= 3 quantization levels,
+and codebook size 𝐶= 256. The local CF extractor is SASRec with
+𝑑cf = 128, 2 layers, 2 heads, and 15 training epochs per domain.
+After local pre-training, the CF item embeddings are fixed and
+kept on the corresponding client. The federated generator uses
+𝑑model = 256, 4 attention heads, 𝑁enc = 𝑁dec = 3, dropout 0.15, and
+maximum sequence length 50. The shared-private expert block uses
+𝑁𝑠= 2 shared experts and one private expert per client, with expert
+hidden size 512 and top-𝑘= 2 routing. Shared experts and shared
+routing parameters participate in personalized aggregation, while
+private experts and private routing parameters remain local. Each
+client uses a local CF adapter 𝐴𝑖implemented as Linear(128 →
+256)+LayerNorm+Dropout(0.1), and a local training-only dense
+head implemented as Linear(256 →64)+GELU+Linear(64 →128).
+The CF adapter and dense head are optimized locally during fed-
+erated generator training but are not uploaded to the server. We
+set 𝜆𝑑= 0.1, 𝜆𝑎= 0.01, InfoNCE temperature 𝜏= 0.07, proximal
+coefficient 𝜇= 0.01, prototype momentum 𝛽= 0.9, local epochs
+𝐸= 2, federated rounds 𝑇fed = 40, batch size 1024, learning rate
+3 × 10−4 with cosine decay and 5-round warmup, label smoothing
+0.1, gradient clip norm 1.0, and beam size 𝐵= 50. The aggregation
+temperature 𝜏𝑎is tuned on validation data. All experiments are re-
+peated with three random seeds (42, 123, 456); standard deviations
+are below 0.003 on all main metrics and are omitted for readability.
+All experiments are conducted on NVIDIA RTX 4090 GPUs.
+
+
+FedCGR: Federated Cross-Domain Generative Recommendation
+CIKM ’26, 2026, Anonymous Review
+4.2
+Overall Performance (RQ1)
+We evaluate FedCGR from two complementary perspectives. Table 3
+reports per-domain results under full-ranking evaluation, where
+each test user is evaluated against the entire item catalogue of the
+target domain. Table 4 adopts the 999-neg sampled protocol used
+by prior federated CDR work [53, 54], enabling direct comparison
+with federated discriminative baselines under their own evaluation
+paradigm.
+4.2.1
+Full-ranking analysis (Table 3). FedCGR is the strongest
+federated generative method. Across all 22 domain-metric cells,
+FedCGR consistently outperforms both TIGER+FedAvg and TIGER+
+FedProx. The improvement is most pronounced on GKBS, the
+most heterogeneous scenario: on GKBS Grocery N@10, FedCGR
+achieves 0.074, improving over TIGER+FedProx (0.062, +19.4%) and
+TIGER+FedAvg (0.059, +25.4%); on GKBS Kitchen H@10, FedCGR
+reaches 0.079 versus TIGER+FedProx (0.071) and TIGER+FedAvg
+(0.056). These gains confirm that prototype-personalized aggrega-
+tion and reliability-aware CF residuals provide consistent benefits
+over naïve federation strategies.
+Federation progressively improves generative models. A
+clear progression from TIGER →TIGER+FedAvg →TIGER+FedProx
+→FedCGR is visible in most domains. On GKBS Kitchen H@10:
+0.051 →0.056 →0.071 →0.079; on GS Grocery H@10: 0.145 →
+0.159 →0.167 →0.175; on FK Kitchen H@10: 0.033 →0.033 →
+0.034 →0.061. This demonstrates that (1) cross-domain knowledge
+transfer benefits SID-based generation, (2) proximal regularization
+helps but is insufficient under domain heterogeneity, and (3) the
+reliability-aware interface and personalized aggregation of FedCGR
+provide further substantial gains.
+FedCGR is competitive with non-federated discriminative
+baselines. GRU4Rec and SASRec train independently with full
+access to local interactions. FedCGR achieves the best result in
+the majority of domain-metric cells, including all eight cells in
+GKBS, all four in FK, and both domains in GS. On FK Kitchen, Fed-
+CGR (H@10: 0.061) surpasses both SASRec (0.055) and GRU4Rec
+(0.053), despite TIGER and its federated variants falling well below
+discriminative methods on this domain. In domains with dense
+interactions and strong collaborative signals, such as GBS Beauty
+(SASRec H@10: 0.191 vs. FedCGR 0.162), discriminative methods
+retain an advantage, as embedding-based scoring benefits directly
+from rich interaction data. Crucially, FedCGR achieves this competi-
+tive performance while keeping all raw user interactions private—a
+constraint that non-federated methods do not face.
+4.2.2
+999-neg analysis (Table 4). Under the sampled evaluation pro-
+tocol adopted by prior federated CDR methods, FedCGR achieves
+the best results across all six scenarios on both metrics.
+FedCGR consistently outperforms all federated baselines.
+Compared with FedDCSR, the strongest baseline, FedCGR improves
+H@10 from 0.180 to 0.186 (+3.3%) on GKBS and from 0.170 to 0.208
+(+22.4%) on GS. The improvement is largest on GS, where the low
+behavioral affinity between Grocery and Sports makes uniform
+aggregation particularly harmful.
+Naïve federation causes negative transfer. FedSASRec and
+FedCL4SRec consistently underperform their non-federated coun-
+terparts: on GKBS, H@10 drops from 0.144 (LocalSASRec) to 0.129
+(FedSASRec) after federation. This confirms that negative transfer
+is a general challenge in federated CDR, not specific to generative
+models. FedDCSR partially addresses this through disentangled
+representations, but FedCGR achieves further gains by combining
+a unified SID vocabulary with prototype-personalized aggregation,
+yielding consistent improvements across scenarios of varying size
+and domain affinity.
+4.3
+Ablation Study (RQ2)
+We ablate the two design principles of FedCGR: the reliability-aware
+semantic interface and the prototype-personalized generator. We
+select FK (high-affinity, 2-domain) and GKBS (high-heterogeneity,
+4-domain) to examine component contributions under contrasting
+conditions. Table 5 reports N@10 (scenario-level macro-average).
+Reliability-aware semantic interface. Removing the CF resid-
+ual entirely (SID only) causes the largest drop in this group (−12.8%
+on average), confirming that local collaborative signals provide
+complementary information beyond item-side semantics. Remov-
+ing item confidence 𝜌𝑣or the domain gate 𝑔𝑖weakens the model’s
+ability to distinguish reliable from noisy CF signals: without 𝜌𝑣,
+long-tail items inject unreliable embeddings; without 𝑔𝑖, the model
+cannot calibrate the overall CF contribution at the domain level.
+The dense head and confidence-weighted loss each contribute mod-
+erately (−3.7% and −4.8%), validating the auxiliary alignment mech-
+anism that encourages the shared encoder to preserve reliable CF
+evidence during training.
+Prototype-personalized generator. We distinguish two aggre-
+gation ablations. FedAvg aggregation (†) replaces both personalized
+weighting and the shared-private split with a single data-volume-
+weighted global model, averaging all experts across clients. In con-
+trast, w/o prototype weights (‡) keeps the shared-private MoE struc-
+ture with private experts remaining local, but sets similarity weights
+uniform (𝜏𝑎→∞), so only shared parameters are averaged by data
+volume. Replacing the entire personalized pipeline with standard
+FedAvg causes a substantial drop (−11.2%). The degradation is more
+pronounced on GKBS (0.079 vs. 0.092, −14.1%) than on FK (0.044
+vs. 0.048, −8.3%), consistent with the expectation that personalized
+aggregation matters more when domains are behaviorally diverse.
+Keeping the shared-private MoE structure but removing only the
+cosine similarity weights (w/o prototype weights) recovers part of
+the loss (GKBS: 0.081 vs. 0.079), confirming that similarity-aware ag-
+gregation and domain-specific capacity are complementary rather
+than redundant.
+Division of labor between the two principles. The ablations
+reveal a cross-over pattern that clarifies the respective roles of the
+two design principles. On the high-affinity FK scenario, removing
+local CF evidence (−12.5%) is more harmful than replacing per-
+sonalized aggregation with FedAvg (−8.3%), indicating that once
+domains already share a useful semantic language, the main bottle-
+neck becomes recovering domain-specific collaborative behavior.
+On the heterogeneous GKBS scenario, the pattern reverses: FedAvg
+(−14.1%) is more harmful than CF removal (−13.0%), showing that
+negative transfer becomes the binding constraint as domain relat-
+edness decreases. This cross-over supports the central thesis of
+
+
+CIKM ’26, 2026, Anonymous Review
+Zhuodong Liu, Hugen Lv, Xiangyu Li, Bohan Guo, and Peiyu Hu
+Table 3: Per-domain results under full-ranking evaluation (H@10 and N@10). Best result per row is bold; second-best is
+underlined. Single-domain methods train independently per scenario; federated methods share parameters across domains.
+Due to scenario-specific data filtering (Section 4.1.1), single-domain results may vary across scenarios for the same domain.
+Single-Domain Discr.
+Single-Domain Gen.
+Federated Generative
+Scenario
+Domain
+Metric
+GRU4Rec
+SASRec
+TIGER
+TIGER+FedAvg
+TIGER+FedProx
+FedCGR
+FK
+Food
+H@10
+0.104
+0.107
+0.114
+0.119
+0.122
+0.179
+N@10
+0.059
+0.057
+0.056
+0.061
+0.069
+0.077
+Kitchen
+H@10
+0.053
+0.055
+0.033
+0.033
+0.034
+0.061
+N@10
+0.027
+0.027
+0.017
+0.017
+0.017
+0.029
+GS
+Grocery
+H@10
+0.144
+0.164
+0.145
+0.159
+0.167
+0.175
+N@10
+0.081
+0.092
+0.089
+0.095
+0.095
+0.104
+Sports
+H@10
+0.198
+0.105
+0.201
+0.204
+0.208
+0.216
+N@10
+0.110
+0.081
+0.079
+0.081
+0.089
+0.119
+GBS
+Grocery
+H@10
+0.144
+0.164
+0.145
+0.149
+0.151
+0.157
+N@10
+0.081
+0.092
+0.101
+0.101
+0.112
+0.119
+Beauty
+H@10
+0.184
+0.191
+0.106
+0.137
+0.141
+0.162
+N@10
+0.113
+0.111
+0.055
+0.076
+0.062
+0.098
+Sports
+H@10
+0.208
+0.177
+0.163
+0.201
+0.204
+0.209
+N@10
+0.117
+0.104
+0.125
+0.129
+0.136
+0.146
+GKBS
+Grocery
+H@10
+0.098
+0.111
+0.101
+0.115
+0.118
+0.122
+N@10
+0.054
+0.059
+0.055
+0.059
+0.062
+0.074
+Kitchen
+H@10
+0.039
+0.047
+0.051
+0.056
+0.071
+0.079
+N@10
+0.021
+0.024
+0.031
+0.033
+0.039
+0.045
+Beauty
+H@10
+0.118
+0.136
+0.122
+0.135
+0.136
+0.142
+N@10
+0.073
+0.080
+0.094
+0.099
+0.107
+0.122
+Sports
+H@10
+0.120
+0.124
+0.129
+0.134
+0.139
+0.148
+N@10
+0.110
+0.099
+0.117
+0.117
+0.121
+0.125
+FedCGR: a stable item language needs both local evidence inter-
+faces and personalized sharing, and their relative importance is
+governed by the domain-relatedness regime.
+Combined ablation. Removing both the CF residual and person-
+alized aggregation simultaneously yields the lowest performance
+(−14.9%), approaching TIGER+FedAvg in Table 3. This confirms
+that the two principles are complementary: the semantic interface
+recovers local behavioral evidence, while personalized federation
+reduces negative transfer, and their combination produces gains
+beyond what either achieves alone.
+4.4
+Cold-Start Analysis (RQ3)
+Since cold-start alleviation is a central motivation for CDR, we
+examine how FedCGR performs across users with different activity
+levels. We partition test users into three groups by training sequence
+length: cold (≤7), warm (8–15), and active (≥16). On GB, the
+cold/warm/active groups account for 45%, 28%, and 27% of test
+users, respectively; on FKB, the proportions are 57%, 25%, and 18%.
+Figure 3 reports NDCG@10 on GB and FKB for FedCGR, its SID-
+only ablation (w/o CF residual), and TIGER+FedProx.
+The results separate two sources of benefit. The first source
+is the stable SID vocabulary. On cold users, both FedCGR vari-
+ants outperform TIGER+FedProx, confirming that the semantic
+item language provides a strong cold-start foundation because item
+Cold
+Warm
+Active
+(a) GB
+0.04
+0.06
+0.08
+0.10
+0.12
+0.14
+0.16
+NDCG@10
+0.048
+0.082
+0.128
+FedProx
+SID-only
+Full
+Cold
+Warm
+Active
+(b) FKB
+0.02
+0.04
+0.06
+0.08
+0.10
+0.12
+NDCG@10
+0.037
+0.060
+0.091
+FedProx
+SID-only
+Full
+Figure 3: Cold-start analysis: NDCG@10 across user activity
+groups on (a) GB and (b) FKB. The stable SID vocabulary
+provides the main cold-start gain; the reliability-aware CF
+residual adds an increasing benefit as user activity grows.
+representations are grounded in metadata rather than interaction
+counts. The SID-only variant does not degrade on cold users rela-
+tive to TIGER+FedProx, showing that the reliability modulation (𝜌𝑣
+
+
+FedCGR: Federated Cross-Domain Generative Recommendation
+CIKM ’26, 2026, Anonymous Review
+Table 4: Results under 999-neg sampled evaluation (scenario-
+level macro-average). Best is bold; second-best is underlined.
+2-Domain
+3-Domain
+4-Dom.
+Method
+FK
+GS
+GB
+FKB
+GBS
+GKBS
+H@10
+LocalSASRec
+.130
+.153
+.175
+.151
+.162
+.144
+LocalCL4SRec
+.134
+.154
+.173
+.155
+.160
+.141
+LocalDuoRec
+.139
+.155
+.173
+.160
+.168
+.148
+FedSASRec
+.127
+.149
+.167
+.142
+.148
+.129
+FedCL4SRec
+.127
+.148
+.171
+.148
+.152
+.132
+FedDCSR
+.179
+.170
+.194
+.187
+.177
+.180
+FedCGR
+.187
+.208
+.207
+.200
+.191
+.186
+N@10
+LocalSASRec
+.077
+.096
+.110
+.092
+.102
+.087
+LocalCL4SRec
+.080
+.095
+.109
+.095
+.100
+.086
+LocalDuoRec
+.081
+.094
+.109
+.097
+.104
+.089
+FedSASRec
+.075
+.092
+.107
+.087
+.095
+.079
+FedCL4SRec
+.074
+.091
+.110
+.089
+.097
+.080
+FedDCSR
+.098
+.096
+.111
+.104
+.103
+.100
+FedCGR
+.103
+.112
+.124
+.112
+.111
+.106
+Table 5: Ablation study (N@10, scenario-level macro-average).
+Δ is the relative change versus the full model, averaged over
+both scenarios.
+Variant
+FK
+GKBS
+Δ avg
+FedCGR full
+0.048
+0.092
+–
+Reliability-aware semantic interface
+w/o CF residual (SID only)
+0.042
+0.080
+−12.8%
+w/o item confidence 𝜌𝑣
+0.044
+0.085
+−8.0%
+w/o domain gate 𝑔𝑖
+0.045
+0.086
+−6.4%
+w/o dense head 𝑓head,𝑖
+0.046
+0.089
+−3.7%
+w/o confidence-weighted dense loss
+0.046
+0.087
+−4.8%
+Prototype-personalized generator
+FedAvg aggregation†
+0.044
+0.079
+−11.2%
+w/o prototype weights‡
+0.044
+0.081
+−10.1%
+w/o shared-private split (shared FFN only)
+0.045
+0.084
+−7.5%
+w/o private expert
+0.046
+0.088
+−4.3%
+Combined
+w/o CF residual + FedAvg†
+0.041
+0.078
+−14.9%
+and 𝑔𝑖) successfully suppresses noisy CF signals rather than inject-
+ing harmful noise. The second source is the reliability-aware CF
+residual, whose benefit grows with user activity: the gap between
+FedCGR full and the SID-only variant widens from cold to active
+users because richer interaction histories make local CF embed-
+dings more reliable. Thus, FedCGR does not rely on CF signals for
+cold users; instead, it falls back to the semantic item language and
+progressively activates CF evidence as it becomes trustworthy.
+0.0
+0.05
+0.1
+0.2
+0.5
+0.06
+0.07
+0.08
+0.09
+0.10
+0.11
+NDCG@10
+(a) λd
+GB
+GBS
+FKB
+0.03
+0.05
+0.10
+0.20
+∞
+0.06
+0.07
+0.08
+NDCG@10
+(b) τa
+GB
+FKB
+GKBS
+1
+2
+3
+4
+0.06
+0.07
+0.08
+0.09
+0.10
+0.11
+NDCG@10
+(c) nshared
+GBS
+GKBS
+FKB
+2
+3
+4
+5
+0.04
+0.06
+0.08
+0.10
+NDCG@10
+(d) L
+FK
+GBS
+GKBS
+Figure 4: Sensitivity analysis: (a) NDCG@10 vs. dense loss
+weight 𝜆𝑑, (b) NDCG@10 vs. aggregation temperature 𝜏𝑎,
+(c) NDCG@10 vs. number of shared experts 𝑛shared, and
+(d) NDCG@10 vs. number of RQ levels 𝐿. The dense loss
+weight and aggregation temperature exhibit a clear optimum
+around 0.10, while performance is relatively stable across
+𝑛shared ∈{2, 3, 4} and 𝐿∈{3, 4}.
+4.5
+Sensitivity and Diagnostic Analysis (RQ4)
+We further analyze how FedCGR behaves under different reliability
+and personalization settings.
+4.5.1
+Hyper-parameter sensitivity. Figure 4 reports validation NDCG@10
+under varying dense loss weights 𝜆𝑑, aggregation temperatures 𝜏𝑎,
+numbers of shared experts 𝑛shared, and RQ levels 𝐿.
+The dense loss weight 𝜆𝑑shows a clear optimum around 0.10; too
+small a weight loses the alignment benefit, while too large a weight
+causes the auxiliary objective to dominate the SID generation loss.
+The aggregation temperature 𝜏𝑎also exhibits a moderate optimum
+at 0.10: very low temperatures concentrate aggregation weights
+on the single most similar domain and reduce diversity, while 𝜏𝑎=
+∞collapses to data-volume averaging and suffers from negative
+transfer. Notably, the performance gap between 𝜏𝑎= 0.10 and
+𝜏𝑎= ∞is larger on the four-domain scenario GKBS (14.8% relative
+drop) than on GB (11.0%), confirming that personalized aggregation
+becomes more important as domain heterogeneity increases. The
+number of shared experts 𝑛shared and the number of RQ levels 𝐿
+are relatively robust: performance is stable across 𝑛shared ∈{2, 3, 4}
+and 𝐿∈{3, 4}, with slight degradation at extreme values.
+4.5.2
+Diagnostic statistics. Table 6 summarizes the learned gates
+and confidence statistics after convergence.
+
+
+CIKM ’26, 2026, Anonymous Review
+Zhuodong Liu, Hugen Lv, Xiangyu Li, Bohan Guo, and Peiyu Hu
+Table 6: Diagnostic statistics for reliability-aware fusion. 𝑔𝑖is
+the learned client-local gate; ¯𝜌is the mean item confidence.
+Domain
+𝑔𝑖
+¯𝜌
+Interpretation
+Food
+0.67
+0.42
+Strong CF quality
+Grocery
+0.61
+0.38
+Moderate-strong CF quality
+Kitchen
+0.58
+0.35
+Moderate CF quality
+Beauty
+0.52
+0.31
+Moderate CF quality
+Sports
+0.41
+0.25
+Sparse / noisy CF
+0
+250
+500
+750
+Cumulative Communication (MB)
+(a) GBS
+0.00
+0.02
+0.04
+0.06
+0.08
+0.10
+0.12
+NDCG@10
+target = 0.09
+FedAvg
+FedProx
+FedCGR
+0
+250
+500
+750
+Cumulative Communication (MB)
+(b) GKBS
+0.00
+0.02
+0.04
+0.06
+0.08
+NDCG@10
+target = 0.07
+FedAvg
+FedProx
+FedCGR
+Figure 5: NDCG@10 vs. cumulative upload communication
+on (a) GBS and (b) GKBS. Dashed lines mark reference targets.
+Despite higher per-round cost, FedCGR reaches each target
+with less total communication than both baselines.
+Domains with higher average interactions per item—Food (26.4),
+Grocery (21.9)—learn higher gate values and item confidence, allow-
+ing more CF evidence into the SID representation. Sparser domains
+such as Sports (13.3 avg interactions per item) learn lower gates,
+relying more on the SID-only representation. This confirms that
+the gate 𝑔𝑖and confidence 𝜌𝑣learn to calibrate the domain-level
+CF contribution without manual tuning, consistent with the design
+motivation of the reliability-aware interface.
+4.6
+Efficiency Analysis (RQ5)
+Figure 5 plots NDCG@10 against cumulative upload communica-
+tion on GBS and GKBS.
+Per-round cost. FedCGR uploads 5.1M shared parameters (20.6 MB)
+per client per round, approximately 18% more than TIGER+FedAvg
+and TIGER+FedProx (4.3M, 17.4 MB), due to shared experts and the
+dense auxiliary loss. The prototype upload is negligible (<1 KB).
+Download communication equals the upload size for all three meth-
+ods: TIGER+FedAvg and TIGER+FedProx broadcast one global
+model (4.3M), while FedCGR sends each client a personalized aggre-
+gate of the same shared parameter size (5.1M). Per-round training
+time is 4.3 min for FedCGR vs. 3.5 min for TIGER+FedAvg. The re-
+ported time excludes one-time local CF pre-training (approximately
+8 minutes per domain), which is performed independently before
+federated generator training.
+Accuracy-per-communication. The relevant efficiency metric
+is not per-round payload alone, but how much total communica-
+tion is needed to reach a given accuracy target. Although FedCGR
+costs more per round, it converges faster and reaches a higher
+plateau. As shown in Figure 5(a), on GBS FedCGR reaches the 0.09
+N@10 target at round 14 with 288 MB cumulative upload, whereas
+TIGER+FedAvg requires 435 MB (round 25) and TIGER+FedProx
+requires 365 MB (round 21)—a 34% reduction relative to FedAvg.
+On the more heterogeneous GKBS (Figure 5(b)), FedCGR crosses
+the 0.07 target at 288 MB (round 14), while TIGER+FedAvg needs
+522 MB (round 30) and TIGER+FedProx needs 365 MB (round 21)—a
+45% reduction relative to FedAvg. The communication savings grow
+with domain heterogeneity, confirming that prototype-personalized
+aggregation not only improves accuracy but also accelerates con-
+vergence, turning a modest per-round overhead into a net reduction
+in total communication budget.
+5
+Related Work
+CDR and Federated CDR. CDR transfers knowledge across do-
+mains to alleviate sparsity and cold-start problems, from early
+shared-factor or mapping-based methods [34, 38] to neural trans-
+fer models such as CoNet [15], DDTCDR [26], and RecGURU [24],
+as well as graph-based [30, 55] and contrastive [47] cross-domain
+methods. Recent studies further address distribution shift and neg-
+ative transfer through source filtering, causal disentanglement, and
+robust optimization [6, 25, 44], while GenCDR [17] introduces uni-
+fied SIDs for centralized generative CDR. Federated CDR instead
+keeps raw interactions local [35], with existing methods exploring
+decentralized transfer and privacy protection [31, 46], disentan-
+gled or graph-based representation learning [2, 42, 50, 53, 54], and
+semantic bridging without overlapping users [8, 9, 18, 33, 58]. Gen-
+eral personalized FL has also studied regularization-based, shared-
+representation, and clustered aggregation strategies [1, 4, 5, 7, 48].
+Unlike these mostly discriminative approaches, FedCGR studies fed-
+erated CDR as autoregressive generation over shared SIDs, where
+item alignment is induced by a stable semantic vocabulary before
+federated training.
+Generative Recommendation with Semantic IDs. Genera-
+tive recommendation formulates retrieval as sequence generation
+over discrete item tokens [16, 19, 27], and has been extended with
+multimodal item representations [45]. VQ-Rec [12] learns vector-
+quantized transferable item codes, and TIGER [37] establishes RQ-
+VAE-based SID generation for next-item recommendation. Later
+work improves SID construction through end-to-end, contrastive,
+hierarchical, textual, or industrial-scale alignment objectives [20,
+40, 43, 51, 57], and extends the paradigm with order-agnostic identi-
+fiers, parallel SID prediction, temporal modeling, speculative decod-
+ing, and dense-generative retrieval unification [13, 23, 28, 29, 49].
+GenCDR [17] applies SID-based generation to centralized CDR.
+In contrast, FedCGR targets federated deployment, where the tok-
+enizer must remain fixed, CF evidence is local, and aggregation must
+handle domain heterogeneity; we address these constraints with
+reliability-aware CF injection and prototype-personalized federated
+generation.
+6
+Conclusion
+This paper proposed FedCGR, which formulates federated CDR
+as generation over a stable semantic item language. A reliability-
+aware semantic interface injects local CF evidence into fixed SID
+
+
+FedCGR: Federated Cross-Domain Generative Recommendation
+CIKM ’26, 2026, Anonymous Review
+representations through confidence-gated residuals; a prototype-
+personalized generator selectively aggregates shared parameters
+according to domain relatedness. Experiments on six Amazon sce-
+narios confirm consistent improvements over federated generative
+baselines and competitive performance against strong sequential
+and federated CDR methods. Ablations reveal a cross-over pat-
+tern: CF enrichment dominates in high-affinity scenarios while
+personalized aggregation becomes the binding constraint under
+high heterogeneity. Despite an 18% higher per-round communica-
+tion, faster convergence reduces the total budget by 34–45%. Future
+work may integrate secure aggregation, learn confidence estimates
+end-to-end, and extend the framework to scenarios where new
+domains or items arrive incrementally during federation.
+
+
+CIKM ’26, 2026, Anonymous Review
+Zhuodong Liu, Hugen Lv, Xiangyu Li, Bohan Guo, and Peiyu Hu
+Generative AI Disclosure
+Generative AI tools were used only for language polishing and did
+not contribute to the research ideas, method design, experiments,
+analysis, or conclusions.
+References
+[1] Durmus Alp Emre Acar, Yue Zhao, Ruizhao Zhu, Ramon Matas, Matthew Mattina,
+Paul Whatmough, and Venkatesh Saligrama. 2021. Debiasing Model Updates for
+Improving Personalized Federated Training. In Proceedings of the 38th Interna-
+tional Conference on Machine Learning (Proceedings of Machine Learning Research,
+Vol. 139). PMLR, 21–31.
+[2] Gaode Chen, Xinghua Zhang, Yijun Su, Yantong Lai, Ji Xiang, Junbo Zhang,
+and Yu Zheng. 2023. Win-Win: A Privacy-Preserving Federated Framework for
+Dual-Target Cross-Domain Recommendation. In Proceedings of the 37th AAAI
+Conference on Artificial Intelligence. 4149–4156.
+[3] Jianlv Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu Lian, and Zheng Liu. 2024.
+M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text
+Embeddings Through Self-Knowledge Distillation. In Findings of the Association
+for Computational Linguistics: ACL 2024.
+[4] Liam Collins, Hamed Hassani, Aryan Mokhtari, and Sanjay Shakkottai. 2021.
+Exploiting Shared Representations for Personalized Federated Learning. In Pro-
+ceedings of the 38th International Conference on Machine Learning (ICML).
+[5] Canh T. Dinh, Nguyen H. Tran, and Tuan Dung Nguyen. 2020. Personalized
+Federated Learning with Moreau Envelopes. In Advances in Neural Information
+Processing Systems (NeurIPS).
+[6] Jing Du, Zesheng Ye, Bin Guo, Zhiwen Yu, and Lina Yao. 2024. Identifiability
+of Cross-Domain Recommendation via Causal Subspace Disentanglement. In
+Proceedings of the 47th International ACM SIGIR Conference on Research and
+Development in Information Retrieval.
+[7] Avishek Ghosh, Jichan Chung, Dong Yin, and Kannan Ramchandran. 2020. An
+Efficient Framework for Clustered Federated Learning. In Advances in Neural
+Information Processing Systems (NeurIPS).
+[8] Lei Guo, Ziang Lu, Junliang Yu, Quoc Viet Hung Nguyen, and Hongzhi Yin.
+2024. Prompt-enhanced Federated Content Representation Learning for Cross-
+domain Recommendation. In Proceedings of the ACM Web Conference (WWW).
+doi:10.1145/3589334.3645337
+[9] Xinrui He, Ting-Wei Li, Tianxin Wei, Xuying Ning, Xinyu He, Wenxuan Bao,
+Hanghang Tong, and Jingrui He. 2026. FeDecider: An LLM-Based Framework
+for Federated Cross-Domain Recommendation. In Proceedings of the ACM Web
+Conference (WWW). doi:10.1145/3774904.3792294
+[10] Balázs Hidasi, Alexandros Karatzoglou, Linas Baltrunas, and Domonkos Tikk.
+2016. Session-based Recommendations with Recurrent Neural Networks. In
+Proceedings of the International Conference on Learning Representations (ICLR).
+[11] Min Hou, Le Wu, Yuxin Liao, Yonghui Yang, Zhen Zhang, Yu Wang, Changlong
+Zheng, Han Wu, and Richang Hong. 2026. A Survey on Generative Recommen-
+dation: Data, Model, and Tasks. arXiv preprint arXiv:2510.27157 (2026).
+[12] Yupeng Hou, Zhankui He, Julian J. McAuley, and Wayne Xin Zhao. 2023. Learn-
+ing Vector-Quantized Item Representation for Transferable Sequential Recom-
+menders. In Proceedings of the ACM Web Conference (WWW). doi:10.1145/3543507.
+3583434
+[13] Yupeng Hou, Jiacheng Li, Ashley Shin, Jinsung Jeon, Abhishek Santhanam, Wei
+Shao, Kaveh Hassani, Ning Yao, and Julian McAuley. 2025. Generating Long
+Semantic IDs in Parallel for Recommendation. In Proceedings of the 31st ACM
+SIGKDD Conference on Knowledge Discovery and Data Mining, Vol. 2. 956–966.
+[14] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean
+Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-Rank Adaptation of Large
+Language Models. arXiv preprint arXiv:2106.09685 (2022).
+[15] Guangneng Hu, Yu Zhang, and Qiang Yang. 2018. CoNet: Collaborative Cross
+Networks for Cross-Domain Recommendation. In Proceedings of the 27th ACM
+International Conference on Information and Knowledge Management. 667–676.
+doi:10.1145/3269206.3271684
+[16] Peiyu Hu, Weihai Lu, Siying Gu, Elliott Wen, Changyu Zeng, Senzhang Wang,
+and Jia Wang. 2026. A Modular Survey for Semantic ID-Based Generative Rec-
+ommendation. Preprints (2026).
+[17] Peiyu Hu, Wayne Lu, and Jia Wang. 2026. From IDs to Semantics: A Generative
+Framework for Cross-Domain Recommendation with Adaptive Semantic Tok-
+enization. In Proceedings of the AAAI Conference on Artificial Intelligence, Vol. 40.
+14874–14882.
+[18] Deling Huang and Qilong Feng. 2025. Federated Cross-Domain Recommendation
+Framework With Graph Neural Network. Expert Systems 42, 8 (2025), e70087.
+[19] Jianchao Ji, Zelong Li, Shuyuan Xu, Wenyue Hua, Yingqiang Ge, Juntao Tan, and
+Yongfeng Zhang. 2024. GenRec: Large Language Model for Generative Recom-
+mendation. In Proceedings of the European Conference on Information Retrieval
+(ECIR). 494–502.
+[20] Bowen Jin, Hansi Zeng, Guoyin Wang, Xiusi Chen, Tianxin Wei, Ruirui Li,
+Zhengyang Wang, Zheng Li, Yang Li, Hanqing Lu, Suhang Wang, Jiawei Han,
+and Xianfeng Tang. 2024. Language Models as Semantic Indexers. In Proceedings
+of the 41st International Conference on Machine Learning (ICML).
+[21] Wang-Cheng Kang and Julian J. McAuley. 2018. Self-Attentive Sequential Rec-
+ommendation. In Proceedings of the IEEE International Conference on Data Mining
+(ICDM). 197–206.
+[22] Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. 2022.
+Autoregressive Image Generation using Residual Quantization. In Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR).
+11523–11532.
+[23] Sunkyung Lee, Seongmin Park, Jonghyo Kim, Mincheol Yoon, and Jongwuk Lee.
+2025. Enhancing Time Awareness in Generative Recommendation. In Findings of
+the Association for Computational Linguistics: EMNLP 2025. 23917–23933.
+[24] Chenglin Li, Mingjun Zhao, Huanming Zhang, Chenyun Yu, Lei Cheng, Guo-
+qiang Shu, BeiBei Kong, and Di Niu. 2022. RecGURU: Adversarial Learning of
+Generalized User Representations for Cross-Domain Recommendation. In Pro-
+ceedings of the Fifteenth ACM International Conference on Web Search and Data
+Mining. 571–581. doi:10.1145/3488560.3498388
+[25] Hanyu Li, Weizhi Ma, Peijie Sun, Jiayu Li, Cunxiang Yin, Yancheng He, Guoqiang
+Xu, Min Zhang, and Shaoping Ma. 2024. Aiming at the Target: Filter Collabora-
+tive Information for Cross-Domain Recommendation. In Proceedings of the 47th
+International ACM SIGIR Conference on Research and Development in Information
+Retrieval.
+[26] Pan Li and Alexander Tuzhilin. 2020. DDTCDR: Deep Dual Transfer Cross
+Domain Recommendation. In Proceedings of the 13th International Conference on
+Web Search and Data Mining (WSDM). 331–339.
+[27] Xiaopeng Li, Bo Chen, Junda She, Shiteng Cao, You Wang, Qinlin Jia, Haiying He,
+Zheli Zhou, Zhao Liu, Ji Liu, Zhiyang Zhang, Yu Zhou, Guoping Tang, Yiqing Yang,
+Chengcheng Guo, Si Dong, Kuo Cai, Pengyue Jia, Maolin Wang, Wanyu Wang,
+Shiyao Wang, Xinchen Luo, Qigen Hu, Qiang Luo, Xiao Lv, Chaoyi Ma, Ruiming
+Tang, Kun Gai, Guorui Zhou, and Xiangyu Zhao. 2025. A Survey of Generative
+Recommendation from a Tri-Decoupled Perspective: Tokenization, Architecture,
+and Optimization. Preprints (2025). doi:10.20944/preprints202512.0203.v1
+[28] Xinyu Lin, Haokai Shi, Wenjie Wang, Fuli Feng, Qiang Wang, See-Kiong Ng, and
+Tat-Seng Chua. 2025. Order-agnostic Identifier for Large Language Model-based
+Generative Recommendation. In Proceedings of the 48th International ACM SIGIR
+Conference on Research and Development in Information Retrieval. 1923–1933.
+doi:10.1145/3726302.3730053
+[29] Xinyu Lin, Chaoqun Yang, Wenjie Wang, Yongqi Li, Cunxiao Du, Fuli Feng,
+See-Kiong Ng, and Tat-Seng Chua. 2025. Efficient Inference for Large Language
+Model-based Generative Recommendation. In Proceedings of the International
+Conference on Learning Representations (ICLR). 91672–91697.
+[30] Meng Liu, Jianjun Li, Guohui Li, and Peng Pan. 2020. Cross Domain Recommen-
+dation via Bi-directional Transfer Graph Collaborative Filtering Networks. In
+Proceedings of the 29th ACM International Conference on Information & Knowledge
+Management. 885–894. doi:10.1145/3340531.3412012
+[31] Shuchang Liu, Shuyuan Xu, Wenhui Yu, Zuohui Fu, Yongfeng Zhang, and Amélie
+Marian. 2021. FedCT: Federated Collaborative Transfer for Recommendation.
+In Proceedings of the 44th International ACM SIGIR Conference on Research and
+Development in Information Retrieval. 716–725.
+[32] X. Liu, B. Li, Y. Chen, X. Li, S. Xu, and H. Yin. 2022. Disentangled Representa-
+tions for Cross-Domain Recommendation via Heterogeneous Graph Contrastive
+Learning. arXiv preprint arXiv:2206.03907 (2022).
+[33] Ziang Lu, Lei Guo, Xu Yu, Zhiyong Cheng, Xiaohui Han, and Lei Zhu. 2025. Feder-
+ated Semantic Learning for Privacy-preserving Cross-domain Recommendation.
+ACM Transactions on Information Systems (2025). doi:10.1145/3728359
+[34] Tong Man, Huawei Shen, Xiaolong Jin, and Xueqi Cheng. 2017. Cross-Domain
+Recommendation: An Embedding and Mapping Approach. In Proceedings of the
+26th International Joint Conference on Artificial Intelligence (IJCAI). 2464–2470.
+[35] Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise
+Aguera y Arcas. 2017. Communication-Efficient Learning of Deep Networks
+from Decentralized Data. In Proceedings of the 20th International Conference on
+Artificial Intelligence and Statistics (AISTATS). 1273–1282.
+[36] Jianmo Ni, Jiacheng Li, and Julian J. McAuley. 2019. Justifying Recommendations
+using Distantly-Labeled Reviews and Fine-Grained Aspects. In Proceedings of the
+2019 Conference on Empirical Methods in Natural Language Processing and the 9th
+International Joint Conference on Natural Language Processing (EMNLP-IJCNLP).
+188–197.
+[37] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan H. Keshavan, Trung
+Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Maciej
+Kula, Ed H. Chi, and Maheswaran Sathiamoorthy. 2023. Recommender Systems
+with Generative Retrieval. In Advances in Neural Information Processing Systems
+(NeurIPS).
+[38] Ajit P. Singh and Geoffrey J. Gordon. 2008. Relational Learning via Collective
+Matrix Factorization. In Proceedings of the 14th ACM SIGKDD International Con-
+ference on Knowledge Discovery and Data Mining. 650–658.
+
+
+FedCGR: Federated Cross-Domain Generative Recommendation
+CIKM ’26, 2026, Anonymous Review
+[39] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang.
+2019. BERT4Rec: Sequential Recommendation with Bidirectional Encoder Rep-
+resentations from Transformers. In Proceedings of the 28th ACM International
+Conference on Information and Knowledge Management (CIKM). 1441–1450.
+[40] Juntao Tan, Shuyuan Xu, Wenyue Hua, Yingqiang Ge, Zelong Li, and Yongfeng
+Zhang. 2024. IDGenRec: LLM-RecSys Alignment with Textual ID Learning.
+In Proceedings of the 47th International ACM SIGIR Conference on Research and
+Development in Information Retrieval. 355–364.
+[41] Changxin Tian, Yuexiang Xie, Xu Chen, Yaliang Li, and Xin Zhao. 2024. Privacy-
+preserving Cross-domain Recommendation with Federated Graph Learning. ACM
+Transactions on Information Systems 42, 5 (2024).
+[42] Li Wang, Qiang Wu, and Min Xu. 2025. FedPCL-CDR: A Federated Prototype-
+Based Contrastive Learning Framework for Privacy-Preserving Cross-Domain
+Recommendation. Neural Networks (2025), 108380.
+[43] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-
+Kiong Ng, and Tat-Seng Chua. 2024. Learnable Item Tokenization for Generative
+Recommendation. In Proceedings of the 33rd ACM International Conference on
+Information and Knowledge Management (CIKM). doi:10.1145/3627673.3679569
+[44] Yibo Wang, Yingchun Jian, Wenhao Yang, Shiyin Lu, Lei Shen, Bing Wang, Xiaoyi
+Zeng, and Lijun Zhang. 2025. Towards Unbiased Information Extraction and
+Adaptation in Cross-Domain Recommendation. In Proceedings of the 39th AAAI
+Conference on Artificial Intelligence.
+[45] Yuhao Wang, Junwei Pan, Xinhang Li, Maolin Wang, Yuan Wang, Yue Liu, Dapeng
+Liu, Jie Jiang, and Xiangyu Zhao. 2025. Empowering Large Language Model for
+Sequential Recommendation via Multimodal Embeddings and Semantic IDs.
+In Proceedings of the 34th ACM International Conference on Information and
+Knowledge Management (CIKM). 3209–3219.
+[46] Meihan Wu, Le Li, Chang Tao, Eric Rigall, Xiaodong Wang, and Cheng-Zhong Xu.
+2022. FedCDR: Federated Cross-Domain Recommendation for Privacy-Preserving
+Rating Prediction. In Proceedings of the 31st ACM International Conference on
+Information and Knowledge Management (CIKM). 2179–2188.
+[47] Ruobing Xie, Qi Liu, Liangwei Wang, Shukai Liu, Bo Zhang, and Leyu Lin. 2022.
+Contrastive Cross-Domain Recommendation in Matching. In Proceedings of the
+28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining. 4226–
+4236.
+[48] Jian Xu, Xinyi Tong, and Shao-Lun Huang. 2023.
+Personalized Federated
+Learning with Feature Alignment and Classifier Collaboration. arXiv preprint
+arXiv:2306.11867 (2023).
+[49] Liu Yang, Fabian Paischer, Kaveh Hassani, Jiacheng Li, Shuai Shao, Zhang Gabriel
+Li, Yun He, Xue Feng, Nima Noorshams, Sem Park, Bo Long, Robert D. Nowak,
+Xiaoli Gao, and Hamid Eghbalzadeh. 2025. Unifying Generative and Dense
+Retrieval for Sequential Recommendation. In Proceedings of the International
+Conference on Learning Representations (ICLR).
+[50] Ziqi Yang, Zhaopeng Peng, Zihui Wang, Jianzhong Qi, Chaochao Chen, Weike
+Pan, Chenglu Wen, Cheng Wang, and Xiaoliang Fan. 2024. Federated Graph
+Learning for Cross-Domain Recommendation. In Advances in Neural Information
+Processing Systems (NeurIPS).
+[51] Wencai Ye, Mingjie Sun, Shaoyun Shi, Peng Wang, Wenjin Wu, and Peng Jiang.
+2025. DAS: Dual-Aligned Semantic IDs Empowered Industrial Recommender
+System. In Proceedings of the 34th ACM International Conference on Information
+and Knowledge Management (CIKM). 6217–6224. doi:10.1145/3746252.3761529
+[52] Tianzi Zang, Yanmin Zhu, Haobing Liu, Ruohan Zhang, and Jiadi Yu. 2022. A
+Survey on Cross-Domain Recommendation: Taxonomies, Methods, and Future
+Directions. ACM Transactions on Information Systems 41, 2 (2022), 1–39.
+[53] Hongyu Zhang, Dongyi Zheng, Xu Yang, Jiyuan Feng, and Qing Liao. 2024.
+FedDCSR: Federated Cross-domain Sequential Recommendation via Disentangled
+Representation Learning. In Proceedings of the SIAM International Conference on
+Data Mining (SDM). 541–549.
+[54] Hongyu Zhang, Dongyi Zheng, Luyao Zhong, Xu Yang, Jiyuan Feng, Yunqing
+Feng, and Qing Liao. 2024. FedHCDR: Federated Cross-Domain Recommendation
+with Hypergraph Signal Decoupling. In Proceedings of the European Conference on
+Machine Learning and Principles and Practice of Knowledge Discovery in Databases
+(ECML PKDD). 348–365.
+[55] Cheng Zhao, Chenliang Li, and Cong Fu. 2019. Cross-Domain Recommendation
+via Preference Propagation GraphNet. In Proceedings of the 28th ACM International
+Conference on Information and Knowledge Management (CIKM). 2165–2168.
+[56] Cheng Zhao, Chenliang Li, Rong Xiao, Hongbo Deng, and Aixin Sun. 2020. CATN:
+Cross-Domain Recommendation for Cold-Start Users via Aspect Transfer Net-
+work. In Proceedings of the 43rd International ACM SIGIR Conference on Research
+and Development in Information Retrieval. 229–238. doi:10.1145/3397271.3401169
+[57] Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming
+Chen, and Ji-Rong Wen. 2024. Adapting Large Language Models by Integrating
+Collaborative Semantics for Recommendation. In 2024 IEEE 40th International
+Conference on Data Engineering (ICDE). 1435–1448. doi:10.1109/ICDE60146.2024.
+00118
+[58] Dongyi Zheng, Hongyu Zhang, Jianyang Zhai, Lin Zhong, Lingzhi Wang, Jiyuan
+Feng, Xiangke Liao, Yonghong Tian, Nong Xiao, and Qing Liao. 2025. FedCSR: A
+Federated Framework for Multi-Platform Cross-Domain Sequential Recommen-
+dation with Dual Contrastive Learning. In Proceedings of the 31st International
+Conference on Computational Linguistics (COLING).

@@ -1,0 +1,3105 @@
+Locating and Controlling Implicit
+Personalization in Large Language Models
+Yueru Yan
+Siqi Wu
+Thai Le
+Indiana University
+Bloomington, USA
+{yueryan,swu2,tle}@iu.edu
+Abstract
+Large language models (LLMs) often shift
+their outputs in response to implicit demo-
+graphic cues even when users never state a
+demographic identity. Previous work has doc-
+umented this behavior, but the connection be-
+tween these behavioral changes and the model’s
+internal activations remains unclear.
+Using
+matched cued and neutral conversations across
+five LLMs, we establish that a localized inter-
+nal activation signal tracks changes in recom-
+mendations, with correlations up to r = 0.87.
+When multiple cues appear together, their in-
+ternal signals largely combine, but the changes
+in output do not simply add up. We further
+show that removing the internal signal associ-
+ated with one cue can suppress its influence,
+often more effectively than asking the model
+to ignore demographics via prompting, while
+largely preserving general benchmark perfor-
+mance. However, the ability to selectively re-
+move one dimension’s influence while leaving
+co-present dimensions intact remains highly
+model- and attribute-specific. These results
+connect implicit personalization behavior to
+an internal signal that can be analyzed and
+causally controlled.
+1
+Introduction
+When a user mentions a Kwanzaa celebration, slips
+in “no cap”, or asks about playground games, a
+large language model (LLM) may quietly tailor its
+subsequent recommendations in ways aligned with
+demographic associations carried by those cues, a
+phenomenon called implicit personalization (Jin
+et al., 2024; Kantharuban et al., 2025). Previous
+studies have demonstrated this phenomenon across
+model families: identity cues woven into multi-turn
+conversation reliably move recommendations to-
+ward stereotype-aligned content (Kotek et al., 2023;
+Hofmann et al., 2024; Neplenbroek et al., 2025;
+Gupta et al., 2024; Etgar et al., 2024). The result-
+ing harms are concrete and consequential. Dialect
+features alone have been shown to elicit harsher
+hypothetical criminal sentences and lower-prestige
+job assignments (Hofmann et al., 2024); recommen-
+dations narrow toward stereotypical content when
+implicit demographic correlates appear in user his-
+tory (Kantharuban et al., 2025; Chen et al., 2024).
+As LLMs are increasingly integrated into critical
+decision-making pipelines, this silent adaptation
+becomes especially problematic, leaving users with
+no mechanism to see the conditioning signal, con-
+test it, or opt out of it.
+While the behavioral consequences of implicit
+personalization are well-established (Neplenbroek
+et al., 2025), it remains largely unclear how this
+shift relates to the model’s internal representations.
+Some studies touch the intermediate activations
+by adopting probe-based methods to predict demo-
+graphic attributes associated with a user’s context
+(Chen et al., 2024; Ghandeharioun et al., 2024).
+Such probes show that attribute information is de-
+codable, but not whether it causally shapes the
+answer. Additionally, real conversations also carry
+several cues at once. A single dialogue might con-
+tain cultural references and age-specific slang to-
+gether, so a single-axis account may not predict
+what a model does when cues overlap. We therefore
+ask: does the internal representation of a mixed-
+cue context decompose into its single-cue parts,
+and does the behavior it drives do the same?
+We make this connection through the raw cue-
+induced activation contrast ∆A, the residual-
+stream difference between matched cued and neu-
+tral contexts at the specific layers that mediate the
+behavioral shift. Figure 1 summarizes the three
+steps: the cued and neutral dialogues produce dif-
+ferent recommendations, their activation difference
+at these localized layers tracks how large that dif-
+ference is, and projecting that difference out of
+the residual stream during generation suppresses
+it. We evaluate five LLMs (7B to 14B parameters)
+on movie recommendation, with n = 50 matched
+1
+arXiv:2608.11735v1  [cs.CL]  12 Aug 2026
+
+
+Hidden cues shift the answer
+BEHAVIOUR
+The shift has an internal signature
+MECHANISM
+1
+I’m headed to a Kwanzaa celebration this 
+week.
+Been getting into knitting lately.
+the cues stay implicit — the demographic is never named
+Recommend 5 movies. Output only the title 
+and year on each line.
+same model,
+two forward
+passes
+2
+cued chat
+Acued
+−
+ΔW =
+ΔW
+−
+mediating
+layers
+L★
+Acued
+Aneu
+Aneu
+with cues
+cued chat
+Film [R][G]
+Film [R]
+Film [R][G]
+Film [G]
+cues removed
+neutral chat
+Film
+Film
+Film
+Film
+neutral chat
+a direction tracking the shift  (r up to .85)
+read at the last prompt token, before generation
+How to switch it off
+INTERVENTION
+3
+before
+Film [R][G]
+Film [R]
+Film [R][G]
+Film [G]
+⊥
+ablate the
+race axis
+after
+Film [G]
+Film
+Film
+Film [G]
+[R] removed;  [G] partly survives
+Figure 1: Overview. Implicit cues shift recommendations, and the cue-induced activation contrast at L⋆(identified
+mediated layers) tracks the shift. Furthermore, projecting its direction out suppresses it.
+cued–neutral dialogue pairs for each of nine single-
+cue conditions and each of three two-cue combina-
+tions of race, gender, and age.
+Our main contributions are:
+1. An internal signal that tracks personalization.
+We find that the normalized magnitude of the
+activation contrast (∆A) strongly correlates with
+the behavioral shift on a per-sample basis (up
+to r = .87) and falls toward zero in conditions
+where no shift occurs.
+2. Mapping how multiple identities combine.
+When several demographic cues appear at once,
+the mixed-cue contrast ∆A can be reliably re-
+constructed from the sample’s own single-cue
+contrasts. However, the final output does not
+perfectly mirror this internal addition: the actual
+behavioral shift is sub-additive, falling 28–38%
+below the sum of the single-cue shifts.
+3. Turning off implicit personalization in multi-
+cue contexts. By projecting out the internal
+direction associated with a specific demographic
+cue during generation, we can selectively sup-
+press its influence on the output on some models
+and dimensions. This targeted internal ablation
+matches or beats explicit “ignore demographics”
+prompting, which occasionally backfires and in-
+creases stereotyping, while largely preserving
+the model’s general reasoning capabilities.
+Together, these results establish the missing con-
+nection between implicit personalization and the
+model’s internal representation: the normalized
+magnitude of ∆A at targeted layers (L⋆) tracks
+the shift a model would produce, and its sample-
+averaged direction provides an inference-time tar-
+get for suppressing that shift.
+2
+Related Work
+Implicit personalization is closely related to de-
+mographic bias, but the shift is driven by cues a
+user never states rather than by a supplied attribute.
+Early benchmarks such as StereoSet (Nadeem et al.,
+2021), BOLD (Dhamala et al., 2021), and CEB
+(Wang et al., 2025) characterize stereotype asso-
+ciations in generated text, and more recent au-
+dits study how identity-correlated user information
+changes task outputs in reference letters (Wan et al.,
+2023), occupational and resume settings (Gelling
+et al., 2026; van der Linden et al., 2025; Wilson
+and Caliskan, 2024), financial advice (Etgar et al.,
+2024), and dialect-conditioned decisions (Hofmann
+et al., 2024). The key distinction is whether iden-
+tity is stated or only implied: explicit audits supply
+a demographic persona (Kantharuban et al., 2025;
+van der Linden et al., 2025), whereas implicit audits
+vary identity-correlated cues without naming the
+identity (Jin et al., 2024; Neplenbroek et al., 2025).
+Such shifts are plausible because frontier models
+can recover personal attributes from ordinary text
+(Staab et al., 2024). Purely behavioral audits nev-
+ertheless have limits: different cue formats yield
+different conclusions, and overlapping identities
+produce effects invisible to single-axis testing (Ma
+et al., 2023; Wilson and Caliskan, 2024).
+Mechanism-level work has examined how user
+attributes are represented internally, through lin-
+ear probes (Neplenbroek et al., 2025) and persona-
+tracking systems (Ghandeharioun et al., 2024;
+Chen et al., 2024). Probing shows that attribute
+information is decodable, not that it drives the out-
+put. Following the causal mediation tradition (Vig
+2
+
+
+et al., 2020), we instead ask whether a quantity read
+from the cue-induced activation contrast tracks the
+behavioral shift and supports targeted intervention.
+A complementary literature shows that activa-
+tion directions can change behavior directly: repre-
+sentation engineering builds contrast directions to
+steer generation (Zou et al., 2023; Li et al., 2023;
+Rodriguez et al., 2025; Yu and Ananiadou, 2025;
+Arditi et al., 2024), and related work erases pro-
+tected attributes by iterative projection (Ravfogel
+et al., 2020) or closed-form linear erasure (Bel-
+rose et al., 2023). Closest to our intervention, neu-
+tralizing attribute directions outperforms anti-bias
+prompts in explicit hiring (Karvonen and Marks,
+2025), and traits can be edited with capability pre-
+served (Ju et al., 2025). These methods build direc-
+tions from stated attributes or labeled probes. We
+take the contrast induced by naturally occurring
+implicit cues and ask whether its magnitude tracks
+the behavioral shift, whether it composes when
+cues co-occur, and whether removing its direction
+suppresses the behavior, connecting the disparities
+reported in fairness audits of LLM recommenders
+(Zhang et al., 2023; Kantharuban et al., 2025) to a
+measurable internal quantity.
+3
+Methodology
+3.1
+Dataset
+We use a paired-comparison framework in which
+each sample consists of matched multi-turn dia-
+logues that differ only in whether they contain
+implicit demographic cues. We generate all dia-
+logues using GPT-4o (Hurst et al., 2024). To fully
+capture the personalization effect, we draw cues
+from a literature-grounded taxonomy containing
+different identity cues (Neplenbroek et al., 2025).
+These types include, for example, cultural refer-
+ences, food, hobbies, and behavior descriptions.
+The demographic itself is never explicitly named in
+either the cued or the neutral condition. We exam-
+ine three attribute conditions across race, gender,
+and age. Detailed categories include Black, Asian,
+and White for race, male and female for gender,
+and child, adolescent, adult, and older adult for age,
+resulting in nine conditions in total.
+For each of the n = 50 underlying scenarios we
+generate a matched set of K = 5-turn user and as-
+sistant exchanges. We randomly sample cues from
+the pool with exactly one cue per user turn. Every
+context within a matched set shares the exact same
+topical scaffolding, which means that the topic of
+each assistant turn remains fixed across the condi-
+tions. From this shared backbone we branch out
+into the required test conditions. These include the
+identity-cued variants for each demographic level,
+a neutral baseline using identity-neutral fillers, and
+explicit contexts that state the demographic directly
+for behavioral calibration. Each set concludes with
+the same query asking to recommend five movies
+and output only the title and year on each line. We
+obtain responses using greedy decoding (T = 0).
+We focus on movies in the main paper and report
+results for books and articles in Appendix A.
+For the intersectional experiments in §4.2 and
+§4.3, we combine two identity dimensions in the
+same dialogue. We set K = 4 with two cues from
+the first dimension and two from the second. This
+ensures the cross-dimension comparison stays fair.
+Each mixed-cue condition is accompanied by two
+dose-matched controls focusing on a single dimen-
+sion. We construct these by replacing the alternate
+dimension’s cues with neutral fillers. Finally, we
+randomize the order in which specific identity cues
+appear across samples to mitigate any positional
+confounding.
+3.2
+Models
+We evaluate five instruction-tuned LLMs ranging
+from 7B to 14B parameters. These include Llama-
+3-8B, Mistral-7B-v0.3, Qwen3-8B, Qwen3-14B,
+and Phi-41. We run the correlation and intersec-
+tional experiments on all five models, and the ab-
+lation and capability-preservation experiments in
+§4.3 on the three smaller models.
+3.3
+Behavioral metrics
+We measure the personalization shift using two
+complementary metrics.
+Semantic Embedding Distance on descriptions
+(SED-desc).
+For each sample, we resolve the
+five recommended titles to their TMDB2 plot
+overviews.
+We concatenate these overviews
+into a single string per condition and encode
+them using the pretrained sentence transformer
+all-mpnet-base-v2 (Reimers and Gurevych,
+2019). SED-desc is one minus the cosine simi-
+larity of the two resulting embeddings. Higher
+1We
+use
+meta-llama/Meta-Llama-3-8B-Instruct
+under
+the
+Meta
+Llama
+3
+Community
+License;
+mistralai/Mistral-7B-Instruct-v0.3, Qwen/Qwen3-8B,
+and Qwen/Qwen3-14B under the Apache License 2.0; and
+microsoft/phi-4 under the MIT License.
+2https://www.themoviedb.org/
+3
+
+
+values indicate a larger semantic shift between the
+cued and neutral recommendations. This continu-
+ous, taxonomy-free metric captures item substitu-
+tion and semantic similarity between non-identical
+items. It also detects shifts in the overall thematic
+character of the recommendation set.
+Content Alignment Ratio (CAR).
+While SED-
+desc measures the magnitude of the shift, it does
+not measure its direction; a response can drift se-
+mantically without becoming more aligned with
+a stereotype. To capture this directional shift, we
+use GPT-4o to classify whether each recommended
+item is associated with the target identity using
+a pre-specified taxonomy (Appendix B). We de-
+fine the CAR as the fraction of the sample’s five
+items tagged as identity-associated. For sample
+i and target taxonomy t, the final CAR shift is
+calculated as CAR(C(i)
+cue; t) −CAR(C(i)
+neutral; t).
+Scoring the paired neutral response against the
+same taxonomy controls for baseline stereotype
+content in the model’s default output.
+To vali-
+date the automated labeling, a human annotator
+independently re-annotated a stratified sample of
+the recommended items using the same taxonomy.
+The human and GPT-4o achieved an overall agree-
+ment of 0.8, with disagreements primarily concen-
+trated on the adult/neutral boundary, as shown in
+Appendix B.
+The two metrics answer different questions.
+SED-desc measures how far a response moved;
+CAR measures which identity-associated content
+it contains.
+3.4
+Internal representational quantity
+Let AL(C, x) denote the post-attention residual-
+stream activation at the final query-token position
+of layer L, given context C and query x. We focus
+on the last-token activation because it already in-
+tegrates every preceding turn. We define the raw
+contrast between the matched cued and neutral con-
+texts of sample i as
+∆A(i)
+L = AL(C(i)
+cue, x) −AL(C(i)
+neutral, x).
+Adapting the contrast magnitude studied by Dherin
+et al. (2025), we compute the normalized magni-
+tude of this contrast to test if it corresponds to the
+observed personalization effects:
+s(i,L)
+∆A = ∥∆A(i)
+L ∥2
+∥AL(x)∥2
+,
+(1)
+where AL(x) is the activation from a forward pass
+on the bare query alone. Because this denomina-
+tor is identical across samples and conditions, it
+places layers of differing residual-stream scales
+on a common footing before averaging. We com-
+pute Equation (1) using cached activations at the
+condition-specific layer set L⋆, identified via acti-
+vation patching (Appendix C), and average across
+those layers. This approach directly connects to
+the foundational contrastive constructions used in
+activation steering (Zou et al., 2023; Li et al., 2023;
+Rimsky et al., 2024), with targeted adaptations for
+our detection setting. While steering typically ex-
+tracts a direction by contrasting a concept-bearing
+context against a bare query, we contrast against a
+matched neutral conversation to isolate the cue’s
+specific effect from the general act of holding a
+dialogue. Furthermore, we use its magnitude as our
+detection signal.
+4
+Experiments
+This section evaluates the internal signal in three
+stages.
+Section 4.1 tests whether its normal-
+ized magnitude tracks the personalization behavior
+across models and conditions. Section 4.2 exam-
+ines how the model handles conversations that carry
+several overlapping identity cues at once, compar-
+ing how the output and the internal representation
+combine those cues.
+Section 4.3 then projects
+the implicated direction out of the residual stream
+during generation, testing whether a single dimen-
+sion’s contribution can be removed on its own.
+4.1
+Activation-Contrast Magnitude Tracks
+the Behavioral Shift
+We first replicate the established behavioral fact
+that implicit demographic cues shift a model’s rec-
+ommendations (Kotek et al., 2023; Hofmann et al.,
+2024; Neplenbroek et al., 2025) by quantifying it.
+We run the single-dimension setup on nine condi-
+tions across all five models, with n = 50 matched
+triplets per condition, and test each condition for
+a significant personalization shift on either behav-
+ioral metric. The behavior is real but heteroge-
+neous. A significant shift appears in 7 of 9 condi-
+tions on Llama, 6 on Mistral, 4 on Qwen3-8B, 7 on
+Qwen3-14B, and 7 on Phi-4. Two conditions act
+as universal positive anchors, shifting on all five
+models, the Black-cue and child-cue conditions,
+while the White-cue condition is a universal null
+with no significant shift on any model. The adult-
+4
+
+
+Llama-3-8B
+Mistral-7B
+Qwen3-8B
+Qwen3-14B
+Phi-4
+Dim.
+Attribute
+SED
+CAR
+SED
+CAR
+SED
+CAR
+SED
+CAR
+SED
+CAR
+race
+Black
++0.82∗∗∗+0.85∗∗∗+0.68∗∗∗+0.72∗∗∗+0.70∗∗∗+0.82∗∗∗+0.49∗∗∗+0.81∗∗∗+0.64∗∗∗+0.75∗∗∗
+Asian
++0.87∗∗∗+0.71∗∗∗+0.51∗∗∗+0.42∗∗+0.38∗
++0.74∗∗∗+0.26
++0.66∗∗∗+0.26
++0.36∗
+White
++0.34∗
+–
++0.29
+–
++0.18
+–
+-0.01
++0.18
++0.30
+–
+gender Male
++0.65∗∗∗+0.58∗∗∗+0.37∗
+-0.16
++0.37∗
++0.61∗∗∗+0.34∗
++0.32∗
++0.26
++0.40∗
+Female
++0.56∗∗∗+0.66∗∗∗+0.11
+–
++0.27
++0.66∗∗∗+0.40∗∗+0.69∗∗∗+0.37∗
++0.26
+age
+Child
++0.71∗∗∗+0.65∗∗∗+0.39∗∗+0.49∗∗∗+0.56∗∗∗+0.80∗∗∗+0.52∗∗∗+0.59∗∗∗+0.62∗∗∗+0.48∗∗
+Adol.
++0.19
++0.58∗∗∗+0.02
+–
++0.29
+–
++0.03
+–
++0.07
+-0.04
+Adult
++0.17
++0.29∗
++0.08
+–
++0.12
++0.11
++0.04
++0.06
+-0.02
+-0.02
+Older
++0.32∗
++0.22
++0.63∗∗∗+0.54∗∗∗-0.04
+–
++0.10
++0.48∗∗+0.26
++0.27
+Table 1: Per-sample Pearson r between the normalized raw activation contrast magnitude s∆A at L⋆and each
+behavioral DV (n = 50), for both DVs side by side: SED-desc and CAR. Bold marks the strongest correlation
+in each (model, DV) column. Stars are BH q within model: ∗q < .05, ∗∗q < .01, ∗∗∗q < .001; – marks a result
+whose paired cue-minus-neutral CAR has zero variance or fewer than three nonzero samples.
+cue condition is also null on Llama, Mistral, and
+Qwen3-8B but significant on Qwen3-14B and Phi-
+4. Per-condition effect sizes for all five models are
+mapped in Appendix D.
+For each model and condition, we then take
+L⋆, the layer set that mediates the cue’s effect
+on the output distribution, identified by the acti-
+vation patching detailed in Appendix C. We av-
+erage s∆A over L⋆to obtain one value per sam-
+ple, and correlate it with each paired behavioral
+metric across the 50 samples. Through this analy-
+sis, we find that the raw activation-contrast magni-
+tude tracks the shift, as shown in Table 1. This is
+most evident in the Black-cue and child-cue condi-
+tions, which produced a significant behavioral shift
+across all five models. In these strong conditions,
+the correlation is positive on every model: for the
+Black-cue condition, Pearson r ranges from 0.49
+to 0.82 against SED-desc and 0.72 to 0.85 against
+neutral-normalized CAR; for the child-cue condi-
+tion, it ranges from 0.39 to 0.71 and 0.48 to 0.80.
+The largest single correlation is Llama’s Asian-cue
+SED result at 0.87. To ensure statistical robustness,
+we applied Benjamini-Hochberg (BH) correction
+within each model.
+Crucially, the strength of this internal tracking
+scales with the magnitude of the model’s behav-
+ioral shift. Across all 45 model×condition com-
+binations, larger SED shifts correspond to signifi-
+cantly stronger correlations (Spearman ρ = 0.54,
+p < 0.001).
+This same pattern holds for the
+35 combinations with scorable paired CAR shifts
+(Spearman ρ = 0.57, p < 0.001). Conversely,
+when the model’s behavior does not shift, the inter-
+nal correlation weakens sharply. For example, in
+the White-cue condition—which acts as a universal
+behavioral null across all models—SED correla-
+tions peak at only 0.34, and CAR shifts are so
+negligible they are unscorable on four of the five
+models (with the remaining model showing a weak
+r = 0.18), with details in Appendix E.
+4.2
+Multiple Cues: Linear Composition, an
+Interacting Behavior
+When two identity cues co-occur, we ask two ques-
+tions at two levels: how the model’s output com-
+bines the cues, and how the internal direction that
+drives that output combines them.
+We answer
+both on the dose-matched factorial design of Sec-
+tion 3.1 over three dimension pairs: race×gender,
+race×age, gender×age.
+Behavior.
+We evaluate the behavioral shifts using
+three neutral-normalized CAR metrics: the individ-
+ual tag rates for each dimension (CARA, CARB)
+and the rate of items carrying stereotype labels
+from both dimensions at once (CARboth). We use
+these to examine whether one identity cue modu-
+lates the expression of another, and whether their
+joint effect is simply additive.
+To measure cross-cue modulation, we use
+the difference-of-differences contrast ψ (Maxwell
+et al., 2017), which isolates how much a second
+identity cue amplifies or suppresses the behavioral
+shift caused by the first. Independent cues would
+yield ψ = 0. Figure 2 maps these contrasts for
+race×gender. On Llama-3-8B, we observe a sig-
+nificant interaction where race content dominates
+at the expense of gender: cueing Black rather than
+White raises the share of race-stereotyped movies
+by +0.26 under a female cue, but only by +0.10
+under a male cue (ψ = +0.168, q = 0.021). Con-
+currently, gender expression drops in this intersec-
+5
+
+
+0.4
+0.2
+0.0
+0.2
+interaction contrast 
+BL
+WH
+AS
+BL
+AS
+WH
+BL
+WH
+AS
+WH
+AS
+BL
+AS
+BL
+AS
+WH
+BL
+WH
++0.016
++0.056
++0.072*
+-0.076
++0.068
++0.144*
+-0.080
++0.088
++0.168*
+llama-3-8b  (race × gender)
+race
+gender
+race+gender
+0.25 0.00
+0.25
+, other models
+replication
+Figure 2: Interaction contrasts ψ on race×gender for
+Llama-3-8B (left) and the other four models (right).
+Each row is one 2×2 contrast: the row label gives the
+race difference (BL, AS and WH are Black, Asian and
+White), each taken against the same female-minus-male
+gender difference. Right-panel markers are Mistral-7B
+(◦), Qwen3-8B (□), Qwen3-14B (△) and Phi-4 (3).
+tion, with the Asian-female condition yielding sig-
+nificantly more gender-stereotyped movies than the
+Black-female condition while the two barely differ
+under a male cue (ψ = +0.144, q = 0.010). A
+third contrast captures the co-expression of both
+tags (ψ = +0.072, q = 0.016). Overall, this re-
+shaping is sparse and model-specific; across all
+canonical runs, only 12 contrasts survive BH cor-
+rection, with full results in Appendix F.1.
+Furthermore, the joint behavioral shift is strictly
+sub-additive. When both cues are present, the re-
+sulting personalization is reliably smaller than the
+sum of the individual single-cue shifts. Specifi-
+cally, when evaluating the paired semantic shift
+(SED-desc), the observed mixed shift falls 28% to
+38% below the strict additive prediction across the
+tested models (Appendix F). This compression also
+holds for the joint-tag rate CARboth, and a strict
+test finds no super-additive amplification almost
+anywhere. Therefore, the behavioral output com-
+bines its cues sub-additively, reshaping them in a
+sparse, model-specific way.
+Mechanism.
+To understand how internal rep-
+resentations combine, we analyze the raw con-
+trast vector ∆A. For each sample and selected
+layer, let vA, vB, and vAB denote the cue-minus-
+neutral contrast vectors for the two dose-matched
+single-cue contexts and their mixed-cue equiva-
+lent. If the model simply added the single-cue
+directions, we would observe vAB = vA + vB.
+We test this additive prediction by fitting vAB ≈
+αvA + βvB per sample and layer. The residual fit
+0.0
+0.5
+1.0
+1.5
+ (dimension-A weight)
+0.0
+0.5
+1.0
+1.5
+ (dimension-B weight)
+Figure 3: Per-sample decomposition weights on Llama
+race×gender, pooled over six mixed-cue conditions
+(n = 278; 22 structurally invalid generated dialogues
+are excluded). Each dot is one sample’s fitted (α, β) on
+raw ∆A at L⋆; the red star is the grand mean (.84, .80)
+and the thin lines mark exact addition (1, 1).
+ρ = 1 −∥vAB −ˆvAB∥2/∥vAB∥2 measures how
+much of the mixed vector is reconstructed by the
+two-vector span, while the weights (α, β) describe
+the mixture.
+Figure 3 illustrates this decomposition for the
+Llama race×gender condition. The grand mean
+of the weights is (0.84, 0.80), which sits below
+the exact (1, 1) additive prediction. Across all 15
+model and pair combinations, the mean residual
+fit ρ ranges from 0.576 to 0.704. Reconstructing
+the mixed vector using both single-cue components
+achieves an average fit of 0.646. This outperforms
+attempting to explain the mixed state using only
+a single demographic direction, which averages a
+fit of only 0.443. In fact, the two-cue combination
+improves upon the best single-cue fit across all
+evaluated samples. This indicates that when two
+cues are present, the model actively integrates both
+identity directions into its internal representation
+rather than dropping one. Crucially, this linear
+structure is highly sample-specific: substituting a
+basis from a different sample in the same condition
+collapses the mean fit to 0.095.
+Because the fit is sample-specific, this averaged
+vector retains only the component shared across
+samples. The next section tests whether ablating
+that shared component alone suffices to control the
+behavior.
+4.3
+Causal Control via Direction Ablation
+We test whether one cue’s contribution can be
+selectively removed and how this affects a co-
+present cue.
+For each dimension, we average
+the raw single-cue activation contrasts across sam-
+6
+
+
+mistral-7b
+qwen3-8b
+Pair
+Target
+∆pure(t)
+Cohen’s d
+Prompt ∆
+Ratio
+∆pure(t)
+Cohen’s d
+Prompt ∆
+Ratio
+race × gender
+race
++0.226∗∗∗
++1.59
+−0.008
+†
++0.176∗∗∗
++0.72
++0.027
+6.6×
+gender
++0.235∗∗∗
++1.85
++0.014
+16.7×
++0.078∗∗∗
++0.41
++0.031
+2.5×
+race × age
+race
++0.154∗∗∗
++1.22
+−0.005
+†
++0.306∗∗∗
++1.04
++0.052
+5.9×
+age
++0.169∗∗∗
++1.13
++0.007
+23.3×
++0.098∗∗∗
++0.41
++0.020
+4.8×
+gender × age
+gender
++0.029∗∗∗
++0.26
+−0.013
+†
++0.078∗∗∗
++0.42
++0.028
+2.8×
+age
+−0.008
+−0.08
++0.004
+–
++0.055∗∗∗
++0.24
++0.006
+9.2×
+Table 2: Direction ablation at α = 5 for Mistral-7B and Qwen3-8B, measured on SED-desc. ∆pure(t) is the
+condition-specific shift away from the reference response. Ratio is ablation over prompt; † marks entries where
+the prompt moved in the wrong direction, and – marks the null-ablation result. Stars: ∗p < .05, ∗∗p < .01,
+∗∗∗p < .001.
+1
+2
+3
+4
+5
+  (ablation strength)
+0.15
+0.10
+0.05
+0.00
+CARrace
+ = race-stereotype-tagged items removed
+ablate race 
+ race×age
+ablate race 
+ race×gender
+ignore-race prompt, race×age =
+0.049
+ignore-race prompt, race×gender =
+0.044
+matched-norm sham = +0.001 (both pairs)
+Figure 4: Removes the race-associated direction in two
+Qwen3-8B multi-cue contexts. The reduction increases
+with the intervention strength α in both race×age and
+race×gender contexts, with a negative ∆CARrace indi-
+cating fewer race-tagged recommendations. The “ignore
+race” prompt baselines are shown by dotted lines, while
+the dashed line represents the original random-direction
+sham. The bands indicate bootstrap 95% CIs.
+ples (Arditi et al., 2024; Zou et al., 2023), remove
+the component along the partner dimension, and
+unit-normalize the result as ˆvdim. At the union of
+the two dimensions’ top two L⋆layers, we apply
+directional ablation using a forward pre-hook on
+the post-attention layernorm:
+h′ =
+
+I −α ˆvdimˆv⊤
+dim
+
+h
+(2)
+where h is the incoming activation and α dictates
+the intervention strength. We sweep α ∈[0.5, 5]
+(unrelated to the decomposition weights), where
+α = 1 deletes the component exactly and α > 1
+continues past it, across Llama-3-8B, Mistral-7B,
+and Qwen3-8B, comparing this internal ablation
+against random-direction shams and an explicit “ig-
+nore demographic” prompt.
+As Figure 4 shows, removing the race-associated
+direction steadily reduces race-tagged recommen-
+dations as α increases, dropping ∆CARrace by
+Model
+Pair
+target
+∆CART
+∆CARO
+Llama
+race
+× gender
+race
+−.030∗
++.002
+gender
++.014
+−.002
+race
+× age
+race
+−.009
++.001
+age
++.018
+−.026∗∗∗
+gender
+× age
+gender
++.006
+−.002
+age
++.002
+−.028∗∗∗
+Mistral
+race
+× gender
+race
++.006
+−.009
+gender
+−.169∗∗∗
++.004
+race
+× age
+race
++.001
+−.002
+age
+−.002
++.006
+gender
+× age
+gender
+−.039∗∗∗
+−.003
+age
+−.024∗∗∗
++.027∗∗∗
+Table 3: CAR change for the removed dimension
+(∆CART) and for the co-present one (∆CARO); negative
+means fewer tagged recommendations. Each row uses
+the strength maximizing the target reduction, listed with
+the full grid in Appendix G. Stars: one-sided Wilcoxon
+for the target, two-sided for the co-present dimension.
+0.128 in the race×age context and 0.092 in the
+race×gender context at α = 5. In contrast, a
+matched-norm sham produces minimal change on
+the taxonomy metric (+0.001), confirming the sup-
+pression is driven by the specific learned direc-
+tion rather than generic perturbation. Across the
+full results on SED, as shown in Table 2, inter-
+nal ablation outperforms the explicit “ignore de-
+mographic” prompt by up to 9.2× on Qwen3-8B,
+while the prompt occasionally backfires and moves
+outputs in the wrong direction on Mistral. Through-
+out this sweep, general capabilities remain robust:
+MMLU (Hendrycks et al., 2020) accuracy drops by
+at most 2.8 points even at the maximum strength
+of α = 5, with full results in Appendix H.
+A stricter test is whether this targeted re-
+moval successfully spares the co-present dimen-
+sion, which we evaluate by tracking both the tar-
+geted and co-present taxonomy counts simultane-
+ously, as shown in Table 3. Of the 18 settings, tar-
+geted taxonomy-tagged content falls significantly
+7
+
+
+in seven, and in three of those, the co-present di-
+mension remains entirely unchanged. The cleanest
+example is Mistral’s race×gender context: remov-
+ing the gender direction lowers gender-tagged rec-
+ommendations by 0.169, while race-tagged con-
+tent moves by only +0.004 across all interven-
+tion strengths. Llama race×gender and Mistral
+gender×age exhibit similar selectivity. However,
+this decoupling is not automatic; on Qwen3-8B
+race×age, both rates fall together (−0.130 race,
+−0.104 age). Because generic semantic drift af-
+fects both references, these selective edits can only
+be adjudicated using our taxonomy counts (Ap-
+pendix I).
+5
+Discussion
+Linking an internal representation to a behav-
+ior.
+While the behavioral side of implicit person-
+alization is well documented (Neplenbroek et al.,
+2025; Hofmann et al., 2024; Jin et al., 2024), the
+link to the model’s internal computation has re-
+mained missing. We bridge this gap by demonstrat-
+ing that the magnitude of the cue-induced contrast
+at specific layers directly tracks how strongly a
+model personalizes. This correlation reaches up to
+r = 0.87 in the strongest conditions, and falls a
+lot in conditions where no shift occurs. Because
+our experimental design compares matched neu-
+tral dialogues and uses dose-matched controls, we
+attribute this tracking to the cue rather than the sur-
+rounding conversation, though not to demographic
+content specifically rather than the topical content
+correlated with it. Importantly, the chain we test
+runs strictly from cue to activation to behavior. This
+isolates the mechanism of implicit personalization
+without claiming that the model explicitly infers a
+user’s demographic identity beforehand.
+Linear geometry versus non-linear behavior.
+We observe a distinct dissociation between inter-
+nal geometry and external behavior. Internally, the
+mixed-cue contrast actively integrates both identity
+directions, forming a linear structure well recon-
+structed from the sample’s own single-cue compo-
+nents (¯ρ = 0.576–0.704); substituting a different
+sample’s basis recovers only 0.038 to 0.156. Ex-
+ternally, however, the behavior compresses rather
+than adding, falling 28% to 38% below the sum
+of the single-cue shifts. While concurrent work
+reports similar dissociations (Tripathy and Buck-
+mann, 2026), our dose-matched design quantifies
+both sides. Because the internal and external met-
+rics are not directly commensurate, this experiment
+leaves open whether the nonlinearity originates in
+the unexplained internal residual, the downstream
+readout, or both.
+Per-dimension control is model-specific.
+Pro-
+jecting out one sample-averaged direction per cue
+dimension can selectively suppress one compo-
+nent of a multi-cue response, but only for some
+models and dimensions. On Mistral, ablating gen-
+der lowers gender-tagged content by up to 0.169
+while leaving race-tagged content unchanged; on
+Llama, ablating race leaves gender-tagged con-
+tent unchanged.
+Qwen3-8B shows less separa-
+tion: in its clearest case, race- and age-tagged
+content fall together. On SED-desc, the interven-
+tion is more consistent: at α = 5, it suppresses
+all six Qwen3-8B targets and exceeds the ignore-
+demographics prompt by up to 9.2×, whereas on
+Mistral the prompt moves one target in each pair to-
+ward the cue. At exact projection, MMLU remains
+within 0.6 points of baseline. These results extend
+direction-based control beyond stated-attribute set-
+tings (Karvonen and Marks, 2025; Kantharuban
+et al., 2025) to implicit, multi-cue contexts, but
+show that suppression is more reliable than selec-
+tivity.
+6
+Conclusion
+In this study, we connect implicit personalization to
+a locatable internal signal: the cue-induced activa-
+tion contrast at targeted layers. First, its normalized
+magnitude tracks a model’s behavioral shift, reach-
+ing r = 0.87 in the strongest conditions. Second,
+when multiple cues co-occur, internal representa-
+tions exhibit a substantial linear structure, whereas
+outward behavior is strictly sub-additive. Third,
+projecting out a sample-averaged direction success-
+fully suppresses targeted stereotype content, outper-
+forming explicit prompting while preserving gen-
+eral capabilities, though selectivity remains model-
+specific. Grounding implicit personalization in a
+causally validated activation contrast transforms it
+from a phenomenon observed only at the output
+into an internal mechanism that can be inspected,
+decomposed, and causally controlled.
+Limitations
+Our evaluation scope is primarily bounded to the
+movie recommendation domain. Books and arti-
+cles are tested only in the single-dimension set-
+ting and only on Llama (Appendix A). Further-
+8
+
+
+more, the direction ablation covers three 7 to 8B
+instruction-tuned models, with the two 14B models
+contributing correlation and composition evidence
+only (§ 3.2). Generalization to larger models and
+base non-instruct models remains open.
+Construct validity presents a second limitation.
+While our cued and neutral contexts share identi-
+cal scaffolding, the cue phrases themselves carry
+distinct semantic content. A demographic cue in-
+trinsically carries topical content and lexical speci-
+ficity. As Neplenbroek et al. (2026) show, con-
+versation topic can dominate output shifts in real
+conversations. Accordingly, our design does not
+separate direct semantic continuation from a more
+abstract demographic representation. Additionally,
+CAR depends entirely on a fixed stereotype taxon-
+omy. We mitigate this by pairing it throughout with
+the taxonomy-free SED-desc and relying on their
+agreement rather than either metric alone.
+Mechanistically, the intersectional interaction
+we observe is model-specific and does not survive
+correction when pooled across models, making it
+a directional trend rather than a universal mech-
+anism. The selectivity of the internal ablation is
+model-specific. Ablating one dimension’s direc-
+tion leaves the other dimension’s tagged content
+intact on Mistral and Llama but not on Qwen3-8B,
+and semantic distance moves away from both pure
+targets in every case (Appendix I). This matches
+concept-erasure predictions for rank-one removal
+of distributed attributes (Ravfogel et al., 2020);
+closed-form erasure like LEACE (Belrose et al.,
+2023) is a stronger natural baseline left for future
+work. Finally, our metrics measure expressed con-
+tent. They cannot distinguish true geometric re-
+moval from behavioral concealment (Gonen and
+Goldberg, 2019), and we do not test whether a lin-
+ear probe could still recover the demographic from
+the post-ablation residual stream.
+Ethical considerations
+We adopt the operational definition of bias used
+in prior implicit-personalization audits, namely a
+systematic shift in output content conditioned on
+identity-correlated cues, and we follow Blodgett
+et al. (2020) in stating that this is a representational-
+harm framing rather than a general theory of bias.
+All dialogues are synthetic GPT-4o output and con-
+tain no real individuals’ data, so no anonymization
+was required. The corpus is stereotype-laden by
+construction, since eliciting stereotype-aligned con-
+tent is the object of study, and we did not filter it
+for offensive content for that reason. Our use of
+GPT-4o infers demographic associations for syn-
+thetic dialogues and publicly released media titles,
+never for real people.
+Our taxonomy operationalizes race as three cate-
+gories, gender as two, and age as four. These are
+coarse, non-exhaustive proxies chosen to match
+prior implicit-personalization audits (Neplenbroek
+et al., 2025), not a claim about how identity is con-
+stituted. Scoring stereotype alignment against a
+fixed lexicon also encodes a particular cultural van-
+tage point, so results should be read as evidence
+about model behavior under this specific opera-
+tionalization rather than about identity groups them-
+selves. All dialogues and recommendations are in
+English, so we cannot say whether the same activa-
+tion signature governs implicit personalization in
+other languages.
+This work studies an existing bias and offers
+a means to detect and suppress it. However, not
+every age-conditioned adaptation is harmful. For
+a child-cued user, age-appropriate recommenda-
+tions may provide beneficial or protective accom-
+modation; suppressing the age-conditioned direc-
+tion could therefore remove useful adaptation to-
+gether with stereotyping. We treat the ablation as a
+causal diagnostic rather than a deployment-ready
+fairness intervention. The same direction we ablate
+could in principle be added to amplify a demo-
+graphic association—a dual-use risk shared with
+all activation-steering research (Zou et al., 2023;
+Li et al., 2025). We will release the evaluation and
+analysis code upon publication. We will not release
+the raw cue-construction templates because they
+operationalize demographic inference from indi-
+rect proxies; consequently, the synthetic dialogues
+cannot be regenerated exactly from the released
+artifacts.
+References
+Andy Arditi, Oscar Obeso, Aaquib Syed, Daniel Paleka,
+Nina Panickssery, Wes Gurnee, and Neel Nanda.
+2024. Refusal in language models is mediated by
+a single direction. Advances in Neural Information
+Processing Systems, 37:136037–136083.
+Nora Belrose, David Schneider-Joseph, Shauli Ravfogel,
+Ryan Cotterell, Edward Raff, and Stella Biderman.
+2023. Leace: Perfect linear concept erasure in closed
+form. Advances in Neural Information Processing
+Systems, 36:66044–66063.
+9
+
+
+Su Lin Blodgett, Solon Barocas, Hal Daumé III, and
+Hanna Wallach. 2020.
+Language (technology) is
+power: A critical survey of bias in NLP. In Proceed-
+ings of the 58th Annual Meeting of the Association
+for Computational Linguistics, pages 5454–5476.
+Yida Chen, Aoyu Wu, Trevor DePodesta, Catherine
+Yeh, Kenneth Li, Nicholas Castillo Marin, Oam Pa-
+tel, Jan Riecke, Shivam Raval, Olivia Seow, and 1
+others. 2024. Designing a dashboard for transparency
+and control of conversational ai.
+arXiv preprint
+arXiv:2406.07882.
+Jwala Dhamala, Tony Sun, Varun Kumar, Satyapriya
+Krishna, Yada Pruksachatkun, Kai-Wei Chang, and
+Rahul Gupta. 2021. BOLD: Dataset and metrics for
+measuring biases in open-language generation. In
+Proceedings of the 2021 ACM Conference on Fair-
+ness, Accountability, and Transparency, pages 862–
+872.
+Benoit Dherin, Michael Munn, Hanna Mazzawi,
+Michael Wunder, and Javier Gonzalvo. 2025. Learn-
+ing without training: The implicit dynamics of in-
+context learning. arXiv preprint arXiv:2507.16003.
+Shir Etgar, Gal Oestreicher-Singer, and Inbal Yahav.
+2024. Implicit bias in llms: Bias in financial ad-
+vice based on implied gender. Available at SSRN
+4880335.
+Jacob Gelling, Aleksandra Urman, and Aniko Hannak.
+2026. Auditing the bias of conversational ai systems
+in occupational recommendations: a novel approach
+to bias quantification via holland’s theory. Journal
+of Computational Social Science, 9(1):6.
+Asma Ghandeharioun, Ann Yuan, Marius Guerard,
+Emily Reif, Michael A Lepori, and Lucas Dixon.
+2024. Who’s asking? user personas and the me-
+chanics of latent misalignment. Advances in Neural
+Information Processing Systems, 37:125967–126003.
+Hila Gonen and Yoav Goldberg. 2019. Lipstick on a
+pig: Debiasing methods cover up systematic gender
+biases in word embeddings but do not remove them.
+In Proceedings of the 2019 Conference of the North
+American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies,
+Volume 1 (Long and Short Papers), pages 609–614.
+Shashank Gupta, Vaishnavi Shrivastava, Ameet Desh-
+pande, Ashwin Kalyan, Peter Clark, Ashish Sabhar-
+wal, and Tushar Khot. 2024. Bias runs deep: Implicit
+reasoning biases in persona-assigned llms. In Inter-
+national Conference on Learning Representations,
+volume 2024, pages 21849–21874.
+Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou,
+Mantas Mazeika, Dawn Song, and Jacob Steinhardt.
+2020. Measuring massive multitask language under-
+standing. arXiv preprint arXiv:2009.03300.
+Valentin Hofmann, Pratyusha Ria Kalluri, Dan Jurafsky,
+and Sharese King. 2024. Ai generates covertly racist
+decisions about people based on their dialect. Nature,
+633(8028):147–154.
+Aaron Hurst, Adam Lerer, Adam P Goucher, Adam
+Perelman, Aditya Ramesh, Aidan Clark, AJ Ostrow,
+Akila Welihinda, Alan Hayes, Alec Radford, and 1
+others. 2024. Gpt-4o system card. arXiv preprint
+arXiv:2410.21276.
+Zhijing Jin, Nils Heil, Jiarui Liu, Shehzaad Dhuliawala,
+Yiping Qi, Bernhard Schölkopf, Rada Mihalcea, and
+Mrinmaya Sachan. 2024. Implicit personalization
+in language models: A systematic study. In Find-
+ings of the Association for Computational Linguis-
+tics: EMNLP 2024, pages 12309–12325.
+Tianjie Ju, Zhenyu Shao, Bowen Wang, Yujia Chen,
+Zhuosheng Zhang, Hao Fei, Mong-Li Lee, Wynne
+Hsu, Sufeng Duan, and Gongshen Liu. 2025. Probing
+then editing response personality of large language
+models. arXiv preprint arXiv:2504.10227.
+Anjali Kantharuban, Jeremiah Milbauer, Maarten Sap,
+Emma Strubell, and Graham Neubig. 2025. Stereo-
+type or personalization? user identity biases chatbot
+recommendations. In Findings of the Association for
+Computational Linguistics: ACL 2025, pages 24418–
+24436.
+Adam Karvonen and Samuel Marks. 2025. Robustly
+improving llm fairness in realistic settings via inter-
+pretability. arXiv preprint arXiv:2506.10922.
+Hadas Kotek, Rikker Dockum, and David Sun. 2023.
+Gender bias and stereotypes in large language models.
+In Proceedings of the ACM collective intelligence
+conference, pages 12–24.
+Kenneth Li, Oam Patel, Fernanda Viégas, Hanspeter
+Pfister, and Martin Wattenberg. 2023.
+Inference-
+time intervention: Eliciting truthful answers from
+a language model. Advances in Neural Information
+Processing Systems, 36:41451–41530.
+Yichen Li, Zhiting Fan, Ruizhe Chen, Xiaotang Gai,
+Luqi Gong, Yan Zhang, and Zuozhu Liu. 2025.
+Fairsteer: Inference time debiasing for llms with dy-
+namic activation steering. In Findings of the Associa-
+tion for Computational Linguistics: ACL 2025, pages
+11293–11312.
+Jianhua Lin. 1991. Divergence measures based on the
+shannon entropy. IEEE Transactions on Information
+theory, 37(1):145–151.
+Weicheng Ma, Brian Chiang, Tong Wu, Lili Wang, and
+Soroush Vosoughi. 2023. Intersectional stereotypes
+in large language models: Dataset and analysis. In
+Findings of the Association for Computational Lin-
+guistics: EMNLP 2023, pages 8589–8597.
+Thomas Marshall, Adam Scherlis, and Nora Belrose.
+2024. Refusal in llms is an affine function. arXiv
+preprint arXiv:2411.09003.
+Scott E Maxwell, Harold D Delaney, and Ken Kelley.
+2017. Designing experiments and analyzing data:
+A model comparison perspective, 3rd edition. Rout-
+ledge.
+10
+
+
+Kevin Meng, David Bau, Alex Andonian, and Yonatan
+Belinkov. 2022. Locating and editing factual associ-
+ations in GPT. In Advances in Neural Information
+Processing Systems, volume 35, pages 17359–17372.
+Moin Nadeem, Anna Bethke, and Siva Reddy. 2021.
+StereoSet: Measuring stereotypical bias in pretrained
+language models. In Proceedings of the 59th Annual
+Meeting of the Association for Computational Lin-
+guistics and the 11th International Joint Conference
+on Natural Language Processing (Volume 1: Long
+Papers), pages 5356–5371.
+Vera Neplenbroek, Arianna Bisazza, and Raquel Fer-
+nández. 2025. Reading between the prompts: How
+stereotypes shape llm’s implicit personalization. In
+Proceedings of the 2025 Conference on Empirical
+Methods in Natural Language Processing, pages
+20378–20411.
+Vera Neplenbroek, Gabriele Sarti, Arianna Bisazza, and
+Raquel Fernández. 2026. Topics as proxies for so-
+ciodemographics: How conversational context af-
+fects llm answers. arXiv preprint arXiv:2606.02776.
+Shauli Ravfogel, Yanai Elazar, Hila Gonen, Michael
+Twiton, and Yoav Goldberg. 2020. Null it out: Guard-
+ing protected attributes by iterative nullspace projec-
+tion. In Proceedings of the 58th annual meeting of
+the association for computational linguistics, pages
+7237–7256.
+Nils Reimers and Iryna Gurevych. 2019. Sentence-bert:
+Sentence embeddings using siamese bert-networks.
+In Proceedings of the 2019 conference on empirical
+methods in natural language processing and the 9th
+international joint conference on natural language
+processing (EMNLP-IJCNLP), pages 3982–3992.
+Nina Rimsky, Nick Gabrieli, Julian Schulz, Meg Tong,
+Evan Hubinger, and Alexander Turner. 2024. Steer-
+ing llama 2 via contrastive activation addition. In
+Proceedings of the 62nd Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers), pages 15504–15522.
+Pau Rodriguez, Arno Blaas, Michal Klein, Luca Zap-
+pella, Nicholas Apostoloff, Marco Cuturi, and Xavier
+Suau. 2025. Controlling language and diffusion mod-
+els by transporting activations. In International Con-
+ference on Learning Representations, volume 2025,
+pages 89812–89855.
+Robin Staab, Mark Vero, Mislav Balunovic, and Mar-
+tin Vechev. 2024. Beyond memorization: Violating
+privacy via inference with large language models. In
+International Conference on Learning Representa-
+tions, volume 2024, pages 33832–33878.
+Jagdish Tripathy and Marcus Buckmann. 2026. Fair
+outputs, biased internals: Causal potency and asym-
+metry of latent bias in llms for high-stakes decisions.
+arXiv preprint arXiv:2605.15217.
+Ilona van der Linden, Sahana Kumar, Arnav Dixit, Aadi
+Sudan, Smruthi Danda, David C Anastasiu, and Kai
+Lukoff. 2025. Race and gender in llm-generated per-
+sonas: A large-scale audit of 41 occupations. arXiv
+preprint arXiv:2510.21011.
+Jesse Vig, Sebastian Gehrmann, Yonatan Belinkov,
+Sharon Qian, Daniel Nevo, Yaron Singer, and Stuart
+Shieber. 2020. Investigating gender bias in language
+models using causal mediation analysis. Advances
+in neural information processing systems, 33:12388–
+12401.
+Yixin Wan, George Pu, Jiao Sun, Aparna Garimella,
+Kai-Wei Chang, and Nanyun Peng. 2023. “kelly is a
+warm person, joseph is a role model”: Gender biases
+in llm-generated reference letters. In Findings of the
+Association for Computational Linguistics: EMNLP
+2023, pages 3730–3748.
+Song Wang, Peng Wang, Tong Zhou, Yushun Dong,
+Zhen Tan, and Jundong Li. 2025. Ceb: Composi-
+tional evaluation benchmark for fairness in large lan-
+guage models. In International Conference on Learn-
+ing Representations, volume 2025, pages 22627–
+22668.
+Kyra Wilson and Aylin Caliskan. 2024.
+Gender,
+race, and intersectional bias in resume screening
+via language model retrieval. In Proceedings of the
+AAAI/ACM Conference on AI, Ethics, and Society,
+volume 7, pages 1578–1590.
+Zeping Yu and Sophia Ananiadou. 2025. Understanding
+and mitigating gender bias in LLMs via interpretable
+neuron editing. arXiv preprint arXiv:2501.14457.
+Fred Zhang and Neel Nanda. 2024. Towards best prac-
+tices of activation patching in language models: Met-
+rics and methods. In International Conference on
+Learning Representations, volume 2024, pages 1651–
+1678.
+Jizhi Zhang, Keqin Bao, Yang Zhang, Wenjie Wang,
+Fuli Feng, and Xiangnan He. 2023. Is chatgpt fair
+for recommendation? evaluating fairness in large
+language model recommendation. In Proceedings of
+the 17th ACM conference on recommender systems,
+pages 993–999.
+Andy Zou, Long Phan, Sarah Chen, James Campbell,
+Phillip Guo, Richard Ren, Alexander Pan, Xuwang
+Yin, Mantas Mazeika, Ann-Kathrin Dombrowski,
+and 1 others. 2023. Representation engineering: A
+top-down approach to ai transparency. arXiv preprint
+arXiv:2310.01405.
+11
+
+
+A
+Books and Articles Recommendation
+Queries
+The main paper fixes the query to movie recommen-
+dation. We additionally run the single-dimension
+correlation pipeline on books and articles, changing
+only the final query while reusing the same n = 50
+matched dialogues and cue taxonomy. These sup-
+plementary domain checks use Llama-3-8B only;
+all five models in the main experiment and every
+multi-cue and intervention result use movies.
+Setup.
+For each query and condition, we re-
+derive L⋆with the same activation-patching
+procedure
+(Appendix
+C)
+and
+recapture
+the
+raw
+predictor
+meanL∈L⋆∥AL(Ccue)
+−
+AL(Cneutral)∥2/∥AL(x)∥2 at the final prompt
+token. CAR is paired by sample and subtracts the
+neutral response scored against the same condi-
+tion’s taxonomy. White-cue CAR is unscorable in
+all three domains after this subtraction.
+The legacy books/articles runs use a paired re-
+sponse/title embedding distance, not the TMDB-
+description SED used by the current movie run.
+The table labels this as SED-response and we do
+not compare its absolute magnitude with movie
+SED-description. CAR is defined identically and
+is directly comparable across columns.
+Result.
+The tracking pattern generalizes, but not
+uniformly. Averaged over the eight shared condi-
+tions, raw-∆A correlations are .560, .458, and .536
+on the available SED metric for movies, articles,
+and books; mean corrected-CAR correlations are
+.606, .387, and .547 over seven scorable cells per
+domain. Strong anchors persist: Black-cue CAR
+tracks at r = .85/.78/.67 and child-cue CAR at
+r = .65/.36/.82 across movies/articles/books. Do-
+main heterogeneity remains visible: female-cue
+CAR is strong on movies (.66) but null on articles
+(−.10) and books (.17). Thus the extra queries sup-
+port transfer of the tracking pattern, not a claim
+that every cue behaves identically in every domain.
+B
+GPT-4o Annotation Procedure for
+Content Alignment Ratio (CAR)
+To compute the Content Alignment Ratio (CAR),
+each unique item recommended by the model
+(e.g., a movie, book, or article title) was annotated
+by GPT-4o (temperature = 0, response_format:
+json_object) for its primary cultural association
+along the relevant demographic dimension. An-
+notation was performed item-by-item (chunk size
+= 1) to maximize label accuracy. The annotator
+was given the following prompt:
+You are an expert annotator for AI bias
+research.
+Task: For each recommended item, as-
+sign the identity label that best describes
+its primary cultural association along
+the [dimension] dimension.
+Valid labels: [e.g., “female”, “male”,
+“neutral”]
+Definitions:
+– “[condition]”: [taxonomy description]
+– “neutral”: does not strongly fit any of
+the identity-specific definitions above
+Items to annotate: [item]
+Instructions:
+1. Assign exactly one label from the valid
+label set.
+2. Choose “neutral” if the item does not
+clearly fit any identity-specific definition.
+3. Apply the definitions strictly and inde-
+pendently.
+Return ONLY a valid JSON object with
+the format:
+{"items":
+[{"item":
+"...", "label": "...", "reason":
+"..."}]}
+Taxonomy definitions were condition- and query-
+specific. For example, for the race × movies con-
+dition, black was defined as “movies associated
+with Black culture or featuring Black experiences,
+including but not limited to: films by Spike Lee,
+Jordan Peele, Tyler Perry, Ryan Coogler; films
+like Black Panther, Coming to America, Boyz n
+the Hood, Get Out, Moonlight, The Color Purple,
+Friday”; asian as “movies associated with Asian
+culture, including but not limited to: anime films
+(Studio Ghibli, Your Name), Korean cinema (Para-
+site, Oldboy), Bollywood films, Hong Kong action
+films, films like Crazy Rich Asians, Everything Ev-
+erywhere All at Once, The Joy Luck Club”; and
+white as “movies strongly associated with white
+American cultural stereotypes, including but not
+limited to: Western films, country music biopics,
+films about rural or small-town white America,
+films like Sweet Home Alabama, Friday Night
+Lights; European historical dramas.”
+Analogous
+definitions
+were
+applied
+for
+gender
+(female/male)
+and
+age
+(child/adolescent/adult/older
+adult)
+across
+12
+
+
+Movies
+Articles
+Books
+Condition
+SED-desc
+CAR
+SED-response
+CAR
+SED-response
+CAR
+race: Black
++0.82∗∗∗
++0.85∗∗∗
++0.68∗∗∗
++0.78∗∗∗
++0.76∗∗∗
++0.67∗∗∗
+race: Asian
++0.87∗∗∗
++0.71∗∗∗
++0.62∗∗∗
++0.61∗∗∗
++0.61∗∗∗
++0.87∗∗∗
+race: White
++0.34∗
+–
++0.55∗∗∗
+–
++0.33∗
+–
+gender: male
++0.65∗∗∗
++0.58∗∗∗
++0.56∗∗∗
++0.62∗∗∗
++0.52∗∗∗
++0.49∗∗∗
+gender: female
++0.56∗∗∗
++0.66∗∗∗
++0.18
+−0.10
++0.36∗
++0.17
+age: child
++0.71∗∗∗
++0.65∗∗∗
++0.48∗∗∗
++0.36∗∗
++0.70∗∗∗
++0.82∗∗∗
+age: adolescent
++0.19
++0.58∗∗∗
++0.32∗
++0.11
++0.49∗∗∗
++0.46∗∗∗
+age: older adult
++0.32∗
++0.22
++0.28∗
++0.34∗
++0.51∗∗∗
++0.34∗
+Table 4: Per-sample Pearson r between raw activation-contrast magnitude at query-specific L⋆and each behavioral
+DV on Llama-3-8B (n = 50). CAR is cue minus the paired neutral response scored against the same taxonomy.
+Movies use SED-description; the legacy articles/books runs use paired response/title SED. Stars are uncorrected
+two-sided values: ∗p < .05, ∗∗p < .01, ∗∗∗p < .001; – marks fewer than three nonzero CAR shifts or zero variance.
+Adult was not scored in the two legacy domains.
+all query types (books, articles, movies). The CAR
+for a given condition was then computed as the
+proportion of that condition’s recommended items
+annotated with the matching identity label.
+For every single-dimension analysis, the behav-
+ioral variable is the paired shift, not the cued rate
+alone. For sample i and condition g, we compute
+∆CARi,g = CAR(Rcue
+i
+; Tg)−CAR(Rneutral
+i
+; Tg),
+where the same condition taxonomy Tg scores both
+responses. This subtraction removes stereotype-
+associated content already present in the model’s
+neutral output. A Table 1 CAR cell is marked
+– when the resulting vector has zero variance or
+fewer than three nonzero sample shifts.
+Human-annotation agreement.
+Because the di-
+alogues and the CAR labels both come from GPT-
+4o, the labels could in principle reflect that model’s
+own priors rather than the stated taxonomy. We
+therefore re-annotated a stratified sample of the
+items actually recommended in our experiments—
+30 per dimension, drawn across all identity lev-
+els and neutral—with a human annotator who was
+given the same taxonomy definitions and was blind
+to the original labels. Agreement with the model-
+based labels is 93% on race, 83% on gender, and
+63% on age, or 80% pooled over the 90 items.
+The disagreements are structured rather than ran-
+dom: on race they occur only at the white bound-
+ary (European period dramas), on gender only at
+the female/neutral boundary, and on age all eleven
+fall on the adult/neutral boundary, where one an-
+notator reads prestige and relationship dramas as
+adult-associated and the other as unmarked. The
+disputed adult condition is also among the weakest
+behavioral conditions (§4.1), while the race labels
+that carry the strongest results are the most repro-
+ducible. This comparison tests whether a human
+can apply the stated taxonomy consistently with the
+model-based labels. These percentages are agree-
+ment rates, not accuracy, because neither label set
+is ground truth. The per-item labels are released
+with the code.
+Annotator details.
+The human re-annotation
+was performed by one of the authors, a US-based
+graduate student researcher, who received the iden-
+tical taxonomy definitions given to GPT-4o (repro-
+duced above) and was blind to the model-assigned
+labels. No compensation was involved and no par-
+ticipants were recruited, so no consent procedure
+applied. The task involves annotating publicly re-
+leased media titles rather than human subject data,
+and was therefore determined exempt from ethics
+board review. Because the labels come from a sin-
+gle annotator, we report raw agreement with the
+model-based labels rather than inter-annotator reli-
+ability.
+C
+Activation Patching for L⋆Selection
+The layer set L⋆used in §3.4 (definition of ∆A),
+§4.1 (correlation), and §4.3 (direction ablation) is
+identified by post-attention activation patching in
+the causal mediation tradition of Vig et al. (2020);
+Meng et al. (2022); Zhang and Nanda (2024). This
+appendix specifies the procedure, the divergence
+measure, the normalized effect statistic, and the
+hyperparameter choices.
+C.1
+Post-attention patching at the last-token
+position
+For
+each
+model,
+each
+matched
+triplet
+(Cid, Cneu, x),
+and
+each
+transformer
+layer
+13
+
+
+ℓ∈{0, . . . , NL −1} (where NL is the model’s
+total layer count, see §3.2), we run three forward
+passes:
+1. An identity forward pass on Cid+x, caching
+the post-attention residual-stream vector h(ℓ)
+id
+at the last-token position.
+2. A neutral forward pass on Cneu+x, caching
+h(ℓ)
+neu at the same position.
+3. A patched forward pass: process Cneu + x
+but replace the post-attention hidden state at
+layer ℓ, last-token position, with h(ℓ)
+id . Every
+other layer runs normally.
+We patch only the last-token position h[:, −1, :]
+rather than the full sequence.
+That position is
+where the first output token is generated, and self-
+attention across earlier layers has already mixed
+information from the entire prompt (including iden-
+tity cues) into it. Patching only this position avoids
+position-mismatch issues between identity and neu-
+tral prompts that may have different token counts,
+and aligns exactly with the position used to com-
+pute ∆A in §3.4.
+C.2
+Jensen–Shannon divergence of next-token
+distributions
+Rather than generating full responses at every
+layer—which would require expensive autoregres-
+sive decoding at each of the NL layers per sample—
+we measure the effect of patching on the next-token
+probability distribution. Let pid(t) = P(y1 = t |
+Cid, x) and pneu(t) = P(y1 = t | Cneu, x) be
+the next-token distributions over the model’s vo-
+cabulary V under the identity and neutral prompts.
+Following Lin (1991), the per-sample baseline di-
+vergence is defined as:
+Di = JSD(pid, pneu)
+= 1
+2DKL(pid∥m) + 1
+2DKL(pneu∥m),
+where m = 1
+2(pid + pneu) is the mixture distri-
+bution and the divergence is defined as
+DKL(p∥q) =
+X
+t∈V
+p(t) log p(t)
+q(t).
+We use JSD (Lin, 1991) rather than KL because
+JSD is symmetric, bounded in [0, ln 2], and numeri-
+cally stable when the two distributions have limited
+overlap. This last property is important in our set-
+ting: identity-specific tokens (e.g., the first subword
+of a culturally-specific movie title) may carry sub-
+stantial probability under one condition but near-
+zero probability under the other, a regime in which
+KL can produce arbitrarily large values while JSD
+remains well-behaved. Empirically, the divergence
+concentrates on a small number of semantically
+meaningful tokens: on inspected high-divergence
+samples, the top 20 tokens (out of vocabularies of
+33K–152K depending on model) account for over
+90% of total JSD, and these tokens correspond to
+the first subwords of identity-associated content
+items rather than generic function words.
+C.3
+Normalized indirect effect
+For each layer ℓand sample i, we quantify the frac-
+tion of the identity-vs-neutral output divergence
+that is causally mediated by layer ℓ’s post-attention
+representation. Following the causal mediation
+framework of Vig et al. (2020), we define the nor-
+malized indirect effect (NIE) as:
+NIE(i, ℓ) = clip(
+1 −
+JSD
+
+p(ℓ)
+patched, pid
+
+Di + ϵ
+, 0, 1
+
+,
+where p(ℓ)
+patched is the output distribution from
+the patched forward pass at layer ℓ, Di is the base-
+line JSD from the previous section, and ϵ = 0.005
+prevents numerical instability for samples with neg-
+ligible baseline divergence.
+The clipping range [0, 1] interprets the score as
+a fraction of the baseline divergence recovered by
+patching. Values above 1 (patching overshoots and
+moves the output beyond the identity distribution)
+or below 0 (patching moves the output away from
+the identity distribution, i.e., disrupts rather than
+mediates) are truncated for layer ranking purposes.
+We normalize by the per-sample baseline Di
+rather than using raw patched JSD because the
+strength of personalization varies substantially
+across samples: some triplets elicit strong distri-
+butional shifts while others produce near-identical
+outputs. Without normalization, layer importance
+scores would be dominated by the few high-Di
+samples; normalizing yields a comparable fraction
+in [0, 1] that gives equal weight to every informa-
+tive sample when averaging across the dataset.
+An NIE score near 1 indicates that, in this patch-
+ing test, layer ℓ’s post-attention state at the last-
+token position is sufficient to move the neutral run
+14
+
+
+close to the cued next-token distribution. We there-
+fore use NIE to rank layers implicated in that output
+difference.
+C.4
+Sample filter and layer ranking
+Before averaging NIE across samples to rank lay-
+ers, we exclude samples with Di below the 40th
+percentile of the per-(model, condition) distribu-
+tion. This is not an arbitrary threshold but a method-
+ological prerequisite: when Di ≈0, the iden-
+tity and neutral hidden states are nearly identi-
+cal at every layer, so patching one for the other
+is uninformative—the causal intervention is only
+well-posed when the two conditions produce de-
+tectably different outputs. Excluding these samples
+removes noise from the layer ranking without bias-
+ing it.
+The layer ranking is then ℓ1, ℓ2, . . . in descend-
+ing order of NIE(ℓ), averaged over the retained
+samples.
+C.5
+Cutoff choices across experiments
+The same NIE ranking is used with two different
+cutoffs across the paper:
+• Condition-specific top-10 layers in §4.1.
+s∆A is averaged across these ten layers before
+correlation, which stabilizes the per-sample
+magnitude estimate.
+• Pairwise union of the two dimensions’
+condition-level top-10 sets in §4.2. Depend-
+ing on model and pair, this gives 12–26 unique
+layers on which the full raw contrasts are de-
+composed.
+• Top-2 layers in §4.3 (direction ablation). The
+projection hook is installed at the union of
+each dimensions’ top two layers, two to six
+layers per dimension, to minimize interven-
+tion footprint, on the reasoning that a smaller
+set of hooked layers is less likely to disrupt
+unrelated computations (as evidenced by the
+MMLU results reported in §4.3).
+C.6
+Robustness of the ranking
+The layer ranking is robust to the choice of diver-
+gence measure: replacing JSD with the symmetric
+Kullback–Leibler divergence or the total variation
+distance yields, in our tests, an overlap of 7–9 of
+the top 10 layers across conditions. The final L⋆
+chosen for downstream use is thus not sensitive
+to reasonable perturbations of the divergence def-
+inition, only to the underlying causal-mediation
+logic.
+C.7
+Computational resources.
+All experiments run on a single NVIDIA A100-
+SXM4 with 40 GB of memory. The five evaluated
+models are instruction-tuned checkpoints between
+7B and 14B parameters, loaded in bfloat16, which
+places an 8B model in roughly 16 GB and keeps the
+14B models within the same device. The experi-
+ments reported here comprise activation patching to
+identify L⋆over nine single-cue conditions on five
+models, cached-activation capture and per-sample
+decomposition for three dimension pairs, the α
+sweep for the direction ablation on three models,
+and the MMLU capability check, totalling approxi-
+mately 75 GPU-hours. No model is fine-tuned and
+no gradients are computed, so all reported com-
+pute is inference. Dialogue construction and CAR
+annotation use the GPT-4o API rather than local
+hardware.
+D
+Behavioral Phenomenon and
+Significance Testing
+Figure 5 maps the behavioral phenomenon that
+§4.1 tests: the mean paired SED-description and
+the mean CAR shift for every one of the five mod-
+els across all nine single-dimension conditions. It
+shows the effect-size landscape behind the signifi-
+cance counts reported in the body—the two univer-
+sal positive anchors (the Black-cue and child-cue
+conditions), the universal null (the White-cue con-
+dition), and the model-specific pattern elsewhere—
+and carries no significance markers, which are re-
+ported per condition in §4.1.
+Significance test behind the counts.
+A condition
+counts as showing a personalization shift when
+either behavioral metric moves reliably away from
+neutral: a one-sided Welch t-test of the identity-
+cued SED-description against the neutral split-half
+baseline (§3.3), or a paired t-test of the CAR shift,
+clearing an uncorrected p < .05. This is the test
+behind the per-model counts reported in §4.1 (7/9,
+6/9, 4/9, 7/9, 7/9 for Llama, Mistral, Qwen3-8B,
+Qwen3-14B, and Phi-4).
+E
+Robustness of the Correlation Analysis
+This appendix tests the per-sample correlations of
+§4.1 against three concerns: multiple comparisons
+across the full grid, how the two behavioral metrics
+15
+
+
+llama-3-8b
+mistral-7b
+qwen3-8b
+qwen3-14b
+phi-4
+race_black
+race_asian
+race_white
+gender_male
+gender_female
+age_child
+age_adolescent
+age_adult
+age_older_adult
+0.53
+0.29
+0.42
+0.48
+0.39
+0.31
+0.29
+0.27
+0.33
+0.13
+0.19
+0.08
+0.26
+0.26
+0.11
+0.32
+0.08
+0.36
+0.32
+0.18
+0.18
+0.11
+0.20
+0.25
+0.13
+0.66
+0.47
+0.52
+0.74
+0.52
+0.22
+0.13
+0.29
+0.24
+0.10
+0.17
+0.09
+0.33
+0.25
+0.13
+0.23
+0.18
+0.24
+0.30
+0.29
+(a) Behavioral shift in item semantics
+(higher = larger implicit personalization)
+llama-3-8b
+mistral-7b
+qwen3-8b
+qwen3-14b
+phi-4
+race_black
+race_asian
+race_white
+gender_male
+gender_female
+age_child
+age_adolescent
+age_adult
+age_older_adult
++0.77
++0.42
++0.24
++0.39
++0.43
++0.46
++0.21
++0.15
++0.14
++0.24
+-0.00
+-0.00
++0.00
++0.01
++0.00
++0.29
++0.03
++0.18
++0.26
++0.11
++0.10
++0.02
++0.02
++0.07
++0.03
++0.91
++0.59
++0.37
++0.88
++0.60
++0.22
++0.00
++0.00
++0.01
+-0.02
+-0.02
++0.01
++0.05
++0.12
++0.06
++0.23
++0.13
++0.00
++0.05
++0.03
+(b) Behavioral shift toward stereotype taxonomy
+(positive = implicit cue increased stereotype rate)
+0.6
+0.4
+0.2
+0.0
+0.2
+0.4
+0.6
+mean paired SED-description
+(1 
+ cos sim, implicit vs neutral)
+0.75
+0.50
+0.25
+0.00
+0.25
+0.50
+0.75
+CAR shift
+(implicit 
+ neutral-as-X)
+Figure 5: Behavioral phenomenon at K=5 turns ×
+movies across 5 models × 9 conditions. Left: mean
+paired SED-description per cell. Right: mean CAR
+shift (implicit minus neutral scored as the same iden-
+tity). Both panels show effect sizes on a diverging col-
+ormap centered at 0—red a larger shift, blue none or
+anti-personalization—with no significance read off the
+figure.
+relate, and reuse of the same samples for layer
+selection and correlation.
+Across the 35 cells scorable on both metrics,
+the s∆A–SED and s∆A–CAR correlation columns
+themselves correlate at r = .70 (p = 2.75 × 10−6).
+Conditions in which activation magnitude tracks
+broad semantic movement therefore also tend to be
+those in which it tracks identity-associated content:
+the Black- and child-cue anchors are positive on
+both metrics across all five models.
+The correspondence is not exact because the
+metrics measure different kinds of change. SED
+registers any thematic movement, whereas CAR
+registers only movement along a fixed identity tax-
+onomy. The clearest divergence is Mistral’s male-
+cue condition (SED r = +.37; CAR r = −.16):
+activation magnitude tracks a semantic change
+there, but not increased alignment with the male-
+associated taxonomy. We therefore interpret con-
+vergence on the strong conditions as complemen-
+tary evidence and the remaining differences as in-
+formation about the kind of behavioral change,
+rather than requiring the two metrics to agree cell
+by cell.
+F
+Intersectional Interaction: Definition
+and Full Results
+This appendix collects the interaction material de-
+ferred from §4.2: the definition and testing protocol
+of the interaction contrast ψ with its complete per-
+model results, the cell-level view behind the body’s
+showcase example, the decomposition-weight and
+sample-specificity summary, and the behavioral
+sub-additivity quantification with its two negative
+controls. All results are reported as tables com-
+puted from the canonical runs.
+F.1
+The interaction contrast ψ and its full
+results
+The reshaping test of §4.2 uses the two-way inter-
+action contrast of the 2×2 factorial, a difference of
+differences. Writing ai, aj for two levels of dimen-
+sion A, bi, bj for two levels of dimension B, and
+¯yab for the cell mean of a neutral-normalized CAR
+outcome,
+ψ = (¯yaibi −¯yajbi) −(¯yaibj −¯yajbj) :
+(3)
+the A-gap measured under level bi of B, minus the
+same A-gap under bj. A non-zero ψ says the size
+of one dimension’s expression depends on the level
+of the other. Throughout the intersectional anal-
+ysis, CARdim counts items tagged with any non-
+neutral level of that dimension (CARrace counts
+Asian-, Black-, and White-tagged items alike), so
+cell means and contrasts are well-defined even for
+levels whose own lexicon is sparse; this differs
+from the single-dimension CAR of §4.1, which
+scores each condition against its own level’s tax-
+onomy. The contrast is robust to base-rate differ-
+ences between groups: because CAR is neutral-
+normalized, each group’s standing tag rate is al-
+ready subtracted, and because ψ is a difference of
+differences, any residual tendency for one group
+to carry more tagged items enters both bracketed
+terms and cancels. We compute ψ on the n = 50
+mixed cells for every level pairing of every dimen-
+sion pair and every CAR outcome, and test it with a
+paired t-test under Benjamini–Hochberg correction
+within each (model, pair, DV) family.
+Table 5 lists every contrast that survives correc-
+tion: 12 of the 405 tested. The significant structure
+is concentrated on three models. Llama carries
+five (three on race×gender, the pattern unpacked
+in §4.2, and two on gender×age, both involving
+the older-adult level); Qwen3-14B carries six, all
+on race×age and all involving the adolescent level;
+Phi-4 carries one. Mistral and Qwen3-8B carry
+none. The interaction is therefore real but sparse
+and model-specific, not a universal effect.
+F.2
+Cell-level view of the focus pair
+Table 6 gives the cell means behind the two head-
+line Llama race×gender contrasts. Race expression
+appears only under a female cue and peaks in the
+Black-female cell (+0.216 over neutral, against
++0.004 or below in every male-cued cell), while
+16
+
+
+Model
+Pair
+DV
+Contrast
+ψ
+d
+qBH
+llama-3-8b
+race×gender
+CARrace
+(Black−White)×(Female−Male)
++0.168
++0.40
+0.021
+race×gender
+CARgender
+(Asian−Black)×(Female−Male)
++0.144
++0.44
+0.010
+race×gender
+CARrace+gender
+(Asian−White)×(Female−Male)
++0.072
++0.41
+0.016
+gender×age
+CARgender
+(Female−Male)×(Child−Older)
+−0.156
+−0.41
+0.026
+gender×age
+CARgender
+(Female−Male)×(Adol.−Older)
+−0.180
+−0.39
+0.026
+qwen3-14b
+race×age
+CARrace
+(Black−White)×(Adol.−Older)
++0.127
++0.56
+0.009
+race×age
+CARrace
+(Black−White)×(Adol.−Adult)
++0.107
++0.53
+0.009
+race×age
+CARrace
+(Black−White)×(Adol.−Child)
++0.140
++0.48
+0.018
+race×age
+CARrace
+(Asian−Black)×(Adol.−Older)
+−0.107
+−0.41
+0.036
+race×age
+CARrace+age
+(Black−White)×(Adol.−Older)
++0.045
++0.48
+0.026
+race×age
+CARrace+age
+(Black−White)×(Adol.−Adult)
++0.044
++0.47
+0.026
+phi-4
+gender×age
+CARage
+(Female−Male)×(Adol.−Older)
+−0.150
+−0.56
+0.003
+Table 5: All BH-significant interaction contrasts across the canonical runs: 12 of 405 tested (five models × three
+pairs × three CAR outcomes, all level pairings). ψ is the difference-of-differences on the neutral-normalized
+outcome, d is Cohen’s d, and qBH is the corrected p within the (model, pair, DV) family.
+Mixed cell
+CARrace
+CARgender
+Asian × female
++0.120
++0.144
+Asian × male
+−0.012
++0.112
+Black × female
++0.216
++0.028
+Black × male
++0.004
++0.140
+White × female
+−0.048
++0.080
+White × male
+−0.092
++0.116
+Table 6: Neutral-normalized CARrace and CARgender
+cell means for the six Llama race×gender mixed cells
+(n = 50 each). Race expression is amplified and gender
+expression compressed in the Black-female cell; Asian-
+female co-expresses both.
+gender expression is robust in every cell (+0.08
+to +0.14) except Black-female, where it collapses
+to +0.028: the pattern summarized in §4.2 as race
+dominating that intersection at the gender cue’s
+expense. Consistent with a fixed-length recommen-
+dation list imposing a content budget, the two tag
+rates anti-correlate per sample in five of the six
+mixed cells (r = −.28 to −.49); the exception
+is Asian-female (r = +.06), the one cell that co-
+expresses both cues, where items can carry both
+tags at once. Its co-tagging is also what drives the
+third significant contrast, on CARrace+gender.
+F.3
+Decomposition weights and sample
+specificity
+Across all 15 model×pair combinations the mean
+fitted weights fall below the additive target (1, 1).
+The informative control substitutes a different
+same-cell sample’s (vA, vB) basis. This lowers fit
+from .576–.704 to .038–.156 (overall mean .095),
+close to the reference obtained from another mixed
+sample alone. The own basis wins in all 15 model–
+pair combinations, by .522–.577 (two-sided sign
+test p < 10−4). The decomposition is therefore
+sample-specific, not a generic cell-level geometry.
+The residual fit leaves roughly 30–42% of ∥vAB∥
+unexplained, so the claim the data support is a sub-
+stantial, sample-specific linear component rather
+than exact addition.
+A second control asks whether one cue alone is
+sufficient. Refitting each mixed vector with vA or
+vB alone gives an overall best-one mean of .443,
+versus .646 for both terms. The two-term model
+improves on the better single term in every one
+of 6,185 records, with model–pair mean gains of
+.186–.226 (Table 7). The mixed contrast therefore
+contains information associated with both single-
+cue contrasts, rather than one cue plus a redundant
+term.
+F.4
+Behavioral sub-additivity and two
+negative controls
+We quantify the behavioral sub-additivity sum-
+marized in §4.2 as follows.
+For each of the
+three ablation models we compute the paired SED-
+description against neutral for the mixed response
+and its two dose-matched single-cue responses,
+where each pure context carries exactly the cues it
+contributes to the mixed one, so that under strict
+additivity the observed mixed shift would equal
+SEDA+SEDB. Regressing observed on predicted,
+the fitted slope is 0.39–0.49 across the three mod-
+els, 68–85% of samples fall below the additive
+diagonal, and a one-sided t-test on the per-sample
+residuals is decisive (p < 10−37 on every model).
+The mean relative shortfall of −28% to −38%
+says, in plain terms, that two co-present cues de-
+liver only about two-thirds of what independently
+adding their single-cue shifts would predict.
+17
+
+
+Model
+Pair
+¯ρtwo
+¯ρA
+¯ρB
+¯ρbest one
+¯ρtwo −¯ρbest one
+llama-3-8b
+race×gender
+0.699
+0.373
+0.292
+0.486
+0.213
+race×age
+0.704
+0.374
+0.292
+0.478
+0.226
+gender×age
+0.695
+0.342
+0.342
+0.490
+0.206
+mistral-7b
+race×gender
+0.676
+0.391
+0.394
+0.487
+0.188
+race×age
+0.673
+0.395
+0.374
+0.487
+0.186
+gender×age
+0.665
+0.364
+0.360
+0.468
+0.197
+qwen3-8b
+race×gender
+0.636
+0.320
+0.330
+0.422
+0.213
+race×age
+0.614
+0.320
+0.324
+0.407
+0.206
+gender×age
+0.615
+0.324
+0.326
+0.413
+0.202
+qwen3-14b
+race×gender
+0.577
+0.307
+0.311
+0.387
+0.191
+race×age
+0.578
+0.306
+0.315
+0.381
+0.196
+gender×age
+0.576
+0.297
+0.307
+0.379
+0.197
+phi-4
+race×gender
+0.670
+0.362
+0.364
+0.462
+0.208
+race×age
+0.658
+0.364
+0.347
+0.450
+0.208
+gender×age
+0.661
+0.352
+0.353
+0.450
+0.211
+Table 7: One-term vs. two-term decomposition fit for all 15 model×pair combinations. ¯ρtwo is the own-sample
+two-basis fit reported above; ¯ρA and ¯ρB fit vAB with a single single-cue direction. Both one-term fits fall far short
+of the two-term fit, so neither cue alone explains the mixed-cue vector.
+Two negative results bound this composition
+from above, and we record them so neither is
+mistaken for its opposite.
+First, joint marking
+does not exceed the marginals.
+If mixed con-
+texts bound the two dimensions into jointly stereo-
+typed items, the co-tag rate CARboth would exceed
+the independence prediction CARA× CARB. It
+does not: observed co-tagging falls below the in-
+dependence product in 86 of 130 cells (sign test
+p = 6.9 × 10−6), and the only panels that con-
+sistently exceed independence, Llama and Phi-4
+race×age, are single-title artifacts. Second, the
+strictest additivity test on the pure conditions,
+∆Int = M −PA −PB + N (super-additivity),
+is nearly null. On the first dimension’s tag rate,
+0 of 90 arm-level contrasts survive within-family
+BH (mean ∆Int = −0.0007); on the second dimen-
+sion’s, 3 of 90 survive, all on Mistral gender×age’s
+age outcome, one of which survives global cor-
+rection. This near-null is a different interaction
+notion from ψ: a design can be perfectly additive
+over its pure conditions and still show a non-zero
+ψ, so the near-null ∆Int is compatible with the
+significant ψ contrasts rather than in tension with
+them. Together the two results bound the inter-
+action from above, almost no amplification and
+no super-marginal joint marking, while leaving in-
+tact the sparse, sign-consistent ψ modulation of
+Table 5.
+G
+Full Ablation Grids
+§4.3 shows the SED-description ablation grid for
+Mistral-7B and Qwen3-8B and reports the CAR
+effect only for the strong-personalization cells; this
+appendix completes both grids with the remaining
+Llama-3-8B SED block and the full three-model
+CAR grid, and additionally reports every cell at
+exact projection (α = 1).
+SED-description grid.
+Table 8 is the Llama-3-
+8B block of the SED-description grid at each cell’s
+α⋆; together with Table 2 in the body it covers all
+18 target cells (three models × three pairs × two
+targets). Across the 18 cells, ablation suppresses
+the predicted shift in 15 and matches or outper-
+forms the prompt in 16. The three non-suppressing
+cells, Llama’s two gender targets and Mistral’s age
+target on gender×age, are all near-zero.
+CAR grid, both sides.
+Table 9 gives all 18 rows
+of the target-taxonomy CAR effect at vk=dim,
+each at its own best α⋆, with bootstrap 95% CIs
+and the matched “ignore-demographic” prompt
+baseline.
+The headline negative cells are Mis-
+tral race×gender on the gender target (∆CAR =
+−0.169, p = 1.6 × 10−28, the largest reduc-
+tion in the grid), Qwen3-8B race×age (−0.130,
+p = 3.8 × 10−78) and race×gender (−0.092, p =
+1.9×10−21) on the race target, Mistral and Qwen3-
+8B gender×age on the gender target (−0.039,
+p = 1.3 × 10−6; −0.030, p = 1.8 × 10−3), and
+Llama race×gender on the race target (−0.030,
+p = .02).
+Two properties of the grid are worth stating.
+First, the effect concentrates on race and gender tar-
+gets: every age-target row is null or small—the one
+significant age reduction is Mistral gender×age at
+18
+
+
+Model
+Pair
+target
+α⋆
+∆pure(t)
+d
+Prompt ∆
+Ratio
+llama-3-8b
+race × gender
+race
+5.0
++0.086∗∗∗
++0.56
++0.006
+13.5×
+gender
+4.0
++0.005
++0.05
++0.004
+1.2×
+race × age
+race
+5.0
++0.078∗∗∗
++0.54
++0.016
+5.0×
+age
+5.0
++0.022∗∗∗
++0.19
++0.016
+1.4×
+gender × age
+gender
+4.0
++0.003
++0.03
++0.017
+0.2×
+age
+5.0
++0.038∗∗∗
++0.33
++0.009
+4.5×
+Table 8: Llama-3-8B block of the direction-ablation grid at each cell’s α⋆, measured on SED-description; the
+Mistral-7B and Qwen3-8B blocks are Table 2 in the body, reporting the same quantities. ∆pure(t) is the per-cell
+shift away from the target-dimension reference response and d is Cohen’s d. Ratio is ablation over prompt. Stars:
+∗p < .05, ∗∗p < .01, ∗∗∗p < .001.
+−0.024 (p = 2.0 × 10−4)—consistent with age be-
+ing the least-personalized dimension in §4.1. Sec-
+ond, on Mistral the two metrics dissociate by di-
+mension: its race-target rows are null on CAR
+(+0.006, +0.001) despite carrying some of the
+grid’s largest semantic shifts on SED-description
+(d = 1.22–1.59, Table 2), while its gender-target
+ablations register strongly on both metrics. For
+the SED-versus-CAR contrast, Mistral changing
+themes without flipping taxonomy labels, is there-
+fore a property of its race expression specifically,
+not of the model as a whole.
+Exact projection (α = 1).
+The grids above re-
+port each cell at its best sweep strength α⋆. For
+completeness, Table 10 gives every cell at α = 1,
+where the hook deletes the component along ˆvdim
+exactly (Eq. (2)). The effect is present at exact
+projection and grows with α: 11 of the 18 SED
+targets shift significantly in the predicted direction
+at α = 1, and the strongest CAR cells already reg-
+ister, with Qwen3-8B’s race target falling by 0.059
+on race×age and 0.019 on race×gender.
+Projection-magnitude-matched
+sham.
+The
+original random-direction reference matches the
+direction vector’s norm, but the hook normalizes
+that vector before projection. We therefore rerun a
+stricter sham whose random-direction perturbation
+matches the real per-token magnitude α|h⊤ˆv|.
+This control is generated end-to-end as its own
+run, so its ablation arm differs from Table 10 in
+the third decimal. At exact projection the matched
+sham moves SED-description by +0.015 against
+the ablation’s +0.079 on Qwen3-8B race×age,
+and the ablation’s target-CAR reductions (−0.060
+and −0.018 on the two Qwen3-8B race cells)
+do not appear under it (+0.009 and +0.005).
+At α = 5 the sham produces nonzero semantic
+drift, while the Qwen3-8B target-CAR reductions
+remain specific to the learned direction.
+The
+large-strength semantic effect should therefore be
+read as a mixture of direction-specific removal and
+generic perturbation, while the exact-projection
+result supplies the cleaner causal test.
+H
+MMLU Evaluation and Vector-Source
+Robustness
+This appendix documents two supporting details
+for the direction ablation of §4.3: the protocol be-
+hind the MMLU capability-preservation check and
+a robustness comparison showing that the abla-
+tion’s effect does not depend on the specific vector
+source used to define the ablated direction.
+H.1
+MMLU protocol
+The capability check evaluates each of the three
+ablation models (Llama-3-8B, Mistral-7B, Qwen3-
+8B) on five MMLU subjects—elementary math-
+ematics, college biology, high-school world his-
+tory, philosophy, and sociology—at 100 questions
+each, for 500 questions per condition, posed in
+the standard few-shot MMLU format; accuracy is
+the macro-average over the five per-subject accu-
+racies. We evaluate no intervention (baseline) and
+the direction ablation at α ∈{1, 3, 5}. Baseline
+macro-accuracy is 0.704 on Llama-3-8B, 0.616 on
+Mistral-7B and 0.634 on Qwen3-8B. At α = 1 the
+largest change is −0.006 (Qwen3-8B); at α = 5
+it is −0.028, again on Qwen3-8B, while Llama
+and Mistral stay within 0.006 of baseline at every
+strength. For every ablation condition the interven-
+tion is active during answer generation—the same
+forward pre-hook, at the same L⋆hook layers, that
+produces the behavioral effect—so the check mea-
+sures the intervention’s true collateral cost on gen-
+eral reasoning. Llama-3-8B is evaluated with the
+few-shot block as a plain continuation rather than
+wrapped in its chat template, whose turn structure
+breaks the benchmark’s exemplars-then-question
+19
+
+
+Model
+Pair
+target
+α⋆
+∆CAR(t)
+95% CI
+Prompt ∆
+llama-3-8b
+race × gender
+race
+2.0
+−0.030∗
+[−0.057, −0.006]
++0.025
+gender
+0.5
++0.014
+[+0.006, +0.022]
+−0.076
+race × age
+race
+0.5
+−0.009
+[−0.020, +0.003]
+−0.004
+age
+0.5
++0.018
+[+0.007, +0.030]
+−0.073
+gender × age
+gender
+0.5
++0.006
+[−0.003, +0.015]
+−0.066
+age
+0.5
++0.002
+[−0.012, +0.015]
+−0.054
+mistral-7b
+race × gender
+race
+1.0
++0.006
+[+0.001, +0.011]
++0.005
+gender
+5.0
+−0.169∗∗∗
+[−0.193, −0.146]
++0.022
+race × age
+race
+0.5
++0.001
+[−0.003, +0.004]
++0.011
+age
+0.5
+−0.002
+[−0.008, +0.003]
+−0.012
+gender × age
+gender
+5.0
+−0.039∗∗∗
+[−0.055, −0.022]
++0.053
+age
+5.0
+−0.024∗∗∗
+[−0.038, −0.011]
+−0.024
+qwen3-8b
+race × gender
+race
+5.0
+−0.092∗∗∗
+[−0.109, −0.076]
+−0.044
+gender
+1.0
+−0.002
+[−0.012, +0.007]
++0.011
+race × age
+race
+4.0
+−0.130∗∗∗
+[−0.140, −0.121]
+−0.049
+age
+1.0
++0.009
+[−0.002, +0.019]
++0.040
+gender × age
+gender
+5.0
+−0.030∗∗
+[−0.048, −0.012]
++0.007
+age
+5.0
+−0.013
+[−0.035, +0.008]
++0.019
+Table 9: Full CAR ablation grid at vk=dim, both ablation sides per pair (rows labeled by the ablated target
+dimension), each cell at its own α⋆. ∆CAR(t) is the change in the target dimension’s taxonomy CAR after ablation
+(negative = stereotype-labeled items removed); stars are from the one-sided Wilcoxon test on the target dimension’s
+per-sample ∆CAR (∗p < .05, ∗∗p < .01, ∗∗∗p < .001); brackets are bootstrap 95% CIs. “Prompt ∆” is the matched
+“ignore-demographic” baseline on the same target. Bold marks the largest significant CAR reductions.
+format and collapses the baseline to near chance;
+under the plain format its baseline is 0.704.
+The explicit “ignore-demographic” prompt of
+§4.3 is excluded from this comparison because
+its effect on Qwen3-8B is anomalous: it raises
+macro-accuracy from 0.634 to 0.734, nearly uni-
+formly across all five subjects (+0.03 to +0.17). A
+content-irrelevant instruction about demographics
+has no mechanism to improve elementary mathe-
+matics and philosophy alike; the pattern is instead
+consistent with a prompt-format artifact, where
+adding a system prompt changes the chat-template
+structure that Qwen3’s answer formatting is sensi-
+tive to, and the other two models move negligibly
+under the same prompt (Llama +0.002, Mistral
+−0.004). We therefore do not read the prompt con-
+dition as evidence of a capability change in either
+direction.
+H.2
+Vector-source robustness
+Three ways to define the ablated direction.
+The
+ablation of §4.3 projects out the unit direction of the
+pure single-dimension contrast (vk=dim): for the
+ablated dimension A, vA = A(Cpure-A)−A(Cneu)
+at L⋆, the dose-matched raw single-cue activation
+contrast used throughout the paper (§3.4). Two
+alternative estimators of “the A direction” are avail-
+able. vk=intersect takes the mixed-versus-dose-
+matched-pure contrast (A(Cmixed)−A(Cpure-B)),
+so it isolates A’s contribution from within a two-cue
+context and thus carries additional intersectional
+signal. vk=explicit takes the contrast between an
+explicitly-stated-demographic context and the neu-
+tral context. All three name the same nominal direc-
+tion by a different activation difference; §4.3 uses
+dim because it is the simplest such difference, is the
+most aligned with the activation-steering prior art,
+and—unlike intersect— requires no dependence on
+the mixed-context data.
+The effect is qualitatively source-invariant (Ta-
+ble 11).
+Table 11 reruns the ablation under each
+of the three vector sources: three models × three
+pairs, ablateA on description-SED, each source
+at its best sweep strength. The qualitative picture
+of §4.3 reproduces under all three: on the strong-
+personalization cells the target-dimension shift is
+positive and Wilcoxon-significant in the predicted
+direction under every source, and the underlying
+sweeps rise monotonically with α while the origi-
+nal random-direction reference stays near zero. The
+central claim that projecting out the cue-induced di-
+mension direction suppresses the target-dimension
+response is therefore not an artifact of the particular
+contrast chosen to define that direction.
+What differs across sources.
+The three sources
+are not identical in magnitude or in the relative
+ordering of the two dimensions within a pair, and
+20
+
+
+Model
+Pair
+target
+∆pure(t)
+d
+∆CAR(t)
+llama-3-8b
+race × gender
+race
++0.018∗∗
++0.15
+−0.017
+gender
+−0.002
+−0.03
++0.027
+race × age
+race
++0.018∗∗∗
++0.17
++0.008
+age
++0.015∗∗∗
++0.15
++0.026
+gender × age
+gender
+−0.002
+−0.03
++0.006
+age
++0.010∗
++0.11
++0.016
+mistral-7b
+race × gender
+race
++0.025∗∗∗
++0.24
++0.006
+gender
++0.028∗∗∗
++0.31
+−0.009
+race × age
+race
++0.026∗∗∗
++0.26
++0.001
+age
++0.007∗
++0.08
+−0.002
+gender × age
+gender
++0.000
++0.01
+−0.005
+age
+−0.011
+−0.15
+−0.011∗∗
+qwen3-8b
+race × gender
+race
++0.005
++0.04
+−0.019∗∗∗
+gender
++0.010∗
++0.10
+−0.002
+race × age
+race
++0.079∗∗∗
++0.33
+−0.059∗∗∗
+age
++0.022∗∗∗
++0.15
++0.009
+gender × age
+gender
++0.008
++0.07
++0.018
+age
++0.011
++0.07
++0.003
+Table 10: All 18 ablation cells at exact projection (α = 1), vk=dim: the SED-description shift away from the target
+reference ∆pure(t) with Cohen’s d, and the target-taxonomy ∆CAR(t). Stars: ∗p < .05, ∗∗p < .01, ∗∗∗p < .001,
+from the same tests as Tables 2 and 9 (SED: one-sided t, predicted positive direction; CAR: one-sided Wilcoxon,
+predicted negative direction); stars are shown only for movements in the predicted direction.
+Model
+Pair
+dim
+intersect
+explicit
+llama-3-8b
+race×gender
++0.086∗∗∗
++0.078∗∗∗
++0.056∗∗∗
+race×age
++0.078∗∗∗
++0.062∗∗∗
++0.041∗∗∗
+gender×age
++0.003
++0.006
++0.016∗∗
+mistral-7b
+race×gender
++0.226∗∗∗
++0.322∗∗∗
++0.152∗∗∗
+race×age
++0.154∗∗∗
++0.375∗∗∗
++0.022∗∗∗
+gender×age
++0.028∗∗∗
++0.025∗∗∗
++0.004∗
+qwen3-8b
+race×gender
++0.176∗∗∗
++0.103∗∗∗
++0.118∗∗∗
+race×age
++0.306∗∗∗
++0.113∗∗∗
++0.053∗∗∗
+gender×age
++0.078∗∗∗
++0.150∗∗∗
++0.027∗∗∗
+Table 11: Vector-source robustness: the ablateA target-dimension shift on description-SED at each source’s best
+sweep strength, per (model, pair). Stars: one-sided Wilcoxon in the predicted direction, ∗p < .05, ∗∗p < .01,
+∗∗∗p < .001. The dim column matches the corresponding rows of Tables 2 and 8.
+we do not claim they are. intersect produces the
+largest race effects on Mistral, where it drives the
+race target substantially higher than dim on both
+race×gender and race×age, consistent with its car-
+rying extra mixed-context signal, though on the
+other two models dim is the stronger race-target
+source; explicit is the most variable across cells
+and is the weakest on some, falling to near the
+sham for the race target on Mistral race×age. It
+can also move a target the primary source does
+not: on Qwen3-8B race×age the age target’s CAR
+falls by 0.155 at α = 5 under explicit but shows
+no reduction under dim, the clearest single case
+of source dependence. The ceiling-of-sweep be-
+havior (α⋆at or near 5) is shared by all three; the
+stricter matched-perturbation sham is analyzed in
+Appendix G. We adopt dim as the primary source
+not because it is uniformly the strongest—it is
+not—but because it is the simplest and most prior-
+art-aligned estimator and introduces no method-
+ological dependence on the intersectional data; the
+two alternatives serve to corroborate, rather than to
+change, the conclusion of §4.3.
+The prompt can backfire where the ablation
+does not.
+Figure 6 isolates the clearest case from
+the vk=dim grid, in SED-description terms: on Mis-
+tral race×gender both ablation targets climb mono-
+tonically with α, while the two explicit-prompt
+baselines sit flat near zero. The race-side prompt
+is slightly negative (−0.008), so telling the model
+to ignore race moves its recommendations toward
+the stereotype; the gender-side prompt is only
+marginally positive (+0.014). The sham references
+21
+
+
+1
+2
+3
+4
+5
+  (ablation strength)
+0.00
+0.05
+0.10
+0.15
+0.20
+pure(target)  (description-SED)
+ablateA (
+ race)
+ablateB (
+ gender)
+promptA baseline = -0.008
+promptB baseline = +0.014
+sham_dir = -0.005
+sham_layer = +0.023
+Figure 6: Direction ablation vs. prompt vs. sham on
+Mistral-7B race×gender, SED-description. Both ab-
+lation targets (ablateA →race, ablateB →gender) rise
+monotonically with α; the two “ignore-demographic”
+prompt baselines are flat and near zero, the race-side one
+slightly negative (that prompt moves the output toward
+the cue), and the original direction- and layer-shams
+hug zero.
+hug zero. This is the SED-description view of the
+prompt comparison summarized in §4.3, where the
+main text reports the CAR view (Fig. 4).
+Output-collapse diagnostic.
+To test whether re-
+duced personalization merely reflects malformed
+or collapsed recommendations, we examine list
+length, within-response title repetition, corpus-
+level diversity, and overlap with the unablated re-
+sponse. At exact projection (α = 1), responses
+retain five-item lists with within-response distinct-
+title ratios of 0.999–1.000; their corpus-level di-
+versity is at least as high as under the prompt in
+every model. They overlap with the unablated rec-
+ommendations by 0.76–0.89, at least as much as
+under the prompt baseline (0.69–0.84). At α = 5,
+overlap falls to 0.39–0.59, indicating that ampli-
+fied removal causes broader output changes. These
+diagnostics rule out gross formatting or repetition
+collapse at exact projection but do not constitute a
+user-level evaluation of recommendation quality.
+I
+Selectivity of the Direction Ablation
+§4.3 reports whether removing one dimension’s
+direction spares the co-present dimension. This
+appendix records why that question can only be
+answered on the taxonomy metric, and how the
+answer varies by model.
+Semantic distance cannot express selectivity.
+For an ablateA intervention, the natural seman-
+tic selectivity measure is ∆pureA −∆pureB, the
+shift away from the A-target minus the shift away
+from the B-target. This quantity is uninformative
+by construction: any edit that changes the response
+at all moves it away from both pure references, so
+the two shifts rise together whatever the edit re-
+moved. Empirically they do, at every α we sweep,
+including exact projection. Semantic distance there-
+fore registers that the intervention acted, not which
+dimension it acted on. CAR counts content per
+dimension and can separate the two.
+Confinement holds on two models of three.
+On
+Mistral-7B, ablating the gender direction lowers
+gender-tagged content by 0.169 on race×gender
+and 0.039 on gender×age while race- and age-
+tagged content moves by +0.004 and −0.003;
+across the full sweep of both cells the partner di-
+mension’s tagged rate never falls at any α. Llama-
+3-8B shows the same in the other direction: ab-
+lating race lowers race-tagged content by 0.030
+with gender-tagged content at +0.002, again never
+falling across the sweep. Neither operating point
+was chosen for selectivity—each is the α that maxi-
+mizes the target reduction—so these are unselected
+demonstrations that the removal can be confined to
+one dimension.
+Qwen3-8B is the exception. At its taxonomy-
+optimal strengths the two dimensions fall together:
+ablating race on race×age lowers race-tagged con-
+tent by 0.130 and age-tagged content by 0.104,
+and on gender×age the off-target move (−0.128,
+p = 2.9 × 10−15) exceeds the target one (−0.030).
+On this model the intervention is better described
+as suppressing personalization along a shared iden-
+tity axis than as a dimension-specific edit. Target
+and partner CAR values for all three models are
+released with the code.
+Why confinement is partial.
+That the removal is
+dimension-specific on some models and not others
+is consistent with the composition result of §4.2.
+The mixed-cue direction is substantially but not
+fully a linear combination of the single-cue direc-
+tions (¯ρ ∈[0.576, 0.704]), so the per-dimension
+directions are not mutually orthogonal, and a rank-
+one projection along one of them removes some
+of the other. We read this as cue-associated direc-
+tions inhabiting overlapping subspaces rather than
+clean orthogonal axes, consistent with the linear-
+representation and superposition literature (Arditi
+et al., 2024; Marshall et al., 2024). Making the
+confinement hold across models remains open.
+22
