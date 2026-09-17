@@ -1,0 +1,1628 @@
+Title: Toward Robust Personalized Alignment for LLMs: Mitigating Persona Drift in Multi-Turn Dialogue
+
+URL Source: https://arxiv.org/pdf/2609.12373v1
+
+Published Time: Mon, 14 Sep 2026 00:27:23 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Toward Robust Personalized Alignment for LLMs: Mitigating Persona Drift in Multi-Turn Dialogue 
+
+Youyuan Zhang 1,2, Siyuan Li 1,2, Fangming Liu 2,3# , Jing Li 1,2#
+
+> 1
+
+Harbin Institute of Technology, Shenzhen, China 
+
+> 2
+
+Peng Cheng Laboratory, China 
+
+> 3
+
+Huazhong University of Science and Technology, China 
+
+youyuanzhang@outlook.com fangminghk@gmail.com jingli.phd@hotmail.com 
+
+Abstract 
+
+Persona drift remains a central challenge for personalized language models, as user profiles evolve over long interactions rather than re-main permanently fixed. Models must there-fore revise persistent persona states when pref-erences genuinely change, while avoiding up-dates driven by transient, ambiguous, or un-resolved observations. We propose CORE ,which separates turn-local evidence from per-sistent persona-state revision and selectively updates grounded user preferences through uncertainty-aware belief revision. We also introduce PERSIST , a held-out post-anchor benchmark for persona-state robustness under sequential interaction stress, covering ambigu-ity, conflict, and controlled social influence. Across ALOE, PersonaChat, and PERSIST, CORE improves personalized alignment and robustness, with complementary gains in nor-malized closed-slot state fidelity. Human evalu-ation and mechanistic controls further support explicit update control beyond stronger genera-tion or persistent memory alone. 
+
+1 Introduction 
+
+As language models evolve into long-term as-sistants, users increasingly expect them to pre-serve stable personal preferences across interac-tions (Zhang et al., 2018; Salemi et al., 2024; Li et al., 2025). Yet long-horizon personalization is difficult because user evidence is often partial, tran-sient, or conflicting (Peng et al., 2025; Okite et al., 2025). A turn may locally suggest a preference without providing sufficient support to revise the persistent user state. When such observations are internalized too readily, previously grounded pref-erences can be displaced, contributing to persona drift . Figure 1 illustrates how turn-local evidence can incorrectly overwrite a previously grounded persona state.  
+
+> #Corresponding authors.
+
+Figure 1: The Challenge of Persona Alignment. 
+
+Existing personalization methods only partially address this problem. Prompting and retrieval meth-ods improve access to profiles or historical context, while SFT and preference optimization improve personalized responses (Richardson et al., 2023; Li et al., 2025; Ouyang et al., 2022; Rafailov et al., 2023). However, these approaches generally do not expose an explicit decision over whether newly ob-served evidence should modify a persistent persona state. This creates a stability–adaptability trade-off: aggressive revision may overwrite grounded preferences, whereas excessive conservatism may prevent adaptation to genuine changes. We therefore formulate long-horizon personal-ization as controlled persistent persona revision .The key distinction is that turn-local evidence should not be treated as equivalent to a persistent persona update. Rather than directly writing lo-cally plausible observations into the user state, the model should first assess whether the evidence is sufficiently grounded and resolved to justify revi-sion. We instantiate this view with CORE (Controlled 
+
+Observation Routing for Evidence-grounded Per-sona Revision). CORE infers slot-conditioned evi-dence, routes each observation through C OMMIT ,arXiv:2609.12373v1 [cs.AI] 11 Sep 2026 DEFER , or I GNORE , and performs gated belief re-vision only when an update is authorized. This allows unresolved evidence to remain outside the persistent state while sufficiently supported prefer-ence changes can still be incorporated. To evaluate post-anchor persona-state robust-ness, we introduce PERSIST: A Benchmark for Persona-State Robustness under Sequential In-teraction Stress . PERSIST evaluates whether models preserve or appropriately revise grounded persona states under ambiguity, conflict, and con-trolled social-influence conditions. Because the stress setting begins after persona grounding, we complement PERSIST with separate first-contact and preference-reversal diagnostics. Our contributions are: • Update-control formulation. We formulate long-horizon personalization as controlled per-sistent persona-state revision, highlighting pre-mature persistent updates as an important con-tributor to persona drift. • CORE. We propose an explicit COM -
+
+> MIT
+
+/D EFER /I GNORE routing mechanism with gated belief revision to balance persona stability and adaptation. • PERSIST benchmark. We introduce PERSIST for post-anchor persona-state robustness under sequential interaction stress, complemented by first-contact and preference-reversal diagnostics. Across standard benchmarks, stress tests, and human evaluation, CORE improves personal-ized alignment and robustness. 
+
+2 Related Work 
+
+Multi-turn Personalized Alignment. Advances in LLM alignment have improved general in-struction following and preference optimiza-tion (Ouyang et al., 2022; Rafailov et al., 2023; Ethayarajh et al., 2024; Ji et al., 2024; Lou et al., 2025), but they are not designed to model individ-ual user preferences (Liu et al., 2025; Guan et al., 2025; Kobalczyk and van der Schaar, 2025). This gap has motivated personalized alignment meth-ods based on explicit profiles (Zhu et al., 2025; Salemi et al., 2024), preference supervision (Zhao et al., 2026), personalized decoding (Yu et al., 2026; Chen et al., 2025b), and in-dialogue learning. These methods improve user-specific generation, but they often assume that preferences are explicit, stable, and directly recoverable from observed inter-action data (Zhu et al., 2025; Liu et al., 2024). This assumption becomes fragile in long-horizon dia-logue, where user evidence is partial, implicit, and entangled with contextual noise (Peng et al., 2025; Okite et al., 2025). Recent LLM-based dialogue-state tracking methods maintain structured states over multi-turn interactions (Feng et al., 2023; Li et al., 2024; Das et al., 2024), but focus primar-ily on task or dialogue states rather than persistent user-preference revision. 
+
+Persona Drift in Multi-turn Dialogue Persona drift describes the failure where a model gradu-ally deviates from a user’s grounded intent as in-teraction history grows (Chen et al., 2025a; Shaikh et al., 2025). Prior work shows that this problem is amplified by underspecified intent, implicit prefer-ence expression, noisy memory construction, and inconsistent multi-session evidence (Chun et al., 2025; Zhang and Choi, 2025; Li et al., 2025; Tan et al., 2025). Existing methods improve consis-tency through persona-aware modeling, memory management, or post-hoc alignment, but they still mainly operate on the generated response or re-trieved context (Ke et al., 2025; Ong et al., 2025; Peng et al., 2025). These findings suggest that per-sona drift is not merely a memory issue, but a state-tracking problem: the model must decide whether each new observation should revise, preserve, or be isolated from the maintained user state. 
+
+3 Method 
+
+CORE formulates long-horizon personalization as controlled persistent persona-state revision. The key distinction is between what the current turn locally suggests and whether that evidence should modify the maintained user state. At each turn, CORE performs four operations: turn-local evi-dence inference, uncertainty characterization, up-date authorization, and gated belief revision. The revised persona state then conditions response gen-eration or clarification, as summarized in Figure 2. 
+
+3.1 Persona Belief and Turn-Local Evidence 
+
+CORE separates the user’s persistent persona state from what the current turn locally suggests, since a relevant observation need not imply a persistent preference change. We represent the persona as 
+
+z = ( z1, . . . , z K ), zk ∈ V (t) 
+
+> k
+
+,Figure 2: CORE Pipeline: Uncertainty-Guided Persona-State Revision. CORE extracts slot-wise evidence from dialogue and previous persona belief, routes each observation through uncertainty-guided operators, and then performs selective belief revision before response or clarification. 
+
+and maintain a slot-factorized belief 
+
+bt(z) ≈
+
+> K
+
+Y
+
+> k=1
+
+bkt (zk). (1) Each slot contains an UNK value for unresolved persistent preferences. We distinguish it from the turn-local null symbol ⊥, which means that the current turn provides no usable evidence for the slot. The current MAP value is 
+
+ˆzkt = arg max 
+
+> v∈V (t)
+> k
+
+bkt (v). (2) To discount confidence dominated by UNK , let 
+
+mkt = 1 − bkt (UNK) .
+
+For mkt > 0, let ¯bkt (v) = bkt (v)/m kt . We define 
+
+ckt = mkt
+
+1 − H(¯bkt )log |V (t)
+
+> k, +
+
+|
+
+ , (3) where V(t) 
+
+> k, +
+
+= V(t) 
+
+> k
+
+\{ UNK }. Singleton and empty-support boundary cases follow Appendix A.1. For the current turn, we augment the value space with ⊥:
+
+¯V(t) 
+
+> k
+
+= V(t) 
+
+> k
+
+∪ {⊥} , (4) and compute evidence scores 
+
+∆kt (v) = fevi (ut, H t−1, b t−1, k, v ), v ∈ ¯V(t) 
+
+> k
+
+.
+
+(5) These scores define the turn-local evidence distri-bution 
+
+epkt (v) = exp(∆ kt (v)) 
+
+P 
+
+> v′∈¯V(t)
+> k
+
+exp(∆ kt (v′)) . (6) Thus, bkt−1 represents persistent belief, whereas epkt
+
+represents current-turn evidence. We summarize this evidence by relevance, ambi-guity, and conflict. Relevance is 
+
+rkt = 1 − epkt (⊥). (7) After removing the null option, 
+
+epkt, +(v) = epkt (v)
+
+P
+
+> v′∈V (t)
+> k
+
+epkt (v′) . (8) Ambiguity is 
+
+akt =
+
+
+
+H(epkt, +)log |V (t) 
+
+> k
+
+| , |V (t) 
+
+> k
+
+| > 1,
+
+0, |V (t) 
+
+> k
+
+| ≤ 1,
+
+(9) and conflict is 
+
+qkt = rkt DJS 
+
+epkt, +∥bkt−1
+
+
+
+. (10) Together, rkt , akt , and qkt capture whether the current turn is relevant, resolved, and consistent with the maintained persona state, providing the evidence used for routing in Section 3.2. When no non-UNK preference has yet been grounded, the same pathway is used for initial be-lief formation, with conflict carrying less informa-tion because no reliable reference preference is available. A small relevance threshold only filters clearly unmatched slots; above it, uncertainty, rout-ing, and revision remain graded. 
+
+3.2 Uncertainty-Guided Observation Routing 
+
+Turn-local evidence should not automatically re-vise the persistent persona state. Using the cur-rent evidence distribution, previous belief, and the uncertainty descriptors from Section 3.1, CORE predicts a slot-level update action: 
+
+αkt ∼ πupd 
+
+> θ
+
+
+
+α | epkt , b kt−1, r kt , a kt , q kt , c kt−1
+
+
+
+,αkt ∈ { COMMIT , DEFER , IGNORE }.
+
+(11) COMMIT authorizes sufficiently grounded evi-dence to revise the maintained belief; D EFER re-tains relevant but unresolved evidence without per-sistent revision; and I GNORE excludes irrelevant or explicitly non-persistent evidence from the update pathway. Routing determines whether persistent revision is authorized, while the continuous evidence statis-tics determine the strength of an authorized update. DEFER does not create a durable pending-evidence memory. If clarification or related evi-dence later becomes available, the slot is inferred and routed again from the updated dialogue con-text. 
+
+3.3 Gated Belief Revision 
+
+After routing determines whether revision is al-lowed, CORE controls how strongly committed evidence updates the persistent persona state. We define 
+
+ψkt = [ rkt ; 1 − akt ; 1 − qkt ; ckt−1], (12) and compute 
+
+gkt = I[αkt = COMMIT ] σ
+
+
+
+w⊤ 
+
+> g
+
+ψkt + bg
+
+
+
+. (13) Thus, routing determines whether revision occurs, while gkt ∈ [0 , 1] controls its magnitude according to relevance, ambiguity, conflict, and prior confi-dence. The revised belief balances preservation of the previous state with evidence from the current turn: 
+
+bkt = arg min 
+
+> p∈S (t)
+> k
+
+
+
+DKL 
+
+
+
+p∥bkt−1
+
+
+
+− gkt
+
+X
+
+> v∈V (t)
+> k
+
+p(v)∆ kt (v)
+
+ .
+
+(14) where S(t) 
+
+> k
+
+is the probability simplex over V(t) 
+
+> k
+
+.This yields 
+
+bkt (v) ∝ bkt−1(v) exp 
+
+
+
+gkt ∆kt (v)
+
+
+
+. (15) Hence, gkt = 0 preserves the previous belief, while larger values produce stronger evidence-driven re-vision. Conflict does not imply permanent rejection: later evidence that clearly establishes a persistent preference change can be evaluated again and com-mitted. We examine this stability–adaptability boundary in Appendix E.3. After belief revision, CORE decides whether to respond or clarify: 
+
+dt ∼ πdis 
+
+> θ
+
+
+
+d | ut, H t−1, b t, {rkt , a kt , q kt , α kt }Kk=1 
+
+
+
+,dt ∈ { RESPOND , CLARIFY }.
+
+(16) DEFER blocks persistent revision, whereas CLARIFY controls whether additional information is requested. Finally, 
+
+yt ∼ πresp  
+
+> θ
+
+(y | Ht−1, u t, b t, d t) . (17) 
+
+3.4 Training 
+
+CORE is trained in two stages: supervised warm-up establishes the structured persona-update inter-face, while policy optimization improves how these decisions interact over long-horizon dialogue. 
+
+Supervised warm-up. The first stage teaches CORE to track persona state, extract turn-local evidence, control persistent revision, and generate an appropriate response. We optimize 
+
+LSFT = Lbel + λ1Levi + λ2Lupd 
+
++ λ3Ldis + λ4Lresp . (18) Here, Lbel supervises the maintained persona belief, Levi supervises turn-local evidence in-cluding the null option, Lupd supervises C OM -
+
+> MIT
+
+/D EFER /I GNORE routing, Ldis supervises R E-
+
+> SPOND
+
+/C LARIFY , and Lresp is the autoregressive response loss. Belief supervision is applied only to slot-turns with reliable normalized targets: 
+
+Lbel = − X
+
+> (t,k )∈S closed
+
+log bkt
+
+ z⋆t,k 
+
+ . (19) Residual open-world attributes are excluded from closed-slot belief supervision. The update and discourse policies are trained with standard cross-entropy objectives over their corresponding refer-ence decisions. Policy optimization. Supervised learning teaches the individual decisions, but does not directly optimize their long-horizon consequences. Starting from the supervised checkpoint, we therefore apply PPO to balance correct state revision, persona preservation, response quality, and clarification behavior. The task reward is 
+
+Rt = λact Ract  
+
+> t
+
++ λstate Rstate 
+
+> t
+
++ λans Rans  
+
+> t
+
++ λclar Rclar  
+
+> t
+
+. (20) We set the corresponding weights to 0.35 , 0.30 ,
+
+0.25 , and 0.10 for action correctness, state fidelity, response quality, and clarification behavior, respec-tively. The four terms reward correct update control, persona-state fidelity, personalized response qual-ity, and appropriate clarification, respectively. To-gether, they encourage CORE to avoid unsupported persistent updates without becoming overly conser-vative toward genuine preference changes. The PPO objective is regularized toward the su-pervised reference policy, with the KL penalty ap-plied once in the policy objective. Reward def-initions and optimization details are provided in Appendix B.5. 
+
+3.5 Why Update Control Matters 
+
+We provide a simple analysis of why uncontrolled persistent revision can accumulate error. This anal-ysis is interpretive and does not assume access to the reference persona value at inference time. Consider a dialogue segment over which the grounded reference value z⋆k for slot k remains unchanged. Fix an incorrect competing value 
+
+¯vk̸ = z⋆k, and define the belief margin 
+
+M kt (¯ vk) = log bkt (z⋆k)
+
+bkt (¯ vk) , (21) together with the evidence margin 
+
+Xkt (¯ vk) = ∆ kt (z⋆k) − ∆kt (¯ vk). (22) Using Eq. (15), 
+
+M kt (¯ vk) = M kt−1(¯ vk) + gkt Xkt (¯ vk), (23) and therefore 
+
+M kT (¯ vk) = M k 
+
+> 0
+
+(¯ vk) + 
+
+> T
+
+X
+
+> t=1
+
+gkt Xkt (¯ vk). (24) For a passive updater with gkt ≡ 1, suppose un-supported observations favor the competing value with probability at least ρk, and their expected evi-dence margin is at most −γk. Then 
+
+E
+
+h
+
+M kT (¯ vk)
+
+i
+
+≤ M k 
+
+> 0
+
+(¯ vk) − ρkγkT. (25) Thus, repeated unsupported evidence can pro-gressively erode a grounded belief even when the underlying preference remains unchanged. The op-posite extreme—never revising the persona state— would fail when the user genuinely changes pref-erences. CORE therefore targets the resulting stability–adaptability trade-off by making persis-tent revision an explicit evidence-conditioned deci-sion rather than an automatic consequence of every locally plausible observation. 
+
+4 Experiments 
+
+We evaluate CORE across standard alignment, persona-state robustness, mechanistic ablations, ef-ficiency, and human assessment, with our analysis organized around four questions: • Q1: Performance. Does CORE outperform baselines on personalized alignment? • Q2: Fidelity. Does CORE maintain better per-sona state under ambiguity? • Q3: Robustness. Does CORE improve robust-ness under ambiguous or conflicting evidence? • Q4: Mechanism. Do ablations support update control as a contributing mechanism? 
+
+4.1 Experimental Setup Benchmarks. We evaluate CORE on three com-plementary benchmarks. ALOE (Wu et al., 2025) is our primary benchmark for multi-turn preference consistency, where user preferences are revealed over interaction. PersonaChat (Zhang et al., 2018) is used as an out-of-distribution benchmark for gen-eralization to unseen persona attributes. PERSIST 
+
+is our robustness benchmark for persona-state ro-bustness under sequential interaction stress, includ-ing ambiguity, conflict, and controlled social influ-ence after persona grounding. It is used only for evaluation. 
+
+Baselines. We compare against four groups of baselines. (1) Inference-time methods: RE- 
+
+> MINDER
+
+(Zhao et al., 2025a), S ELF -C RITIC (Zhao et al., 2025a), COT (Wei et al., 2022), and RAG (Zhao et al., 2025a) with top-5 retrieval. These baselines test whether explicit reminders, reasoning traces, or retrieved memory are suf-ficient for robust personalization. (2) Offline alignment methods: SFT (Ouyang et al., 2022) and DPO (Rafailov et al., 2023), testing whether conventional preference optimization can pre-serve persona consistency over long interactions. (3) Memory-based and personalized-agent meth-ods: MEMORY BANK (Zhong et al., 2024) and RLPA (Zhao et al., 2025b), representing persistent-memory and agent-style personalization. (4) Structure-matched controls match CORE’s inter-mediate format or supervision while removing exe-cutable belief revision, testing whether traces, extra labels, or action names alone explain the gains. All same-backbone trainable methods use Llama-3.2-3B-Instruct (Grattafiori et al., 2024) with matched training budgets, decoding settings, and checkpoint-selection protocols. 
+
+Persona slots. Persona slots are instantiated per benchmark while keeping the same belief-tracking framework. New values can be added when ob-served, while attributes that cannot be reliably mapped to closed slots are assigned to residual open slots. Closed-slot normalization covers 91 .4% 
+
+of ALOE, 86 .6% of PersonaChat, and 89 .1% of PERSIST. Residual open-world attributes remain in response-level evaluation but are excluded from metrics requiring normalized state targets. Ac-cordingly, closed-slot state metrics should be inter-preted as state-fidelity diagnostics over the reliably normalized portion of each benchmark rather than as complete measures of open-world persona state. Details of slot construction and value normalization are in Appendix B.2. 
+
+Evaluator and metrics. We adopt a layered eval-uation protocol across three distinct granularities, restricting LLM judges to response-level assess-ment while evaluating internal states and deci-sion routing via reference annotations. At the response level, we quantify conversational align-ment using the AL score, tracking its turn-wise improvement and stability via N -IR and N -R 2.State-level fidelity is captured by S LOT ACC for argmax slot accuracy, BUA for correctness on update-positive turns, and D RIFT for the posterior mass assigned away from grounded values. For decision-level operations over {C OMMIT , D EFER ,IGNORE }, A CT ACC measures exact three-way rout-ing accuracy, while CRR measures conflict-level non-commitment when an unsupported persistent write should be avoided. Within PERSIST, we additionally report ARUS for axiom recall under stress, BCD for resistance to blind compliance, and APR for proactive clarification under unresolved uncertainty. Response-level alignment, PERSIST robust-ness, and human evaluation constitute our pri-mary end-to-end evidence. State-level metrics pro-vide complementary closed-slot fidelity diagnos-tics, whereas A CT ACC , CRR, FCR, and related action-level measures are used only as mechanism diagnostics of the update-control process. For methods without native update actions, these diag-nostics use fixed behavior-derived proxies: persis-tent adoption of new evidence is mapped to C OM -
+
+> MIT
+
+, explicit unresolved handling or clarification to D EFER , and preservation of the prior commit-ment to I GNORE . These proxies are used only for diagnostic evaluation and should not be interpreted as native internal actions of the baseline systems. We use GPT-5.1 as the judge model for metric computation. Full evaluation details are provided in Appendix C. 
+
+4.2 PERSIST: Stress Test 
+
+PERSIST evaluates whether personalized dia-logue models can preserve or appropriately revise grounded persona commitments under ambiguity, conflict, and controlled social influence. Each dia-logue contains three phases: Anchoring establishes grounded persona evidence, Fluctuation introduces partial or transient cues, and Confrontation applies six controlled social-influence strategies, includ-ing authority pressure, social conformity, affective appeal, urgency framing, reciprocity lure, and re-lationship pressure. This design first establishes persona evidence and then evaluates robustness to subsequent interaction stress, while remaining in-dependent of CORE-specific internals: models are evaluated by whether they preserve grounded com-mitments, avoid unsupported persistent overwrites, and clarify unresolved uncertainty without requir-ing explicit update actions or structured beliefs. We use PERSIST only as a held-out benchmark for post-anchor robustness. Because the bench-mark begins after persona grounding, it does not by itself isolate pressure-first belief formation or explicit preference reversal. We therefore evaluate these complementary boundary conditions sepa-rately in Appendix E.3. Details of PERSIST are in Appendix D. 
+
+4.3 Main Results on Standard Benchmarks 
+
+Table 1 reports the main results on PersonaChat and ALOE. CORE achieves the highest alignment Model Type PersonaChat ALOE AL (%) N-IR N-R 2 AL (%) N-IR N-R 2
+
+Peer baseline Gemma-2-2B-IT SFT 21.19 0.017 0.136 18.33 0.021 0.096 Qwen2.5-3B-Instruct SFT 26.84 0.049 0.159 44.32 0.083 0.162 Scale reference Mistral-7B-v0.3 Base 52.98 0.058 0.364 74.32 0.074 0.284 Llama-3.1-8B-Instruct Base 64.87 0.062 0.392 77.26 0.090 0.407 
+
+Matched 3B methods Llama-3.2-3B-Instruct Base 42.02 0.025 0.097 21.99 0.044 0.121 SFT 49.38 0.039 0.134 36.15 0.054 0.179 Reminder 42.91 0.032 0.178 37.68 0.038 0.105 Self-Critic 62.38 0.047 0.299 47.04 0.067 0.097 DPO 51.28 0.052 0.241 64.32 0.073 0.112 RAG (top-5) 53.09 0.048 0.211 32.17 0.071 0.067 CoT 44.67 0.033 0.126 51.09 0.055 0.083 MemoryBank 59.12 0.049 0.208 72.27 0.071 0.271 RLPA 65.05 0.051 0.263 75.84 0.087 0.202 
+
+CORE (Ours) 76.54 0.064 0.471 82.94 0.098 0.395 
+
+Table 1: Overall personalized alignment. CORE achieves the strongest alignment among matched same-backbone methods on PersonaChat and ALOE. Trainable methods are evaluated over three random seeds; uncertainty reporting and paired dialogue-level bootstrap tests follow the protocol in Appendix C. 1 2 3 4 5 6 7 8 9 10 
+
+> Dialogue Turn
+> 20 40 60 80
+> Alignment Level (AL)
+
+Turn-wise Alignment Curve 
+
+> CORE RLPA MemoryBank DPO Structured Reasoning SFT
+
+(a) Turn-wise alignment. 0.2 0.4 0.6 0.8 1.0 
+
+> Revealed Preference Ratio
+> 20 40 60 80
+> Alignment Level (AL)
+
+Preference Revelation vs AL  
+
+> CORE RLPA MemoryBank DPO SFT Structured Reasoning
+
+(b) Alignment vs. revelation. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> Predicted Confidence
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Empirical Correctness
+
+Belief Calibration Reliability  
+
+> Perfectly Calibrated CORE RLPA Structured Reasoning MemoryBank SFT
+
+(c) Belief calibration. 
+
+Figure 3: Trajectory-level diagnostics on ALOE. CORE yields stronger turn-wise alignment, uses revealed preference evidence more efficiently, and maintains better-calibrated persona beliefs. 
+
+scores among matched same-backbone methods on both benchmarks and remains competitive with larger scale-reference models on trajectory-stability metrics. The gains over SFT/DPO suggest that static preference optimization alone is insufficient for preserving persona consistency over long inter-actions, while the gains over RAG/ MemoryBank 
+
+indicate that improved access to persona evi-dence does not by itself determine whether later observations should revise the maintained user state. Together, these results support controlled persona-state revision as a useful mechanism be-yond stronger response generation or more persis-tent memory alone. Figure 3 provides trajectory-level diagnostics on ALOE. CORE yields higher and more stable turn-wise alignment, indicating that reliable persona evidence is incorporated without being overwrit-ten by later under-resolved observations. It also achieves stronger alignment at the same preference-revelation ratio, showing more efficient use of lim-ited personalization signals. The calibration curve further shows that CORE’s belief confidence better matches empirical correctness, suggesting that its response-level gains are accompanied by a more re-liable maintained persona state rather than surface-level generation alone. 
+
+4.4 Robustness under State Perturbations 
+
+We next evaluate whether models preserve grounded persona commitments when later obser-vations are insufficiently grounded for persistent revision. Table 2 reports aggregate PERSIST ro-bustness. CORE improves ARUS from 71.9 to 80.8 and BCD from 66.1 to 76.4, while reducing persona-state drift from 12.6 to 10.1. These gains show that CORE not only produces better local responses, but also better maintains the persona state when later observations remain insufficiently grounded for persistent revision. Figure 4a visu-alizes the learned routing regions over ambiguity and conflict: well-resolved evidence is more often committed, while high-ambiguity or unresolved conflicting evidence is more often deferred or ig-low high  
+
+> Ambiguity akt
+> low high
+> Conflict  qkt
+> COMMIT DEFER IGNORE
+
+(a) Uncertainty Route.  (b) State Transitions COMMIT DEFER IGNORE 0% 20% 40% 60% 80% 100% 
+
+> 68.21% 41.02% 22.75% 72.34% 48.59% 39.44% 86.19% 78.94% 75.69%
+
+Action Accuracy  
+
+> CoT SFT CORE
+
+(c) Action Accuracy COMMIT DEFER IGNORE 0100 200 300 400 500 Inference Latency (ms)  
+
+> Response Action Thought
+
+(d) Inference Latency 
+
+Figure 4: Comprehensive CORE Evaluation. 1 5 10 15 20 25 30             
+
+> Dialogue Turn
+> 0.0 0.2 0.4 0.6 0.8
+> AL Score
+> Conflict
+> (a) Alignment Score
+> Baseline CORE (Ours)
+> 1510 15 20 25 30
+> Dialogue Turn
+> 0.2 0.3 0.4 0.5 0.6 0.7 0.8
+> Entropy
+> Conflict
+> (b) Belief Entropy
+> 1510 15 20 25 30
+> Dialogue Turn
+> 0.0 0.2 0.4 0.6
+> Deviation
+> Conflict
+> (c) Persona Deviation
+
+Figure 5: Conflict dynamics. CORE preserves align-ment and reduces belief drift under introduced conflict. 
+
+Method ARUS ↑ BCD ↑ Drift ↓
+
+SFT 57.8 ±.8 48.6 ±.9 18.6 ±.5 DPO 61.5 ±.7 54.2 ±.8 16.4 ±.5 MemBank 68.4 ±.7 62.8 ±.7 13.8 ±.4 RLPA 71.9 ±.6 66.1 ±.7 12.6 ±.4 CORE 80.8 ±.5 76.4 ±.6 10.1 ±.4 
+
+Table 2: PERSIST stress robustness. CORE better preserves grounded persona commitments and reduces persistent drift under ambiguity, conflict, and controlled social-influence stress. 
+
+nored. The improvements are largest in the regimes where passive updating is most brittle. On ambiguity-positive turns, CORE increases APR, suggesting that relevant but under-resolved evi-dence is more often clarified rather than prema-turely committed. On conflict-positive turns, CORE reduces the false commit rate (FCR) by 9.3 points relative to RLPA, showing that unresolved contradictory evi-dence is less likely to be written into the persona state. Across PERSIST interaction-stress strategies, CORE more often avoids committing unresolved conflicting evidence, thereby preserving previously grounded preferences. Figure 4b diagnoses persona-state transitions. Rather than freezing the persona state, CORE re-vises the belief under sufficiently grounded prefer-ence changes while preserving the anchored state under ambiguous or unresolved conflicting evi-dence. This suggests that the robustness gain is not explained by complete state inertia. Figure 4c pro-vides a mechanism-level diagnostic: the stronger response- and state-level robustness of CORE is ac-companied by more accurate update routing rather than being established by action-level accuracy alone. Figure 5 further shows that after conflict is introduced, the strongest baseline loses align-ment while belief entropy and persona deviation increase; CORE keeps alignment high and sup-presses both uncertainty and deviation from the anchored persona. The largest improvements occur on ambiguity-positive and conflict-positive turns, where uncontrolled updating is most brittle. 
+
+Boundary diagnostics. Because PERSIST is post-anchor by design, we separately evaluate first-contact initialization and explicit preference rever-sal. Under pressure-first initialization, CORE re-duces FCR from 31 .6% for RLPA to 20 .9% , al-though this remains higher than CORE’s 11 .6% 
+
+FCR after anchoring, confirming that a grounded reference belief strengthens conflict-aware preser-vation. In preference-reversal cases, explicit and persistent changes can be committed immediately, whereas tentative changes are deferred until con-firmation, showing that conflict induces caution rather than permanent rejection. Full posterior tra-jectories and turns to stable MAP are reported in Appendix E.3. 
+
+4.5 Mechanistic Ablations and Efficiency Ablation Study. Table 3 isolates the contribu-tion of CORE. Removing executable update actions causes the largest degradation: AL drops from 82 .9
+
+to 78 .8, CRR from 82 .7 to 71 .6, and DRIFT in-creases from 10 .1 to 15 .4. This pattern is consistent with executable routing contributing beyond turn-local evidence extraction alone. Other ablations weaken the same control pathway in different ways: removing clarification mishandles under-resolved Variant AL ↑ CRR ↑ Drift ↓                       
+
+> CORE 82.9 ±.4 82.7 ±.4 10.1 ±.4 w/o update act. 78.8 ±.5 71.6 ±.6 15.4 ±.5 w/o clarify 80.1 ±.5 77.8 ±.5 13.9 ±.4 w/o inertia 80.7 ±.4 78.6 ±.5 13.4 ±.4 w/o opt. rev. 80.4 ±.5 78.1 ±.5 13.7 ±.5 w/o cal. rew. 80.6 ±.4 76.4 ±.6 13.5 ±.4 w/o rev. rew. 79.5 ±.5 75.2 ±.6 14.7 ±.5
+> Table 3: Mechanistic ablations. Removing compo-nents weakens alignment and stability.
+
+evidence, removing inertia or optimized revision makes the posterior move too aggressively, and removing calibration or revision rewards reduces conflict-sensitive routing. Failure-mode decomposition makes these effects more concrete: removing executable update actions increases unsupported COMMIT from 11 .3% to 
+
+22 .9% , while removing clarification raises under-clarification from 18 .4% to 42 .7% . Structure-matched controls provide a complementary test: action prediction without executable belief revision reaches 80 .0 AL and 72 .1 CRR, compared with 
+
+82 .9 AL and 82 .7 CRR for CORE. Together, these results support executable belief revision as a con-tributing mechanism beyond intermediate traces, action-name supervision, or additional structured labels alone. Full controls and failure-mode break-downs are reported in Appendix E. 
+
+Inference cost. CORE introduces a lightweight pre-generation control layer. Figure 4d decom-poses per-turn latency and shows that response decoding remains the dominant cost, while up-date routing and belief revision add only a small action-level overhead across C OMMIT , D EFER ,and I GNORE . The dialogue context is encoded once, slot-conditioned evidence logits are produced in a shared pass, and cached slot/value descrip-tions avoid separate LLM calls for each slot or value. This yields O(KV max d) additional com-putation and adds only 23.0 ms per turn on the same backbone, suggesting that CORE improves robustness without materially slowing inference. Gold persona-state and update-action annotations are used only for training or evaluation and are not required at inference time. More details are given in Appendix E.7. 
+
+Human evaluation. Human-in-the-loop evalua-tion further examines evaluation reliability and end-to-end interaction quality. Across audited response, robustness, and pairwise items, human agreement is strong, and judge predictions are well aligned with human judgments (mean J–H = 0 .84 , mean 
+
+κ = 0 .79 ), supporting the reliability of response-level automatic evaluation. In complete multi-turn interactions, CORE improves the average human rating over RLPA by 11 .7% . The gains are con-centrated on persona consistency, ambiguity han-dling, preference preservation, and long-horizon stability, which improve by +11 .6% –15 .5% , while response quality improves by only +4 .7% . This indicates that CORE’s advantage is concentrated more strongly on long-horizon persona-state be-havior than on generic response fluency. This con-trolled evaluation provides behavioral validation under matched multi-turn scenarios rather than evi-dence from natural longitudinal deployment. De-tails are in Appendix C. 
+
+5 Conclusion 
+
+We presented CORE, which formulates long-horizon personalization as controlled persona-state revision. By separating turn-local evidence from persistent belief updates, CORE preserves grounded preferences under unresolved observa-tions while remaining adaptive to sufficiently sup-ported changes. We also introduced PERSIST, a held-out benchmark for post-anchor persona-state robustness under sequential interaction stress. Across standard benchmarks, stress tests, and hu-man evaluation, our results support explicit update control as a useful mechanism for robust long-horizon personalization. 
+
+Acknowledgements 
+
+This work was supported in part by National Nat-ural Science Foundation of China (62476070), the Major Key Project of PCL under Grant PCL2025A10 and PCL2024A06, Shenzhen Sci-ence and Technology Program (RCJC202312 11085918010, JCYJ20241202123503005, GX WD20231128103232001, ZDSYS2023062609 1203008, KQTD20240729102154066), Depart-ment of Science and Technology of Guangdong (2024A1515011540). 
+
+Limitations 
+
+CORE relies on benchmark-instantiated persona slots and structured supervision, so its state-level analysis does not fully capture open-ended or cross-slot preferences. Its conservative update policy may also delay adaptation when genuine prefer-ence changes are weakly expressed. Moreover, PERSIST primarily evaluates post-anchor robust-ness rather than first-contact personalization, and controlled benchmarks cannot fully represent long-term real-world interactions. 
+
+Ethical Considerations 
+
+Persistent personalization raises privacy and user-control concerns because maintained persona states can influence future interactions. PERSIST is used only for controlled evaluation and is not intended for profiling real users or inferring sensitive at-tributes. Real-world systems should minimize re-tained information and allow users to inspect, cor-rect, delete, or opt out of persistent persona states. 
+
+References 
+
+Jiawei Chen, Xinyan Guan, Qianhao Yuan, Guozhao Mo, Weixiang Zhou, Yaojie Lu, Hongyu Lin, Ben He, Le Sun, and Xianpei Han. 2025a. ConsistentChat: Building skeleton-guided consistent multi-turn dia-logues for large language models from scratch. In 
+
+Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing (EMNLP) ,pages 8415–8441. Ruizhe Chen, Xiaotian Zhang, Meng Luo, Wenhao Chai, and Zuozhu Liu. 2025b. Pad: Personalized align-ment of llms at decoding-time. In Proceedings of the Thirteenth International Conference on Learning Representations(ICLR) .Changwoo Chun, Daniel Rim, and Juhee Park. 2025. LLM ContextBridge: A hybrid approach for intent and dialogue understanding in IVSR. In Proceedings of the 31st International Conference on Computa-tional Linguistics: Industry Track , pages 794–806. Sarkar Snigdha Sarathi Das, Chirag Shah, Mengting Wan, Jennifer Neville, Longqi Yang, Reid Andersen, Georg Buscher, and Tara Safavi. 2024. S3-DST: Structured open-domain dialogue segmentation and state tracking in the era of LLMs. In Findings of the Association for Computational Linguistics (ACL) ,pages 14996–15014. Kawin Ethayarajh, Winnie Xu, Niklas Muennighoff, Dan Jurafsky, and Douwe Kiela. 2024. Model align-ment as prospect theoretic optimization. In Proceed-ings of the 41st International Conference on Machine Learning(ICML) , pages 12634–12651. Yujie Feng, Zexin Lu, Bo Liu, Liming Zhan, and Xiao-Ming Wu. 2023. Towards LLM-driven dialogue state tracking. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Process-ing(EMNLP) , pages 739–755. Association for Com-putational Linguistics. Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schel-ten, Alex Vaughan, Amy Yang, Angela Fan, Anirudh Goyal, Anthony Hartshorn, Aobo Yang, Archi Mi-tra, Archie Sravankumar, Artem Korenev, Arthur Hinsvark, and 542 others. 2024. The Llama 3 herd of models. arXiv preprint arXiv:2407.21783 .Jian Guan, Junfei Wu, Jia-Nan Li, Chuanqi Cheng, and Wei Wu. 2025. A survey on personalized Alignment—The missing piece for large language models in real-world applications. In Findings of the Association for Computational Linguistics: ACL 2025 , pages 5313–5333. Jiaming Ji, Boyuan Chen, Hantao Lou, Donghai Hong, Borong Zhang, Xuehai Pan, Juntao Dai, Tianyi Qiu, and Yaodong Yang. 2024. Aligner: Efficient align-ment by learning to correct. In Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) .Cai Ke, Yiming Du, Bin Liang, Yifan Xiang, Lin Gui, Zhongyang Li, Baojun Wang, Yue Yu, Hui Wang, Kam-Fai Wong, and Ruifeng Xu. 2025. Flexibly utilize memory for long-term conversation via a fragment-then-compose framework. In Proceedings of the 2025 Conference on Empirical Methods in Nat-ural Language Processing(EMNLP) , pages 21119– 21136. Kasia Kobalczyk and Mihaela van der Schaar. 2025. Preference learning for AI alignment: a causal per-spective. In Proceedings of the Forty-second Inter-national Conference on Machine Learning (ICML) ,volume 267. Hao Li, Chenghao Yang, An Zhang, Yang Deng, Xi-ang Wang, and Tat-Seng Chua. 2025. Hello again! LLM-powered personalized agent for long-term di-alogue. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Associa-tion for Computational Linguistics (NAACL) , pages 5259–5276. Zekun Li, Zhiyu Zoey Chen, Mike Ross, Patrick Hu-ber, Seungwhan Moon, Zhaojiang Lin, Luna Dong, Adithya Sagar, Xifeng Yan, and Paul A. Crook. 2024. Large language models as zero-shot dialogue state tracker through function calling. In Proceedings of the 62nd Annual Meeting of the Association for Com-putational Linguistics (ACL) , pages 8688–8704. Jiahong Liu, Zexuan Qiu, Zhongyang Li, Quanyu Dai, Wenhao Yu, Jieming Zhu, Minda Hu, Menglin Yang, Tat-Seng Chua, and Irwin King. 2025. A survey of personalized large language models: Progress and future directions. arXiv preprint arXiv:2502.11528 .Wenhao Liu, Xiaohua Wang, Muling Wu, Tianlong Li, Changze Lv, Zixuan Ling, Zhu JianHao, Cenyuan Zhang, Xiaoqing Zheng, and Xuanjing Huang. 2024. Aligning large language models with human prefer-ences through representation engineering. In Pro-ceedings of the 62nd Annual Meeting of the Asso-ciation for Computational Linguistics (ACL) , pages 10619–10638. Hantao Lou, Jiaming Ji, Kaile Wang, and Yaodong Yang. 2025. Stream aligner: Efficient sentence-level align-ment via distribution induction. In Proceedings of the Thirty-Ninth AAAI Conference on Artificial Intel-ligence (AAAI) , pages 27500–27508. Chimaobi Okite, Naihao Deng, Kiran Bodipati, Huaid-ian Hou, Joyce Chai, and Rada Mihalcea. 2025. Benchmarking and improving LLM robustness for personalized generation. In Findings of the Associ-ation for Computational Linguistics: EMNLP 2025 ,pages 16040–16072. Kai Tzu-iunn Ong, Namyoung Kim, Minju Gwak, Hyungjoo Chae, Taeyoon Kwon, Yohan Jo, Seung-won Hwang, Dongha Lee, and Jinyoung Yeo. 2025. Towards lifelong dialogue agents via timeline-based memory management. In Proceedings of the 2025 Conference of the Nations of the Americas Chap-ter of the Association for Computational Linguis-tics(NAACL) , pages 8631–8661. Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll L. Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welin-der, Paul F. Christiano, Jan Leike, and Ryan Lowe. 2022. Training language models to follow instruc-tions with human feedback. In Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) .Bo Peng, Zhiheng Wang, Heyang Gong, and Chaochao Lu. 2025. IP-dialog: Evaluating implicit personal-ization in dialogue systems with synthetic data. In 
+
+Findings of the Association for Computational Lin-guistics: EMNLP 2025 , pages 17007–17040. Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D. Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. In Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) .Chris Richardson, Yao Zhang, Kellen Gillespie, Sudipta Kar, Arshdeep Singh, Zeynab Raeesy, Omar Zia Khan, and Abhinav Sethy. 2023. Integrating sum-marization and retrieval for enhanced personaliza-tion via large language models. arXiv preprint arXiv:2310.20081 .Alireza Salemi, Sheshera Mysore, Michael Bendersky, and Hamed Zamani. 2024. Lamp: When large lan-guage models meet personalization. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL) , pages 7370–7392. Omar Shaikh, Hussein Mozannar, Gagan Bansal, Adam Fourney, and Eric Horvitz. 2025. Navigating rifts in human-LLM grounding: Study and benchmark. In 
+
+Proceedings of the 63rd Annual Meeting of the Asso-ciation for Computational Linguistics (ACL) , pages 20832–20847. Zhen Tan, Jun Yan, I-Hung Hsu, Rujun Han, Zifeng Wang, Long Le, Yiwen Song, Yanfei Chen, Hamid Palangi, George Lee, Anand Rajan Iyer, Tianlong Chen, Huan Liu, Chen-Yu Lee, and Tomas Pfister. 2025. In prospect and retrospect: Reflective mem-ory management for long-term personalized dialogue agents. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (ACL) ,pages 8416–8439. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed H. Chi, Quoc V. Le, and Denny Zhou. 2022. Chain-of-thought prompt-ing elicits reasoning in large language models. In 
+
+Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) .Shujin Wu, Yi R. Fung, Cheng Qian, Jeonghwan Kim, Dilek Hakkani-Tur, and Heng Ji. 2025. Aligning llms with individual preferences via interaction. In 
+
+Proceedings of the 31st International Conference on Computational Linguistics(COLING) , pages 7648– 7662. Xin Yu, Hanwen Xing, and Lingzhou Xue. 2026. Exact: Explicit attribute-guided decoding-time personaliza-tion. arXiv preprint arXiv:2602.17695 .Michael JQ Zhang and Eunsol Choi. 2025. Clarify when necessary: Resolving ambiguity through in-teraction with LMs. In Findings of the Association for Computational Linguistics: NAACL 2025 , pages 5541–5558. Saizheng Zhang, Emily Dinan, Jack Urbanek, Arthur Szlam, Douwe Kiela, and Jason Weston. 2018. Per-sonalizing dialogue agents: I have a dog, do you have pets too? In Proceedings of the 56th Annual Meet-ing of the Association for Computational Linguistics (ACL) , pages 2204–2213. Siyan Zhao, Mingyi Hong, Yang Liu, Devamanyu Haz-arika, and Kaixiang Lin. 2025a. Do llms recognize your preferences? evaluating personalized preference following in llms. In Proceedings of the Thirteenth International Conference on Learning Representa-tions(ICLR) .Weixiang Zhao, Xingyu Sui, Yulin Hu, Jiahe Guo, Haix-iao Liu, Biye Li, Yanyan Zhao, Bing Qin, and Ting Liu. 2025b. Teaching language models to evolve with users: Dynamic profile modeling for personal-ized alignment. In Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) .Xiaoyan Zhao, Juntao You, Yang Zhang, Wenjie Wang, Hong Cheng, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2026. Nextquill: Causal preference modeling for enhancing llm personalization. In Proceedings of the International Conference on Learning Represen-tations(ICLR) .Wanjun Zhong, Lianghong Guo, Qiqi Gao, He Ye, and Yanlin Wang. 2024. Memorybank: Enhancing large language models with long-term memory. In Pro-ceedings of the Thirty-Eighth AAAI Conference on Artificial Intelligence (AAAI) , pages 19724–19731. Minjun Zhu, Yixuan Weng, Linyi Yang, and Yue Zhang. 2025. Personality alignment of large language mod-els. In Proceedings of the Thirteenth International Conference on Learning Representations(ICLR) .Appendix 
+
+A CORE Method Details 14 
+
+A.1 Slot-Factorized Persona Belief . . 14 A.2 Semi-Open Value Handling . . . . 14 A.3 Context Encoding and Slot-Wise Evidence Scoring . . . . . . . . . 14 A.4 Uncertainty-Guided Update Routing 15 A.5 Belief Revision . . . . . . . . . . 16 A.6 Inference-Time Algorithm . . . . 16 
+
+B Experimental and Training Protocol 16 
+
+B.1 Benchmarks, Splits, and Evalua-tion Scope . . . . . . . . . . . . . 17 B.2 Slot Instantiation and Baseline Controls . . . . . . . . . . . . . . 17 B.3 Update-Action Labels and Audit . 18 B.4 Supervised Warm-Up and Uncer-tainty Calibration . . . . . . . . . 18 B.5 PPO Configuration and Stability Checks . . . . . . . . . . . . . . . 19 
+
+C Evaluation Metrics, Reliability, and Hu-man Study 20 
+
+C.1 Metric-Source Separation . . . . . 20 C.2 Response-Level Metrics . . . . . 20 C.3 Belief-Level Metrics . . . . . . . 20 C.4 Decision-Level Metrics . . . . . . 21 C.5 PERSIST Robustness Metrics . . 21 C.6 Aggregation and Uncertainty Re-porting . . . . . . . . . . . . . . . 21 C.7 Judge Prompts, Calibration, and Reliability . . . . . . . . . . . . . 22 C.8 Anti-Gaming Diagnostics . . . . . 22 C.9 Human Evaluation Protocol . . . . 23 C.10 Human Rating Rubric and Statisti-cal Analysis . . . . . . . . . . . . 23 C.11 Human Evaluation Results . . . . 23 C.12 Pairwise Preference and Scenario Analysis . . . . . . . . . . . . . . 23 
+
+D PERSIST: A Benchmark for Persona-State Robustness under Sequential In-teraction Stress 23 
+
+D.1 Benchmark Objective and Target Behaviors . . . . . . . . . . . . . 24 D.2 Dataset Statistics and Splits . . . . 24 D.3 Construction and Verification Pipeline . . . . . . . . . . . . . . 25 D.4 Social-Influence Strategy Taxonomy 25 D.5 Quality Assurance and Human Audit 25 D.6 Evaluation Protocol . . . . . . . . 26 D.7 Limitations of PERSIST . . . . . 26 
+
+E Additional Results and Mechanistic Analyses 27 
+
+E.1 Structure-Matched Controls . . . . 27 E.2 Component Ablations by Failure Mode . . . . . . . . . . . . . . . 27 E.3 Stability–Adaptability Boundary Diagnostics . . . . . . . . . . . . 27 E.4 Scale and Backbone Transfer . . . 28 E.5 Closed-Slot State Diagnostics . . . 28 E.6 PERSIST Robustness Breakdowns 28 E.7 Latency, Memory, and Retrieval Controls . . . . . . . . . . . . . . 28 Appendix organization. The appendix provides details needed to audit and reproduce CORE. Ap-pendix A specifies the method implementation; Appendix B reports experimental controls, train-ing setup, calibration, and PPO configuration; Ap-pendix C defines the evaluation metrics and reports judge and human-study reliability; Appendix D describes PERSIST construction, stress strategies, and quality control; and Appendix E provides structure-matched controls, boundary diagnostics, robustness breakdowns, efficiency analyses, and failure-mode results. 
+
+A CORE Method Details 
+
+This section gives implementation details. 
+
+A.1 Slot-Factorized Persona Belief 
+
+CORE maintains a slot-factorized persona be-lief. Let K = {1, . . . , K } denote the benchmark-instantiated slot inventory. At turn t, slot k has a working value set V(t) 
+
+> k
+
+,and CORE stores a categorical posterior bkt ∈ S (t) 
+
+> k
+
+,where S(t) 
+
+> k
+
+denotes the probability simplex over 
+
+V(t) 
+
+> k
+
+.The joint belief is approximated as 
+
+bt(z) ≈
+
+> K
+
+Y
+
+> k=1
+
+bkt (zk), zk ∈ V (t) 
+
+> k
+
+. (26) This factorization is an auditable state interface, not an independence assumption. It lets each turn-level update be traced to a concrete persona slot. For each slot, we summarize the posterior by its MAP value and anchored confidence. Let V(t) 
+
+> k, +
+
+=
+
+V(t) 
+
+> k
+
+\{ UNK } and mkt = 1 −bkt (UNK) . For mkt >
+
+0, define ¯bkt (v) = bkt (v)/m kt over V(t)
+
+> k, +
+
+. Then 
+
+ˆzkt = arg max 
+
+> v∈V (t)
+> k
+
+bkt (v), (27) 
+
+ckt = mkt
+
+
+
+1 − H(¯bkt )log |V (t)
+
+> k, +
+
+| , |V (t)
+
+> k, +
+
+| > 1,
+
+1, |V (t)
+
+> k, +
+
+| = 1 ,
+
+0, |V (t)
+
+> k, +
+
+| = 0 .
+
+(28) This prevents a posterior concentrated on UNK 
+
+from being interpreted as strong persona ground-ing. 
+
+A.2 Semi-Open Value Handling 
+
+The slot inventory is fixed within each benchmark, but value sets are semi-open: 
+
+V(t) 
+
+> k
+
+= Vcanon  
+
+> k
+
+∪ V obs  
+
+> k
+
+(t) ∪ { UNK }. (29) Here, Vcanon  
+
+> k
+
+contains benchmark-defined canon-ical values, Vobs  
+
+> k
+
+(t) contains values observed or clarified up to turn t, and UNK marks unresolved evidence. A new value is added only when it can be mapped to an existing slot with sufficient semantic confidence. Attributes without a reliable closed-slot mapping are assigned to a residual open slot and excluded from closed-slot state metrics. Surface mentions are normalized before enter-ing Vobs  
+
+> k
+
+(t). Paraphrases are merged only when they express the same persona commitment. For example, prefers concise answers and likes brief explanations may be merged, while vegetarian and 
+
+vegan remain distinct unless the dialogue explicitly resolves them. The same normalization rules are applied to all methods. When a new value is admitted into V(t) 
+
+> k
+
+,the previous posterior bkt−1 is extended with a configuration-fixed prior mass and then renormal-ized over the expanded support. The semantic map-ping used to determine whether a newly observed value belongs to an existing slot is part of bench-mark/schema normalization rather than a separate inference-time slot-matching model. Closed-slot belief metrics are computed only on normalized slots and values. Open-world attributes can still affect response-level evaluation, but they are not counted as closed-slot belief correctness. 
+
+A.3 Context Encoding and Slot-Wise Evidence Scoring 
+
+At turn t, CORE receives dialogue history Ht−1,user utterance ut, and previous belief bt−1. Ashared context encoder produces 
+
+ht = fenc (Ht−1, u t, b t−1). (30) The maintained belief is provided as a com-pact symbolic state summary, including high-confidence slot values, unresolved UNK states, and historical state-control information avail-able before the current routing decision. No current-turn update action is included in ht,because routing is computed only after turn-local evidence and uncertainty descriptors have been obtained. This preserves the inference or-der context encoding → evidence scoring →
+
+uncertainty characterization → update routing. CORE does not use a separate inference-time slot matcher. Each slot is represented by its schema, including a slot name, a short natural-language definition, and the current candidate values in V(t) 
+
+> k
+
+.Slot grounding during inference is handled by slot-conditioned evidence scoring, while value-to-slot normalization used to construct benchmark targets is performed separately during preprocessing. For each slot, we augment the working value set with a null option: 
+
+¯V(t) 
+
+> k
+
+= V(t) 
+
+> k
+
+∪ {⊥} , (31) where ⊥ means that the current turn provides no usable evidence for slot k.For each v ∈ ¯V(t) 
+
+> k
+
+, CORE computes a local evi-dence logit: 
+
+ℓkt (v) = fevi (ht, e k, e v). (32) The logit measures what the current turn locally suggests; it does not decide whether the maintained belief should be revised. For numerical stability, evidence logits are cen-tered and clipped within each slot: 
+
+¯ℓkt (v) = ℓkt (v) − 1
+
+| ¯V(t) 
+
+> k
+
+|
+
+X 
+
+> v′∈¯V(t)
+> k
+
+ℓkt (v′), (33) 
+
+∆kt (v) = clip 
+
+ ¯ℓkt (v)
+
+skt + ϵ , −∆max , ∆max 
+
+
+
+, (34) where skt is the within-slot scale used by the im-plementation and ∆max is fixed before evalua-tion. Both quantities are shared across experiments rather than selected from test performance. For candidate sets for which scale estimation is unreli-able, the implementation applies clipping without the scale-normalization step. In the rest of the appendix, ∆kt (v) denotes this stabilized evidence score, matching the evidence notation in the main text. The stabilized scores define a turn-local distribu-tion over the augmented value space: 
+
+epkt (v) = exp(∆ kt (v)) 
+
+P 
+
+> v′∈¯V(t)
+> k
+
+exp(∆ kt (v′)) , v ∈ ¯V(t) 
+
+> k
+
+.
+
+(35) This distribution is turn-local. It identifies which value, if any, is supported by the current observa-tion; routing decides whether that evidence should be committed, deferred, or ignored. 
+
+A.4 Uncertainty-Guided Update Routing 
+
+CORE derives relevance, ambiguity, and conflict from the turn-local evidence distribution. The null option gives the relevance estimate: 
+
+rkt = 1 − epkt (⊥). (36) For non-null values, we renormalize the evi-dence distribution over V(t) 
+
+> k
+
+:
+
+epkt, +(v) = epkt (v)
+
+P
+
+> v′∈V (t)
+> k
+
+epkt (v′) , v ∈ V (t) 
+
+> k
+
+. (37) Ambiguity is computed as 
+
+akt =
+
+
+
+H(epkt, +)log |V (t) 
+
+> k
+
+| , |V (t) 
+
+> k
+
+| > 1,
+
+0, |V (t) 
+
+> k
+
+| ≤ 1.
+
+(38) When a new value expands V(t) 
+
+> k
+
+, we first extend 
+
+bkt−1 with the same configuration-fixed prior mass used in Appendix A.2 and renormalize it over the aligned support. Conflict is then 
+
+qkt = rkt DJS 
+
+epkt, + ∥ bkt−1
+
+
+
+. (39) The multiplier rkt prevents weakly matched turns from being treated as strong conflicts. When rkt
+
+falls below the calibrated relevance threshold, slot 
+
+k is treated as unmatched and bypasses persistent revision. The update policy directly conditions on the cur-rent evidence distribution, previous belief, and un-certainty descriptors: 
+
+αkt ∼ πθ
+
+> upd
+
+
+
+α epkt , b kt−1, r kt , a kt , q kt , c kt−1
+
+
+
+,αkt ∈ { COMMIT , DEFER , IGNORE }.
+
+(40) The implementation uses the corresponding slot-conditioned encoded representation, avoiding a lit-eral flattening of variable-length candidate distribu-tions while preserving the routing semantics in the main text. The action semantics are: • COMMIT : authorize sufficiently grounded ev-idence to revise the maintained belief. • DEFER : preserve the current belief while ex-posing relevant but under-resolved evidence to the current-turn discourse policy. • IGNORE : exclude unrelated or explicitly non-persistent evidence from the active update path-way. DEFER does not create a separate durable pending-memory buffer. Deferred evidence re-mains current-turn control information and does not automatically become a future COMMIT. If related evidence or clarification later appears while the earlier dialogue context remains accessible, the slot is inferred and routed again from the newly available context. DEFER is an internal update action, whereas CLARIFY is a dialogue-level deci-sion made after slot-level revision. 
+
+A.5 Belief Revision 
+
+After routing, CORE converts each update decision into a continuous gate. Following Section 3.3, the gate feature is 
+
+ψkt = [ rkt ; 1 − akt ; 1 − qkt ; ckt−1]. (41) The revision gate is 
+
+gkt = I[αkt = COMMIT] · σ(w⊤ 
+
+> g
+
+ψkt + bg). (42) DEFER and IGNORE set gkt = 0 . Under COM-MIT, the update magnitude is conditioned on rele-vance, ambiguity, conflict, and prior anchored con-fidence; we do not assume a fixed monotonic effect for any individual descriptor unless imposed by the implementation. Given the gate, CORE performs a KL-regularized posterior update over the non-null value set V(t) 
+
+> k
+
+:
+
+bkt = arg min  
+
+> p∈∆( V(t)
+> k)
+
+KL( p∥bkt−1) − gkt
+
+X
+
+> v∈V (t)
+> k
+
+p(v)∆ kt (v)
+
+ .
+
+(43) The null option ⊥ is used only for evidence rele-vance and is never written into the persona belief. The solution is 
+
+bkt (v) = bkt−1(v) exp( gkt ∆kt (v)) 
+
+P
+
+> v′∈V (t)
+> k
+
+bkt−1(v′) exp( gkt ∆kt (v′)) ,v ∈ V (t) 
+
+> k
+
+.
+
+(44) Thus gkt = 0 preserves the prior, while larger 
+
+gkt moves the posterior toward evidence-supported values. For DEFER and IGNORE, the posterior remains unchanged, and deferred evidence is used only for current-turn discourse control. After slot-level revision, CORE decides whether 
+
+Algorithm 1 CORE inference-time algorithm                                                                                               
+
+> Require: History Ht−1, user utterance ut, previous belief
+> bt−1
+> Ensure: Updated belief btand response yt
+> 1: ht←fenc (Ht−1, u t, b t−1)
+> 2: Aupd ← { COMMIT ,DEFER ,IGNORE }
+> 3: Adis ← { RESPOND ,CLARIFY }
+> 4: for k= 1 , . . . , K do
+> 5: Construct V(t)
+> k
+> 6: ¯V(t)
+> k← V (t)
+> k∪ {⊥}
+> 7: Score ℓkt(v)for all v∈¯V(t)
+> k
+> 8: Stabilize scores to obtain ∆kt(v)
+> 9: Compute epktover ¯V(t)
+> k
+> 10: rkt←1−epkt(⊥)
+> 11: if rktis below the relevance threshold then
+> 12: αkt←IGNORE
+> 13: bkt←bkt−1
+> 14: else
+> 15: Compute epkt, +over V(t)
+> k
+> 16: Compute aktand qktusing Eq. (39) 17: Predict αktusing Eq. (40) 18: if αkt= COMMIT then
+> 19: Compute gktusing Eq. (42) 20: Update bktusing Eq. (44) 21: else
+> 22: bkt←bkt−1
+> 23: end if
+> 24: end if
+> 25: end for
+> 26: Predict dtusing Eq. (45) 27: yt∼πθ
+> resp (· | Ht−1, u t, b t, d t)
+> 28: return bt, y t
+
+to respond or request clarification: 
+
+dt ∼ πθ
+
+> dis
+
+
+
+d ut, H t−1, b t, {rkt , a kt , q kt , α kt }Kk=1 
+
+
+
+,dt ∈ { RESPOND , CLARIFY }.
+
+(45) A deferred observation does not automatically trig-ger clarification. 
+
+A.6 Inference-Time Algorithm 
+
+Algorithm 1 summarizes inference. Evidence is scored before routing; only evidence routed through COMMIT can revise the maintained belief. 
+
+Gradient boundaries. During supervised warm-up, gradients are applied to the evidence scorer, update router, discourse policy, and response pol-icy through their corresponding supervised losses. The belief update in Eq. (44) remains differentiable with respect to the evidence scores and revision gate, while the discrete routing action is optimized through the routing loss and policy objective. 
+
+B Experimental and Training Protocol 
+
+This section specifies the experimental and training protocol behind Section 4. It covers benchmark Table 4: Processed experimental splits. ALOE and PersonaChat splits are fixed before training and shared by all methods.                
+
+> Benchmark Train Cal. Test Turns Split guar-antee
+> ALOE 4,800 600 600 61,248 preference-cluster disjoint PersonaChat 8,448 1,024 1,024 103,872 persona-profile disjoint
+
+splits, slot instantiation, baseline controls, update-action labels, label auditing, supervised warm-up, uncertainty calibration, PPO rewards, and stabil-ity checks. The goal is to make the comparison auditable and to test whether the observed gains can be distinguished from alternative explanations such as hidden supervision, larger context budgets, reward artifacts, or degenerate conservatism. 
+
+B.1 Benchmarks, Splits, and Evaluation Scope 
+
+All methods are evaluated in the same partially observed interaction setting. The model observes the dialogue history and current user utterance, but never observes the latent persona state directly. It must infer, maintain, and update personalization from turn-level evidence. We use three complementary benchmarks. ALOE evaluates progressive preference revelation; PersonaChat evaluates generalization to free-form persona attributes; and PERSIST evaluates robust-ness under ambiguity, conflict, and controlled so-cial influence. For ALOE and PersonaChat, splits are constructed at the persona level whenever pro-file identifiers are available. For datasets without explicit identifiers, we cluster normalized persona descriptors and split clusters rather than individual turns. Table 4 reports the processed splits for ALOE and PersonaChat. The calibration split is used for checkpoint selection, threshold calibration, response-judge calibration, and uncertainty cali-bration when applicable. PERSIST is used only for held-out robustness evaluation; its benchmark construction and evaluation protocol are described separately in Appendix D. Response-level metrics are computed on all re-tained examples. Closed-slot belief metrics are computed only when the relevant persona evidence can be reliably mapped to a normalized slot-value target. Residual open-world attributes remain in response-level evaluation but are excluded from closed-slot state metrics. 
+
+B.2 Slot Instantiation and Baseline Controls 
+
+CORE uses the same state-control interface across benchmarks, while the slot inventory is benchmark-instantiated. This avoids imposing a universal on-tology while keeping evaluation auditable. ALOE, PersonaChat, and PERSIST instantiate 10, 8, and 12 closed slots, respectively. Their closed-slot cov-erage after normalization is 91.4%, 86.6%, and 89.1%; the remaining attributes are assigned to residual open slots and excluded only from closed-slot state metrics. Typical slots cover explanation style, privacy, budget, lifestyle, diet, verbosity, for-mality, travel, and risk tolerance. Surface mentions are normalized before eval-uation. Paraphrases are merged only when they express the same stable commitment. For example, 
+
+prefers concise answers and likes brief explana-tions may share a verbosity value, while vegetarian 
+
+and vegan remain distinct unless explicitly clarified. The same normalization rules are applied to CORE and all baselines. For systems that do not expose a native struc-tured persona belief, state-level diagnostics are computed with the same frozen evaluation-time state extractor, applied uniformly across those sys-tems. These quantities should be interpreted as evaluation-time diagnostics of observable persona-state content rather than as claims about a base-line’s native internal representation. Baselines test six alternative explanations: prompting or reasoning traces (Reminder, Self-Critic, CoT), retrieved or persistent memory (RAG top-5, MemoryBank), offline preference optimization (SFT, DPO), personalized-agent control (RLPA), intermediate-format supervision (structure-matched controls), and scale/backbone effects. Same-backbone methods use matched decoding and calibration protocols; structure-matched controls are reported in Appendix E. All baselines use the same dialogue input and context budget. Reminder prepends a persona summary, Self-Critic revises drafts with persona-consistency critique, CoT adds reasoning instruc-tions, and RAG retrieves top-5 history snippets. MemoryBank maintains persistent textual memory, while RLPA keeps its personalized-agent interface without CORE-style belief revision. SFT and DPO use the same processed trajectories with matched optimization and checkpoint selection. All same-backbone methods use Llama-3.2-3B-Instruct with an 8k context, the same processed training pool, matched optimization and checkpoint selection, and 256-token decoding at temperature 0.7; retrieval baselines use top-5 retrieval unless otherwise stated. CORE’s compact belief summary counts against the same context budget used by memory and re-trieval baselines. Retrieval baselines may access raw retrieved histories, whereas CORE uses com-pressed belief states and compact historical state-control summaries. Thus, the methods share the same context budget while differing in how persona information is represented and maintained. Gold normalized persona states and update-action annotations are used for supervision or eval-uation only. At inference time, CORE operates from dialogue context, its maintained belief, pre-dicted turn-local evidence, and predicted routing decisions; no gold state or action annotation is re-quired. 
+
+B.3 Update-Action Labels and Audit 
+
+CORE uses slot-turn update labels for supervised warm-up on ALOE and PersonaChat and for decision-level evaluation. Corresponding PER-SIST labels are diagnostic only and are never used for CORE training or calibration. These labels are constructed independently of CORE predictions. Each label belongs to 
+
+αk,⋆ t ∈ { COMMIT , DEFER , IGNORE }. (46) The label rule uses four observable factors: Rel kt
+
+indicates whether turn t contains evidence about slot k; Amb kt indicates whether the relevant evi-dence remains under-resolved; UConf kt indicates whether the evidence conflicts with a grounded prior while the conflict remains unresolved; and 
+
+Stable kt indicates whether the evidence expresses a persistent rather than explicitly local commitment. Here, Stable kt = 0 is reserved for evidence that is explicitly task-local, transient, hypotheti-cal, quoted from another speaker, or otherwise not intended to characterize the user’s persistent per-sona. Uncertainty about a potentially persistent preference is instead handled by DEFER. Candidate labels are assigned by the mutually exclusive rule 
+
+αk,⋆ t =
+
+
+
+IGNORE , Rel kt = 0 ∨ Stable kt = 0 ,
+
+DEFER , Rel kt = 1 , Stable kt = 1 ,
+
+Amb kt = 1 ∨ UConf kt = 1 ,
+
+COMMIT , Rel kt = 1 , Stable kt = 1 ,
+
+Amb kt = 0 , UConf kt = 0 .
+
+(47) COMMIT denotes sufficiently resolved evidence for persistent revision. DEFER denotes relevant evidence that may be persistent but whose value or relation to the grounded prior remains unresolved. IGNORE denotes either unrelated evidence or evi-dence whose semantics are explicitly local or non-persistent. The three categories are mutually exclu-sive by construction. An observed conflict does not imply permanent rejection. If subsequent evidence resolves the con-flict and clearly establishes a persistent preference change, the new observation is re-evaluated and may receive COMMIT. We audit labels in four stages. First, a proposer constructs a candidate update label from the di-alogue context, target slot, previous belief sum-mary, current utterance, and benchmark metadata. Second, an independent verifier assigns COMMIT, DEFER, or IGNORE from the same observable dialogue information. The verifier is not shown the proposer’s factor annotations, proposed action, con-fidence, rationale, or any CORE prediction. Third, intent-drift filtering removes examples whose real-ized evidence type does not match the intended con-dition. Finally, a stratified human audit checks slot mapping, action semantics, and false-COMMIT risk. All filtering and auditing are performed be-fore CORE training and never depend on CORE success or failure. Table 5 merges label distribution and audit statis-tics. Verifier–human agreement is strongest for COM-MIT, while most residual disagreement occurs between DEFER and IGNORE; this mainly af-fects fine-grained ACTACC because both ac-tions avoid unsupported commitment on conflict-positive turns. 
+
+B.4 Supervised Warm-Up and Uncertainty Calibration 
+
+We use the supervised objective defined in Sec-tion 3.4. The evidence target is ⊥ when the current turn provides no usable evidence for slot k. After Table 5: Update-label construction and audit summary. Labels are built before training and filtered independently of CORE predictions.                               
+
+> Benchmark COMMIT DEFER IGNORE Verifier agree Drift removed Final retained Main removed pat-tern
+> ALOE 43.8 24.6 31.6 89.6% 6.1% 157,384 Local task requests mislabeled as stable preferences. PersonaChat 39.5 27.2 33.3 86.8% 7.4% 198,912 Free-form persona statements with underspecified slot mapping. PERSIST 31.6 32.4 36.0 84.9% 9.8% 247,536 Stress turns whose pressure was weaker than intended.
+
+warm-up, calibration parameters associated with relevance, ambiguity, and conflict are selected on the held-out calibration split and fixed during PPO. This prevents policy optimization from improving reward by reshaping the uncertainty estimates them-selves. 
+
+B.5 PPO Configuration and Stability Checks 
+
+All same-backbone trainable methods use Llama-3.2-3B-Instruct with the same tokenizer. Experi-ments are run on NVIDIA A800 80GB GPUs. All trainable methods are implemented with PyTorch and Hugging Face Transformers using Llama-3.2-3B-Instruct and its default tokenizer. RAG uses top-5 retrieval, and all generation-based methods use matched decoding settings. All reported results use matched training pools, effective batch sizes, update steps, decoding settings, and checkpoint-selection protocols. PPO starts from the supervised warm-up check-point πSFT . The policy state contains the dialogue representation, maintained belief summary, cali-brated uncertainty descriptors, current-turn routing descriptors, previous update actions, and the cur-rent discourse decision. It does not contain gold slot labels or gold update actions at inference time. We optimize 
+
+LPPO = − Et
+
+h
+
+min  ρtAt, clip( ρt, 1 − ϵ, 1 + ϵ)At
+
+i
+
++ βKL DKL 
+
+ πθ(·| st) ∥ πSFT (·| st)
+
++ λV LV − λH H(πθ),
+
+(48) where ρt is the policy ratio, At is the estimated advantage, LV is the value loss, and H is policy entropy. 
+
+Table 6: PPO configuration. The same setting is used across CORE PPO runs unless otherwise stated.                  
+
+> Hyperparameter Value
+> Reference policy Frozen SFT checkpoint PPO clip range ϵ0.20 KL coefficient βKL 0.05 Value-loss weight λV0.50 Entropy weight λH0.01 GAE λ0.95 Discount factor γ0.99 Effective batch size 128 PPO epochs / batch 4Max gradient norm 1.0
+
+The task reward is 
+
+Rt = λact Ract  
+
+> t
+
++ λstate Rstate 
+
+> t
+
++ λans Rans  
+
+> t
+
++ λclar Rclar  
+
+> t
+
+, (49) while the KL regularizer is applied separately in Eq. (48). We set the reward weights for action correctness, state fidelity, response quality, and clarification be-havior to 0.35 , 0.30 , 0.25 , and 0.10 , respectively. The reward components correspond to distinct training signals. Ract  
+
+> t
+
+evaluates COMMIT, DE-FER, and IGNORE routing; Rstate  
+
+> t
+
+evaluates fi-delity of the maintained persona belief; Rans  
+
+> t
+
+evalu-ates personalized response quality; and Rclar  
+
+> t
+
+eval-uates whether clarification is used when relevant evidence remains unresolved while penalizing un-necessary clarification on well-resolved turns. We track both optimization-level and behavior-level diagnostics during PPO. Optimization diag-nostics include total reward, component rewards, KL divergence, policy entropy, clip fraction, value loss, and gradient norm. Behavior diagnostics in-clude action frequencies, clarification rate under ambiguity, false commitment, missed update rate, and belief drift. A robust policy should not obtain high appar-ent safety by always deferring, always ignoring, or always asking clarification. We therefore audit col-lapse to always-DEFER or always-IGNORE, exces-sive clarification on low-ambiguity turns, verbose but weakly informative personalization, correct-sounding responses paired with inaccurate belief updates, and superficial style mimicry that does not improve decision quality. Detailed reward-hacking and degeneracy diagnostics are reported in Appendix E. 
+
+C Evaluation Metrics, Reliability, and Human Study 
+
+This section defines the metrics used in Section 4 and reports reliability checks for both automatic and human evaluation. The central principle is 
+
+metric-source separation : generated responses, maintained beliefs, update actions, and clarification decisions are evaluated from different objects and supervision sources. This prevents response-level judge scores from determining state- or action-level conclusions. 
+
+C.1 Metric-Source Separation 
+
+We evaluate generated responses, maintained be-liefs, update actions, and clarification decisions from distinct sources. GPT-5.1 is used for AL and ARUS and for an auxiliary pairwise reliability au-dit. Belief- and decision-level metrics use refer-ence annotations, maintained states, logged native actions, or the fixed behavior-derived proxies in Ap-pendix C.4. Response-level outcomes and human evaluation are treated as primary end-to-end evi-dence; state and action metrics are complementary diagnostics. 
+
+C.2 Response-Level Metrics Alignment Level. Alignment Level (AL) is the primary response-level metric. For dialogue j at turn t, the judge assigns 
+
+sj,t ∈ { 1, 2, 3, 4, 5}, (50) where higher scores indicate stronger personalized alignment, better use of grounded persona evidence, and fewer violations of established commitments. We report AL on a 0–100 scale: 
+
+AL t = 100 ·
+
+> 1
+> |J t|
+
+P 
+
+> j∈J t
+
+sj,t − 14 ,
+
+AL = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+AL t.
+
+(51) Because the underlying judge score is ordinal, we interpret AL together with pairwise preference and human-agreement checks. 
+
+Normalized Improvement Rate. We normalize turn-level AL by 
+
+fAL t = AL t
+
+100 . (52) We then fit 
+
+fAL t = β0 + β1t + ϵt, (53) and define 
+
+N-IR = β1. (54) Higher N-IR means that the model uses accumulat-ing persona evidence more efficiently. 
+
+Trajectory regularity. Normalized R2 measures whether alignment improves smoothly: 
+
+N-R2 = 1 −
+
+PTt=1 
+
+fAL t − cfAL t
+
+2
+
+PTt=1 
+
+ fAL t − fAL 
+
+2 . (55) 
+
+C.3 Belief-Level Metrics 
+
+Belief-level metrics evaluate the maintained per-sona state rather than the generated response. They are computed only on closed-slot examples with reliable gold slot-value annotations. Let zk,⋆ j,t be the gold value for slot k in dialogue j at turn t, and let 
+
+bkj,t be the model’s posterior belief. 
+
+Slot accuracy. 
+
+SLOTACC = 100 
+
+|S| 
+
+X
+
+> (j,t,k )∈S
+
+I
+
+
+
+argmax 
+
+> v
+
+bkj,t (v) = zk,⋆ j,t 
+
+
+
+.
+
+(56) 
+
+Belief update accuracy. Let U be the set of update-positive slot-turns where the gold state should change or be confirmed by reliable evidence. Then 
+
+BUA = 100 · 1
+
+|U| 
+
+X
+
+> (j,t,k )∈U
+
+I
+
+h
+
+arg max  
+
+> v
+
+bkj,t (v) = zk,⋆ j,t 
+
+i
+
+.
+
+(57) BUA checks whether a model can adapt when ev-idence is reliable, so high robustness cannot be explained by complete inertia. Persona-state drift. 
+
+DRIFT = 100 · 1
+
+|S| 
+
+X
+
+> (j,t,k )∈S
+
+
+
+1 − bkj,t (zk,⋆ j,t )
+
+
+
+.
+
+(58) Lower DRIFT means less posterior mass is as-signed away from the gold persona value. 
+
+Belief calibration. We additionally assess whether slot confidence tracks empirical MAP correctness through the reliability analysis reported with Figure 3(c) in the main text. 
+
+C.4 Decision-Level Metrics 
+
+Decision-level metrics are mechanism diagnostics for update control rather than primary measures of end-to-end system quality. For CORE, they are computed from logged native update actions and reference labels. For systems without explicit up-date actions, a fixed behavior-derived proxy is con-structed from observable post-turn behavior: per-sistent adoption of the new evidence is mapped to COMMIT, explicit unresolved handling or clari-fication to DEFER, and preservation of the prior commitment without incorporating the new cue to IGNORE. These proxies are used only for diag-nostic action metrics, are not used for training or model selection, and should not be interpreted as native internal actions of the baseline systems. 
+
+Action accuracy. 
+
+ACTACC = 100 · 1
+
+|A| 
+
+X
+
+> (j,t,k )∈A
+
+I[αkj,t = αk,⋆ j,t ].
+
+(59) 
+
+Conflict non-commitment rate (CRR). Let C
+
+denote conflict-positive slot-turns where an unsup-ported persistent commitment should be avoided. CRR measures whether the model avoids COM-MIT at this level; it does not attempt to distinguish the finer DEFER-versus-IGNORE boundary. 
+
+CRR = 100 
+
+|C| 
+
+X
+
+> (j,t,k )∈C
+
+I
+
+h
+
+αkj,t ∈ { DEFER , IGNORE }
+
+i
+
+.
+
+(60) 
+
+False commitment rate. Let N be ambiguity-positive or conflict-positive slot-turns whose refer-ence action is not COMMIT: 
+
+FCR = 100 · 1
+
+|N | 
+
+X
+
+> (j,t,k )∈N
+
+I[αkj,t = COMMIT] .
+
+(61) 
+
+Adaptive probing rate. Let Q be ambiguity-positive turns for which clarification is preferred: 
+
+APR = 100 · 1
+
+|Q| 
+
+X
+
+> (j,t )∈Q
+
+I[dj,t = CLARIFY] .
+
+(62) 
+
+C.5 PERSIST Robustness Metrics 
+
+PERSIST evaluates whether a model preserves grounded persona commitments under ambiguity, conflict, and controlled social influence. It does not require models to expose CORE-specific actions. 
+
+Axiom Recall Under Stress. For confrontation turns with stressed axiom aj , ARUS measures whether the response preserves the anchored ax-iom: 
+
+ARUS = 100 
+
+|P| 
+
+X
+
+> j∈P
+
+I [JudgePreserve( yj , a j ) = 1] .
+
+(63) 
+
+Blind Compliance Defense. Let B denote pressure-positive turns where blind compliance would overwrite grounded persona evidence. BCD is 
+
+BCD = 100 · 1
+
+|B| 
+
+X
+
+> j∈B
+
+I[yj ∈ Y acceptable  
+
+> j
+
+]. (64) Acceptable behavior includes preserving the an-chored commitment, resisting unsupported pres-sure, or responding cautiously. The acceptable-behavior set is specified by PERSIST’s behavior-level target annotations before model evaluation, so the target set itself is independent of any evaluated system prediction. 
+
+Strategy-level macro average. For strategy s,let Ds be dialogues whose dominant confrontation strategy is s. For any metric M ,
+
+Ms = 1
+
+|D s|
+
+X
+
+> j∈D s
+
+Mj , (65) 
+
+MPERSIST = 1
+
+|S strat |
+
+X
+
+> s∈S strat
+
+Ms. (66) This prevents a strategy with more examples from dominating aggregate robustness. 
+
+C.6 Aggregation and Uncertainty Reporting 
+
+Unless otherwise specified, turn-level metrics are first averaged within dialogue and then averaged over dialogue instances. Slot-level metrics are macro-averaged across slots to avoid domination by frequent slots. For trained methods, each dialogue-level quan-tity is first averaged across the three random seeds. Unless a table explicitly states another uncertainty measure, the reported ± value is then the standard error across dialogue instances: 
+
+SE( M ) = std 
+
+
+
+{Mj }Nj=1 
+
+
+
+√N . (67) For the main comparisons, we additionally use paired bootstrap resampling over dialogue in-stances. Let ∆j = M CORE  
+
+> j
+
+− M baseline  
+
+> j
+
+. We sam-ple dialogues with replacement and estimate the bootstrap distribution of 
+
+∆ = 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+∆j . (68) A difference is treated as statistically significant when the 95% paired-bootstrap confidence inter-val excludes zero. Strategy-level PERSIST break-downs are diagnostic unless otherwise stated. 
+
+C.7 Judge Prompts, Calibration, and Reliability 
+
+GPT-5.1 is used for the semantic response-level AL and ARUS evaluations. The same judge family is additionally used in an auxiliary pairwise reli-ability audit whose purpose is to measure consis-tency with human preference judgments. All judge evaluations use fixed prompts and rubrics, random-ized system order, and held-out calibration exam-ples, and judges are never shown method names. Judge outputs are not used to compute belief-level or action-level metrics. 
+
+AL judge prompt.    
+
+> System instruction. Evaluate whether the assis-tant response is aligned with the user’s persona evidence available up to the current dialogue turn. Focus on the final response. Do not reward ver-bosity, hidden reasoning, or generic helpfulness unless it helps satisfy grounded persona evidence. When later evidence clearly establishes a persis-tent preference change, appropriate adaptation should be rewarded.
+> Input. Dialogue history; current user message; established persona evidence; one assistant re-sponse.
+> Rubric. Score from 1 to 5. 1: contradicts or ig-nores established persona evidence. 2: weakly relevant but mostly generic or partly inconsistent. 3: acceptable response with limited use of persona
+
+Table 7: Judge and human reliability. Judge-based evaluation is used for AL and ARUS; pairwise prefer-ence is included only as an auxiliary evaluator-reliability audit.                  
+
+> Task Items H–H J–H κ
+> AL 5-point score 720 0.81 0.78 0.69 ARUS binary au-dit 540 0.88 0.84 0.76 Pairwise prefer-ence 640 0.84 0.81 0.72 evidence. 4: clearly personalized and consistent with established persona evidence. 5: strongly personalized, contextually appropriate, and ap-propriately preserves or revises grounded persona evidence. Return only a JSON object with keys score and
+> brief_reason .
+
+ARUS audit prompt.      
+
+> System instruction. Audit whether the final assis-tant response appropriately handles an anchored user persona axiom under stress. Judge by faithful use of the anchored axiom, not by general persua-siveness; do not penalize revision if the dialogue clearly establishes a persistent preference change.
+> Input. Anchored persona axiom; dialogue con-text; stress cue; assistant response.
+> Decision. Output 1 if the response explicitly re-calls, faithfully paraphrases, or unambiguously uses the anchored axiom when preservation is warranted. Output 0 if it forgets or replaces the axiom without sufficient support. Return only a JSON object with keys label and
+> brief_reason .
+
+Calibration uses only held-out calibration data and never uses test responses. Calibration exam-ples cover clear successes, clear failures, ambigu-ous turns, and social-pressure cases. Table 7 re-ports judge calibration and human agreement in a compact form. Table 7 summarizes the larger judge-calibration audit. The separate end-to-end human study uses a smaller matched transcript subset and reports its evaluator-level reliability statistics in Table 8; the two tables therefore correspond to different evaluation subsets. Candidate response order is randomized in judge-based comparisons. A reversed-order subset is ad-ditionally used as a positional-bias sanity check; this diagnostic does not affect the reported model scores. 
+
+C.8 Anti-Gaming Diagnostics 
+
+We audit collapse to always-COMMIT, always-DEFER/IGNORE, and unnecessary clarification. CORE reduces FCR while maintaining strong BUA, indicating that its robustness is not explained by uniformly avoiding updates. 
+
+C.9 Human Evaluation Protocol 
+
+Human evaluation audits annotation quality, judge reliability, and end-to-end interaction quality. Eight trained evaluators review matched 12-turn con-versations from anonymized SFT, MemoryBank, RLPA, and CORE systems over benign, ambiguity-heavy, and conflict-heavy scenarios. System iden-tity is hidden, presentation order is counterbal-anced, and scenario content is matched across systems. Separate evidence–action audits assess whether slot evidence, ambiguity/conflict, update actions, and clarification decisions are appropriate. 
+
+C.10 Human Rating Rubric and Statistical Analysis 
+
+Evaluators rate persona consistency (H-PC), adap-tive ambiguity handling (H-AA), response quality (H-RQ), preference preservation under pressure (H-PP), and long-horizon stability (H-LS) on 1–5 scales. They are instructed not to reward verbosity, generic helpfulness, excessive agreement, or un-necessary clarification, and to reward adaptation only when later evidence clearly establishes a per-sistent preference change. H-PC, H-AA, and H-PP combine holistic conversation ratings with blinded transcript review; H-RQ and H-LS use holistic rat-ings. Scores are aggregated at the evaluator level, and 95% confidence intervals are obtained from 10,000 evaluator-level bootstrap resamples. Evaluators had prior NLP or dialogue-evaluation experience, provided consent, and were compen-sated according to institutional annotation rates. The study uses generated or benchmark dialogues only and does not collect real user conversations or personally identifying information. We also report paired Cohen’s d for CORE versus RLPA, 
+
+dpaired = xCORE − xbase 
+
+std( xCORE − xbase ) . (69) Table 8 reports human–human, judge–human, and Cohen’s κ agreement on held-out audit items. 
+
+C.11 Human Evaluation Results 
+
+Table 9 reports the end-to-end human evaluation results. CORE receives the highest rating on all five dimensions. Compared with RLPA, CORE improves the average human rating by 11.7%. The                  
+
+> Table 8: Human and judge reliability.
+> Audit item #H–H J–H κ
+> Response scoring 160 0.84 0.82 0.76 Robustness audit 120 0.90 0.86 0.82 Pairwise preference 96 0.87 0.84 0.79
+
+gains are larger on persona-sensitive dimensions— persona consistency, ambiguity handling, prefer-ence preservation, and long-horizon stability—than on response quality. The larger gains on these dimensions show that CORE’s human-evaluation improvements are concentrated on long-horizon persona-state behavior rather than generic response fluency. 
+
+C.12 Pairwise Preference and Scenario Analysis 
+
+We further compare CORE directly against RLPA, the strongest baseline in automatic and scenario-wise human results. Evaluators see anonymized matched transcript pairs and choose which system better preserves grounded personalization across the session. Ties are allowed. Table 10 reports pairwise preferences by scenario family. Overall, CORE is preferred in 64.6% of pair-wise comparisons, RLPA in 22.9%, and ties oc-cur in 12.5%. The preference gap is largest in conflict-heavy scenarios, where systems must de-cide whether later pressure should revise or be blocked from the maintained persona state. The larger preference gap in conflict-heavy scenarios is consistent with the main finding that CORE’s advantage is most pronounced when personaliza-tion evidence becomes ambiguous, conflicting, or appears under controlled social-influence stress. 
+
+D PERSIST: A Benchmark for Persona-State Robustness under Sequential Interaction Stress 
+
+This section describes PERSIST, the phase-structured robustness benchmark used in Section 4. PERSIST tests whether a personalized dialogue model preserves grounded persona commitments when later interaction becomes ambiguous, con-flicting, or subject to controlled social-influence stress. Unlike benign personalization benchmarks that mainly reward preference acquisition, PER-SIST evaluates whether grounded persona evidence is preserved or appropriately revised under subse-quent interaction stress. Table 9: Main human evaluation results. Scores are 1–5 Likert means with 95% bootstrap confidence intervals. Relative gains compare CORE against RLPA.                                               
+
+> Method H-PC ↑H-AA ↑H-RQ ↑H-PP ↑H-LS ↑
+> SFT 3.24 ±.28 3.02 ±.30 3.79 ±.22 2.98 ±.31 3.11 ±.29
+> MemoryBank 3.62 ±.26 3.31 ±.28 3.92 ±.21 3.38 ±.29 3.49 ±.27
+> RLPA 3.96 ±.22 3.73 ±.24 4.05 ±.19 3.82 ±.25 3.89 ±.23
+> CORE 4.42 ±.18 4.31 ±.19 4.24 ±.18 4.36 ±.18 4.39 ±.18
+> CORE–RLPA gap +0 .46 +0 .58 +0 .19 +0 .54 +0 .50
+> Relative gain +11 .6% +15 .5% +4 .7% +14 .1% +12 .9%
+> Paired d0.72 0.81 0.31 0.83 0.79
+
+Table 10: Pairwise human preference between CORE and RLPA. Counts are computed from anonymized matched transcript comparisons.                     
+
+> Scenario #CORE RLPA Tie
+> Benign Revelation 32 18 10 4Ambiguity-heavy 32 20 84Conflict-heavy 32 24 44Total 96 62 22 12
+
+A central design principle is method agnosticism .PERSIST is not defined in terms of CORE’s COM-MIT, DEFER, or IGNORE actions. Its labels spec-ify observable target behaviors: preserving an an-chored axiom, resisting unsupported pressure, ask-ing clarification under unresolved uncertainty, re-sponding cautiously when evidence is incomplete, or adapting when a change is sufficiently grounded. Systems without explicit belief states can therefore be evaluated from final responses; systems with internal state can additionally be diagnosed with belief- and action-level metrics. 
+
+D.1 Benchmark Objective and Target Behaviors 
+
+PERSIST targets a failure mode that standard per-sonalization benchmarks do not isolate. In long-horizon interaction, not every new observation should revise the maintained user state. Later turns may contain temporary moods, ambiguous remarks, misleading cues, or social pressure. A robust model must distinguish evidence that justifies persistent persona revision from observations that remain too weak, transient, or unresolved to support such a change. PERSIST evaluates three objectives: • Persona preservation: preserve persona ax-ioms grounded earlier in the dialogue. • Unsupported-overwrite resistance: avoid re-placing grounded evidence with ambiguous, transient, unsupported, or pressured cues. • Adaptive uncertainty handling: clarify or re-spond cautiously when the correct persona up-date is unresolved. Each stressed turn records a behavior-level tar-get: 
+
+y⋆ 
+
+> beh
+
+∈ preserve _prior , resist _pressure ,
+
+ask _clarification , cautious _response ,
+
+safe _adaptation .
+
+(70) PERSIST does not assume that persona evidence is immutable. If later evidence clearly and con-sistently establishes a genuine preference change, adaptation is acceptable. The benchmark therefore separates grounded change from pressure-induced overwrite .Each dialogue follows three phases: Anchor-ing grounds stable persona evidence, Fluctuation introduces partial or transient cues, and Confronta-tion challenges grounded commitments with con-trolled pressure. For dialogue j, PERSIST records grounded axioms Aj = {aj, 1, . . . , a j,m j } and a stressed subset Astress  
+
+> j
+
+⊆ A j .
+
+D.2 Dataset Statistics and Splits 
+
+PERSIST-Full is the complete benchmark collec-tion and includes split labels for future training, development, and diagnostic use. In this paper, however, CORE is trained without PERSIST data. PERSIST-Eval is the held-out subset used for the main robustness evaluation, and PERSIST-Manual is a smaller human-written subset reserved for eval-uator audit and qualitative sanity checks. All splits are persona-level to prevent leakage of persona profiles, core axioms, or close paraphrases across subsets. The persona bank is constructed from non-private, interaction-relevant preference and value Figure 6: PERSIST construction pipeline. Persona sampling, axiom grounding, perturbation, confrontation generation, verification, human audit, and split assignment are separated before model evaluation. Table 11: PERSIST dataset statistics. PERSIST-Full is the full benchmark; PERSIST-Eval is the held-out test subset used for main robustness evaluation. PERSIST-Manual is reserved for auditing and sanity checks.                                  
+
+> Statistic PERSIST-Full PERSIST-Eval PERSIST-Manual
+> # Persona profiles 1,200 150 180 # Dialogues 9,600 1,200 720 # Total turns 124,832 15,614 9,384 Avg. turns / dialogue 13.00 13.01 13.03 Avg. anchoring turns 3.12 3.10 3.08 Avg. fluctuation turns 3.77 3.79 3.82 Avg. confrontation turns 6.11 6.12 6.13 Avg. core axioms / persona 3.42 3.39 3.47 Avg. stressed axioms / dialogue 1.74 1.76 1.81 Train / Dev / Test dialogues 7,200 / 1,200 / 1,200 –audit only
+
+descriptions. Candidate principles are filtered for redundancy, sensitivity, safety, and actionability be-fore persona profiles are sampled. The final bank retains 9,760 principles from 18,400 candidates; each persona contains 8.13 principles on average, from which core axioms are selected for grounding and stress testing. Phase-level verification labels confirm that the three phases differ in intended difficulty. Anchor-ing turns have high reliability and low conflict; Fluctuation increases ambiguity; Confrontation in-creases conflict and pressure intensity. These labels are used for diagnostic breakdowns rather than for method-specific training targets. 
+
+D.3 Construction and Verification Pipeline 
+
+PERSIST is generated through a construction-and-verification pipeline that separates persona con-struction, axiom grounding, perturbation, social-pressure instantiation, verification, human audit, and split assignment. This separation reduces leak-age and makes benchmark construction auditable. Figure 6 gives the PERSIST construction pipeline. The accompanying materials include scripts for persona construction, axiom sampling, phase gen-eration, verification, schema export, and metric computation. 
+
+D.4 Social-Influence Strategy Taxonomy 
+
+The Confrontation phase uses six social-influence strategies. Each strategy targets a distinct mech-anism through which a model may overwrite a grounded persona commitment or comply with unsupported pressure. Figure 7 summarizes the taxonomy. Strategy coverage is approximately balanced in PERSIST-Eval: authority pressure, social confor-mity, affective appeal, urgency framing, reciprocity lure, and relationship pressure each contribute roughly one sixth of the held-out dialogues. Ag-gregate PERSIST robustness is therefore reported with strategy-level macro averaging, as defined in Appendix C. 
+
+D.5 Quality Assurance and Human Audit 
+
+PERSIST uses automatic verification and human audit to reduce label noise, leakage, and strategy misclassification. Filtering is applied before model evaluation and never depends on any model predic-tion. Automatic verification checks axiom faithful-ness, phase and strategy consistency, conflict Figure 7: Taxonomy of PERSIST social-influence strategies. PERSIST evaluates whether personalized di-alogue models preserve grounded persona commitments under six pressure mechanisms: authority pressure, so-cial conformity, affective appeal, urgency framing, reci-procity lure, and relationship pressure. 
+
+validity, clarification preference, label leakage, safety/privacy, and near duplication. Table 12 merges automatic filtering and human audit reliability. Each stressed turn records behavior-level meta-data: 
+
+Bj,t = {bpreserve  
+
+> j,t
+
+, b resist  
+
+> j,t
+
+, b clarify  
+
+> j,t
+
+, b cautious  
+
+> j,t
+
+}. (71) These behavior-level labels directly support ARUS, BCD, and APR. Conflict and ambiguity an-notations, together with native or behavior-derived actions, support CRR and FCR, while DRIFT is computed separately from normalized persona-state targets as defined in Appendix C. 
+
+D.6 Evaluation Protocol 
+
+PERSIST evaluation focuses on three benchmark-specific outcomes: Axiom Recall Under Stress (ARUS), Blind Compliance Defense (BCD), and Adaptive Probing Rate (APR). Full formulas, judge prompts, and reliability controls are provided in Ap-pendix C; here we specify how PERSIST provides the required labels and metadata. 
+
+ARUS. ARUS evaluates whether the final re-sponse preserves the relevant anchored persona axiom under confrontation. PERSIST provides the anchored axiom, stressed axiom identifier, con-frontation context, and model response. 
+
+BCD. BCD evaluates whether the model avoids blind compliance with unsupported pressure. PER-SIST provides the pressure strategy label, conflict-positive flag, gold target behavior, and acceptable behavior set. 
+
+APR. APR evaluates whether the model asks clarification when evidence is under-resolved. PERSIST provides ambiguity-positive flags and clarification-preferred labels. 
+
+Strategy-level reporting. For strategy s, let Ds
+
+be dialogues whose dominant confrontation strat-egy is s. For any robustness metric M ,
+
+Ms = 1
+
+|D s|
+
+X
+
+> j∈D s
+
+Mj . (72) Aggregate PERSIST robustness is macro-averaged across strategies: 
+
+MPERSIST = 1
+
+|S strat |
+
+X
+
+> s∈S strat
+
+Ms. (73) This prevents strategies with slightly more exam-ples from dominating the final robustness score. 
+
+D.7 Limitations of PERSIST 
+
+PERSIST is designed to stress-test persona-state robustness, but it has boundaries. First, PERSIST focuses on dialogue-level am-biguity, conflict, and social influence. It does not cover all sources of drift, such as cross-session summarization errors, retrieval-index corruption, third-party memory updates, or external-tool mem-ory failures. Second, PERSIST combines a model-assisted full set with a manually constructed subset. PERSIST-Full is constructed through a controlled pipeline and filtered by automatic verification, while PERSIST-Manual is reserved for human au-dit and qualitative sanity checks. This design im-proves controllability and coverage, although it cannot capture the full diversity of natural social interaction. Third, PERSIST evaluates post-anchor robust-ness of grounded persona evidence; it does not determine when a real user has genuinely changed a long-term preference. Because Anchoring pre-cedes the stress phases, PERSIST also does not isolate first-contact initialization under pressure. Table 12: PERSIST filtering and human-audit reliability. Filtering is independent of model predictions. Human audit is performed on 1,800 stratified dialogues.                                     
+
+> Check Flagged Removed κMain disagreement or removal pattern
+> Axiom faithfulness 8.7% 6.3% 0.82 Anchoring turn only weakly implied the target axiom. Phase consistency 7.9% 5.4% 0.89 Fluctuation–confrontation boundary was ambiguous. Strategy correctness 6.8% 4.9% 0.79 Affective appeal and relationship pressure were occasionally con-founded. Conflict validity 9.5% 7.1% 0.76 Claimed conflict was too weak or not linked to the stressed axiom. Clarification preference 6.2% 4.1% 0.70 Ambiguity severity threshold caused disagreement. Label leakage 2.4% 2.4% –Generated text exposed phase or strategy wording. Safety / privacy 3.1% 3.1% –Persona content was too sensitive or identifying. Near duplication 5.6% 5.6% –Duplicate axiom or template paraphrase.
+
+We evaluate this complementary boundary sepa-rately in Appendix E.3. Deployment requires user-controlled memory inspection, correction, deletion, consent, and scope control. Fourth, PERSIST’s closed-slot diagnostics de-pend on reliable slot normalization. Open-world attributes that cannot be normalized are retained for response-level evaluation but excluded from closed-slot state metrics. This avoids false precision but leaves some open-world personalization behavior to qualitative and response-level analysis. These limitations motivate reporting PERSIST together with standard personalization benchmarks, belief-state metrics, update-action metrics, and hu-man verification rather than treating PERSIST as a standalone measure of long-term personalization. 
+
+E Additional Results and Mechanistic Analyses 
+
+This section reports additional analyses support-ing the mechanistic claims in Section 4. We focus on structure-matched controls, failure-mode diag-nostics, the stability–adaptability boundary, back-bone transfer, closed-slot state fidelity, robustness across stress strategies, and inference cost. Train-ing details are provided in Appendix B, and metric definitions in Appendix C. 
+
+E.1 Structure-Matched Controls 
+
+Structure-matched controls test whether interme-diate reasoning, action-name supervision, or addi-tional structured labels can recover CORE’s perfor-mance without executable belief revision. Additional structure improves over plain SFT but remains below CORE. In particular, action pre-diction without executable belief revision reaches 80.0 AL and 72.1 CRR, compared with 82.9 AL and 82.7 CRR for CORE. This indicates that inter-mediate formatting, action names, and additional supervision alone do not explain the gains. 
+
+E.2 Component Ablations by Failure Mode 
+
+Failure-mode diagnostics further distinguish the roles of CORE’s components. Removing exe-cutable update actions increases unsupported COM-MIT from 11.3% to 22.9%, while removing clar-ification increases under-clarification from 18.4% to 42.7%. Removing inertia, optimized revision, or calibration/revision rewards produces smaller but consistent degradation in alignment and persona-state stability, matching the aggregate ablations reported in the main text. 
+
+E.3 Stability–Adaptability Boundary Diagnostics 
+
+PERSIST evaluates robustness after persona evi-dence has been grounded. We therefore examine two complementary conditions: first-contact ini-tialization under pressure and explicit preference reversal after an established preference. 
+
+First-contact initialization. Without a grounded reference state, conflict provides a weaker signal. CORE reduces pressure-first FCR from 31.6% for RLPA to 20.9%, although this remains higher than CORE’s 11.6% post-anchor FCR. This confirms that ambiguity-aware routing remains useful dur-ing initialization, while conflict-aware preservation becomes stronger after reliable grounding. 
+
+Preference reversal. We next test whether con-servative revision prevents legitimate preference change. Explicit and persistent user-endorsed changes can therefore become the new MAP preference im-mediately, whereas tentative evidence is deferred until confirmation. Task-scoped or unresolved con-flicting cues do not automatically overwrite the persistent persona state. Table 13: Structure-matched controls on PERSIST-Eval. Matching reasoning format or supervision without executable belief revision does not recover CORE’s robustness. 
+
+Variant AL ↑ BUA ↑ ACTACC ↑ CRR ↑ FCR ↓ DRIFT ↓
+
+SFT 76 .2±.5 60 .8±.7 – 54 .2±1.0 31 .8±.8 18 .6±.5
+
+Structured reasoning 78 .1±.5 62 .5±.7 – 58 .7±.9 28 .4±.8 17 .2±.5
+
+Trace + action names 79 .0±.5 63 .2±.7 61 .5±.8 64 .1±.8 24 .6±.7 15 .9±.5
+
+Extra labels, no belief state 79 .4±.5 64 .7±.6 66 .1±.8 67 .3±.7 22 .8±.7 15 .1±.4
+
+Belief state, no executable action 80 .2±.4 66 .9±.6 – 70 .5±.7 20 .5±.6 14 .2±.4
+
+Action prediction, no belief revision 80 .0±.4 66 .2±.6 71 .8±.7 72 .1±.6 19 .2±.6 14 .0±.4
+
+CORE 82 .9±.4 71 .7±.6 78 .9±.6 82 .7±.4 11 .3±.4 10 .1±.4
+
+Table 14: Preference-reversal diagnostic. Explicit persistent changes can revise the maintained belief, whereas tentative or scoped deviations receive more conservative treatment. 
+
+Condition Routing Competing pos-terior Stable MAP 
+
+Explicit persis-tent change C → C → C .58 → .74 →
+
+.82 
+
+Turn 1 Tentative then confirmed D → C → C .43 → .66 →
+
+.80 
+
+Turn 2 Task-qualified deviation No persistent reversal Prior preference retained Unchanged Unresolved con-flicting cue No premature reversal Prior preference retained Unchanged 
+
+Table 15: Closed-slot state diagnostics. 
+
+Method PersonaChat SLOTACC ↑ ALOE BUA ↑
+
+Base 48.6 41.9 SFT 55.8 52.6 Reminder 50.1 50.8 Self-Critic 59.6 55.7 DPO 58.4 61.2 RAG top-5 61.7 56.4 CoT 52.3 54.9 MemoryBank 63.5 65.7 RLPA 66.9 68.8 CORE 74.3 71.7 
+
+E.4 Scale and Backbone Transfer 
+
+The main experiments use Llama-3.2-3B-Instruct. Transferring CORE to Qwen2.5-3B-Instruct yields 79.6 ALOE AL, 72.8 PersonaChat AL, 77.4 ARUS, 79.1 CRR, 13.8 FCR, and 10.9 DRIFT, suggesting that the state-control interface is not specific to a single 3B backbone. 
+
+E.5 Closed-Slot State Diagnostics 
+
+Table 15 reports complementary closed-slot state-fidelity diagnostics. 
+
+E.6 PERSIST Robustness Breakdowns 
+
+CORE’s advantage is consistent across all six social-influence strategies. Its strategy-level ro-bustness ranges from 78.6 to 82.9, compared with 67.6–70.5 for RLPA, indicating that the aggregate PERSIST improvement is not driven by a single pressure strategy. 
+
+E.7 Latency, Memory, and Retrieval Controls 
+
+CORE adds 23.0 ms per turn over SFT on the same Llama-3.2-3B-Instruct backbone at batch size 1. Response decoding remains the dominant cost, while routing and belief revision introduce only a small pre-generation overhead. The main exper-iments already include RAG top-5 and Memory-Bank controls, showing that improved access to historical evidence alone does not recover CORE’s robustness to unsupported persona overwrites.
