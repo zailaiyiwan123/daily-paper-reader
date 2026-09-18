@@ -1,0 +1,745 @@
+Title: To Memories and Beyond: From Remembering to Knowing You across Long-Term Multimodal Personal Archives
+
+URL Source: https://arxiv.org/pdf/2609.19167v1
+
+Published Time: Fri, 18 Sep 2026 00:03:36 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# To Memories and Beyond: From Remembering to Knowing You across Long-Term Multimodal Personal Archives 
+
+Wenqi Zhou 1,2 Zhuorui Yu 2 Kaiao Wen 1 Hao Zheng 1,2 Xinyi Zheng 1
+
+Peiran Wu 1,2 Enmin Zhou 2 Chi-Hao Wu 2† Junxiao Shen 1,2†
+
+> 1
+
+University of Bristol 2Memories.ai Research 
+
+Abstract 
+
+As AI systems evolve into personalized digital companions, a central capability is reasoning over a user’s long-term per-sonal history: not merely storing past events, but tracking longitudinal experiences and evolving preferences. Progress here is bottlenecked by evaluation, existing long-term mem-ory benchmarks are largely synthetic and text-only, they over-look the visual records that anchor everyday human mem-ory, lack the authentic and causally connected longitudinal data that real personalization demands, and consequently remain confined to shallow factual recall. We introduce ReaLMem (Real-world Long-term Multimodal Memory), the first benchmark built from authentic multi-year personal vi-sual archives, paired with first-person subjective annotations. ReaLMem evaluates models across three cognitive tiers of increasing difficulty: factual recall, persona inference, and predictive personalization. We further propose ChronoPro-filer, a temporal-weighting profiling module that computes temporal stability scores for user attributes and applies them as a salience prior, resolving conflicts among temporally inconsistent preferences and helping models compound mul-tiple co-active preferences in complex personalized decisions. Extensive evaluation of frontier multimodal large language models (MLLMs) and memory systems on ReaLMem reveals predictive personalization as a consistent ceiling, exposes clear performance gaps and bottlenecks between MLLMs and memory systems, and shows that high-quality, tempo-rally informed representations substantially improve person-alization. Together, ReaLMem and ChronoProfiler provide an authentic testbed and a simple, effective mechanism for long-term personalization, laying a foundation for future research on lifelong AI companions. 
+
+> †Corresponding author.
+
+1. Introduction 
+
+As AI evolves toward Artificial General Intelligence (AGI), human–computer interaction is shifting from one-off instruc-tion execution toward persistent, personalized digital com-panions. Long-term memory is the cornerstone of this shift [22, 46]: it lets a model accumulate, track, and reason over a user’s experiences and evolving preferences across years, moving beyond isolated factual Q&A toward responses tai-lored to an individual’s history. Accordingly, recent work has begun to build benchmarks for long-context, long-horizon personal memory [29, 39, 43]. Yet progress toward gen-uinely personalized long-term assistants is held back by two limitations of current evaluation—the data and the tasks. First, current benchmarks are largely inauthentic and vision-blind. Constrained by privacy and cost, they are predominantly built top-down from text-only data synthe-sized by large language models (LLMs) [7, 18, 19, 48], or stretched to long context by mechanically inserting irrele-vant passages ( e.g ., “needle-in-a-haystack” padding) [14, 36]. Such synthesis disrupts the natural temporal and causal struc-ture of memory and rarely captures the messiness of genuine human experience. More fundamentally, it overlooks the visual record—the photos and videos that anchor much of everyday human memory [2]—leaving evaluation discon-nected from the physical world. Second, as a direct consequence, evaluation stops at shal-low factual recall. Because synthetic corpora lack the au-thentic, causally connected longitudinal data that accrues in real life, they cannot support the deeper competencies that genuine personalization demands. Human preferences are dynamic and context-dependent, shaped by the interplay of situation and emotion; assessing personalized assistants therefore requires moving beyond retrieval toward under-standing how preferences evolve, reasoning about why they change, and predicting future choices. These limitations raise two questions: (a) what data can ground the evaluation of authentic long-term personaliza-tion; (b) how should tasks be designed to comprehensively 1arXiv:2609.19167v1 [cs.CL] 11 Sep 2026 Why did I stop going to 
+
+> Gym A?
+> Personal Multimodal Memory Stream
+
+2018 
+
+2019 
+
+2024 
+
+Multimodal Memory Corpus 
+
+> Grounded
+
+2025 
+
+ReaLMem Task Pyramid 
+
+> Wow I had the most amazing steamed
+> pork with Maomao.
+> Just got back from a
+> concert. I went there
+> to see a …
+> That sounds amazing! How was the party?
+> It was fantastic! I felt so happy
+> and touched being there…
+> I can imagine that made the
+> experience even better…
+> That sounds tasty! What made the steamed pork stand out for you?
+> The flavors were just perfect, and the meat was so tender.
+> …
+> Factual Memory Recall
+> Persona Inference
+> Predictive Personalization
+> Episodic Event Retrieval
+> Embedded Content Retrieval
+> Multi-Record Aggregation
+> Multimodal Recall
+> Persona Profiling
+> Longitudinal Tracking
+> Behavioral Reasoning
+> Prediction
+> Assistance
+
+Remember & 
+
+Understand 
+
+> Tier 3 ·Predictive Personalization
+> 3.1 Context-Aware Prediction
+> Predict user preference in new scenarios
+> For a winter trip, which location would I prefer?
+> 3.2 Context-Aware Assistance
+> Personalized recommendation from history
+> Suggest a gift for Friend A?
+> Tier 2 ·Persona Inference
+> 2.1 Persona Profiling
+> Characterize user preferences and habits
+> What is my usual morning routine?
+> 2.2 Longitudinal Tracking
+> Detect evolution in preferences over time
+> What is my sport preference
+> now vs. two years ago?
+> 2.3 Behavioral Reasoning
+> Infer motivations behind behavioral changes
+> Tier 1 ·Factual Memory Recall
+> 1.1 Episodic Event Retrieval
+> Recall specific details of a past event.
+> When was the last time I dined with [Friend A]?
+> 1.2 Embedded Content Retrieval
+> Recall information embedded in visual media
+> What is the flight number in my
+> booking?
+> 1.3 Multi-Record Aggregation
+> Aggregate information across records
+> How many times did I
+> visit the gym this year?”
+> 1.4 Multimodal Recall
+> Recall memories from a given photo
+> When did I make this?
+
+Analyze & Infer 
+
+Apply & Predict Figure 1. Overview of ReaLMem: (left) example personal multimodal memory stream over years; (right) the three-tier task pyramid grounded in this memory, rising in cognitive complexity from Factual Memory Recall (Tier 1) and Persona Inference (Tier 2) to Predictive Personalization (Tier 3), with each of the nine subtasks shown alongside its definition and an example query. 
+
+evaluate the ability to understand human personalization? Egocentric and lifelog vision [4, 6, 10] has begun to study personal visual data directly, but mainly for short-horizon perception and retrieval, and typically without the data owner’s first-person subjective annotations—two gaps that have kept personalization underdeveloped. We argue that the personal media archives already stored on people’s devices—especially photos and videos—are instead a natural and powerful substrate for long-term multimodal memory: spanning years, they record where users went, what they did, and what mattered to them, preserving the visual and contextual anchors that text-only logs discard. Treated as long-term memory and paired with the owner’s own perspec-tive, these archives open a path to assistants that provide proactive, context-aware, and personalized help grounded in visual memory. Building on above insights, we depart from the synthetic-data paradigm and introduce ReaLMem, the first multimodal long-term memory benchmark dataset derived from authen-tic personal visual archives paired with first-person subjec-tive annotations. To structure evaluation, and inspired by Bloom’s taxonomy of educational objectives [1], we orga-nize tasks into three progressively harder cognitive tiers (Fig. 1): from factual recall, through persona inference, to predictive personalization over a user’s history. Realistic personalization at this scale also faces a con-crete architectural obstacle: feeding ultra-long multimodal histories to a model is computationally costly and prone to the lost-in-the-middle effect [28], while existing approaches flatten historical preferences [38, 42], treating one-off men-tions and long-held habits alike and leaving no principled way to arbitrate when preferences conflict or compete. As a targeted remedy, we propose ChronoProfiler, a plug-and-play user-profiling module that incrementally distills a structured persona from longitudinal history and assigns each item a temporal stability score. Used as a salience prior, this score resolves temporal conflicts and helps the model weigh and compound co-active preferences in complex personalized decisions. In summary, our contributions are: 
+
+• We introduce ReaLMem, the first multimodal long-term memory benchmark built from authentic personal visual archives and first-person subjective annotations, comprising 2,508 multimodal sessions spanning more than six years with genuine spatio-temporal metadata. 
+
+• We design a three-tier cognitive evaluation hierarchy— Factual Memory Recall, Persona Inference, and Predictive Personalization—instantiated by 1,629 QA pairs for fine-grained assessment of personalization. 
+
+• We propose ChronoProfiler, a temporal-aware user-profiling module that turns a temporal stability score into a salience prior for preference-weighted personalized tasks. 
+
+• We comprehensively evaluate multimodal LLMs (MLLMs) and memory systems on ReaLMem, revealing performance gaps, modality dependencies, and open challenges. 
+
+2. Related Works 
+
+2.1. Personal Memory Benchmarks 
+
+Recent personal memory benchmarks [17, 24, 45, 48] ap-proach the long-term memory challenge along three com-plementary trajectories. A first line broadens modality and source coverage by generating multi-session, multimodal dialogues from causal temporal event graphs [29]. A second line embeds user preferences implicitly within conversa-tional context, testing deductive reasoning over fragmented 2and incidental signals [7, 18, 19]. A third line scales con-text length via a “needle-in-a-haystack” construction that injects critical evidence into vast amounts of distractor dia-logues [43], reaching contexts of up to 1.5 M tokens. Despite their progress, these benchmarks share three structural limitations rooted in their synthetic origin. (i) Modality narrowness, or vision-blindness: most evaluation data is text-only, leaving the visual signals that anchor every-day human memory under-explored. (ii) Density loss and structural flattening: persona templates and temporal graphs, when realized through LLM synthesis, erase the modality cues, causal continuity, and natural temporal alignment of lived experience, producing dialogues that lack genuine con-textual nuance and unpredictability. (iii) Limited cognitive depth: as a consequence, evaluation is largely confined to factual retrieval, with little room for the deeper reasoning required for multi-preference compounding or dynamic con-flict resolution under real-world constraints. To close this gap, we ground evaluation in authentic long-term multimodal personal data rather than synthetic sub-strates. Building on real, longitudinal records of participants’ daily lives—where every moment carries its own implicit per-sonal context—we introduce the first benchmark constructed from genuine multimodal personal histories, together with a three-tier task hierarchy that rigorously evaluates factual recall, preference and behavior inference, and complex pre-dictive personalization. 
+
+2.2. Egocentric and Lifelog Vision 
+
+Some research works study personal visual data directly. Egocentric video understanding builds large first-person datasets for activity and interaction recognition [4, 10, 11], and lifelog retrieval organizes and searches wearable-camera or personal-photo streams [12, 13]. Recent efforts push toward longer horizons and assistant-style use—extremely long egocentric video understanding [49] and egocentric life assistants [6]—while OmniQuery [25], closest to our set-ting, answers personal questions over captured multimodal memories. Yet these efforts largely operate on continuous egocen-tric video over hours to days, rely on third-person or task labels rather than the data owner’s own subjective annota-tions, and stop short of the higher-order persona inference and predictive personalization our tasks require. ReaLMem advances this line from perception toward long-term person-alized cognition, pairing multi-year personal visual archives with first-person annotations and a graded, cognitively tiered evaluation. 
+
+2.3. Memory Mechanism for LLM 
+
+Endowing LLMs with long-term memory has been pursued along two complementary directions. The first scales raw access to history through ever-longer context windows or retrieval-augmented generation (RAG) [23, 41, 44], which fetches semantically similar historical snippets at query time. The second introduces structured memory architectures that organize personal history into reusable representations, in-cluding knowledge-graph memories [3, 35], hierarchical memory trees [26], and OS-style memory frameworks that manage memory as a lifecycle-controlled resource [15, 27]. Despite these advances, existing systems share two limi-tations directly relevant to long-horizon personalization. (i) Preference flattening: retrieval and storage treat all historical signals as equally valid, providing no principled mechanism to differentiate long-held habits from one-off mentions, so the model is left to arbitrate competing preferences on its own. (ii) Weak temporal awareness: timestamps, when present, are typically used only as retrieval filters rather than as first-class priors over content, leading to unresolved con-flicts between outdated and recent records during reasoning. Together, these gaps limit reliable behavior on tasks that re-quire synthesizing heterogeneous, time-varying signals into a coherent personalized decision. In response, ChronoProfiler builds a per-user profile in which every item is grounded by timestamped evidence and weighted by a temporal stability score derived from its tem-poral features and used as a salience prior, enabling memory systems to resolve temporal conflicts and prioritize stable preferences without modifying the underlying LLM. 
+
+3. ReaLMem 
+
+We introduce ReaLMem (Real-world Long-term Multimodal Memory). Unlike prior benchmarks built from pre-defined, synthesized personas, ReaLMem is constructed from authen-tic personal visual archives—photos and videos spanning years of real life—paired with first-person subjective annota-tions from the data owners themselves. This grounding in real multimodal experience and the owner’s own perspective provides a rigorous basis for studying memory retention, preference evolution, and personalized assistance. We de-scribe the dataset construction and task design below. 
+
+3.1. Dataset Construction 
+
+We construct ReaLMem through a participant-centric pipeline that turns raw personal visual archives into struc-tured, high-fidelity multimodal memory sequences (Fig. 2). We recruited 7 participants with dense, multi-year media col-lections, each contributing over 350 photos and videos that capture meaningful events, daily routines, and preference-revealing behaviors ( e.g ., dietary habits, long-term hobbies), all grounded with reliable spatio-temporal metadata. We deliberately favor depth over breadth: collecting truly au-thentic, long-horizon archives is bounded by acquisition cost and strict privacy requirements, so a small set of richly anno-tated, real participants offers grounding that large synthetic or crowdsourced corpora cannot. To ensure both factual ac-3Participant Upload  Anonymization Annotated Archive  Structured Multimodal Records 
+
+> A
+> B
+> C
+> GPT-4o
+
+Personal Multimodal Archive Collection  Dual-Layer Human Annotation  Privacy-Preserving Processing 
+
+Longitudinal Dialogue Synthesis 
+
+Long-term Multimodal Memory Database 
+
+① ② ③ ④
+
+> Objective Layer
+> Subjective Layer
+> ReaLMem Memory Corpus
+> 350+
+> Sessions / User
+> 2018-2025
+> Span
+> 2508
+> Records
+
+Dataset Curation  Automated Dialogue Construction  
+
+> × 7 Participants
+
+Raw Personal Media                    
+
+> Images Videos
+> Multi-year Multi-region Diverse Content
+> Timestamp
+> Location
+> Factual Accuracy
+> First-person
+> Annotation
+> Two-Layer Annotation
+> “I just attended my friend’s wedding!”
+> “I love playing badminton !”
+> Event context Feelings Preferences
+> Automated Face De-identification
+> Pll
+> Pseudonymization
+> names, addresses → alias
+> Original Metadata Removal &
+> Structurization
+> Multi-turn Dialogue Generation
+> Annotated Data
+> Temporal Ordering
+> 2022-02 ∙London, UK
+> I just took a break from cycling and found this. …
+> 2025-07 ∙Utrecht, Netherlands
+> Sounds interesting! What makes
+> it stand out to you?
+> Hey, I just checked out the gym here …
+> Session Card
+> Session id: 12022.02.07 London
+> Media: 1.JPG
+> Conversations:
+> User: “I just took a break from cycling …”
+> AI: “Sounds interesting! What makes …”
+> User: “It's got this unique, almost futuristic... ”
+> “It’s comforting --tastes like home”
+> …
+> ReaLMem Dataset
+> …
+
+Figure 2. The ReaLMem construction pipeline: raw personal photos and videos are annotated by their owners (objective and subjective layers), anonymized, and woven into chronological multimodal sessions. 
+
+curacy and subjective authenticity, each participant followed a dual-layer annotation protocol: an objective tier verified structured metadata, while a subjective tier recorded each record’s first-person context—the personal event context, the owner’s feelings, and implicit preference signals. All data collection, processing, and annotation followed an ethics pro-tocol approved by our organization’s ethical review board, with written informed consent from every participant, details of ethical consideration are provided in Appendix A. After stringent anonymization: automated face blurring with RetinaFace [5], personally identifiable information (PII) pseudonymization, and metadata reorganization (details in Appendix B), we use GPT-4o [16] to weave each partici-pant’s records and annotations, in chronological order, into natural multi-turn dialogues. Crucially, the model only ren-ders the narrative form: every fact, timestamp, and prefer-ence originates from the real records and the owner’s anno-tations, not from model invention. As summarized in Tab. 1, the resulting data is diverse across time, space, and seman-tics: it spans 2018–2025, covers more than 40 countries and regions and ten everyday scenario categories, and comprises 2,333 images and 175 videos. In total, ReaLMem contains 2,508 multimodal sessions (about 358 per participant), form-ing long-term and coherent personal trajectories. 
+
+3.2. Task Design 
+
+Inspired by cognitive theories [1, 40] of human memory and reasoning, we design a hierarchical benchmark that re-flects the progressive nature of human memory and cogni-tion, framing personalized AI capability as a transition from information access to behavioral understanding and decision-oriented application. Specifically, we define three categories of increasing complexity, with per-subtask definitions and example queries shown in Fig. 1 (the full taxonomy with per-subtask QA counts is given in Tab. 7). Factual Memory Recall (T1 task) tests foundational memory access grounded in evidence—retrieving event details (task 1.1), aggregating 
+
+Table 1. Statistics of the ReaLMem dataset. T denotes the year of data collection. Country counts reflect the top-5 capturing locations by media volume. 
+
+Year (rel. to T ) Media Type 
+
+T 857 Image 2,333 
+
+T −1 799 Video 175 
+
+T −2 327 Country (Top 5) 
+
+T −3 285 China 941 
+
+T −4 148 United Kingdom 842 
+
+T −5 58 Japan 127 
+
+≤ T −6 34 Spain 114 France 74 
+
+Scenario Type 
+
+Leisure & Entertain. 815 Sports & Physical Act. 184 Nature & Outdoor 790 Special Events 175 Home & Routine 400 Travel & Mobility 145 Social Interaction 399 Work & Study 128 Fashion 27 Medical & Care 8
+
+or comparing across records (task 1.3), and aligning informa-tion across the long-term archive, including content available only visually, such as embedded text in visual data (task 1.2) and memories grounded in a given photo (task 1.4). Per-sona Inference (T2 task) moves from explicit observation to implicit patterns: profiling stable habits (task 2.1), tracking how preferences evolve over time (task 2.2), and reasoning about the motivations behind behavioral change (task 2.3). 
+
+Predictive Personalization (T3 task) turns this understanding into application: predicting users’ choices in novel scenar-ios (task 3.1) and generating personalized recommendations based on personal history (task 3.2). Unlike prior bench-marks based on synthetic personas or unimodal dialogue, this formulation is grounded in real multimodal experience and traces a continuous path from recall to decision-making, enabling fine-grained evaluation of long-term personaliza-tion. 4QA Instantiation. Each tier adopts a QA format aligned with its evaluation goal. T1 questions are open-ended, paired with a reference answer and explicit grounding evidence (data IDs). T2 questions augment the reference answer with a set of key supporting points that enable coverage evaluation of inherently subjective reasoning. T3 adopts a ranking paradigm in which each query presents multiple preference-constructed candidates, and the task is to recover the user’s actual preference ordering. All 1,629 QA pairs are screened and refined by trained annotators. Additionally, T2 and T3 instances are verified by the original data contributors to ensure faithfulness to lived and subjective experience. Full construction procedures, quality-control criteria, and ranking-paradigm design are provided in Appendix E. 
+
+4. ChronoProfiler 
+
+Existing memory systems face two failure modes: (i) Tem-poral Conflicts, where outdated and recent signals coexist in context ( e.g ., “vegan two years ago” vs. “BBQ last week”), confusing the model about the user’s current state; and (ii) Intra-class Competition, where multiple same-category pref-erences ( e.g ., hotpot vs. sushi) compete without a principled arbitration mechanism. Both issues are especially damag-ing on tasks that require understanding and reasoning over long-term personal information, where the model must syn-thesize heterogeneous, time-varying signals into a coherent judgment. Inspired by memory consolidation [21, 30], in which repeatedly activated and recent experiences are rein-forced while transient ones decay, we propose ChronoPro-filer, which incrementally builds an increasingly comprehen-sive user profile as the history accumulates and assigns each user attribute item a temporal stability (TS) score that serves as a salience prior at inference. The module runs in two stages, detailed below: 
+
+(1) Incremental Profile Construction. We process the dialogue session-by-session, prompting an LLM to extract structured attributes into five semantic categories (Demo-graphics, Preferences, Behavioral Habits, Hobbies, Meaning-ful Facts). Each candidate is semantically compared against existing entries in its category and resolved via one of four operations: N EW , D UPLICATE , U PDATE , or C ONFLICT ,yielding a comprehensive profile in which every item carries a set of timestamped evidence. Implementation details are provided in Appendix F. 
+
+(2) Temporal Stability Scoring. For each profile item p,let Sp denote the set of timestamps at which p has been men-tioned across the dialogue history, and let tfirst = min Sp
+
+and tlast = max Sp be its earliest and latest mentions. Given a reference time Tref (set to the query timestamp at infer-ence), we summarize the lifecycle of p with three features: 
+
+ssup = 1 − e−|S p|/τ s ,sdur = 1 − e−(tlast −tfirst )/τ d ,srec = e−(Tref −tlast )/τ r .
+
+The Support score ssup measures how often p is mentioned and saturates as |S p| exceeds the characteristic count τs. The Duration score sdur measures how long the attribute persists, growing as the span tlast − tfirst exceeds the timescale τd.The Recency score srec measures how recently p was reaf-firmed, decaying exponentially in the elapsed time Tref −tlast 
+
+with characteristic constant τr .Each feature’s contribution adaptively per user via the entropy weight method [37, 50], a label-free criterion-weighting technique from multi-criteria decision analysis. Intuitively, a lifecycle feature that is nearly constant across a user’s profile items carries little discriminative information and should not drive prioritization, whereas a widely-varying feature is informative and is up-weighted. Let X ∈ Rm×3
+
+collect the three feature scores sj (p) ∈ { ssup , s dur , s rec }
+
+over the user’s m profile items. For each feature column 
+
+j we normalize pij = xij / P 
+
+> i
+
+xij , compute its Shannon entropy ej = − 1ln m
+
+P 
+
+> i
+
+pij ln pij , and weight it by the re-sulting information divergence: 
+
+wj = 1 − ej
+
+P 
+
+> j′
+
+(1 − ej′ ) .
+
+The raw stability of p is the entropy-weighted sum zp =P 
+
+> j
+
+wj sj (p). Finally, to obtain a salience prior comparable across users with heterogeneous engagement rhythms, we apply within-user min–max normalization: 
+
+TS( p) = zp − min q zq
+
+max q zq − min q zq
+
+,
+
+spreading each user’s items across [0 , 1] . Long-held and repeatedly reinforced preferences receive high TS (consol-idated long-term memory), whereas recent but unaccumu-lated signals receive moderate TS (current salience without permanent commitment). The TS-scored profile is then in-jected into the LLM context as a salience prior, guiding the model to prioritize temporally stable signals during person-alized decision-making. Parameter settings are provided in Appendix F. 
+
+5. Experiments 
+
+5.1. Experimental Setup 
+
+We benchmark three categories of frontier approaches on R EA LM EM : (1) Full-context MLLMs —Gemini-3.0-Flash [9], GPT-4.1-mini [33], and GPT-5.4-mini [34]— receive the complete captioned history as a practical upper 5Table 2. Main results on the R EA LM EM benchmark (%), all metrics are scaled to [0 , 100] . Subtask abbreviations: Retr. /Embd. /Aggr. /M.R.         
+
+> = Episodic Event Retrieval / Embedded Content Retrieval / Multi-Record Aggregation / Multimodal Recall; Prof. /Track /Reas. = Persona Profiling / Longitudinal Tracking / Behavioral Reasoning; Pred. /Asst. = Context-Aware Prediction / Context-Aware Assistance. Shaded Avg.
+> columns report the task-level mean. Best per column within each block in bold .
+
+Method Avg. Token T1 T2 T3 Retr. Embd. Aggr. M.R. Avg. Prof. Track Reas. Avg. Pred. Asst. Avg. 
+
+Full Context 
+
+Gemini-3.0-Flash 123k 84.4 77.7 75.2 89.3 82.6 74.8 73.0 81.7 76.4 62.8 53.5 59.2 
+
+GPT-4.1-mini 123k 78.0 70.4 43.8 65.5 72.6 74.2 67.4 81.0 74.3 60.4 54.0 57.9 GPT-5.4-mini 123k 79.7 68.9 40.0 57.1 72.5 75.9 68.9 81.3 75.5 59.2 58.7 59.0 
+
+Memory Systems (GPT-4.1-mini backbone) 
+
+Mem0 1.0k 47.5 61.9 14.3 33.3 46.8 54.1 52.3 62.2 56.0 59.5 58.7 59.2 
+
+MemOS 1.1k 57.3 57.7 30.5 40.5 54.0 59.8 52.5 63.5 58.8 61.3 54.0 58.4 EverMemOS 1.7k 72.2 72.3 47.6 60.7 69.4 72.8 64.9 77.6 72.0 57.4 55.9 56.8 
+
+bound under unrestricted access. (2) Memory systems —Mem0 [3], MemOS [27], and EverMemOS [15]—compress per-user histories into persistent structured memories and retrieve relevant content at query time; to isolate the mem-ory architecture from the underlying LLM, all memory sys-tems share a unified GPT-4.1-mini answering backbone. (3) ChronoProfiler (Ours) performs a controlled profile swap : holding EverMemOS episodic retrieval and the reader backbone fixed, we replace EverMemOS’s built-in user pro-file with our RAG-retrieved temporally-weighted profile (§4), and evaluate the same three MLLMs as readers on T2 and T3 tasks (the profile does not affect T1 factual recall). As an additional T1 upper bound (Tab. 3), we conduct Ora-cle experiments that supply the three frontier MLLMs with only the gold-evidence sessions (identified by per-QA anno-tated evidence id) as context. Unless otherwise specified, all evaluations operate on a unified text representation in which media files are pre-captioned by Gemini-2.0-Flash [8] and embedded into the dialogue transcript. Full configuration details and ChronoProfiler hyperparameters are in Appen-dices C and F. 
+
+Evaluation Metrics. We use GPT-4o-mini [31] as an LLM judge [47] for T1 task (binary correctness against the refer-ence answer), the normalized mean of Coverage and Accu-racy score for T2 task, and Kendall-τ rank correlation [20] against the participant-validated ground-truth ordering for 
+
+T3 task. All metrics are scaled to [0 , 100] ; scoring rubrics and evaluation details are provided in Appendix D. 
+
+5.2. Main Results 
+
+Tab. 2 presents results across all evaluated MLLMs and systems, and Tab. 3 reports the Oracle T1 upper bound. 
+
+Full-context performance confirms the cognitive hierar-chy. T3 is the uniformly hardest tier across all three fron-tier MLLMs (57.9–59.2%), confirming a consistent upper bound on predictive-personalization difficulty. Above T3, the T1–T2 performance is model-dependent: Gemini-3.0-
+
+> Table 3. Oracle reference on T1 Factual Memory Recall (%). For each model the top row reports the Oracle score, the bottom row reports the absolute delta versus the same model’s full-context result in Tab. 2.
+
+Model Retr. Embd. Aggr. M.R. Avg. 
+
+Gemini-3.0-Flash 87.7 79.6 83.8 86.9 85.6          
+
+> (↑3.3)(↑1.9)(↑8.6)(↓2.4)(↑3.0)
+
+GPT-4.1-mini 88.5 80.0 77.1 84.5 85.5          
+
+> (↑10 .5)(↑9.6)(↑33 .3)(↑19 .0)(↑12 .9)
+
+GPT-5.4-mini 87.8 80.0 81.9 83.3 85.4          
+
+> (↑8.1)(↑11 .1)(↑41 .9)(↑26 .2)(↑12 .9)
+
+Flash follows the expected cognitive hierarchy (T1 82.6% >
+
+T2 76.4%), whereas GPT-4.1-mini and GPT-5.4-mini both score marginally higher on T2 than T1, indicating that pref-erence inference is not universally harder than factual recall and that long-context retrieval ability is the primary T1 differ-entiator. Gemini-3.0-Flash leads on both T1 (82.6%) and T2 (76.4%), its T1 advantage is concentrated on Multi-Record Aggregation and Multimodal Recall. On T2 and T3, the three models converge tightly, spanning 2.1 points on T2 and 1.3 points on T3, indicating that difficulty is dominated by the inherent complexity of preference reasoning and predictive personalization rather than by backbone capacity. 
+
+Memory architectures shape the compression–quality profile. Under the unified GPT-4.1-mini answering back-bone (full-context T1/T2/T3 average = 72.6/74.3/57.9%), the three memory systems exhibit markedly different compression–quality trade-offs at ∼70 × compression that map cleanly onto their architectural choices. Mem0 [3], which extracts flat narrative memories via LLM-driven 
+
+ADD /UPDATE operations, discards precise temporal and quantitative anchors and suffers the largest T1 collapse (T1 46.8%). MemOS [27], with OS-style hierarchical Mem-6Table 4. Effect of context modality on Gemini-3.0-Flash (%). 
+
+Cap.+Dial. : captioned dialogue with metadata; MM : raw visual media with dialogue and metadata; Vis.+Meta. : visual media with metadata only (no dialogue). Task abbreviations follow Tab. 2. Best result per row in bold .                                       
+
+> Task Cap.+Dial. MM Vis.+Meta.
+> T1: Factual Memory Recall
+> Retr. 84.4 82.8 50.7 Embd. 77.7 74.2 71.2 Aggr. 75.2 77.1 58.1 M.R. 89.3 90.5 76.2
+> Avg. 82.6 81.0 57.4
+> T2: Persona Inference
+> Prof. 74.8 74.5 61.9 Track 73.0 71.8 59.3 Reas. 81.7 78.1 66.2
+> Avg. 76.4 74.8 62.4
+> T3: Predictive Personalization
+> Pred. 62.8 61.3 64.6
+> Asst. 53.5 55.9 56.3
+> Avg. 59.2 59.2 61.4
+
+Cube governance, recovers more structured factual recall (T1 54.0%) and attaches a static global preference sum-mary to each retrieved memory; however, this uniformly-replicated, coarsely-aggregated preference string provides insufficient query-specific grounding, capping T2 at 58.8%. EverMemOS [15], whose engram-inspired Episodic Trace and Semantic Consolidation lifecycle distils both events and preferences, tracks the full-context baseline most closely (T1 69.4%) and attains the strongest memory-system T2 (72.0%). Strikingly, on T3 all three systems land within about one point of the GPT-4.1-mini full-context baseline (56.8–59.2% vs. 57.9%), with Mem0 even edging ahead (59.2%), indicat-ing that the T3 bottleneck is representational quality rather than memory coverage. 
+
+Table 5. Profile-swap analysis on T2 and T3 (%). ChronoProfiler 
+
+injects our temporally-weighted profile, Ep.+Prof. EverMemOS’s built-in profile; for each row, the top line is the score and the bottom line its ∆ versus the same backbone’s Full Context (Tab. 2). Best per column in bold .                                                                                       
+
+> System T2 T3 Prof. Track Reas. Avg. Pred. Asst. Avg.
+> ChronoProfiler: Ep.+TS-Profile
+> Gemini-3.0-Flash 76.0 73.1 82.1 77.0 61.6 55.4 59.2
+> (↑1.2)(↑0.1)(↑0.4)(↑0.6)(↓1.2)(↑1.9)(±0.0)
+> GPT-4.1-mini 76.8 73.9 84.6 78.3 63.7 57.8 61.4
+> (↑2.6)(↑6.5)(↑3.6)(↑4.0)(↑3.3)(↑3.8)(↑3.5)
+> GPT-5.4-mini 77.9 78.0 84.0 79.8 63.7 56.3 60.8
+> (↑2.0)(↑9.1)(↑2.7)(↑4.3)(↑4.5)(↓2.4)(↑1.8)
+> EverMemOS: Ep.+Prof.
+> GPT-4.1-mini 71.2 67.0 77.8 72.0 63.1 53.5 59.3
+> (↓3.0)(↓0.4)(↓3.2)(↓2.3)(↑2.7)(↓0.5)(↑1.4)
+
+Oracle exposes a retrieval bottleneck on T1. All three MLLMs converge to a similar Oracle ceiling (85.4–85.6% T1 Avg.), but their full-context gaps diverge sharply: Gem-ini trails its Oracle by only +3 .0% , whereas GPT-4.1-mini and GPT-5.4-mini both lag far more ( +12 .9% each). This shows that Gemini’s T1 advantage stems primarily from ro-bustness to distractor evidence in long context, and memory systems implicitly inherit the task of approximating an ora-cle retriever—which is why EverMemOS can close most of the GPT-4.1-mini full-context gap with only 1.7k tokens. 
+
+T3 reveals a universal ceiling unaddressed by context length or retrieval. Across every system in Tab. 2, T3 remains the hardest level, with the highest T3 Avg. capped at 59.2% and the full spread under 3 points (56.8–59.2%). Unlike T1, T3 has no evidence-bounded upper bound: the bottleneck is not retrieval or compression but the fine-grained discrimination of preference signals differentially influence decisions across contexts—recognizing that a user holds a preference is necessary but insufficient; the model must further judge which preferences dominate, when they trade off, and how their relative weights shift with situational context. 
+
+5.3. What Each Modality Contributes 
+
+To probe the effect of context modality, we compare three input settings: captioned dialogue with spatio-temporal meta-data (our default), raw multimodal media with dialogue and metadata (MM), and visual media with metadata but no dialogue (Vis.+Meta.). Because raw multimodal input far exceeds the captioned context length, we run this ablation on Gemini-3.0-Flash, the reader that natively ingests long-context raw multimodal input (Tab. 4). 
+
+Captions are a faithful proxy for raw pixels on factual re-call. With dialogue held fixed, captioned dialogue and MM differ only marginally—captions slightly help text-anchored subtasks (episodic and embedded retrieval, all of T2), while raw pixels slightly help the two subtasks needing quantitative or visual reasoning (Multi-Record Aggregation and Multi-modal Recall). The overall T1 gap is just 1.6 points (82.6 vs. 81.0), showing that high-quality MLLM captions preserve most factual content and validating captioned dialogue as the unified input for fair comparison across memory systems. 
+
+Language-mediated context dominates recall and infer-ence tasks. Holding the visual input fixed and removing only the dialogue stream (MM → Vis.+Meta.) collapses T1 by 23 .6 points (81.0 →57.4) and T2 by 12 .4 (74.8 →62.4), sharpest on Episodic Event Retrieval ( −32 .1). The drop is this steep because most of ReaLMem’s factual grounding, together with all of its first-person subjective annotations resides in the textual stream: raw frames depict scenes but not the identities, labels, and personal context that T1 recall and T2 inference require. 
+
+Vision alone is the strongest signal for prediction. T3 breaks the monotone pattern: the dialogue-free setting 7(Vis.+Meta.) attains the highest T3 Avg. ( 61 .4 vs. 59 .2)and leads on both subtasks. We attribute this gap to the nature of the signal: the visual stream itself reflects a user’s preferences and the relative composition of their life. Arich, multi-year dialogue, by contrast, injects mutually con-flicting and uneven signals that the model cannot reliably arbitrate, whereas the sparser visual-and-metadata view falls back on these broad, stable patterns of activity and place. Since predictive personalization is a ranking task that re-wards a holistic read of a user’s habitual preferences over fine-grained arbitration of scattered textual cues, this sparser view wins. 
+
+5.4. ChronoProfiler Analysis 
+
+We probe ChronoProfiler with two controlled experiments, both evaluating the three MLLMs on T2 and T3 with deltas reported against the same backbone’s Full Context. First, a profile swap (Tab. 5) holds EverMemOS episodic re-trieval and replaces EverMemOS’s built-in profile with our temporally-weighted profile; comparing against Full Context and against EverMemOS: Ep.+Prof. (the identical pipeline with EverMemOS’s own profile) isolates the profile repre-sentation from raw context length and from the quality of a profile. Second, a TS ablation (Tab. 6) fixes the retrieval depth (top-15 items retrieval per category) and compares the profile with and without temporal stability weighting, isolat-ing the contribution of TS. We additionally study how the retrieval depth affects performance, the configuration and full depth–accuracy analysis are deferred to Appendix G, with all main experiments fixing the depth at top-15. To-gether, these analyses separate the factors behind the gains: context length, profile representation, TS weighting, and retrieval depth. 
+
+ChronoProfiler matches or beats Full Context on both T2 and T3. At only ∼6k prompt tokens, roughly 20 × fewer than the Full Context, ChronoProfiler exceeds full context on T2 Avg. for all three readers ( ∆ = +0 .6/ + 4 .0/ + 4 .3)and matches or exceeds it on T3 Avg. ( ∆ = ±0.0/ + 3 .5/ +1.8). The strongest configuration is GPT-4.1-mini, the only reader to improve on every subtask, posting the table-best T3 Avg. (61.4%, ∆ = +3 .5) and the best Context-Aware Assistance (57.8%). This confirms that the context sufficient for preference-grounded inference is far smaller than the raw history, provided it captures the right temporal structure. 
+
+The temporally-weighted profile dominates Ever-MemOS’s built-in profile. Holding episodes and the GPT-4.1-mini backbone fixed, swapping in our profile improves 
+
+every T2 metric (T2 Avg. +6 .3; Persona Profiling +5 .6,Longitudinal Tracking +6 .9, Behavioral Reasoning +6 .8)and both T3 metrics (T3 Avg. +2 .1; Context-Aware As-sistance +4 .3). Tellingly, EverMemOS’s own profile de-grades Full Context on T2 ( ∆ = −2.3) while ours lifts it (∆ = +4 .0), pinpointing the profile representation—not the 
+
+Table 6. Temporal-stability (TS) ablation on T2 and T3 (%). Rows compare the profile without ( w/o TS ) and with ( + TS ) TS weighting; 
+
+∆ is the gain from adding TS.                                                                                             
+
+> Setting T2 T3 Prof. Track Reas. Avg. Pred. Asst. Avg.
+> GPT-4.1-mini
+> w/o TS 73.8 72.0 81.7 75.6 61.3 60.1 60.8 + TS (Ours) 76.8 73.9 84.6 78.3 63.7 57.8 61.4
+> ∆(↑3.0)(↑1.9)(↑2.9)(↑2.7)(↑2.4)(↓2.3)(↑0.6)
+> GPT-5.4-mini
+> w/o TS 75.3 76.4 82.4 77.8 62.8 58.7 61.2 + TS (Ours) 77.9 78.0 84.0 79.8 63.7 56.3 60.8
+> ∆(↑2.6)(↑1.6)(↑1.6)(↑2.0)(↑0.9)(↓2.4)(↓0.4)
+> Gemini-3.0-Flash
+> w/o TS 74.9 73.6 81.9 76.7 62.2 57.8 60.4 + TS (Ours) 76.0 73.1 82.1 77.0 61.6 55.4 59.2
+> ∆(↑1.1)(↓0.5)(↑0.2)(↑0.3)(↓0.6)(↓2.4)(↓1.2)
+
+episodic memory—as the active ingredient behind the T2 and T3 gains. 
+
+Temporal stability is the source of the T2 gains. Adding TS lifts T2 Avg. for all three readers ( +2 .7/ + 2 .0/ + 0 .3)and raises Persona Profiling across the board ( +3 .0/+2 .6/+1.1), directly evidencing TS as a time-aware prior for consol-idating stable and evolving preferences. On T3 the effect is comparable or slightly lower (T3 Avg +0 .6/ − 0.4/ − 1.2): TS consistently helps Context-Aware Prediction for both GPT readers ( +2 .4/ + 0 .9) but uniformly trades off a small amount of Context-Aware Assistance ( ≈ − 2.4), which we attribute to TS sharpening recurring preferences at the ex-pense of the broader, occasion-specific cues that open-ended recommendation can exploit. We therefore scope the TS claim to persona profiling and longitudinal tracking, and regard selective episodic retrieval as a complementary route to recovering the Assistance gap. 
+
+6. Conclusion and Limitations 
+
+We introduced ReaLMem, the first multimodal long-term memory benchmark grounded in authentic personal visual archives and first-person subjective annotations, organized as a Bloom-inspired three-tier hierarchy from factual recall through persona inference to predictive personalization. To counter the preference-flattening of existing memory sys-tems, we proposed ChronoProfiler, a memory-consolidation-inspired module that scores each attribute by its temporal stability and injects it as a salience prior. Our experiments identify predictive personalization as the central bottleneck and show that a compact temporally-weighted profile can ri-val full context, establishing temporally-weighted preference selection as a promising direction for real-world personal-memory modeling. ReaLMem deliberately trades breadth for depth: au-8thentic, long-horizon first-person archives are bounded by acquisition cost and strict privacy, so the participant pool is small, and ChronoProfiler’s decay constants fol-low cognitive principles rather than population-scale tun-ing. As larger and more diverse personal-memory cor-pora emerge, broader-coverage benchmarks and adaptive, user-specific temporal-stability parameterizations—learned from each user’s own engagement rhythm—are natural next steps. 
+
+References 
+
+[1] Benjamin S Bloom, Max D Engelhart, Edward J Furst, Walker H Hill, David R Krathwohl, et al. Handbook i: cogni-tive domain. New York: David McKay , pages 483–498, 1956. 2, 4 [2] Timothy F. Brady, Talia Konkle, George A. Alvarez, and Aude Oliva. Visual long-term memory has a massive stor-age capacity for object details. Proceedings of the National Academy of Sciences , 105:14325 – 14329, 2008. 1 [3] Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj Yadav. Mem0: Building production-ready AI agents with scalable long-term memory. In ECAI 2025 -28th European Conference on Artificial Intelligence, 25-30 October 2025, Bologna, Italy - Including 14th Conference on Prestigious Applications of Intelligent Systems (PAIS 2025) ,pages 2993–3000. IOS Press, 2025. 3, 6, 12 [4] Dima Damen, Hazel Doughty, Giovanni Maria Farinella, An-tonino Furnari, Evangelos Kazakos, Jian Ma, Davide Molti-santi, Jonathan Munro, Toby Perrett, Will Price, and Michael Wray. Rescaling egocentric vision: Collection, pipeline and challenges for epic-kitchens-100. International Journal of Computer Vision , 130:33 – 55, 2020. 2, 3 [5] Jiankang Deng, Jia Guo, Evangelos Ververas, Irene Kotsia, and Stefanos Zafeiriou. Retinaface: Single-shot multi-level face localisation in the wild. In CVPR , 2020. 4, 12 [6] Yuhao Dong and Yuhao Dong. Egolife: Towards egocentric life assistant. 2025 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 28885–28900, 2025. 2, 3 [7] Yiming Du, Hongru Wang, Zhengyi Zhao, Bin Liang, Baojun Wang, Wanjun Zhong, Zezhong Wang, and Kam-Fai Wong. PerLTQA: A personal long-term memory dataset for memory classification, retrieval, and fusion in question answering. In Proceedings of the 10th SIGHAN Workshop on Chinese Language Processing (SIGHAN-10) , pages 152–164, 2024. 1, 3[8] Google DeepMind. Gemini 2.0: Flash, flash-lite and pro. 
+
+https : / / blog . google / technology / google -deepmind/gemini- model- updates- february-2025/ , 2025. Gemini-2.0-Flash; accessed 2026-06-26. 6 [9] Google DeepMind. Introducing gemini 3 flash. https: / / blog . google / products - and - platforms / products / gemini / gemini - 3 - flash/ , 2026. Gemini-3.0-Flash; accessed 2026-06-26. 5 [10] Kristen Grauman et al. Ego4d: Around the world in 3,000 hours of egocentric video. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 18973–18990, 2021. 2, 3 [11] Kristen Grauman et al. Ego-exo4d: Understanding skilled human activity from first- and third-person perspectives. 
+
+2024 IEEE/CVF Conference on Computer Vision and Pat-tern Recognition (CVPR) , pages 19383–19400, 2023. 3 [12] Cathal Gurrin, Alan F. Smeaton, and Aiden R. Doherty. Lifel-ogging: Personal big data. Found. Trends Inf. Retr. , 8:1–125, 2014. 3 [13] Cathal Gurrin, Hideo Joho, Frank Hopfgartner, Liting Zhou, and Rami Albatal. Overview of ntcir-12 lifelog task. In 
+
+NTCIR Conference on Evaluation of Information Access Tech-nologies , 2016. 3 [14] Cheng-Ping Hsieh, Simeng Sun, Samuel Kriman, Shantanu Acharya, Dima Rekesh, Fei Jia, Yang Zhang, and Boris Gins-burg. RULER: what’s the real context size of your long-context language models? CoRR , abs/2404.06654, 2024. 1[15] Chuanrui Hu, Xingze Gao, Zuyi Zhou, Dannong Xu, Yi Bai, Xintong Li, Hui Zhang, Tong Li, Chong Zhang, Lidong Bing, et al. EverMemOS: A self-organizing memory operating system for structured long-horizon reasoning. arXiv preprint arXiv:2601.02163 , 2026. 3, 6, 7, 12 [16] Aaron Hurst et al. Gpt-4o system card. 2024. 4 [17] Jihyoung Jang, Minseong Boo, and Hyounghun Kim. Con-versation chronicles: Towards diverse temporal and relational dynamics in multi-session conversations. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pages 13584–13606, Singapore, 2023. Association for Computational Linguistics. 2 [18] Bowen Jiang, Zhuoqun Hao, Young-Min Cho, Bryan Li, Yuan Yuan, Sihao Chen, Lyle Ungar, Camillo J Taylor, and Dan Roth. Know me, respond to me: Benchmarking LLMs for dynamic user profiling and personalized responses at scale. 
+
+arXiv preprint arXiv:2504.14225 , 2025. 1, 3 [19] Bowen Jiang, Yuan Yuan, Maohao Shen, Zhuoqun Hao, Zhangchen Xu, Zichen Chen, Ziyi Liu, Anvesh Rao Vijjini, Jiashu He, Hanchao Yu, Radha Poovendran, Gregory W. Wor-nell, Lyle H. Ungar, Dan Roth, Sihao Chen, and Camillo Jose Taylor. PersonaMem-v2: Towards personalized intelligence via learning implicit user personas and agentic memory. 
+
+CoRR , abs/2512.06688, 2025. 1, 3 [20] M. G. Kendall. A new measure of rank correlation. 
+
+Biometrika , 30:81–93, 1938. 6 [21] Jens G Klinzing, Niels Niethard, and Jan Born. Mechanisms of systems memory consolidation during sleep. Nature neu-roscience , 22(10):1598–1610, 2019. 5 [22] Eunhae Lee. Towards ethical personal AI applications: Prac-tical considerations for AI assistants with long-term memory. 
+
+arXiv preprint arXiv:2409.11192 , 2024. 1 [23] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich K¨ uttler, Mike Lewis, Wen-tau Yih, Tim Rockt¨ aschel, et al. Retrieval-augmented generation for knowledge-intensive NLP tasks. 
+
+Advances in neural information processing systems , 33:9459– 9474, 2020. 3 [24] Hao Li, Chenghao Yang, An Zhang, Yang Deng, Xiang Wang, and Tat-Seng Chua. Hello again! LLM-powered personalized 
+
+9agent for long-term dialogue. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , pages 5259–5276, 2025. 2 [25] Jiahao Nick Li, Zhuohao Zhang, and Jiaju Ma. OmniQuery: Contextually augmenting captured multimodal memories to enable personal question answering. In Proceedings of the 2025 CHI Conference on Human Factors in Computing Sys-tems , pages 1–20, 2025. 3 [26] Xintong Li, Jalend Bantupalli, Ria Dharmani, Yuwei Zhang, and Jingbo Shang. Toward multi-session personalized conver-sation: A large-scale dataset and hierarchical tree framework for implicit reasoning. In Proceedings of the 2025 Confer-ence on Empirical Methods in Natural Language Processing ,pages 11504–11517, 2025. 3 [27] Zhiyu Li, Shichao Song, Hanyu Wang, Simin Niu, Ding Chen, Jiawei Yang, Chenyang Xi, Huayi Lai, Jihao Zhao, Yezhaohui Wang, Junpeng Ren, Zehao Lin, Jiahao Huo, Tianyi Chen, Kai Chen, Kehang Li, Zhiqiang Yin, Qingchen Yu, Bo Tang, Hongkang Yang, Zhi-Qin John Xu, and Feiyu Xiong. MemOS: An operating system for memory-augmented generation (MAG) in large language models. 
+
+CoRR , abs/2505.22101, 2025. 3, 6, 12 [28] Nelson F Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. Lost in the middle: How language models use long contexts. Trans-actions of the association for computational linguistics , 12: 157–173, 2024. 2 [29] Adyasha Maharana, Dong-Ho Lee, Sergey Tulyakov, Mohit Bansal, Francesco Barbieri, and Yuwei Fang. Evaluating very long-term conversational memory of LLM agents. In Pro-ceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 13851–13870, 2024. 1, 2 [30] James L McClelland, Bruce L McNaughton, and Randall C O’Reilly. Why there are complementary learning systems in the hippocampus and neocortex: insights from the successes and failures of connectionist models of learning and memory. 
+
+Psychological review , 102(3):419, 1995. 5 [31] OpenAI. GPT-4o mini: Advancing cost-efficient intelligence. 
+
+https : / / openai . com / index / gpt - 4o - mini -advancing - cost - efficient - intelligence/ ,2024. accessed 2026-06-26. 6 [32] OpenAI. New embedding models and API updates. https: //openai.com/index/new-embedding-models-and-api-updates/ , 2024. text-embedding-3-small; ac-cessed 2026-06-26. 14 [33] OpenAI. Introducing GPT-4.1 in the API. https:// openai.com/index/gpt-4-1/ , 2025. GPT-4.1-mini; accessed 2026-06-26. 5 [34] OpenAI. Introducing GPT-5. https://openai.com/ index/introducing-gpt-5/ , 2025. GPT-5.4-mini point release; replace with the 5.4 model card if available; accessed 2026-06-26. 5 [35] Preston Rasmussen, Pavlo Paliychuk, Travis Beauvais, Jack Ryan, and Daniel Chalef. Zep: A temporal knowledge graph architecture for agent memory. CoRR , abs/2501.13956, 2025. 3[36] Thomas Schuster, Marian Lambert, Nico D¨ oring, and Julius Tr¨ ogele. Needle-in-the-haystack testing LLMs with a com-plex reasoning task. In International Conference on Engi-neering Applications of Neural Networks , pages 254–266. Springer, 2025. 1 [37] Claude E. Shannon. A mathematical theory of communica-tion. Bell Syst. Tech. J. , 27:623–656, 1948. 5 [38] Haoran Sun, Zekun Zhang, and Shaoning Zeng. Preference-aware memory update for long-term LLM agents. arXiv preprint arXiv:2510.09720 , 2025. 2 [39] Mohammad Tavakoli, Alireza Salemi, Carrie Ye, Mohamed Abdalla, Hamed Zamani, and J Ross Mitchell. Beyond a mil-lion tokens: Benchmarking and enhancing long-term memory in LLMs. arXiv preprint arXiv:2510.27246 , 2025. 1 [40] Endel Tulving. Episodic and semantic memory. 1972. 4 [41] Weizhi Wang, Li Dong, Hao Cheng, Xiaodong Liu, Xifeng Yan, Jianfeng Gao, and Furu Wei. Augmenting language mod-els with long-term memory. Advances in Neural Information Processing Systems , 36:74530–74543, 2023. 3 [42] Rebecca Westh¨ außer, Wolfgang Minker, and Sebastian Zepf. Enabling personalized long-term interactions in LLM-based agents through persistent memory and user profiles. CoRR ,abs/2510.07925, 2025. 2 [43] Di Wu, Hongwei Wang, Wenhao Yu, Yuwei Zhang, Kai-Wei Chang, and Dong Yu. Longmemeval: Benchmarking chat assistants on long-term interactive memory. In The Thirteenth International Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenReview.net, 2025. 1, 3 [44] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient streaming language models with attention sinks. In The Twelfth International Conference on Learning Representations, ICLR 2024, Vienna, Austria, May 7-11, 2024 . OpenReview.net, 2024. 3 [45] Xinchao Xu, Zhibin Gou, Wenquan Wu, Zheng-Yu Niu, Hua Wu, Haifeng Wang, and Shihang Wang. Long time no see! open-domain conversation with long-term persona memory. In Findings of the Association for Computational Linguistics: ACL 2022 , pages 2639–2650, 2022. 2 [46] Zeyu Zhang, Quanyu Dai, Xiaohe Bo, Chen Ma, Rui Li, Xu Chen, Jieming Zhu, Zhenhua Dong, and Ji-Rong Wen. Asurvey on the memory mechanism of large language model-based agents. ACM Transactions on Information Systems , 43 (6):1–47, 2025. 1 [47] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric P. Xing, Haotong Zhang, Joseph E. Gon-zalez, and Ion Stoica. Judging llm-as-a-judge with mt-bench and chatbot arena. ArXiv , abs/2306.05685, 2023. 6 [48] Wanjun Zhong, Lianghong Guo, Qiqi Gao, He Ye, and Yanlin Wang. MemoryBank: Enhancing large language models with long-term memory. In Proceedings of the AAAI conference on artificial intelligence , pages 19724–19731, 2024. 1, 2 [49] Wenqi Zhou, Kai Cao, Hao Zheng, Xinyi Zheng, Miao Liu, Per Ola Kristensson, Walterio W. Mayol-Cuevas, Fan Zhang, 
+
+10 Weizhe Lin, and Junxiao Shen. X-lebench: A benchmark for extremely long egocentric video understanding. In Confer-ence on Empirical Methods in Natural Language Processing ,2025. 3 [50] Yuxin Zhu, Dazuo Tian, and Feng Yan. Effectiveness of entropy weight method in decision-making. Mathematical Problems in Engineering , 2020:1–5, 2020. 5 
+
+11 To Memories and Beyond: From Remembering to Knowing You across Long-Term Multimodal Personal Archives 
+
+# Supplementary Material 
+
+A. Ethical Considerations 
+
+The design of ReaLMem, including its data collection, pro-cessing, and annotation, underwent ethical review and was approved by the ethical review board of the authors’ orga-nization. Prior to participation, each contributor was fully informed of the data-collection procedure, the categories of personal content involved, and the intended research use, and signed an informed-consent agreement. Beyond con-sent, every record passes through the anonymization pipeline of Appendix B (face blurring, PII pseudonymization, and metadata sanitization) before any downstream use. To guard against potential negative applications, ReaLMem will be distributed for research purposes only and released exclu-sively to users who sign a data license agreement governing acceptable use. 
+
+B. Dataset Anonymization 
+
+To protect participant privacy before any processing, we detect faces with RetinaFace [5] at a detection confidence threshold of 0.5, and apply Gaussian blur to every detected face region. In parallel, personally identifiable information in text—names, precise locations, and contact details—is pseudonymized with stable placeholders ( e.g ., “Friend A”, “[Restaurant B]”) that preserve referential consistency for analysis while preventing re-identification. Finally, we san-itize the raw metadata so that the released dataset contains only anonymized, privacy-safe records. 
+
+C. Experimental Setup Details 
+
+Memory system configurations. Mem0 [3], MemOS [27], and EverMemOS [15] are run under each system’s default configuration during the memory construction stage; we re-place their answering backbone with a unified GPT-4.1-mini to isolate the contribution of the memory architecture from the underlying MLLM. The resulting per-query inference context ranges from 1.0k (Mem0) to 1.7k (EverMemOS) tokens. 
+
+Oracle reference setup. The Oracle setting supplies each frontier MLLM with only the gold-evidence sessions for the current question, identified by the per-QA evidence annota-tion. Oracle is restricted to T1 because T2 and T3 require holistic synthesis across the full participant history rather than retrieval of a localized evidence span. 
+
+D. Evaluation Details 
+
+T1 Factual Memory Recall — judge prompt. T1 re-sponses are evaluated by GPT-4o-mini as C ORRECT or WRONG . The judge is provided with the question, the refer-ence answer, and the model’s response and applies four cri-teria: (1) Conceptual Match — paraphrase and non-essential omissions are accepted as long as core entities are preserved; (2) Time & Dates — relative and format-variant references are accepted if they resolve to the same calendar date (year, month, day); time-of-day differences are ignored; (3) Num-bers & Counts — summaries requiring exact counts must match the reference; (4) No Contradictory Hallucinations —a response that includes correct information alongside confi-dently stated contradictory fabrications is marked W RONG .The T1 score for an instance is 1 (C ORRECT ) or 0 (W RONG ); subtask scores are the mean over QA pairs. 
+
+T2 Persona Inference — scoring rubric. Each T2 instance provides a question, a reference answer, and participant-validated key supporting points. GPT-4o-mini assigns two independent integer scores on a 1–5 scale: • Coverage (1–5): degree to which the response addresses the key supporting points — 5 covers all comprehensively, 3 covers roughly half, 1 misses the point entirely. • Accuracy (1–5): logical soundness and factual consistency with the reference — 5 is fully accurate with no halluci-nations, 3 has minor misinterpretations, 1 is completely fabricated or contradictory. The reported T2 score for an instance is (Coverage +
+
+Accuracy ) × 10 , giving a range of [20 , 100] .
+
+T3 Predictive Personalization — ranking metric. Each T3 instance presents a set of candidate options and requires the model to produce a ranking. Evaluation uses Kendall-
+
+τ rank correlation between the predicted and participant-validated ground-truth ranking: 
+
+τ = (# concordant pairs ) − (# discordant pairs )
+
+ n
+
+> 2
+
+ ,
+
+which is then affinely rescaled to [0 , 100] via score = 50 ·
+
+(τ + 1) , so that random ranking yields 50 and a perfect reversal yields 0. 
+
+Aggregation. Within each subtask, scores are averaged uniformly over QA pairs. Each cognitive level (T1/T2/T3) 12 Category Sub-task (#QA) Definition Example Query 1. Factual Memory Recall 1.1 Episodic Event Retrieval             
+
+> (789)
+> Retrieve specific details (when, where, who, what) of a past event.
+> “When was the last time I dined at [Restaurant B] with [Friend A]?”
+> 1.2 Embedded Content Re-trieval (260)
+> Retrieve information embedded in visual media ( e.g ., text in screenshots).
+> “What is the flight number in the booking con-firmation screenshot I saved?”
+> 1.3 Multi-Record Aggrega-tion (105)
+> Aggregate, count, or compare information across mul-tiple memory records.
+> “How many times did I visit the gym this year?”
+> 1.4 Multimodal Recall (84) Retrieve relevant memories grounded in visual con-tent.
+> “[Photo] When was the last time I ate at this restaurant?”
+> 2. Persona Inference 2.1 Persona Profiling (85) Profile and characterize stable user preferences, habits, and recurring behavioral patterns.
+> “What is my usual morning routine?”
+> 2.2 Longitudinal Tracking
+> (61)
+> Detect changes or evolution in preferences and behav-iors over time.
+> “Do I prefer indoor or outdoor sports now com-pared to two years ago?”
+> 2.3 Behavioral Reasoning (63) Infer the underlying reasons or motivations behind observed behavioral changes.
+> “Why did I seemingly stop going to [Gym A]?”
+> 3. Predictive Personalization 3.1 Context-Aware Prediction
+> (111)
+> Predict user preference or choice in a new scenario conditioned on personal history.
+> “For a winter trip, would I enjoy [Location A] or [Location B] more?”
+> 3.2 Context-Aware Assistance
+> (71)
+> Provide actionable, personalized recommendations grounded in the user’s personal history.
+> “Suggest a suitable gift for [Friend A] based on our shared memories.”
+
+Table 7. Taxonomy of the ReaLMem benchmark. Nine subtasks are organized into three cognitive categories spanning factual memory recall, persona inference, and predictive personalization. QA pair counts per subtask are shown in parentheses. 
+
+reports the QA-count-weighted mean over its constituent subtasks. 
+
+E. QA Generation Details 
+
+We provide the full construction procedure for the 1,629 QA pairs in R EA LM EM , summarised in §3.2 of the main text. 
+
+T1 Factual Memory Recall. T1 QA pairs are generated from objectively annotated memory events. Each instance is formulated as an open-ended question accompanied by a reference answer and explicit grounding evidence (data IDs). To ensure linguistic naturalness and evaluation validity, all generated QA pairs undergo multi-stage human quality control by trained annotators, who address unnatural phras-ing, insufficient contextual constraints, improper temporal expressions, and low-information or ambiguous answers, yielding high-quality, well-specified queries. 
+
+T2 Persona Inference. T2 QA generation leverages sub-jective annotations capturing user preferences and personal contexts. Because these tasks are inherently subjective, each QA pair consists of a question, a reference answer, and a set of key supporting points used for graded evaluation, rather than a single rigid ground truth. Crucially, these instances are verified and refined by the original data contributors, who assess the completeness, correctness, and relevance of the answer against their own lived experiences, ensuring that subjective reasoning tasks remain both reliable and faithful to real user perspectives. 
+
+T3 Predictive Personalization. For T3, we move beyond conventional multiple-choice QA and adopt a ranking-based evaluation paradigm that better reflects real-world decision-making. Instead of collapsing preference modeling and ap-plication into binary or single-choice outputs, each query presents multiple candidate options constructed from differ-ent combinations of user preferences, and the task requires models to produce a ranked ordering aligned with the user’s actual preference distribution. The ground-truth rankings are directly provided and validated by the participants, capturing the nuanced, multi-dimensional, and context-dependent na-ture of human decision-making. This design avoids oversim-plified preference matching and instead evaluates whether models can integrate heterogeneous signals and perform flexible, personalized reasoning. After manual screening and revision, the pipeline yields a total of 1,629 QA pairs that are grounded, diverse, and reliable, while fully leveraging the advantages of real-world data and human-in-the-loop validation. 
+
+F. ChronoProfiler Implementation Details 
+
+Update operations. During incremental profile construc-tion (Algorithm 1), each newly extracted candidate is com-pared against existing entries in the same semantic category and resolved by one of four operations: N EW inserts a previ-13 ously unseen attribute as a fresh entry; D UPLICATE keeps the existing entry unchanged and only appends the current session to its evidence list; U PDATE overwrites the entry with refined or more specific content while extending its evidence list; C ONFLICT (a contradiction or change relative to an existing entry, e.g . “used to like coffee” vs. “switched to tea”) does not overwrite the prior entry; instead it instanti-ates the new attribute as a separate entry that links back to the conflicting one via a related reference, so that the out-dated and current signals are both retained as independently timestamped items, their competition left to be arbitrated downstream by the Temporal Stability score rather than by destructive overwriting. 
+
+Hyperparameters. The decay constants τs, τd, and τr
+
+control how quickly each lifecycle feature saturates. We set τs = 3 , so that support saturates around three indepen-dent mentions; τd = 150 days, so duration grows substan-tially over roughly five months of consistent expression; and 
+
+τr = 60 days, giving recency a half-life on the order of two months. Unlike the feature timescales, the combination weights w = ( ws, w d, w r ) are not fixed hyperparameters: they are recomputed per user by the entropy weight method over that user’s profile-item feature matrix, so a feature that fails to discriminate among a user’s items is automatically down-weighted. The resulting entropy-weighted sum is then min–max normalized within each user to [0 , 1] . The ref-erence time Tref is set to a common evaluation timestamp shared across users (here we set it to 2026-01-12). At in-ference, profile items are retrieved per semantic category by dense query similarity (computed with OpenAI’s text-embedding-3-small [32]) and truncated to the top-15 per category (depth sensitivity is analyzed in Appendix G). 
+
+Profile-swap evaluation protocol. For the ChronoProfiler results in Tab. 5 and 6 of the main paper, we hold Ever-MemOS’s episodic retrieval and the reader backbone fixed and substitute only the injected user profile, replacing Ever-MemOS’s built-in profile with our temporally-weighted pro-file. This yields a per-query context of ∼6k tokens and forms a controlled contrast against the EverMemOS: Ep.+Prof. 
+
+baseline (identical episodes and backbone, EverMemOS’s own profile), so that any difference isolates the effect of the profile representation and its temporal stability weighting from both episodic retrieval and raw long-context access. 
+
+G. ChronoProfiler Retrieval-Depth Sensitivity 
+
+We fix the per-category retrieval depth at k = 15 and report the results in Tab. 5 and 6 of the main paper. Figure 3 traces how our temporally-weighted profile behaves under per-category RAG as k varies, for the two GPT readers, with the full no-RAG profile ( ∼16 k tokens) shown as the 
+
+Algorithm 1 Incremental Profile Construction 
+
+Require: Session sequence D = {d1, . . . , d N } in chrono-logical order. 
+
+Ensure: Profile P with timestamped evidence.  
+
+> 1:
+
+P ← Initialize empty profile with 5 semantic categories  
+
+> 2:
+
+for each session dt ∈ D do  
+
+> 3:
+
+Et ← LLM.Extract (dt) 
+
+> 4:
+
+for each candidate e ∈ E t do  
+
+> 5:
+
+relation ← LLM.Compare (e, P[e.category ])  
+
+> 6:
+
+if relation == NEW then  
+
+> 7:
+
+P[e.category ].Append (e, evidence = {dt}) 
+
+> 8:
+
+else if relation == DUPLICATE then  
+
+> 9:
+
+match .evidence.Add (dt) 
+
+> 10:
+
+else if relation == UPDATE then  
+
+> 11:
+
+match .Update (e); match .evidence.Add (dt) 
+
+> 12:
+
+else if relation == CONFLICT then  
+
+> 13:
+
+P[e.category ].Append (e, evidence =
+
+{dt}, related id = match.id ) 
+
+> 14:
+
+end if  
+
+> 15:
+
+end for  
+
+> 16:
+
+P.SaveCheckpoint ()  
+
+> 17:
+
+end for  
+
+> 18:
+
+return P
+
+Algorithm 2 Temporal Stability Scoring 
+
+Require: Profile P, Reference time Tref , Decay constants 
+
+τs = 3 , τ d = 150 , τ r = 60 .
+
+Ensure: Profile P with TS score for each item.  
+
+> 1:
+
+for each item p ∈ P do  
+
+> 2:
+
+Sp ← | Unique (p.mentioned times )| 
+
+> 3:
+
+tfirst , t last ← MinMax (p.mentioned times ) 
+
+> 4:
+
+ssup ← 1 − exp( −S p/τ s) 
+
+> 5:
+
+sdur ← 1 − exp( −(tlast − tfirst )/τ d) 
+
+> 6:
+
+srec ← exp( −(Tref − tlast )/τ r ) 
+
+> 7:
+
+end for  
+
+> 8:
+
+w ← EntropyWeights ({(ssup , s dur , s rec )p}p∈P ) {per-user } 
+
+> 9:
+
+for each item p ∈ P do  
+
+> 10:
+
+zp ← ws · ssup + wd · sdur + wr · srec  
+
+> 11:
+
+end for  
+
+> 12:
+
+p.TS ← (zp − min q zq )/(max q zq − min q zq ), ∀p
+
+{within-user min–max } 
+
+> 13:
+
+return P
+
+right-most categorical tick for reference. 
+
+T2 saturates well before the full budget. Persona under-standing (T2) rises smoothly with k and is essentially flat by k = 15 , where both readers sit within ∼0.8 points of their full-profile score (GPT-4.1-mini: 78 .3 vs. 78 .5; GPT-14 5 8 12 15 Full 
+
+Profile items retrieved per category ( k)
+
+> 76 77 78 79 80
+> LLM-judge score (0 10,  ×10)
+
+(a) T2 persona inference     
+
+> 5812 15 Full
+
+Profile items retrieved per category ( k)
+
+> 59 60 61 62 63
+> Kendall's  (×100)
+
+(b) T3 context-aware prediction    
+
+> GPT-4.1-mini GPT-5.4-mini RAG top-kFull profile (no RAG)
+
+Figure 3. ChronoProfiler retrieval-depth sensitivity for the two GPT readers. Each panel plots the temporally-weighted profile under per-category RAG as a function of retrieval depth k (solid, hollow markers), with the full no-RAG profile shown as the right-most Full tick (filled markers, shaded). (a) T2 persona understanding (LLM-judge 0–10 , ×10 ); (b) T3 context-aware reasoning (Kendall’s τ , ×100 ). 
+
+5.4-mini: 79 .8 vs. 79 .0) while using only ∼6k of the ∼16 kfull-profile tokens ( ≈40% ). Retrieving more profile items therefore buys little on persona inference, which motivates our top-15 default. 
+
+T3 is reader-dependent. Context-aware prediction (T3) does not share a single optimum. GPT-4.1-mini peaks at the RAG operating point ( k = 15 , 61 .4) and declines when given the full profile ( 59 .3), consistent with the dialogue-dilution effect we observe in the modality ablation (§5.3): a longer, noisier preference record introduces conflicting signals that this reader cannot arbitrate. GPT-5.4-mini, in contrast, continues to benefit from the full profile ( 62 .5 vs. 
+
+60 .8 at k = 15 ). Because the compact top-15 profile is at or near the best T3 setting for GPT-4.1-mini and within ∼1.7
+
+points for GPT-5.4-mini, at a fraction of the token cost, we adopt k = 15 as the single default across readers. 15
