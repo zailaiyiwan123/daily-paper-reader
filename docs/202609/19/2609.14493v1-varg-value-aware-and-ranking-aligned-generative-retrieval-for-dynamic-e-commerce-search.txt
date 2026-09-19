@@ -1,0 +1,1036 @@
+Title: VARG: Value-Aware and Ranking-Aligned Generative Retrieval for Dynamic E-commerce Search
+
+URL Source: https://arxiv.org/pdf/2609.14493v1
+
+Published Time: Tue, 15 Sep 2026 01:40:29 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# VARG: Value-Aware and Ranking-Aligned Generative Retrieval for Dynamic E-commerce Search 
+
+# Xiaopeng Chu 
+
+University of Science and Technology of China Hefei, Anhui, China cxphhh@mail.ustc.edu.cn 
+
+# Jianbo Zhu 
+
+Taobao & Tmall Group of Alibaba Hangzhou, China zhujianbo.zjb@taobao.com 
+
+# Mingmin Jin 
+
+Taobao & Tmall Group of Alibaba Hangzhou, China jimmy.jmm@taobao.com 
+
+# Jing Wang 
+
+Taobao & Tmall Group of Alibaba Hangzhou, China jing.wangj1@taobao.com 
+
+# Xing Fang *
+
+Nankai University Tianjin, China Taobao & Tmall Group of Alibaba Hangzhou, China fangxing.fx@taobao.com 
+
+# Wenyi Zhang 
+
+University of Science and Technology of China Hefei, Anhui, China wenyizha@ustc.edu.cn 
+
+## Abstract 
+
+Integrating recall and pre-ranking in e-commerce search requires candidate generation to account for relevance, personalization, and business value before final ranking. To this end, we present VARG, a generative retrieval system for Tmall App search that di-rectly admits generated item candidates to the existing final ranker. VARG-ID constructs semantic prefixes using RQ-VAE, enhances search relevance through bidirectional query–item contrastive learning, and combines these prefixes with a value-ordered third token to provide fine-grained item addresses and a business-value prior. Three-stage supervised fine-tuning progressively learns item-to-identifier mappings, query-semantic retrieval, and per-sonalized retrieval. Personalized model training combines value-aware and hierarchy-aligned supervision with expanded user con-text, and uses local ordinal supervision (LO-SFT) to learn the local within-cluster ordering encoded by the third token. Prefix-GRPO combines gated rewards based on output legality, user behavior, ranker advantage, and search relevance with prefix-aware token weighting to align candidate generation with business value and ranking objectives. Coordinated daily product and model updates preserve existing item addresses while incorporating new products and behavioral feedback. Offline experiments on tens of millions of products validate identifier stability and demonstrate gains in retrieval quality and head-level value recall from SFT strategies and Prefix-GRPO over their respective baselines. In a 14-day online A/B test covering 20% of search traffic, VARG directly admits gen-erated candidates to the final ranker and improves GMV by 1.45%, 
+
+> *Corresponding author. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full cita-tion on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy other-wise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> © 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+per-user IPV by 0.22%, and PCTR by 0.31%. Online shopping-guide query evaluations further show that VARG maintains competitive relevance with a smaller candidate quota. 
+
+## CCS Concepts 
+
+• Information systems → Information retrieval; Retrieval models and ranking. 
+
+## Keywords 
+
+Generative Retrieval, E-commerce Search, Recall and Pre-ranking Integration, Semantic Identifiers, Reinforcement Learning 
+
+ACM Reference Format: 
+
+Xiaopeng Chu, Jianbo Zhu, Mingmin Jin, Jing Wang, Xing Fang, and Wenyi Zhang. 2018. VARG: Value-Aware and Ranking-Aligned Generative Re-trieval for Dynamic E-commerce Search. In Proceedings of [Conference Name] (Conference acronym ’XX) , June 03–05, 2018, Woodstock, NY. ACM, New York, NY, USA, 11 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+E-commerce search matches users’ shopping needs to a massive set of products updated daily through a recall–pre-rank–rank cas-cade [35, 2]. Lexical retrieval [20], dense encoders [9], efficient nearest-neighbor indexes [16], and late interaction [10] offer com-plementary relevance and efficiency trade-offs. Recall and pre-ranking jointly perform candidate selection, accounting for both item relevance and business value. Since downstream rankers can-not recover items omitted from the candidate set, candidate selec-tion should retain high-quality items under strict latency and re-source budgets. Generative retrieval formulates candidate selection as identifier generation directly from context [12], with related work extending from document retrieval [25, 29] to hierarchical item IDs [19]. Re-cent industrial systems further explore unified retrieval and rank-ing [6, 33] and intent-enhanced search [2]. This formulation jointly models query semantics, user preferences, and behavioral context, expressing item selection and candidate priorities through genera-tion probabilities.   
+
+> 1arXiv:2609.14493v1 [cs.IR] 13 Sep 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al. VARG Multi-channel retrieval
+
+f Query i Ǝ       
+
+> VARG model Trie + beam SID ²Item
+> Text Dense I2I
+> Merge Pre-rank
+> ¬Reserved quota
+> Merge Final rank Results
+
+Figure 1: Online integration of VARG. Conventional multi-channel candidates undergo pre-ranking; VARG generates candidates using Trie-constrained beam search and SID-to-item mapping, bypassing pre-ranking via a reserved quota. Both streams are merged and deduplicated before final rank-ing. 
+
+Our setting is recall-and-pre-ranking integration : an additional generative channel forwards items directly to the existing final ranker rather than replacing the search cascade (Figure 1). By-passing item-level pre-ranking requires generated candidates to provide relevance, personalization, and business value within the reserved quota. The system also needs to accommodate ongoing daily product and model updates. This goal raises three connected challenges. 
+
+Item-level selection and addressing stability. Cluster-level iden-tifiers improve item coverage during generation [35], but shared identifiers limit the model’s ability to distinguish individual items within a cluster. When item-level pre-ranking is bypassed, less rel-evant or lower-value items may occupy reserved candidate slots. Business-ranked identifiers provide finer addresses and value pri-ors [15], but noisy conversion estimates and daily reordering can change existing item addresses and disrupt the model’s learned ad-dressing relationships. Learning new products also risks forgetting existing knowledge [17]. 
+
+Supervised learning for contextual retrieval. The model needs to learn item-to-identifier mappings and select items according to query intent and user preferences. The challenge is to extend item memorization into query-semantic and personalized retrieval while ensuring that supervision reflects the semantic hierarchy and within-cluster ordering encoded by the identifiers [28, 2]. 
+
+Business-value and ranking alignment. An item’s conversion propensity varies across queries and users, while learning only from observed target items provides limited guidance for compar-ing the quality and value of other candidates. Policy optimization offers a way to further adjust candidate priorities [6, 35], but sparse click and purchase matches poorly distinguish unobserved candi-dates. Training feedback should therefore also cover candidate rel-evance and downstream ranking performance while preventing in-valid outputs from receiving positive credit. To address these challenges, we present VARG (Figure 2) with the following main contributions: • We introduce VARG-ID , a hierarchical item identifier with collision-free initial construction. Bidirectional Q2I contrastive learning injects search relevance into its semantic prefix, while stable empirical-Bayes conversion-rate ordering encodes busi-ness value in its third token. We further establish stable daily-refresh mechanisms for both items and the retrieval model. • We build a three-stage SFT pipeline that progresses from item memorization to query-semantic retrieval and personalized re-trieval. Personalized training combines Q2I value weighting, SID level-wise loss, and expanded user context, and uses local ordi-nal supervision (LO-SFT) to learn the within-cluster ordering en-coded by the third token. We also explore lightweight parallel decoding to reduce inference cost. • We develop Prefix-GRPO with gated multi-source rewards over SID legality, user behavior, ranker advantage, and search rele-vance, providing denser reward signals for policy optimization. Combined with prefix-aware token weighting, these rewards align candidate priorities with business value and downstream ranking objectives. Offline experiments evaluate identifier stability and the effects of SFT and Prefix-GRPO on retrieval quality and value recall. A 14-day online A/B test validates the deployed recall-and-pre-ranking system, yielding a 1.45% GMV gain. 
+
+## 2 Related Work 2.1 Generative Retrieval and Training 
+
+Generative retrieval uses different forms of identifiers: GENRE generates entity names [5], DSI and NCI generate document identi-fiers [25, 29], and SEAL generates indexed document substrings [1]. Wu et al. [30] connect generative retrieval to multi-vector dense re-trieval through a shared relevance-scoring framework. TIGER [19] extends this paradigm to recommendation with hierarchical se-mantic IDs. For generative retrieval training, P5 [8] unifies recommenda-tion tasks through text-to-text learning and personalized prompts, while LC-Rec [32] aligns language and collaborative semantics around quantized item indices. Industrial systems further explore unified retrieval and ranking [6, 33]: CQ-SID [35] progressively learns item, query, and personalized mappings, OneSearch-V2 [2] models query intent through keyword-based reasoning and self-distillation, and TBGRecall [14] combines multi-session modeling with incremental training for e-commerce recommendation. These studies provide a foundation for item representation, staged train-ing, and context modeling. For integrated recall and pre-ranking, a further consideration is whether the generative model can select items that balance relevance, personalization, and business value within a limited candidate quota. 
+
+## 2.2 Semantic IDs and Dynamic Indexing 
+
+Vector and residual quantization provide a discrete representation basis for hierarchical identifiers [26, 11, 19]. Subsequent studies further integrate identifier learning with retrieval objectives: Gen-Ret [23] jointly learns document tokenization, reconstruction, and retrieval; IDGenRec [24] learns textual IDs with a recommender; 
+
+> 2
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al. (a) VARG-ID construction 
+
+> Item embedding
+> category + brand
+
+··· 
+
+> Item encoder
+> ···
+
+zᵢ 
+
+RQ-1 
+
+> K₁
+
+··· ···  s₁
+
+> Residual
+
+RQ-2 
+
+> K₂
+
+··· ···  s₂
+
+> Semantic
+> prefix
+
+Tokenizer training only 
+
+es₁
+
+> (1)
+
++ es₂ 
+
+> (2) Decoder
+
+··· x̂  ᵢ 
+
+> Reconstruction
+> Query
+> encoder
+
+zq zi
+
+> Bidirectional Q2I
+
+LID  = Lrec  + Lcom  + λQI  LQI 
+
+Within-prefix business rank    
+
+> EB-CVR ↓ Funnel ↓ GMV ↓ item ID ↑
+
+Next key only breaks ties 
+
+> r = zero-based position
+
+VARG-ID = (  s₁ s₂ r, , )
+
+(b) Three-stage SFT 
+
+Stage 1 Item → SID  s₁ s₂ r
+
+Stage 2 Query → SID  s₁ s₂ r
+
+Stage 3 User + Query + History → SID 
+
+s₁ s₂ r 
+
+> Context
+> Profile Category
+> history
+> Recent
+> queries
+> Global
+> summary
+> Stage 3 strateg ies
+> Q2I example
+> weights
+> Level-wise
+> token weights
+> LO-SFT local
+> supervision
+> ✓
+> ✓
+> ✓
+
+Exact SID cross-entropy remains primary 
+
+(c) Catalog-constrained serving    
+
+> s1(level 1)
+> s2(level 2)
+> r (level 3) Legal children
+> only
+> Pruned
+> (invalid branch)
+> Active leaves
+> Mask illegal children:
+
+zv = −∞ 
+
+> Trie + beam
+> (legal paths)
+> SID-to-item
+> mapping
+> Final
+> rank
+
+(d) Prefix-GRPO 
+
+Personalized 
+
+SFT 
+
+> G sampled
+> rollouts
+
+s₁ s₂ r
+
+s₁ s₂ r
+
+> ···
+
+s₁ s₂ r
+
+Gated scalar reward R 
+
+> Invalid outputs
+> STOP
+> Negative
+> penalty only
+> (stop)
+
+Occupied outputs 
+
+> Behavior
+> (highest match)
+> Buy > Click >
+> Exposure
+
++
+
+> Ranker advantage
+> (bounded)
+> Positive only,
+> upper-bounded
+
++
+
+> Relevance
+> (no action hit)
+> Applied only when
+> no action hit
+
+Group-relative 
+
+advantage 
+
+A
+
+Weighted 
+
+policy loss  
+
+> Lactor
+
+= LPG  (w) 
+
++ βRL  LKL 
+
+PPO / dual clip 
+
+Updated 
+
+policy 
+
+> Legal branch counts
+> (per prefix step)
+> Prefix token weights w
+> (legal-aware)
+
+Loss only; R and A unchanged 
+
+> Invalid outputs:
+> unit weights
+
+(e) Dual-loop daily refresh 
+
+Product loop 
+
+> Freeze existing IDs
+> + map new items
+> Controlled sharing
+> (if needed)
+> Versioned
+> catalog
+
+Model + Trie 
+
++ SID-to-item 
+
+(release) 
+
+Model loop 
+
+> Latest feedback
+> + historical replay
+
+Continued 
+
+model 
+
+Exploratory Lightweight Decode   
+
+> Prefix embeddings
+> Train: true prefix (TF)
+> Infer: selected prefix
+> Backbone ×1
+> Shared h g (h) ₁
+
+p₁  
+
+> g (h, e ) ₂₁
+
+p₂   
+
+> g (h, e , e ) ₃₁₂
+
+p₃   
+
+> Inference: prefix-masked head beam
+> Training only
+> Ground-truth targets
+> s * ₁s * ₂r*
+
+Lhead  = Σ  α̃ , CE(p , y *) ₗ ₗ ₗ ₗ
+
+Figure 2: Overview of VARG. (a) VARG-ID with query-aligned semantic prefixes and value-ordered item addresses. (b) Three-stage SFT with context expansion and supervision strategies. (c) Trie-constrained serving and exploratory lightweight decod-ing. (d) Prefix-GRPO with gated multi-source rewards and prefix-aware token weighting. (e) Coordinated daily product and model updates. 
+
+and LETTER [28] combines semantic, collaborative, and diversity regularization with ranking-guided generation. D 2-DocID [4] uses contrastive learning to build descriptive identifiers that distinguish similar documents, while FORGE [7] studies industrial SID design using intrinsic evaluation measures. In search, CQ-SID [35] injects query relevance while retaining cluster-level aggregation, and CRID [15] uses intra-cluster busi-ness ranking for item-level addressing and incremental updates. For dynamic corpora, DSI++ [17] uses generative replay to mitigate forgetting, while CLEVER [3] combines incremental product quan-tization with memory-augmented learning. These studies involve two forms of stability: preserving model knowledge and maintain-ing stable item identifiers. Under daily product updates, identifier design should balance fine-grained addressing, business value, and decoding efficiency while reducing the disruption to existing ad-dressing relationships caused by changes in item statistics. 
+
+## 2.3 Policy Optimization for Retrieval 
+
+Ranking-oriented training further considers the quality and order-ing of generated candidates. LTRGR [13] adds a ranking-oriented training phase without extra inference stages, while relevance-feedback RL [34] aligns token-level generation with document-level relevance. PPO, DPO, and GRPO provide general frameworks for policy or preference optimization [21, 18, 22]. In recommendation, OneRec [6] uses reward-model-derived preference pairs for iterative DPO, and OneRec-V2 [33] incorpo-rates real interaction feedback. In search, EG-GRPO [35] injects expert SIDs to alleviate sparse positive feedback, while OneSearch-V2 [2] combines behavioral and relevance rewards with token-position marginal advantages. These methods demonstrate the value of additional feedback for improving generative retrieval. For hierarchical SID generation, we further study how to differ-entiate legal candidates without behavioral feedback, prevent in-valid outputs from receiving positive credit, and distribute supervi-sion across decisions at different levels to improve ranking quality within a limited candidate quota. 
+
+## 3 Method 
+
+Problem setting. Given a query 𝑞 , user profile 𝑢 , and history ℎ, a Transformer [27] conditioned on context 𝑥 = (𝑞, 𝑢, ℎ ) autoregres-
+
+3Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al. 
+
+sively generates a three-token item identifier 𝑦 = (𝑠 1, 𝑠 2, 𝑟 ). At in-ference, Trie-constrained beam search produces a ranked candi-date list Y𝐾 of 𝐾 SIDs, which are expanded into item candidates through the SID-to-item map and forwarded directly to the exist-ing final ranker as an additional retrieval channel. Under a fixed de-coding budget and final-ranking candidate quota, the model should generate valid SIDs and select items that are relevant, personalized, and commercially valuable. The item map and model should also accommodate daily product updates and new user feedback. 
+
+## 3.1 VARG-ID: Semantics Followed by Stable Value 
+
+A VARG-ID consists of a semantic prefix and a value-ordered to-ken: the query-aligned prefix supports semantic routing, while the third token provides fine-grained within-prefix item addresses and a business-value prior. 
+
+Semantic-prefix construction. The item embedding 𝑥 𝑖 ∈ R𝑑 𝑥 incor-porates category and brand attributes and is mapped to 𝑧 𝑖 ∈ R𝑑 𝑧 by the item encoder 𝐸 𝐼 . The query encoder 𝐸 𝑄 , used only during tok-enizer training, maps the paired search query to 𝑧 𝑞 ∈ R𝑑 𝑧 . Two codebooks of sizes 𝐾 1 and 𝐾 2 perform residual quantization se-quentially: 
+
+𝑠 1,𝑖 = arg min  
+
+> 𝑘
+
+∥𝑧 𝑖 − 𝑒 (1) 
+
+> 𝑘
+
+∥22, 𝛿 (1) 
+
+> 𝑖
+
+= 𝑧 𝑖 − sg (𝑒 (1) 
+
+> 𝑠 1,𝑖
+
+),𝑠 2,𝑖 = arg min  
+
+> 𝑘
+
+∥𝛿 (1) 
+
+> 𝑖
+
+− 𝑒 (2) 
+
+> 𝑘
+
+∥22, 𝑧 𝑞 𝑖 = 𝑒 (1) 
+
+> 𝑠 1,𝑖
+
++ 𝑒 (2) 
+
+> 𝑠 2,𝑖
+
+. (1) Here sg denotes stop-gradient. The decoder uses the straight-through estimate 𝑧 ST  
+
+> 𝑖
+
+= 𝑧 𝑖 +sg (𝑧 𝑞 𝑖 −𝑧 𝑖 ), whose forward value equals 
+
+𝑧 𝑞 𝑖 , while reconstruction gradients flow to the item encoder. 
+
+Query-aligned tokenizer objective. The tokenizer jointly optimizes reconstruction, commitment, and bidirectional query–item con-trastive losses: 
+
+Lrec = ∥𝐷 (𝑧 ST  
+
+> 𝑖
+
+) − 𝑥 𝑖 ∥22,
+
+Lcom = 12
+
+(
+
+∥𝑧 𝑖 − sg (𝑒 (1) 
+
+> 𝑠 1,𝑖
+
+)∥ 22 + ∥ 𝛿 (1) 
+
+> 𝑖
+
+− sg (𝑒 (2) 
+
+> 𝑠 2,𝑖
+
+)∥ 22
+
+)
+
+,
+
+LQI = 12
+
+[CE (𝑆, 𝐼 ) + CE (𝑆 ⊤, 𝐼 )] , 𝑆 𝑎𝑏 = ¯𝑧 ⊤ 
+
+> 𝑖,𝑎
+
+¯𝑧 𝑞,𝑏 
+
+𝜏 QI 
+
+,
+
+LID = Lrec + L com + 𝜆 QI LQI . (2) Reconstruction preserves item embedding information, commit-ment encourages encoder outputs to approach discrete codes, and the bidirectional InfoNCE term brings paired query and item rep-resentations closer in continuous space, injecting search relevance before quantization. Here, 𝜏 QI > 0 is the contrastive tempera-ture and 𝜆 QI > 0 is the contrastive-loss weight. The diagonal of the contrastive matrix 𝑆 contains positive pairs, with labels 
+
+𝐼 = (0, . . . , 𝑁 −1); the remaining valid query–item combinations in the local minibatch serve as negatives. Samples without queries op-timize only the reconstruction and commitment losses. The code-books are initialized by deterministic K-means and updated by ex-ponential moving averages. The first two codes form the semantic prefix 𝑐 (𝑖 ) = (𝑠 1,𝑖 , 𝑠 2,𝑖 ),and the third token 𝑟 𝑖 represents the item’s value-ranked position within that prefix, together yielding a unique item address at initial construction: 
+
+𝑦 𝑖 = (𝑠 1,𝑖 , 𝑠 2,𝑖 , 𝑟 𝑖 ). (3) Here 𝑟 𝑖 is zero-based and satisfies 0 ≤ 𝑟 𝑖 < 𝐾 3, where 𝐾 3 is the rank-token vocabulary size. 
+
+Value-ordered item address. Let 𝑏 𝑖 , 𝑎 𝑖 , and 𝑐 𝑖 denote an item’s pur-chase, add-to-cart, and click counts in a fixed ranking window. We set 𝑣 𝑖 = 𝑏 𝑖 + 𝜂 𝑎 𝑎 𝑖 and estimate conversion value with empirical-Bayes smoothing: 
+
+𝑝 0 =
+
+Õ𝑖 𝑣 𝑖 
+
+Õ𝑖 𝑐 𝑖 
+
+,̂ 𝑝 𝑖 = 𝑣 𝑖 + 𝛼 ID 𝑝 0
+
+𝑐 𝑖 + 𝛼 ID 
+
+. (4) We define the behavioral score 𝑉 funnel  
+
+> 𝑖
+
+= 𝛾 𝑏 𝑏 𝑖 +𝛾 𝑎 𝑎 𝑖 +𝛾 𝑐 𝑐 𝑖 and rank items within each prefix using the following funnel rule, compar-ing its keys lexicographically: ̂
+
+𝑝 𝑖 ↓ −→ 𝑉 funnel  
+
+> 𝑖
+
+↓ −→ GMV 𝑖 ↓ −→ ID 𝑖 ↑ . (5) Here 0 < 𝜂 𝑎 < 1, 𝛼 ID > 0, and 𝛾 𝑏 > 𝛾 𝑎 > 𝛾 𝑐 > 0, reflecting the behavioral priority of purchase > add-to-cart > click. Empirical-Bayes smoothing reduces low-frequency noise while preserving conversion-value information; Section 4.2 shows that its ordering is more stable than raw click and volume ordering. 
+
+## 3.2 Dual-Loop Daily Refresh 
+
+Product loop. Within the same primary SID version, we freeze the RQ-VAE and SID vocabulary and preserve existing item SIDs. New items in existing semantic prefixes reuse historical slots accord-ing to their within-cluster value ranks; newly observed prefixes receive addresses starting from zero. For example, existing items A, B, and C under one semantic pre-fix have third tokens 0, 1, and 2. If a new item D ranks between A and B by value, D reuses slot 1 and shares B’s SID, while the addresses of A, B, and C remain unchanged. For prefix 𝑐 = (𝑎, 𝑏 ), 𝐶 (𝑡 ) 
+
+> 𝑐
+
+= 𝐶 (𝑡 ) 
+
+> 𝑎𝑏
+
+denotes the number of distinct occupied rank slots at snapshot 𝑡 . An occupied prefix has maxi-mum rank 𝑀 𝑡 (𝑐 ) = 𝐶 (𝑡 ) 
+
+> 𝑐
+
+− 1; unseen prefixes have capacity zero. Let 𝜌 𝑡 (𝑖 ) be the zero-based position of new item 𝑖 after jointly or-dering all existing and new items in the same prefix at snapshot 𝑡 
+
+according to Equation (5). Its assigned rank is 
+
+𝑟 𝑡 (𝑖 ) =
+
+{min {𝜌 𝑡 (𝑖 ), 𝑀 𝑡 −1 (𝑐 (𝑖 ))} , 𝐶 (𝑡 −1)   
+
+> 𝑐 (𝑖 )
+
+> 0,
+
+min {𝜌 𝑡 (𝑖 ), 𝐾 3 − 1}, 𝐶 (𝑡 −1)   
+
+> 𝑐 (𝑖 )
+
+= 0. (6) Equation (6) maps new items beyond the available slot range to the last slot; for a new prefix, the maximum slot index is 𝐾 3 − 1.Assigned addresses remain fixed within the primary version, and items sharing a slot are expanded into candidates for downstream ranking at serving time. Below, 𝐶 𝑎𝑏 denotes the slot capacity of the relevant fixed snapshot, with the time index omitted. 
+
+Model loop. Each day, the latest click and purchase data are la-beled using the SID mapping in effect when the behavior occurred. Within the same primary SID version, we continue training the last accepted personalized generation model for 𝐸 day ∈ N+ epochs, mixing historical replay with proportion 0 ≤ 𝜆 replay ≤ 1 to incor-porate fresh feedback while retaining learned addressing relation-ships. After validation, the model, Trie, and item map are atomi-cally published as a compatible version combination.  
+
+> 4Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al.
+
+Example Prompt      
+
+> Recommend a product ID using the following information.
+> Gender: Female;
+> Purchasing power: Level 5 (High);
+> Related-category clicks:
+> <s1_3041><s2_4310><s3_34>, <s1_3976><s2_4330><s3_66>, <s1_2599><s2_4310><s3_16>;
+> Recent searches: Workwear shirts; French-style outfits; Women's denim tops.
+> Interest summary: Prefers branded womenswear, workwear and French-inspired styles; values fabric quality and mid-to-high price ranges.
+> Current query: Long-sleeve denim shirt.
+
+VA RG 
+
+> Personalized generation
+> Generated SID
+> <s1_2456> <s2_6075> <s3_10>
+> SID-to-item mapping
+> Retrieved Item
+> LANCY Women's Denim Shirt
+
+CNY 1,180 
+
+> Item ID: 876708345652
+
+Figure 3: Schematic personalized prompt-to-item example (English translation). 
+
+Monthly SID rebuilding introduces a new primary version, un-der which training labels, SID-encoded histories, and replay data are re-encoded. The retrieval model is retrained before joint de-ployment, and the accepted model initializes the next daily-update cycle. 
+
+## 3.3 Three-Stage SFT 
+
+Three-stage supervised fine-tuning. We add 𝐾 ℓ dedicated tokens for SID level ℓ to the vocabulary of Qwen2.5-0.5B-Instruct [31]. Given context 𝑥 , the model autoregressively generates the target identi-fier 𝑦 = (𝑠 1, 𝑠 2, 𝑟 ):
+
+𝑝 𝜃 (𝑦 | 𝑥 ) =
+
+> 3
+
+÷
+
+> ℓ=1
+
+𝑝 𝜃 (𝑦 ℓ | 𝑥, 𝑦 <ℓ ). (7) Training proceeds sequentially across stages. Stage 1 learns Item →SID from product content, establishing item-address mem-ory. Stage 2 continues from Stage 1 using Query →SID examples to learn query-semantic retrieval. Stage 3 continues from Stage 2 using User+Query+History →SID examples to learn personalized retrieval. For personalized candidate generation, context expansion adds short-term intent and long-term preference signals, Q2I weight-ing emphasizes query-specific conversion value, level weighting adjusts supervision strength across SID levels, and LO-SFT intro-duces local ordinal supervision encoded by the third token. The fi-nal Stage 3 checkpoint initializes the trainable policy 𝜋 𝜃 and fixed reference policy 𝜋 ref for Prefix-GRPO. 
+
+User context expansion. The personalized input is 𝑥 =
+
+(𝑞, 𝑢, ℎ cat , ℎ recent , 𝑔 ), where 𝑞 is the current query, 𝑢 is the user profile including gender and purchasing power, ℎcat is related-category click history represented by historical SIDs, 
+
+ℎrecent contains the 𝐿 recent most recent search queries, and 𝑔 is a global-interest summary distilled from cross-domain behaviors. Recent queries provide additional signals of short-term user intent, while the global summary represents long-term user interests by summarizing category, brand, and price preferences. Figure 3 shows an example of item candidate generation from the full input context. 
+
+Q2I example weighting. To account for conversion differences across query–item pairs, we construct example weights using pur-chase and click statistics from a fixed historical window. Let 𝑏 𝑗 and 
+
+𝑐 𝑗 denote the purchase and click counts for query–item pair 𝑗 . The global prior, smoothed conversion rate, and example weights are 
+
+𝑝 0𝑞 =
+
+Õ𝑗 𝑏 𝑗 
+
+Õ𝑗 𝑐 𝑗 
+
+,̂ 𝑝 𝑗 = 𝑏 𝑗 + 𝛼 𝑞 𝑝 0𝑞 
+
+𝑐 𝑗 + 𝛼 𝑞 
+
+,
+
+˜𝑤 𝑗 = clip 
+
+(̂ 𝑝 𝑗 
+
+𝑝 0𝑞 
+
+, 𝑤 min , 𝑤 max 
+
+)
+
+, 𝑤 𝑗 = ˜𝑤 𝑗 
+
+E[˜𝑤 ] . (8) Here, 𝛼 𝑞 > 0 is the prior strength, and the clipping bounds sat-isfy 0 < 𝑤 min < 1 < 𝑤 max . Empirical-Bayes smoothing reduces noise in sparse statistics; the ratio of the smoothed conversion rate to the global prior is clipped and normalized by its mean, assign-ing greater weights to query–item pairs with higher conversion propensity. We activate this signal only in Stage 3; Stages 1–2 re-main equally weighted to learn unbiased item memory and query semantics. 
+
+Level-aware token weighting. The three target positions have dis-tinct decision roles. 𝑠 1 selects a coarse semantic region, 𝑠 2 chooses the fine semantic prefix, and 𝑟 only identifies an item after that prefix is correct. In Trie-constrained Top-1000 evaluation, the HR gap is 16.94 percentage points between L1 and L1+L2, versus only 3.80 points between L1+L2 and the complete SID, indicating that the second level is the main prediction bottleneck. We therefore as-sign supervision weights based on prediction performance at each level. Let ℓ𝑗,𝑡 = − log 𝑝 𝜃 (𝑦 𝑗,𝑡 | 𝑥 𝑗 , 𝑦 𝑗, <𝑡 ) denote per-token cross-entropy, 𝑚 𝑗,𝑡 the response mask, and 𝜆 (𝑦 𝑗,𝑡 ) the token level. The level-weighted loss is 
+
+Llevel  
+
+> 𝑗
+
+=
+
+Õ𝑡 𝑚 𝑗,𝑡 𝛼 𝜆 (𝑦 𝑗,𝑡 ) ℓ𝑗,𝑡 
+
+Õ𝑡 𝑚 𝑗,𝑡 𝛼 𝜆 (𝑦 𝑗,𝑡 )
+
+. (9) The level coefficients (𝛼 1, 𝛼 2, 𝛼 3) satisfy 𝛼 2 > 𝛼 1 > 𝛼 3 > 0 to strengthen supervision at the first two levels; non-SID response tokens retain unit weight. Combining this loss with Q2I example weights gives the Stage 3 training objective 
+
+LSFT3 =
+
+Õ𝑗 𝑤 𝑗 Llevel 
+
+> 𝑗
+
+Õ𝑗 𝑤 𝑗 
+
+. (10) 
+
+Local ordinal supervision (LO-SFT). Standard cross-entropy treats rank tokens as discrete categories without explicitly using their ordinal distances. LO-SFT continues fine-tuning from the trained Stage-3 SFT Base checkpoint, adding local supervision around the target position based on the value ranks encoded by the third to-ken. For prefixes with slot capacity 𝐶 = 𝐶 𝑎𝑏 ≥ 𝐶 min , we construct a local target distribution centered on the true rank 𝑟 ∗ that decays  
+
+> 5Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al.
+
+with distance, while retaining the exact-token loss: 
+
+𝑞 (𝑟 | 𝑟 ∗) = exp (−| 𝑟 − 𝑟 ∗ |/ 𝜏 LO )
+
+𝑍 (𝑟 ∗) I[| 𝑟 − 𝑟 ∗ | ≤ 𝑅 LO ]× I[0 ≤ 𝑟 < 𝐶 ],
+
+LLO = Lexact − 𝜆 LO  
+
+> 𝐶 −1
+
+’ 
+
+> 𝑟 =0
+
+𝑞 (𝑟 | 𝑟 ∗) log 𝑝 𝜃 (𝑟 | 𝑥, 𝑠 1, 𝑠 2), (11) where 𝐶 min is the minimum prefix-capacity threshold, 𝑅 LO is the neighborhood radius, 𝜏 LO > 0 controls distance decay, 𝜆 LO > 0 is the auxiliary-loss weight, and 𝑍 (𝑟 ∗) is the normalization constant over the legal neighborhood. The exact loss supervises the target SID, while the auxiliary term guides the model to learn the local ordinal relationships encoded by EB-CVR ordering. 
+
+## 3.4 Prefix-GRPO 
+
+Building on supervised learning, Prefix-GRPO adjusts candidate generation probabilities according to rewards to further align candidate priorities with business value and ranking objectives. We use group-relative policy optimization [22], combining gated multi-source rewards with prefix-aware token weighting. For each prompt, the policy samples 𝐺 responses, with (𝑇 roll , 𝑝 roll , 𝑘 roll ) con-trolling sampling temperature, nucleus sampling, and top-𝑘 trun-cation, respectively. 
+
+Response contract and gated reward. After removing control tokens, a response must be exactly 𝑦 = ⟨𝑠 1𝑎 ⟩⟨ 𝑠 2𝑏 ⟩⟨ 𝑠 3𝑟 ⟩, where 0 ≤ 𝑎 < 𝐾 1,
+
+0 ≤ 𝑏 < 𝐾 2, and 0 ≤ 𝑟 < 𝐾 3. In the RL training snapshot, a SID with 
+
+𝐶 𝑎𝑏 > 0 and 0 ≤ 𝑟 < 𝐶 𝑎𝑏 corresponds to an occupied slot. Only well-formed, occupied SIDs participate in subsequent reward com-putation; other outputs receive only their corresponding negative rewards. Let P𝑥 , C𝑥 , and E𝑥 denote the sets of SIDs matched to purchase, click, and exposure behaviors for request 𝑥 , respectively. The be-havior reward uses the highest matched action under the priority purchase > click > exposure: 
+
+𝑅 UA (𝑥, 𝑦 ) =
+
+
+
+𝛽 buy , 𝑦 ∈ P 𝑥 ,𝛽 clk , 𝑦 ∉ P𝑥 , 𝑦 ∈ C 𝑥 ,𝛽 exp , 𝑦 ∉ P𝑥 ∪ C 𝑥 , 𝑦 ∈ E 𝑥 ,
+
+0, otherwise .
+
+(12) The ranker-advantage reward favors items with scores above the candidate mean for the same request. Let 𝑓 𝑥 (𝑦 ) be the production ranker’s final score and 𝜇 𝑓 𝑥 , 𝜎 𝑓 𝑥 its mean and standard deviation over mapped recall candidates for that request. The reward is 
+
+𝑎 𝑥 (𝑦 ) = 𝑓 𝑥 (𝑦 ) − 𝜇 𝑓 𝑥 
+
+𝜎 𝑓 𝑥 
+
+,
+
+˜𝑎 𝑥 (𝑦 ) =
+
+{
+
+𝑎 𝑥 (𝑦 ), 0 < 𝑎 𝑥 (𝑦 ) < ∞,
+
+0, otherwise ,𝑅 adv (𝑥, 𝑦 ) = 𝛽 adv tanh 
+
+( ˜𝑎 𝑥 (𝑦 )
+
+𝜏 adv 
+
+)
+
+. (13) For occupied SIDs without matched user behavior, the relevance grade 𝑔 𝑥 (𝑦 ) provides supplementary feedback: 
+
+𝑅 rel (𝑥, 𝑦 ) =
+
+
+
+𝛽 (3) 
+
+> rel
+
+, 𝑔 𝑥 (𝑦 ) = 3,𝛽 (2) 
+
+> rel
+
+, 𝑔 𝑥 (𝑦 ) = 2,
+
+−𝛽 (1) 
+
+> rel
+
+, 𝑔 𝑥 (𝑦 ) = 1,
+
+0, otherwise .
+
+(14) Let F denote malformed or out-of-range outputs, U structurally valid but unoccupied outputs, and H𝑥 = P𝑥 ∪C 𝑥 ∪E 𝑥 . The complete reward is 
+
+𝑅 (𝑥, 𝑦 ) =
+
+
+
+−𝛽 F, 𝑦 ∈ F ,
+
+−𝛽 U, 𝑦 ∈ U ,𝑅 UA + 𝑅 adv , 𝑦 occupied , 𝑦 ∈ H 𝑥 ,𝑅 adv + 𝑅 rel , 𝑦 occupied , 𝑦 ∉ H𝑥 .
+
+(15) Here, 𝛽 F > 𝛽 U > 0, 𝛽 buy > 𝛽 clk > 𝛽 exp > 0, 𝛽 adv , 𝜏 adv > 0, 𝛽 (3) 
+
+> rel
+
+>
+
+𝛽 (2) 
+
+> rel
+
+> 0, and 𝛽 (1) 
+
+> rel
+
+> 0. Relevance rewards apply only to SIDs without matched behavior, avoiding double counting of correlated labels. 
+
+Prefix-aware token weighting. The number of legal token alterna-tives varies across prefixes. We use these counts to assign token-level policy-loss weights, giving higher weights to decisions with more branches. In the RL training snapshot, the numbers of legal child tokens at the second and third levels are 
+
+𝑛 2 (𝑎 ) = 
+
+> 𝐾 2−1
+
+’
+
+> 𝑏 =0
+
+I[𝐶 𝑎𝑏 > 0], 𝑛 3 (𝑎, 𝑏 ) = 𝐶 𝑎𝑏 , (16) Let 𝑁 2 = max 𝑎 𝑛 2 (𝑎 ) and 𝑁 3 = max 𝑎,𝑏 𝑛 3 (𝑎, 𝑏 ). We map the legal child-token count to [𝑑, 1] using 
+
+𝜙 (𝑛 ; 𝑁 ) =
+
+
+
+𝑑 + ( 1 − 𝑑 ) log 𝑛 
+
+log 𝑁 , 𝑁 > 1,𝑑, 𝑁 = 1,
+
+0 < 𝑑 ≤ 1. (17) For an occupied path, token weights are 
+
+𝑤 𝑠 1 = 1, 𝑤 𝑠 2 = 𝜙 (𝑛 2 (𝑎 ); 𝑁 2),𝑤 𝑠 3 = 𝜙 (𝑛 3 (𝑎, 𝑏 ); 𝑁 3), 𝑤 ctrl = 𝑑. (18) The first-level weight is fixed at 1, while later levels are weighted according to the number of legal alternatives under the current prefix. Branches with only one legal option, as well as EOS and control tokens, use the floor 𝑑 . For malformed or unoccupied re-sponses, all valid tokens use unit weight. These weights enter the policy loss in Equation (20). 
+
+Weighted GRPO optimization. Let 𝑅 𝑥,𝑔 be the reward of response 𝑔 
+
+to prompt 𝑥 , and ¯𝑅 𝑥 , 𝑠 𝑥 the mean and sample standard deviation of the 𝐺 response rewards for that prompt. Based on GRPO’s within-group reward comparison [22], we construct advantages through standardization, whitening, and clipping: ̂
+
+𝑅 𝑥,𝑔 = clip 
+
+( 𝑅 𝑥,𝑔 − ¯𝑅 𝑥 
+
+𝑠 𝑥 + 𝜀 num 
+
+, −𝑐 𝑅 , 𝑐 𝑅 
+
+)
+
+,𝐴 𝑥,𝑔 = clip 
+
+(
+
+Whiten (̂ 𝑅 𝑥,𝑔 ), −𝑐 𝐴 , 𝑐 𝐴 
+
+)
+
+. (19)  
+
+> 6Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al.
+
+Here, 𝜀 num > 0 provides numerical stability, and 𝑐 𝑅 , 𝑐 𝐴 > 0 are clipping thresholds. All valid tokens of a response share the same advantage 𝐴 𝑥,𝑔 .Using a PPO-style clipped objective [21], let 𝜌 = 𝜋 𝜃 (𝑦 𝑡 |
+
+𝑥, 𝑦 <𝑡 )/ 𝜋 old (𝑦 𝑡 | 𝑥, 𝑦 <𝑡 ) be the token probability ratio and 
+
+¯𝜌 = clip (𝜌, 1 − 𝜖 PPO , 1 + 𝜖 PPO ). The surrogate objective is 
+
+𝐽 = min (𝜌𝐴, ¯𝜌𝐴 ). When 𝐴 < 0, dual clipping further applies 
+
+max (𝐽, 𝑐 dual 𝐴 ), where 𝑐 dual > 1; otherwise, 𝐽 is retained. Denote the result by 𝐽 dual  
+
+> 𝑥,𝑔,𝑡
+
+.For a minibatch of 𝐵 sampled responses, let 𝑚 𝑥,𝑔,𝑡 be the re-sponse mask. The prefix-weighted policy loss is 
+
+LPG = − 1
+
+𝐵 
+
+’
+
+> 𝑥,𝑔
+
+Õ𝑡 𝑚 𝑥,𝑔,𝑡 𝑤 𝑥,𝑔,𝑡 𝐽 dual 
+
+> 𝑥,𝑔,𝑡
+
+Õ𝑡 𝑚 𝑥,𝑔,𝑡 𝑤 𝑥,𝑔,𝑡 
+
+. (20) Adding KL regularization relative to the fixed SFT reference policy gives the final training objective: 
+
+Lactor = LPG + 𝛽 KL LKL . (21) Here, 𝛽 KL > 0 is the regularization coefficient. LKL averages clipped KL-divergence estimates over valid tokens within each re-sponse and then across responses. 
+
+## 3.5 Serving 
+
+At inference, the model generates Top-𝐾 SID paths using Trie-constrained beam search conditioned on the expanded context. The Trie is built from the published SID set. Let T ( 𝑝 ) denote the set of legal child tokens after partial path 𝑝 . Before each beam expansion, logits are masked as 
+
+˜𝑧 𝑣 (𝑝 ) =
+
+{
+
+𝑧 𝑣 (𝑝 ), 𝑣 ∈ T ( 𝑝 ),
+
+−∞ , 𝑣 ∉ T ( 𝑝 ). (22) At the third level, only occupied rank tokens satisfying 0 ≤ 𝑟 < 𝐶 𝑎𝑏 
+
+are allowed. Masking prunes invalid branches before beam expan-sion, so the generated complete SIDs can be mapped to valid items. The Trie is rebuilt by the product-refresh loop and kept version-consistent with the SID-to-item map. Generated SIDs are ex-panded into item candidates through the version-matched map and directly admitted to the existing final ranker as an additional retrieval channel, augmenting the production multi-channel re-trieval stack. 
+
+## 3.6 Exploratory Lightweight Decoder 
+
+Standard autoregressive decoding requires a Transformer forward pass at each SID generation step. To reduce inference cost, we com-pute the prompt-end hidden state ℎ once and then predict SID to-kens at each level using lightweight, prefix-conditioned classifica-tion heads: 
+
+𝑝 1 (𝑠 1 | ℎ) = softmax (𝑔 1 (ℎ)) ,𝑝 2 (𝑠 2 | ℎ, 𝑠 1) = softmax (𝑔 2 ([ ℎ; 𝑒 1 (𝑠 1)])) ,𝑝 3 (𝑠 3 | ℎ, 𝑠 1, 𝑠 2) = softmax (𝑔 3 ([ ℎ; 𝑒 1 (𝑠 1); 𝑒 2 (𝑠 2)])) , (23) where 𝑒 𝑙 is the embedding of the SID token at level 𝑙 and 𝑔 𝑙 is the corresponding prediction head. Training uses teacher forcing, with the second- and third-level heads conditioned on ground-truth upper-level tokens. For 𝐿 = 3 levels, we normalize the loss coef-ficients 𝛼 𝑙 > 0 to obtain the training objective 
+
+˜𝛼 𝑙 = 𝐿𝛼 𝑙 
+
+Õ𝐿 𝑗 =1 𝛼 𝑗 
+
+, Lhead =
+
+> 𝐿
+
+’
+
+> 𝑙 =1
+
+˜𝛼 𝑙 CE (𝑝 𝑙 , 𝑠 𝑙 ) . (24) At inference, hierarchical beam expansion proceeds across the pre-diction heads, with prefix masks retaining occupied VARG-ID child tokens. The backbone is evaluated only once, while subsequent decisions use small prediction heads. This eliminates repeated Transformer forward passes. Section 4.6 evaluates the decoder’s efficiency–retrieval-quality trade-off; it remains an exploratory ap-proach and is not used in the main VARG serving pipeline. 
+
+## 4 Experiments 4.1 Experimental Setup 
+
+Dataset. All experiments were conducted on real search logs from Tmall App, a major mobile e-commerce platform. VARG-ID covers 51.43M products, with its tokenizer trained on query–item pairs and item-only examples. The three-stage generative model was trained on 51.43M samples for Item2SID, 48.00M for Query2SID, and 105.69M for personalized User–Query2SID. For Prefix-GRPO, we construct a training pool of approximately 1.03M records sam-pled from request-level data. Personalized evaluation and SID re-ordering audits used 3.85M samples; lightweight decoding was evaluated on a separate query-only set of 180,324 samples. 
+
+Metrics. HR@ 𝐾 measures whether the target SID appears among the top-𝐾 deduplicated predictions; NDCG@ 𝐾 assesses ranking quality. GMV Recall and Q2I-GMV Recall measure the fraction of evaluation-sample value covered by these hits, weighted by the item’s 30-day GMV and the query–item pair’s 14-day GMV, re-spectively. The online A/B test evaluates a fixed candidate quota for direct admission over 14 days with 20% of search traffic, report-ing relative changes in business and engagement metrics against the production control. 
+
+Implementation Details. We extend Qwen2.5-0.5B-Instruct with SID tokens and perform full-parameter SFT on 128 GPUs. Learning rates are 10 −4 for Stage 1, 4 × 10 −5 for Stages 2–3, and 5 × 10 −6 for LO-SFT. We evaluate SFT strategies with matched epoch budgets. Prefix-GRPO runs on 64 GPUs at a learning rate of 10 −6, sampling eight responses per prompt with 1,024 prompts per rollout batch. 
+
+Hyperparameter Settings. For VARG-ID, both semantic codebooks and the third-level rank vocabulary have 8,192 entries ( 𝐾 1 = 𝐾 2 =
+
+𝐾 3 = 8192 ). Reconstruction and commitment losses each have unit weight; the bidirectional Q2I contrastive loss uses 𝜆 QI = 0.001 and temperature 𝜏 QI = 0.1, with at most 128 valid query–item pairs sampled per local minibatch. For SFT strategies, the Q2I prior strength is 𝛼 𝑞 = 5, and intent ex-pansion includes the three most recent search queries ( 𝐿 recent = 3). LO-SFT uses neighborhood radius 𝑅 LO = 3, distance-decay temper-ature 𝜏 LO = 1.0, and auxiliary loss coefficient 𝜆 LO = 0.02 .For Prefix-GRPO, malformed and unoccupied outputs receive re-wards of −2.0 and −1.0, respectively. Purchase, click, and exposure rewards are 3.0, 1.0, and 0.1. The ranker-advantage reward uses 
+
+𝛽 adv = 0.2 and 𝜏 adv = 1.5; relevance grades 3, 2, and 1 contribute  
+
+> 7Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al.
+
+Table 1: Evaluation of SIDs and constrained decoding on production data. (a) Initial identifier capacity and collision. (b) Full-reordering stability. (c) Trie-constrained decoding effectiveness and overhead. 
+
+(a) Initial identifier capacity and collision. 
+
+Identifier Tokens Unique Exclusive Collision Avg. P99 / Max RQ-VAE-3 3 16.73% 8.75% 91.25% 5.98 76 / 7,580 RQ-VAE-4 4 51.84% 38.42% 61.58% 1.93 15 / 2,364 RQ+OPQ 5 81.21% 71.62% 28.38% 1.23 5 / 968 VARG prefix 2 10.74% 4.32% 95.68% 9.31 129 / 4,221 
+
+VARG-ID 3 100% 100% 0% 1.00 1 / 1 (b) Full-reordering stability. 
+
+Policy Change Avg. shift P90 P99 Top20 keep 
+
+EB-CVR 69.54% 22.00 51 291 93.31% 
+
+Click 77.61% 26.58 61 395 91.29% Volume 76.93% 26.99 59 389 91.97% Frozen update 0.00% 0.00 0 0 100.00% 
+
+(c) Trie-constrained decoding. 
+
+Method Legal rate (%) ΔHR@20 ΔHR@100 ΔHR@1000 Inference time Δ Memory Δ
+
+Trie 93 .73 → 100 +0.0915 +0.2343 +0.3857 +3.16% +0.13 GiB            
+
+> Notes. (a) For 𝑁 items and 𝑈 occupied SIDs, Unique= 𝑈 /𝑁 and Avg.= 𝑁 /𝑈 . Exclusive is the fraction of items with an unshared SID, and Collision= 1−Exclusive ; P99/Max are the 99th percentile and maximum item counts per occupied SID. (b) Change is the fraction of items whose third token changes; Avg. shift is mean absolute rank displacement, and P90/P99 are displacement quantiles. Top20 keep is the retention rate of old Top-20 items in the same prefix’s new Top-20. (c) HR gains are in percentage points. Time is cumulative forward-pass and beam-search time, and memory is peak GPU memory usage; both are measured on rank 0.
+
++0.08 , +0.03 , and −0.10 for occupied SIDs without matched user actions. The prefix-weight floor is 𝑑 = 0.1, also used for EOS and control tokens, and the KL regularization coefficient is 𝛽 KL = 0.8.
+
+## 4.2 SID Observations: What Identifier Fits Recall-and-Pre-Ranking? 
+
+Table 1(a) shows that adding semantic quantization levels reduces collisions, but some items still share identifiers and decoding be-comes longer. VARG-ID retains a two-level semantic prefix and distinguishes items within each prefix using a value-ordered third token, achieving collision-free addressing at initial construction. Both semantic codebooks are fully utilized, and the rank vocabu-lary has sufficient capacity for the largest observed item cluster. Table 3 shows that the VARG-ID SFT base improves Q2I-GMV Recall@1/10/20 by 15.50/13.65/0.93 percentage points over the SFT base using three-level RQ-VAE identifiers. These results indicate that VARG-ID achieves better value recall before RL, helping pri-oritize high-value items under limited candidate budgets. EB-CVR is the most stable of the value-based reordering poli-cies in Table 1(b): compared with Click, it yields fewer third-token changes, smaller rank displacements, and higher Top-20 reten-tion. We further evaluate how identifier changes affect the trained model’s retrieval performance. We keep the SFT model parameters fixed and reorder all items within their semantic prefixes. After re-ordering, L1 HR@100 remains nearly constant (92.08% →92.00%) and L1+L2 HR remains stable (71.80% →71.56%), but complete-SID HR@100 drops by 14.45 points, and third-token teacher-forcing ac-curacy falls from 36.75% to 21.24%. This degradation reflects tem-poral drift in SID labels: as item statistics change, within-prefix reordering changes the third token assigned to the same item, cre-ating a mismatch with the addressing relationships learned by the model. We therefore adopt frozen incremental updates to preserve existing item addresses. During daily product updates, existing item addresses remain unchanged, while incremental insertion permits controlled SID sharing. This update policy incorporates new items while preserv-ing the addressing relationships learned by the model. Table 1(c) shows that Trie constraints improve SID legality and retrieval hit rates with only small increases in inference time and memory usage. 
+
+## 4.3 SFT Strategies 
+
+Value and hierarchy supervision. Joint Q2I and level weighting yields small gains in most reported HR metrics (Table 2(a)). Value-recall gains are concentrated near the beam head: GMV Recall@1 and Q2I-GMV Recall@1 increase by 2.18 and 6.23 percentage points, respectively, while changes at Top-50 are small (Table 2(b)). Level weighting also yields small HR gains at larger candidate bud-gets. 
+
+Intent expansion. Adding recent queries and the global-interest summary improves all reported HR metrics, with gains of 0.30 and 0.31 percentage points at HR@20 and HR@50, respectively. These results suggest that incorporating short-term intent and long-term preferences helps improve personalized retrieval. 
+
+Local ordinal supervision. LO-SFT yields small gains in all reported HR metrics, with HR@50 increasing from 46.19% to 46.33%. Further analysis shows that NDCG@100 increases from 20.91% to 21.00%, while third-token top-1 accuracy, conditioned on the gold two-level semantic prefix, increases from 36.74% to 37.02%. 
+
+## 4.4 Overall Prefix-GRPO Results 
+
+Relative to the SFT model using VARG-ID, Prefix-GRPO improves head-level hit rate, ranking quality, and value recall (Table 4). GMV Recall@1 and Q2I-GMV Recall@1 increase by 5.47 and 2.48 percentage points, respectively; HR@1 improves by 0.36 points for purchase-labeled requests and 0.03 points for click-labeled re-quests. 
+
+Reward and prefix ablation. Table 5 compares SFT Base with three RL configurations. All three retain the legality gates. Behavior GRPO uses user-behavior rewards for occupied SIDs; Multi-source GRPO adds ranker advantage and relevance rewards; Full Prefix- 
+
+> 8Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al.
+
+Table 2: Evaluation of Stage-3 SFT strategies. (a) Absolute plain HR of the base and gains from the evaluated methods. (b) GMV and Q2I-GMV recall through Top-50 for the Q2I-example- and level-weighted checkpoint. All changes are in percentage points. 
+
+(a) Plain HR: absolute baseline (%) and gains from the evaluated strategies (pp). 
+
+Direction Method @1 @10 @20 @50 @100 @1000 Baseline SFT Base (absolute, %) 6.39 26.33 34.68 46.19 54.59 72.84 Value Q2I weight + level loss -0.01 +0.05 +0.10 +0.13 +0.18 +0.16 
+
+Hierarchy Level-weighted loss -0.02 0.00 +0.02 +0.05 +0.08 +0.15 
+
+Intent Recent queries + global summary +0.10 +0.26 +0.30 +0.31 +0.28 +0.23 
+
+Ordering LO-SFT +0.06 +0.13 +0.12 +0.14 +0.12 +0.07 
+
+(b) Value-weighted recall (%). 
+
+GMV Recall Q2I-GMV Recall 
+
+𝐾 Base Q2I + level Δ Base Q2I + level Δ
+
+1 30.88 33.06 +2.18 36.12 42.35 +6.23 
+
+10 92.96 94.42 +1.46 95.18 97.01 +1.83 
+
+20 97.57 97.73 +0.16 98.06 99.06 +1.00 
+
+50 99.35 99.36 +0.01 99.81 99.83 +0.02 (a) Personalized retrieval (b) Cold-start retrieval 
+
+i User context   
+
+> Female Purchasing power: high (L5)
+> ƎRecent search queries Global-interest summary Related-category clicks
+> fQuery
+
+Long-sleeve denim shirt 
+
+ċ Generated SID   
+
+> Top-5 paths
+> s1s2r
+
+2456 6075 10 2456 1452 02456 6075 92456 6075 82456 2460 5  
+
+> Shared s1= 2456 , diverse paths
+
+ǫ Retrieved items Top-8 examples Price in CNY        
+
+> 1,180 1,990 1,180 1,380 2,399 980 1,090 890
+
+8/8 match the query. Premium brands and CNY 890–2,399 align with the high-purchasing-power profile. 
+
+i User context   
+
+> Male Purchasing power: L0
+> ƎNo historical behavior
+> fQuery
+
+Waterproof anti-cracking cement-based grout 
+
+ċ Generated SID   
+
+> Top-5 paths
+> s1s2r
+
+5030 2822 04481 7060 12 4481 4706 14481 7060 18 4481 7060 141 
+
+> Relevant paths without history
+
+ǫ Retrieved items Top-8 examples Price in CNY        
+
+> 34 2,000 9.8 56 199 158 29.9 25
+
+Grout-dominant results without behavior history. 
+
+Nearby waterproof-repair items extend coverage. 7/8 cost at most CNY 199. 
+
+Figure 4: Personalized and cold-start retrieval examples. Case A shows personalized retrieval with user context; Case B shows cold-start retrieval without behavioral history. Prices are in CNY. Table 3: Q2I-GMV recall of SFT Base models. Absolute scores are percentages; gains are percentage points. 
+
+Method @1 @10 @20 RQ-VAE-3 20.62 81.53 97.13 VARG-ID SFT Base 36.12 95.18 98.06 
+
+Δ (pp) +15.50 +13.65 +0.93 
+
+GRPO further enables prefix-aware token weighting. The first two configurations use unit weights for valid response tokens in the policy loss. Relative to SFT Base, Behavior GRPO improves Q2I-GMV Re-call@1/10 by 2.19/1.64 percentage points. Adding ranker and rele-vance feedback further improves these metrics by 0.21/0.30 points and NDCG@10 by 0.11 points. With the same reward, prefix weighting adds 0.08/0.09 points to Q2I-GMV Recall@1/10 and 0.04 points to HR@20. Behavioral feedback accounts for most of the observed head-value gain, ranker and relevance feedback further improve value recall and ranking, and prefix weighting provides small but consistent additional gains.  
+
+> 9Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al.
+
+Table 4: Overall Prefix-GRPO results using the SFT base in Table 2: head-level retrieval (left), value-weighted recall (right), and behavior-stratified HR@1 (bottom). Absolute scores are percentages; changes are percentage points.                                                         
+
+> Plain metric SFT Prefix-GRPO ΔValue metric SFT Prefix-GRPO Δ
+> HR@1 6.39 6.44 +0.05 GMV Recall@1 30.88 36.35 +5.47
+> HR@10 26.33 26.46 +0.13 GMV Recall@10 92.96 95.20 +2.24
+> HR@20 34.68 34.85 +0.17 GMV Recall@20 97.57 98.06 +0.49 HR@50 46.19 46.30 +0.11 Q2I-GMV Recall@1 36.12 38.60 +2.48
+> NDCG@10 15.15 15.30 +0.15 Q2I-GMV Recall@10 95.18 97.21 +2.03
+> NDCG@20 17.26 17.44 +0.18 Q2I-GMV Recall@20 98.06 99.39 +1.33
+> Behavior-stratified HR@1
+> Buy HR@1 13.51 13.87 +0.36 Click HR@1 5.97 6.00 +0.03
+
+Table 5: Progressive ablation of reward signals and prefix-aware token weighting. All scores are percentages; best scores are bold.                                 
+
+> Method HR Q2I-GMV Recall NDCG @1 @10 @20 @1 @10 @10 SFT Base 6.39 26.33 34.68 36.12 95.18 15.15 Behavior GRPO 6.43 26.39 34.76 38.31 96.82 15.18 Multi-source GRPO 6.43 26.45 34.81 38.52 97.12 15.29 Full Prefix-GRPO 6.44 26.46 34.85 38.60 97.21 15.30
+
+Table 6: Online A/B results over 14 days and 20% of search traffic. All values are relative changes against the production control.             
+
+> Setting GMV IPV/user Exp. PV/user UCTR UCTCVR PCTR VARG +1.45% +0.22% -0.09% +0.13% +0.13% +0.31%
+
+Table 7: Relevance Good rate (%) in two independent evaluations of AI shopping-guide queries under different candidate-quota configurations.             
+
+> System Eval. 1 Eval. 2 Orig. pipeline (largest quota) 76.71 76.81
+> Orig. pipeline (reduced quota) 75.77 75.73 Gen. baseline (DA) 75.57 –Gen. baseline (DA, larger quota) 75.90 76.03
+> VARG (DA, smaller quota) 76.77 76.58
+> Eval. 1/2: independent evaluation rounds. DA: direct admission to the final ranker, bypassing pre-ranking.
+
+## 4.5 Online A/B Test 
+
+Online system validation. We conducted a 14-day online A/B test in Tmall App covering 20% of search traffic (Table 6). VARG uses Trie-constrained decoding with layer-wise beam widths of (20, 50, 500); generated item candidates bypass pre-ranking and enter the existing final ranker directly through a reserved quota. Compared with the production control, GMV increases by 1.45%, per-user IPV by 0.22%, UCTR and UCTCVR by 0.13% each, and PCTR by 0.31%. These results support the effectiveness of VARG for integrated re-call and pre-ranking. 
+
+AI shopping-guide query evaluation. We conducted two indepen-dent relevance evaluations on 6K+ AI shopping-guide queries us-ing the online search system. Good rate is the fraction of evaluated query–item pairs judged relevant. Table 7 shows that the original pipeline’s Good rate decreases when its candidate quota is reduced. With a smaller candidate quota, VARG outperforms the generative direct-admission baselines and achieves a Good rate comparable to or slightly higher than that of the original pipeline at its largest quota. These results indicate that VARG maintains competitive rel-evance under a smaller candidate budget. 
+
+## 4.6 Efficiency–Effectiveness Trade-off 
+
+We benchmarked the standard autoregressive decoder and the lightweight decoder in Section 3.6 using PyTorch and Transform-ers, without an additional inference engine. Our pilot study shows that, relative to standard autoregressive decoding, the lightweight decoder reduces mean latency from 10.41 to 0.94 ms and achieves approximately 11 .1× the single-card QPS, but HR@1/20/100 drops by 1.13/8.38/10.77 percentage points. The lightweight decoder is not yet used in the main online VARG pipeline and requires fur-ther improvement in retrieval quality before deployment. 
+
+## 4.7 Case Study 
+
+Figure 4 presents personalized retrieval (Case A) and cold-start retrieval (Case B). In Case A, recent queries reflect short-term intent, the global-interest summary captures long-term prefer-ences, and related-category clicks provide behavioral evidence. All eight displayed items match the query “long-sleeve denim shirt”; the premium brands and price range are consistent with the user’s high purchasing power, illustrating personalized retrieval aligned with user preferences. Case B contains no behavioral his-tory. For the query “waterproof anti-cracking cement-based grout,” the displayed results mainly comprise grout products and related waterproof-repair items, showing that retrieval remains semanti-cally aligned with the query in this cold-start example. 
+
+## 5 Conclusion 
+
+We presented VARG, a generative retrieval system for large-scale industrial e-commerce search that integrates recall and pre-ranking by directly admitting generated item candidates to the existing final ranker. VARG-ID uses bidirectional Q2I contrastive learning to align semantic prefixes with queries and stable EB-CVR ordering to assign the third token, providing 
+
+> 10
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Chu et al. 
+
+collision-free, fine-grained item addresses and a business-value prior at initial construction. Three-stage SFT advances from item memorization to query-semantic and personalized retrieval, combining context expansion, value-aware and hierarchical super-vision, and LO-SFT to improve candidate generation. Prefix-GRPO uses gated multi-source rewards and prefix-aware weighting to further align candidate priorities with business value and ranking objectives. Coordinated daily product and model updates preserve existing item addresses while incorporating new products and the latest behavioral feedback. Offline experiments evaluate identifier stability and demonstrate gains in retrieval quality and value recall. A 14-day online A/B test improves GMV by 1.45% and PCTR by 0.31%, supporting the effectiveness of the complete recall-and-pre-ranking system. Future work will explore quality–efficiency trade-offs under tighter candidate budgets and improve retrieval quality in lightweight decoding while retaining its efficiency gains. 
+
+## References 
+
+[1] Michele Bevilacqua, Giuseppe Ottaviano, Patrick Lewis, Wen-tau Yih, Sebas-tian Riedel, and Fabio Petroni. Autoregressive search engines: Generating sub-strings as document identifiers. arXiv preprint arXiv:2204.10628 , 2022. [2] Ben Chen, Siyuan Wang, Yufei Ma, Zihan Liang, Xuxin Zhang, Yue Lv, Ying Yang, Huangyu Dai, Lingtao Mao, Tong Zhao, et al. OneSearch-V2: The la-tent reasoning enhanced self-distillation generative search framework. arXiv preprint arXiv:2603.24422 , 2026. [3] Jiangui Chen, Ruqing Zhang, Jiafeng Guo, Maarten de Rijke, Wei Chen, Yix-ing Fan, and Xueqi Cheng. Continual learning for generative retrieval over dynamic corpora. In Proceedings of the ACM International Conference on Infor-mation and Knowledge Management , 2023. [4] Jiehan Cheng, Zhicheng Dou, Yutao Zhu, and Xiaoxi Li. Descriptive and dis-criminative document identifiers for generative retrieval. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 11518–11526, 2025. [5] Nicola De Cao, Gautier Izacard, Sebastian Riedel, and Fabio Petroni. Autore-gressive entity retrieval. In International Conference on Learning Representa-tions , 2021. [6] Jiaxin Deng, Shiyao Wang, Kuo Cai, Lejian Ren, Qigen Hu, Weifeng Ding, Qiang Luo, and Guorui Zhou. OneRec: Unifying retrieve and rank with generative recommender and iterative preference alignment. arXiv preprint arXiv:2502.18965 , 2025. [7] Kairui Fu, Tao Zhang, Shuwen Xiao, Ziyang Wang, Xinming Zhang, Chenchi Zhang, Yuliang Yan, Junjun Zheng, Xiangheng Kong, Shengyu Zhang, Kun Kuang, and Yuning Jiang. FORGE: Forming semantic identifiers for generative retrieval in industrial datasets. In Proceedings of the ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2026. [8] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. Recommendation as language processing (RLP): A unified pretrain, personal-ized prompt & predict paradigm (P5). In Proceedings of the ACM Conference on Recommender Systems , 2022. [9] Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense passage retrieval for open-domain question answering. arXiv preprint arXiv:2004.04906 , 2020. [10] Omar Khattab and Matei Zaharia. ColBERT: Efficient and effective passage search via contextualized late interaction over BERT. In Proceedings of the In-ternational ACM SIGIR Conference on Research and Development in Information Retrieval , 2020. [11] Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. Au-toregressive image generation using residual quantization. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022. [12] Yongqi Li, Xinyu Lin, Wenjie Wang, Fuli Feng, Liang Pang, Wenjie Li, Liqiang Nie, Xiangnan He, and Tat-Seng Chua. A survey of generative search and recommendation in the era of large language models. arXiv preprint arXiv:2404.16924 , 2024. [13] Yongqi Li, Nan Yang, Liang Wang, Furu Wei, and Wenjie Li. Learning to rank in generative retrieval. In Proceedings of the AAAI Conference on Artificial In-telligence , 2024. [14] Zida Liang, Changfa Wu, Dunxian Huang, Weiqiang Sun, Ziyang Wang, Yu-liang Yan, Jian Wu, Yuning Jiang, Bo Zheng, Ke Chen, Silu Zhou, and Yu Zhang. TBGRecall: A generative retrieval model for e-commerce recommendation sce-narios. arXiv preprint arXiv:2508.11977 , 2025. [15] Gui Ling, Zhihong Chen, Yu Li, Tong Xiong, Kunhai Lin, Kaixuan Zhang, Yu-liang Yan, Dan Ou, Haihong Tang, and Bo Zheng. Beyond semantic ids: Encod-ing business-value ranking into document identifiers for generative retrieval. 
+
+arXiv preprint arXiv:2607.11392 , 2026. [16] Yu. A. Malkov and D. A. Yashunin. Efficient and robust approximate near-est neighbor search using Hierarchical Navigable Small World graphs. arXiv preprint arXiv:1603.09320 , 2016. [17] Sanket Vaibhav Mehta, Jai Gupta, Yi Tay, Mostafa Dehghani, Vinh Q. Tran, Jin-feng Rao, Marc Najork, Emma Strubell, and Donald Metzler. DSI++: Updating transformer memory with new documents. arXiv preprint arXiv:2212.09744 ,2022. [18] Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, and Chelsea Finn. Direct preference optimization: Your language model is secretly a reward model. arXiv preprint arXiv:2305.18290 , 2023. [19] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan H. Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q. Tran, Jonah Samost, Maciej Kula, Ed H. Chi, and Maheswaran Sathiamoorthy. Recommender sys-tems with generative retrieval. In Advances in Neural Information Processing Systems , 2023. [20] Stephen Robertson and Hugo Zaragoza. The probabilistic relevance frame-work: BM25 and beyond. Foundations and Trends in Information Retrieval ,3(4):333–389, 2009. [21] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. [22] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. DeepSeek-Math: Pushing the limits of mathematical reasoning in open language models. 
+
+arXiv preprint arXiv:2402.03300 , 2024. [23] Weiwei Sun, Lingyong Yan, Zheng Chen, Shuaiqiang Wang, Haichao Zhu, Pengjie Ren, Zhumin Chen, Dawei Yin, Maarten de Rijke, and Zhaochun Ren. Learning to tokenize for generative retrieval. In Advances in Neural Informa-tion Processing Systems , 2023. [24] Juntao Tan, Shuyuan Xu, Wenyue Hua, Yingqiang Ge, Zelong Li, and Yongfeng Zhang. IDGenRec: LLM-RecSys alignment with textual ID learning. In Proceed-ings of the International ACM SIGIR Conference on Research and Development in Information Retrieval , 2024. [25] Yi Tay, Vinh Q. Tran, Mostafa Dehghani, Jianmo Ni, Dara Bahri, Harsh Mehta, Zhen Qin, Kai Hui, Zhe Zhao, Jai Gupta, Tal Schuster, William W. Cohen, and Donald Metzler. Transformer memory as a differentiable search index. arXiv preprint arXiv:2202.06991 , 2022. [26] Aaron van den Oord, Oriol Vinyals, and Koray Kavukcuoglu. Neural discrete representation learning. In Advances in Neural Information Processing Systems ,2017. [27] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in Neural Information Processing Systems , 2017. [28] Wenjie Wang, Honghui Bao, Xinyu Lin, Jizhi Zhang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. Learnable item tokenization for generative recommendation. arXiv preprint arXiv:2405.07314 , 2024. [29] Yujing Wang, Yingyan Hou, Haonan Wang, Ziming Miao, Shibin Wu, Hao Sun, Qi Chen, Yuqing Xia, Chengmin Chi, Guoshuai Zhao, Zheng Liu, Xing Xie, Hao Allen Sun, Weiwei Deng, Qi Zhang, and Mao Yang. A neural corpus in-dexer for document retrieval. In Advances in Neural Information Processing Systems , 2022. [30] Shiguang Wu, Wenda Wei, Mengqi Zhang, Zhumin Chen, Jun Ma, Zhaochun Ren, Maarten de Rijke, and Pengjie Ren. Generative retrieval as multi-vector dense retrieval. In Proceedings of the International ACM SIGIR Conference on Research and Development in Information Retrieval , 2024. [31] An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, et al. Qwen2.5 technical report. arXiv preprint arXiv:2412.15115 , 2024. [32] Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming Chen, and Ji-Rong Wen. Adapting large language models by integrating collab-orative semantics for recommendation. In Proceedings of the IEEE International Conference on Data Engineering , 2024. [33] Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jing-hao Zhang, Kuo Cai, Lejian Ren, Lu Ren, Liao Yu, et al. OneRec-V2 technical report. arXiv preprint arXiv:2508.20900 , 2025. [34] Yujia Zhou, Zhicheng Dou, and Ji-Rong Wen. Enhancing generative retrieval with reinforcement learning from relevance feedback. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pages 12481–12490. Association for Computational Linguistics, 2023. [35] Jianbo Zhu, Xing Fang, Jing Wang, Mingmin Jin, Bokang Wang, Guangxin Song, Zhenyu Xie, and Junjie Bai. Efficient generative retrieval for e-commerce search with semantic cluster ids and expert-guided rl. arXiv preprint arXiv:2605.14434 , 2026. 
+
+11

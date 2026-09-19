@@ -6,47 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-18
-- 运行时间：2026-09-18 22:00:34 UTC
+- 最新运行日期：2026-09-19
+- 运行时间：2026-09-19 21:59:19 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：5
-- 速读区：3
+- 本次总论文数：5
+- 精读区：1
+- 速读区：4
 
 ### 今日简报（AI）
-- 今日共生成 8 篇推荐（精读 5 篇，速读 3 篇）
-- 精读：《Generate to Explore, Select to Exploit: Aligning LLM-based Headline Generation with Personalized Recommendation》（9.0/10）, 《Evaluating the Impact of Personalization in Conversational Cybersecurity Assistants》（9.0/10）
-- 速读：《Mind2Dialogue: Training Human-Aware Language Models by Simulating User Mental States》（7.0/10）, 《To Memories and Beyond: From Remembering to Knowing You across Long-Term Multimodal Personal Archives》（7.0/10）, 《Self-Evolving Memory for Generative Recommendation》（6.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/18/README](/202609/18/README)
+今日精读1篇、速读4篇，聚焦长期个性化AI记忆与多模态检索。最值得看的是《Memory Has Geometry》（8.0/10）提出的非均匀几何记忆，以及《To Memories and Beyond》（7.0/10）从"记得"到"懂你"的长期多模态个人档案思路。普通读者可优先了解这两篇，思考AI如何更懂你的长期偏好与历史。
+- 详情：[/202609/19/README](/202609/19/README)
 
 ### 精读区论文标签
-1. [Generate to Explore, Select to Exploit: Aligning LLM-based Headline Generation with Personalized Recommendation](/202609/18/2609.15094v1-generate-to-explore-select-to-exploit-aligning-llm-based-headline-generation-with-personalized-recommendation)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：与用户兴趣对齐的个性化LLM标题生成
-2. [Evaluating the Impact of Personalization in Conversational Cybersecurity Assistants](/202609/18/2609.17839v1-evaluating-the-impact-of-personalization-in-conversational-cybersecurity-assistants)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：评估基于大模型助手的个性化策略
-3. [Tailored to you: longitudinal effects of personalising language models](/202609/18/2609.20077v1-tailored-to-you-longitudinal-effects-of-personalising-language-models)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：个性化语言模型的纵向效应研究
-4. [Memory Has Geometry: Non-Uniform Geometric Memory for Long-Horizon Personalized AI](/202609/18/2609.17969v1-memory-has-geometry-non-uniform-geometric-memory-for-long-horizon-personalized-ai)  
+1. [Memory Has Geometry: Non-Uniform Geometric Memory for Long-Horizon Personalized AI](/202609/19/2609.17969v1-memory-has-geometry-non-uniform-geometric-memory-for-long-horizon-personalized-ai)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：面向长程个性化AI的非均匀几何记忆
-5. [EasyFashion: A Human-AI Co-Creation System for Personalized Fashion Design and Sewing Pattern Generation](/202609/18/2609.18483v1-easyfashion-a-human-ai-co-creation-system-for-personalized-fashion-design-and-sewing-pattern-generation)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：面向个性化服装设计与生成的人机协同创作
+   evidence：长时程个性化，将记忆建模为用户特定动态状态空间
 
 ### 速读区论文标签
-1. [Mind2Dialogue: Training Human-Aware Language Models by Simulating User Mental States](/202609/18/2609.15972v1-mind2dialogue-training-human-aware-language-models-by-simulating-user-mental-states)  
+1. [To Memories and Beyond: From Remembering to Knowing You across Long-Term Multimodal Personal Archives](/202609/19/2609.19167v1-to-memories-and-beyond-from-remembering-to-knowing-you-across-long-term-multimodal-personal-archives)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：通过模拟用户心理状态实现人类感知训练，属大模型个性化
-2. [To Memories and Beyond: From Remembering to Knowing You across Long-Term Multimodal Personal Archives](/202609/18/2609.19167v1-to-memories-and-beyond-from-remembering-to-knowing-you-across-long-term-multimodal-personal-archives)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：面向个性化数字伙伴的长期多模态个人档案
-3. [Self-Evolving Memory for Generative Recommendation](/202609/18/2609.15598v1-self-evolving-memory-for-generative-recommendation)  
+   evidence：面向长期多模态个人档案的基准，支撑个性化伴侣推理
+2. [VARG: Value-Aware and Ranking-Aligned Generative Retrieval for Dynamic E-commerce Search](/202609/19/2609.14493v1-varg-value-aware-and-ranking-aligned-generative-retrieval-for-dynamic-e-commerce-search)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：自演化个性化生成式推荐适配用户偏好漂移
+   evidence：生成式检索中三阶段微调实现个性化检索
+3. [MSR: Multiple Subject Reference for Video Generation](/202609/19/2609.18393v1-msr-multiple-subject-reference-for-video-generation)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：面向个性化视频生成的多主体槽位条件控制
+4. [Disentangling Long-Term Memory via Latent Neuro-Symbolic Reasoning](/202609/19/2609.18461v1-disentangling-long-term-memory-via-latent-neuro-symbolic-reasoning)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：面向个性化智能体的潜空间神经符号记忆解耦
 
 
 <div class="dpr-home-promo-card">
