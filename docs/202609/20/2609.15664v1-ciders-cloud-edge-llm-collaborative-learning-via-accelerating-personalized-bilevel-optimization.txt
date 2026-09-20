@@ -1,0 +1,9593 @@
+Title: CIDERS: Cloud-Edge LLM Collaborative Learning via Accelerating Personalized Bilevel Optimization
+
+URL Source: https://arxiv.org/pdf/2609.15664v1
+
+Published Time: Tue, 15 Sep 2026 02:39:09 GMT
+
+Number of Pages: 48
+
+Markdown Content:
+> IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 1
+
+# CIDERS: Cloud-Edge LLM Collaborative Learning via Accelerating Personalized Bilevel Optimization 
+
+Victor H. Chen ˚, Hairui Yu, Stella K. Chung and Hong Yan, Life Fellow, IEEE 
+
+Abstract —Amid the rapid advancement of physical-world intelligence, cloud-edge collaborative large language models (LLMs) have emerged as a promising roadmap for practical LLM deployment. However, existing cloud-edge paradigms struggle to balance global consensus with local personalization, which fails to satisfy the need for a unified knowledge foundation on the cloud and domain-specific adaptation at the edge. To address this, we introduce, for the first time, a personalized bilevel optimization framework that formalizes cloud-edge LLM collaboration as a dual structure: the upper level optimizes edge-side personalization, while the lower level governs cloud-side knowledge transfer, reaching cloud-edge evolving in coordination. We then propose CIDERS, an efficient solver that decomposes the model into a learnable backbone and a messenger. While the cloud performs knowledge transfer to the learnable backbone, the key lies in embedding global trajectories into each local personalization step via consensus-variate correction to reconcile personalization with consensus. We provide a comprehensive theoretical analysis, including a geometric characterization of the local trajectory and a full convergence guarantee, revealing an explicit trade-off structure between personalization and global convergence. Extensive experiments demonstrate that CIDERS consistently outperforms competitive baselines on the compressed edge path, with 3.1× and 1.7× gains on mathematical reasoning and code generation, respectively, and a 10% relative gain on instruction metrics. Mechanism experiments attribute these gains to early consensus-corrected coordination and task-aware distil-lation. Overall, CIDERS offers a viable path toward consensus-guided continuous personalization in cloud-edge LLM systems. 
+
+Index Terms —cloud-edge LLM collaborative learning, per-sonalized biLevel optimization, consensus-guided personalization, convergence, geometric trajectory. 
+
+I. I NTRODUCTION 
+
+# LARGE language models (LLMs) have evolved into general-purpose productivity tools owing to their pow-erful cognitive and reasoning capabilities [1], [2]. They have profoundly reshaped the knowledge-intensive work paradigms, which span industrial production, scientific innovation, public services, and business operations etc. [3]. Driven by advances in research and industry, LLMs are expanding beyond pure information processing tasks toward cyber-physical systems (CPS) that interact with the real-world physical environ-ment [4]. Such scenarios demand that the model’s perception, planning, and control capabilities directly serve the operational closed-loop of physical entities and tightly align with their real-time runtime processes, imposing new constraints on the overall deployment and execution architecture [5], [6]. Despite the broadening scope of application scenar-ios, mainstream industrial LLM tech-stacks are inherently cloud-centric: foundation models are pre-trained on super-computing clusters to deliver inference services, with vertical domain adaptation realized via centrally collected domain corpora in the cloud. Edge devices mostly function only as sensing and interaction terminals, uploading prompts and data while receiving inference outputs, without participating in the core model training and updates. This architectural choice arises from intrinsic technical motivations: pre-training, high-throughput decoding, and high-quality domain adapta-tion all heavily rely on centralized computing resources, high-speed homogeneous interconnection, and unified data governance. Consequently, nearly all production-grade LLM systems follow a three-stage pipeline: pre-training, infer-ence serving, and vertical-domain adaptation. The core of large-scale training lies in multi-granular system-level model partitioning: inter-layer partitioning enables pipeline paral-lelism, intra-layer matrix partitioning enables tensor paral-lelism, and these are combined with data parallelism to form three-dimensional collaborative training. This enables train-ability and convergence of hundred-billion-parameter models across multi-machine clusters. Subsequent instruction align-ment transforms vanilla continuation-oriented models into general-purpose service models capable of following human instructions. Online inference organizes the step-wise autore-gressive generation process into a concurrent serving system: cached historical key-value (KV) states eliminate redundant computation, and dynamic batching accommodates irregularly arriving requests, rendering time-to-first-token, per-token gen-eration latency, and per-unit cost measurable and optimizable. Task adaptation absorbs domain discrepancies via lightweight parameter fine-tuning [7], [8], [9]. It incorporates private or time-sensitive information through external knowledge bases and retrieval-augmented generation, and compresses LLMs into deployable compact forms via knowledge distillation. While the cloud-centric paradigm delivers remarkable com-puting and iteration efficiency, it suffers from structural mismatches for scenarios with strict latency requirements, data-privacy demands, and physical-interaction constraints [5], [6]. Round-trip network latency becomes a critical bottle-neck that fails to support hard real-time applications re-quiring instantaneous response, including autonomous driving decision-making, industrial robotic closed-loop control, and field edge deployments with limited network backhaul. Sens-ing logs and business documents generated at the edge are of-ten prohibited from offloading by compliance and commercial restrictions, rendering cloud LLM APIs unsuitable for local model fine-tuning. Bandwidth and compute overhead scale with token volume and KV-cache traffic rather than the intrin-sic intellectual complexity of tasks. A more salient mismatch lies in personalization: user trajectories, industrial logs, and arXiv:2609.15664v1 [cs.DC] 14 Sep 2026 IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 2
+
+sensor-text samples for model customization originate on the edge, whereas all modifiable model parameters reside in the cloud. In short, cloud-centric architectures realize centralized hosting of model capabilities, yet data, timing constraints, and physical processes are inherently distributed. Rather than the merely performance optimization, this fundamental mis-alignment renders cloud-edge collaboration an architectural necessity, and here we summarize the inference and learning paradigms as follows: 
+
+Cloud-edge collaborative inference: To overcome the re-source limitations of individual edge devices, the system treats the cloud and the heterogeneous edge nodes as aprogrammable resource pool [10], [11], [12]. The workflow starts with offline characterization and planning: it measures the computing, memory and the inter-device bandwidth, then performs the global placement decisions via heuristic or optimization-based approaches [13], [11], [12] for the model partitioning and deployment [14], [15], [16]. Subsequently the system starts inference via pipeline parallelism, where each device computes only its local shard and forwards interme-diate activations to downstream components, which overlaps computation with communication [13], [11]. Nevertheless, pipeline stalls may occur at shard boundaries, due to hetero-geneous straggler nodes, or induced by wide-area round-trip delays [17]. Under such circumstances, a complete lightweight model can be deployed in parallel at the edge to proactively generate subsequent candidate tokens conditioned on available context during waiting intervals [18], [19], and the cloud per-forms one-shot validation over the complete candidate window or candidate tree: upon acceptance, the corresponding prefix is advanced while upon rejection, key-value states are rolled back and generation restarts from the point of divergence [20]. 
+
+Cloud-edge collaborative learning: To address the dual challenges of the growing scarcity of high-quality private data and the need for privacy preservation, this paradigm integrates federated learning (FL) with parameter-efficient fine-tuning (PEFT). It enables multiple clients to collaboratively perform domain adaptation for large language models (LLMs) without exposing their raw local data. Specifically, each client intro-duces lightweight low-rank adaptation modules for the frozen LLM, and selects the rank of the adapters and performs local learning based on its local resources and data [21], [22], [23]. Followed by the cloud aggregation, clients upload only a small set of incremental parameters to the cloud, which employs mechanisms such as stacking-based aggregation or selective sharing to eliminate aggregation noise. The global adapter can both absorb common knowledge from across clients and preserve the personalized characteristics inherent in local data [21], [24], [25]. To alleviate the computational burden on edge nodes, a split FL architecture is further introduced: the model is logically partitioned into client-side and server-side sub-models, where clients only need to perform lightweight forward propagation and upload activations to the cloud, while offloading the majority of gradient computation and param-eter updates to high-performance cloud servers [26], [27]. Complemented by a temporal redundancy-aware activation reuse mechanism, the system can skip the transmission of activations that exhibit only minor changes between adjacent training epochs, substantially reducing uplink communication overhead [27], [28]. However, we observe one paradox . Existing cloud-edge collaborations for LLMs are fundamentally designed on model consensus, where all edge nodes share the common model parameters. This inherently overlooks one fact: data, user behaviors, and physical environments are naturally personal-ized in edge scenarios, while the capability to adjust model parameters is dispersed across the cloud and the edge [29], [30]. Therefore it is necessary to form a systematic architecture with edge personalization: each edge node, while sharing a common global knowledge base, can evolve its model based on its own local data and feedback, achieving fast general capabilities while personalized fine-tuning adapts to specific scenarios. To this end, we design CIDERS, which is precisely architected to address this gap: it first decomposes each edge model into a globally shared learnable backbone that captures general linguistic and reasoning capabilities via cloud-based task-aware distillation, and a locally adaptive messenger that captures domain-specific personalization via edge-local updates [31], [32]. The two components are orches-trated through our proposed personalized bi-level optimization framework, where the upper level optimizes the messenger for rapid client-specific adaptation, while the lower level ensures the backbone remains aligned with both the frozen teacher and the downstream task manifold. To further anchor local trajectories to global consensus during edge updates, CIDERS introduces a consensus-corrected geometric update that con-tinuously interpolates between pure local specialization and global consensus through a tunable scalar [3]. Crucially, the algorithm transmits only compressed consensus increments to the cloud, enabling low-bandwidth communication while preserving exact reconstruction of local displacements. This design skillfully decouples the learning procedures to achieve what prior cloud-edge paradigms cannot: a systematic contin-uum from a shared common knowledge base to individually evolved edge models. In summary, our contributions lies: 
+
+Personalized bilevel optimization formulation: Based on the aforementioned decomposition of the LLM into the messen-ger and the backbones, we formulate for the first time the personalized bilevel optimization. Specifically, the upper-level problem optimizes the messenger that enables fast client-specific personalization, thereby learning for adaptability to heterogeneous local distributions. This is fundamentally dif-ferent from conventional FL objectives, which optimize for global model accuracy without regard for how quickly or how well that model can be adapted to individual clients. The lower-level problem learns the student backbone via task-aware knowledge distillation from the frozen full backbone. This ensures that the compressed backbone faithfully emu-lates the teacher’s foundational capabilities while remaining aligned with the downstream task manifold. This formulation is the first to capture the distinct roles of personalization and globalization in a principled bilevel optimization. 
+
+The novel algorithm CIDERS: We propose CIDERS that solves the personalized bilevel optimization. Specifically, the IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 3
+
+edge performs consensus-variate-corrected local update on two distinct scales: the global trajectory is incorporated into the local counterpart. This steers each client’s trajectory toward a tunable balance between the local specialization (slower tra-jectory) and global consensus (fast trjectory). Then, CIDERS transmits only consensus-variate increments, enabling exact reconstruction of local displacements on the cloud while re-ducing the communication overhead. Finally, with aggregated messenger fixed, it performs task-aware knowledge distillation on the learnable backbone. This fixed messenger conditioning ensures that the backbone learns representations that are not only faithful to the teacher but also coherent with the current personalization context, which prevents misalignment if the messenger and backbone evolved independently. 
+
+Comprehensive theoretical analysis: We establish the first complete theoretical foundation for personalized bilevel op-timization in cloud-edge LLM systems. We first comprehen-sively demonstrate that CIDERS attains a sublinear conver-gence to a stationary point. Then with convergence guarantee, our geometric analysis provides an interpretable character-ization of the local update trajectory. We show that the effective direction of the messenger lies on the line segment connecting the local personalized gradient and the global con-sensus direction, a result that reveals how the consensus scalar sets the personalization–globalization balance, the consensus-variate learning rate governs the transition speed. Based on this insight, we propose two diagnostic metrics for a direct quantitative readout of where any given trajectory sits on the personalization–consensus spectrum. 
+
+Comprehensive experimental analysis: We conduct com-prehensive experiments on Qwen2.5-3B/1.5B that probe the underlying mechanisms rather than merely benchmarking per-formance. These experiments first establish CIDERS’s empir-ical superiority, while also revealing several key mechanistic insights that the bilevel coordination yields an average relative improvement of approximately 12% across six downstream metrics, with the largest single gain reaching 11.15% on GSM8K, and the consensus diagnostics validate the geomet-ric predictions that directional personalization is preserved, whereas output-level specialization remains marginal and can be decoupled from the directional component. Collectively, these findings establish that consensus-guided continuous per-sonalization substantially improves both system performance and robustness in cloud-edge LLM deployment. II. R ELATED WORKS 
+
+A. Federated Learning and Personalization 
+
+Federated learning (FL) enables distributed clients to col-laboratively train a global model without centralizing private data [29]. FedAvg serves as the standard baseline, where clients perform local gradient steps and the server aggre-gates updates via weighted averaging [34]. However, under hterogeneity, client drift and objective inconsistency arise. FedProx adds a proximal term to constrain local-global model deviation [35] and FedDyn introduces dynamic regularization for the enhancement [36]. FedNova normalizes local updates to correct biases from heterogeneous local steps [37]. MOON enhances local-global representation consistency through con-trastive learning [38]. SCAFFOLD maintains control variates on both server and clients, using their difference to correct local update directions, this can be viewed as a variance reduction mechanism for heterogeneous FL [3]. In personal-ized FL, FedPer and FedRep decompose models into shared bottom layers and client-specific top layers or heads [39], [40]. pFedMe formulates personalization through a Moreau-envelope objective [41]. Ditto jointly learns global and per-sonalized models with regularization to balance their devia-tion [42]. Meta-learning-based Per-FedAvg brings MAML to FL [43], optimizing a global initialization that enables rapid client adaptation after one or a few gradient steps [44], [30]. In general, existing FL and personalization methods provide a theoretical foundation for distributed LLM learning. However, they are designed for conventional models and full-parameter spaces. When applied to cloud-edge LLM scenarios, they face challenges: excessive parameter scale, infeasible control-state maintenance, and coupling between local updates and cloud-side distillation. These issues call for redesigns in both personalization architecture and optimization mechanisms. 
+
+B. Cloud-Edge LLM Collaborative Learning via FL 
+
+Full-parameter fine-tuning of LLMs is expensive in resource costs. Parameter-efficient fine-tuning (PEFT) thus becomes a foundation for federated LLM adaptation [45]. Adapter inserts trainable modules into frozen models [7]. Specifi-cally, prefix-tuning optimizes continuous prefix vectors [8], while LoRA freezes pretrained weights and learns low-rank increments [9]. These methods significantly reduce trainable parameters and thus federated LLM fine-tuning further ex-plores how to adapt LLMs on distributed private instruc-tion data [46], [47]. FederatedScope-LLM provides a system framework and benchmark support, while it establishes the universally acknowledged challenges in communication, com-putation and heterogeneity [48]. FLoRA finds naive averaging in the direclty combined LoRA and FL is mathematically inexact, which can be simply mitigated by stack based ag-gregation [21]. FedSA-LoRA analyzes the asymmetric roles of LoRA matrices and shares only the component carrying more general knowledge [49]. FedALT mitigates cross-client interference by combining individual LoRAs with shared background LoRA [50]. To obtain smaller models for edge de-ployment, knowledge distillation transfers output distributions, hidden representations, or attention relations from teacher to student [51]. DistilBERT, TinyBERT, and MiniLM distill compact students from larger LLMs [52], [53], [54]. Model decomposition further decouples the full LLM into modules and learns them separately. Specifically, offsite-tuning sends a compressed learnable backbone and lightweight adapter to the data owner, who adapts without accessing the full model [31]. FedBiOT extends this to federated LLM fine-tuning: the server builds a compressed model and aligns it with the full model via distillation, while clients fine-tune lightweight adapters on the fixed compressed model [32]. IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 4𝓑𝒇𝒓𝒐𝒛𝒆𝒏 
+
+> 𝓑𝒇𝒓𝒐𝒛𝒆𝒏
+> Model Prep
+
+𝓑𝑭 Aligned          
+
+> 𝓑𝑳
+> 2. Equidistant Layer Sampling
+> P𝓑𝒇𝒓𝒐𝒛𝒆𝒏
+> P
+> 𝓑𝑳
+> Cloud LLM
+> Sample index 𝑰 is stored for reconstruction 3. Pre-alignment 𝓑𝒇𝒓𝒐𝒛𝒆𝒏
+> Edge Client Update
+> 𝓑𝑳
+> P
+> Fixed
+> Drifted local trajectory Corrected trajectory Consensus trajectory
+> Global Consensus Correction (pull towards global consensuss)
+> 𝜸 𝒄 (𝒕) − 𝒄 𝒊 (𝒕)
+> Local Personalization Direction (from local meta-gradient) 𝒈 ˜𝒊 Δ𝑐௜ 𝑻𝑨𝑲𝑫
+> Updated
+> 𝓑 𝑳
+> P𝓑𝑳
+
+𝓑𝑭                
+
+> Fixed
+> PP
+> ……
+> Client iin SClient iin S
+> Aggregation
+> 𝒄𝒊 𝒄𝒋
+> ……
+> Client iin SClient jin S Reconstruction
+> 𝒄 Aggregation
+> 𝒄𝒊 𝒄 𝒄
+> 1. Model decomposition
+
+CIDERS Technical Roadmap 
+
+Figure 1: CIDERS Workflow. (I) The framework decomposes the LLM into a cloud server-side full backbone BF , edge client-side messengers PM and learnable backbone BL. (II) Each round the server broadcasts twPM , w BL , c u; clients run a K-step consensus-corrected geometric update on private data and upload ∆ci only. (III) The server reconstructs ∆i, aggregates the messenger and consensus, then performs knowledge transfer from BF to BL with PM held fixed before the next broadcast. 
+
+C. Discussion 
+
+FL, as a distributed learning framework, has been widely applied across deep learning. Cloud-edge LLM collaborative learning is inherently distributed, so FL provides a natural fit. Both PEFT and its combination with model decomposition explores heterogeneous adapter configurations, yet they lack systematic handling of drift-aware updates and are insufficient for edge personalization to meet complex applications, since they meet the paradox that personalization and consensus are difficult to coexist in the local adapter update path. To address this, CIDERS integrates both into a unified bilevel optimiza-tion framework that injects global trajectory into each local personalization step for coupling local personalization and global consensus within the same optimization process. We target LLMs continuously evolving at the edge while staying coordinated with global consensus in cloud-edge collaboration. III. P ROBLEM FORMULATION 
+
+We consider a cloud-edge distributive system comprising a cloud server with a public dataset Dpublic and N client edges, each possessing a private heterogeneous dataset Di. Let Mi
+
+denote the full composite model on client i, and M˚ denote its server-side counterpart. To balance global coordination and local adaptation, we partition these models into distinct yet structurally interdependent components: Mi “ PM,i ˝ BL
+
+on the client side, and M˚ “ PM ˝ BF on the server side. Specifically, we define:  
+
+> ‚
+
+A full backbone BF , parameterized by wBF , which serves as a static, frozen teacher preserving foundational linguistic capabilities and world knowledge.  
+
+> ‚
+
+A learnable backbone BL, parameterized by wBL , which acts as the global representation student distilled from BF
+
+using public data.  
+
+> ‚
+
+The messengers PM,i , parameterized by wPM,i for i “
+
+1, ¨ ¨ ¨ , N . These capture domain-specific knowledge from private datasets, while PM (parameterized by wPM ) denotes their globally aggregated meta-initialization counterpart on the server. 
+
+Upper-Level: Personalized Meta-Objective. We formulate the upper-level problem by adopting the personalization objective as follows 
+
+Lpers pwPM , w BL q “ 1
+
+N
+
+ÿNi“1 Li
+
+` rwPM,i , w BL
+
+˘ , (1) where rwPM,i :“ wPM ´ ηin ∇wPM LipwPM , w BL q denotes the one-step personalized messenger for client i, and ηin ą 0
+
+is the inner learning rate. Note (1) optimizes the global messenger wPM as a meta-model that facilitates rapid client-specific adaptation. 
+
+Lower-Level: Task-Aware Knowledge Distillation. The lower-level objective aims to transfer server-side knowledge to the learnable backbone. While general KD anchors the student to the teacher’s latent space via intermediate representation matching and output logit alignment, it treats the frozen teacher as an infallible oracle. This risks propagating pre-training flaws or calibration biases without optimizing for downstream utility. To mitigate this, we propose the Task-Aware Knowledge Distillation (TAKD), which is denoted as 
+
+LKD on Dpublic with the fixed global messenger wPM :
+
+LKD pwBL ; wPM q “ E
+
+„
+
+}BLpx; wBL q ´ BF px; wBF q} 22
+
+` λD KL pM˚px; twPM , w BF uq } Mpx; twPM , w BL uqq ` λtask ¨ ℓtask pMpx; twPM , w BL uq , y q
+
+ȷ
+
+,
+
+(2) where λ, λ task ą 0. It aims to explicitly injects task-aware supervision grounded in true labels y. This ensures BL fully emulates BF and aligns with the target task manifold, pro-viding a high-quality foundation for the upper-level meta-adaptation. 
+
+The Personalized Bi-Level Optimization (PBO) Alternating the optimization of wPM and wBL via the upper and lower objectives respectively, we formulate the personalized bilevel optimization (PBO) for the cloud-edge LLM collaborative learning: 
+
+min 
+
+> wPM
+
+Lpers pwPM , w BL q ` ϵ
+
+2 }wPM ´ w´ 
+
+> PM
+
+}22
+
+s.t. wBL “ arg min 
+
+> wBL
+
+LKD pwBL ; wPM q . (3) In this architecture, we regularize (1) by a proximal term to constrain drift from the previous state w´ 
+
+> PM
+
+, then the IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 5
+
+upper-level optimization learns the global messenger wPM
+
+to strike a balance between globalization and personalization. Alternately, the lower-level optimization trains wBL via TAKD 
+
+wBF . This hierarchy explicitly decouples global knowledge alignment from client-specific personalization. 
+
+Optimization Challenges. While (3) forms the first person-alized bilevel optimization, we pose several key insights in challenges: first is obvious, the computation resource is limited at edges, which requires fast global training. Second, since the cloud and the edges are mutually dependent, if the cloud fails the distillation or the edges result in heterogeneity issues, they will alternate their updates to a continuous deterioration of mutual learning. Third, edges generally demand personal-ization, which exacerbates the heterogeneity issue and leads to a decrease in the overall training efficiency. IV. M ETHODOLOGY 
+
+To enable thorough learning under computational efficiency, CIDERS coordinates two distinct roles, i.e., client-specific messenger adaptation and global teacher-guided backbone alignment. It considers only messenger updates at edges. Then it meticulously navigates the personalization with the global trajectory for fast adapting meta-knowledge encoded within the messenger. On the cloud, the client messengers are aggregated and fixed, then BL learns foundational linguistic representations encoded within the full backbone. This archi-tectural decomposition and orchestration provide a complete coordination pathway for heterogeneous edge LLMs reaching personalization with the fast global convergence. We summa-rize the cloud-edge LLM collaborative learning procedure in Algorithm 2. 
+
+A. Compressed Model Preparation 
+
+For the pre-trained LLM M˚ with n transformer layers, we decompose M˚ into distinct functional modules ( BF ,
+
+BL, PM ). This structural decomposition is grounded in the hierarchical representation learning of LLMs: lower layers en-code shared domain-agnostic linguistic priors, while upper lay-ers capture heterogeneous higher-order semantic abstractions. Consequently, the topmost layers are chosen as the messenger 
+
+PM for rapid local adaptation, while the frozen full back-bone BF preserves foundational capabilities. The learnable backbone BL is a uniform strided subsample of BF , yielding a compact global surrogate. Since directly launching cloud-edge collaborative learning on these disjoint modules may flaw due to the heterogeneity of PM ’s massive representation mismatches, pre-alignment via TAKD in (2) for initializing 
+
+BL should be implemented before client updates so that the local updates start from a teacher-informed compressed path.  
+
+> ‚
+
+Step 1: PM Identification. The messenger PM , parameter-ized by wPM , comprises the topmost a layers of M˚. It acts as the client-side adapter to capture domain-specific knowledge. The remaining model constitutes the frozen full backbone BF (wBF ).  
+
+> ‚
+
+Step 2: Learnable Backbone Construction. To preserve the teacher’s depth-wise coverage on clients, we compress BF
+
+Algorithm 1 Module Preparation  
+
+> 1:
+
+function MODEL PREP (M˚, a, β, Dpub ) 
+
+> 2:
+
+Obtain the LLM layer number n Ð | M˚|, 
+
+> 3:
+
+Compute BL’s layers n1 Ð tβ ¨ p n ´ aqu. 
+
+> 4:
+
+BF Ð t M˚,i un´a´1 
+
+> i“0
+
+, PM Ð t M˚,i un´1
+
+> i“n´a
+
+; 
+
+> 5:
+
+Get Indices Ð ␣tj ¨ n´a´1 
+
+> n1´1
+
+u | j “ 0, . . . , n 1 ´ 1(, 
+
+> 6:
+
+Sample to form BL Ð tp BF qk | k P Indices u, 
+
+> 7:
+
+Initialize wPM , w BF and wBL 
+
+> 8:
+
+Train wBL Ð argmin wBL
+
+LKD pwBL ; wPM , Dpub q 
+
+> 9:
+
+return PM , BF , BL; 
+
+> 10:
+
+end function 
+
+by uniformly extracting its nE “ tβ ¨ p n ´ aqu to construct 
+
+BL (wBL ), where β P p 0, 1s is the compression rate.  
+
+> ‚
+
+Step 3: Pre-alignment via TAKD. Prior to collaborative learning, BL undergoes TAKD on Dpublic for learning BF ’s linguistic priors. In summary, we detail the whole preparation in Algorithm 1. 
+
+B. Client Update Procedure 
+
+The client update is meticulously designed to solve the upper-level personalized meta-objective in (1) under the com-plex environment of the real-world. Our strategy targets incor-porating the global learning tragectory into the meta-gradient for personalization adaptation under data heterogeneity. 
+
+Consensus-corrected geometric update. At round t, each participated client i P St receives the global state triplet 
+
+> twptq
+> PM , w ptq
+> BL , c ptqu
+
+, then it initializes its local messenger at the current global messenger, i.e., wptq   
+
+> PM,i, 0Ðwptq
+> PM
+
+, and retrieves its historical consensus variate cptq 
+
+> i
+
+. To prevent overfitting to local noise while navigating the heterogeneous landscape, the messenger is updated via a consensus-variate-corrected geometric interpolation over K steps: 
+
+wptq 
+
+> PM,i,k `1
+
+“ wptq 
+
+> PM,i,k
+
+´ ηg ptq 
+
+> traj
+
+, where 
+
+gptq 
+
+> traj
+
+“ rgi,k ` γ`cptq ´ cptq
+
+> i
+
+˘ ` ϵ`wptq 
+
+> PM,i,k
+
+´ wptq
+
+> PM
+
+˘, (4) 
+
+rgi,k is the personalized meta-gradient computed based on a mini-batch ξi,k „ Di such that 
+
+rgi,k “ ∇wPM Li
+
+´rwptq 
+
+> PM,i,k
+
+, w ptq 
+
+> BL
+
+; ξi,k 
+
+¯
+
+, (5) with rwptq 
+
+> PM,i,k
+
+being the one-step look-ahead as follows: 
+
+rwptq 
+
+> PM,i,k
+
+“ wptq 
+
+> PM,i,k
+
+´ ηinner ∇wPM Li
+
+´
+
+wptq 
+
+> PM,i,k
+
+, w ptq 
+
+> BL
+
+; ξi,k 
+
+¯
+
+.
+
+(6) In practical inplementations, (4) in fact uses SGD in the opti-mizer tool, i.e., wptq 
+
+> PM,i,k `1
+
+Ð OPTIM pSGD , w ptq 
+
+> PM,i,k
+
+, g ptq 
+
+> traj
+
+, η q,and other optimizer such as AdamW works also well. To circumvent the heavy computation of rgi,k , CIDERS employs two Hessian-Free (HF) meta-optimization strategies. The first is FO strategy, which intentionally drops the second-order derivative, assuming the Hessian impact is locally negligi-ble: vi :“ rgFO  
+
+> i,k
+
+“ ∇wPM LipwPM ´ ηinner ∇wPM Liq. This requires only standard forward-backward passes, serving as the IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 6
+
+lightweight default. The second is FD, which adopts central-difference Hessian–vector estimate 
+
+zHivi “ ∇L ipw ` εFD viq ´ ∇L ipw ´ εFD viq
+
+2εFD 
+
+, (7) and the curvature-aware surrogate can be obtained gFD  
+
+> i
+
+“
+
+vi ´ λHVP zHivi, and here λHVP “ ηin . We further provide an insightful analysis of the consensus-corrected geometric update in (4) via the following three aspects. First, the term 
+
+γpcptq ´ cptq 
+
+> i
+
+q estimates of how far is the local meta-gradients to the global gradient direction and reaches the consensus-informed global–personal coordination. Second, the geometric scaler γ P r 0, 1s explicitly parameterizes a continuous zero-sum game between global consensus and local specialization: when γ “ 1, the correction fully aligns the client toward the global meta-initialization, when γ Ñ 0, the update reduces to pure local meta-gradient descent. Third, the proximal term 
+
+´ϵη pwptq 
+
+> PM,i,k
+
+´wptq 
+
+> PM
+
+q bounds divergence from the current global state, improving stability in heterogeneous regimes. After completing K local steps, we record each client’s average update trajectory as: 
+
+∆i,t :“ 1
+
+Kη 
+
+´
+
+wptq 
+
+> PM
+
+´ wptq
+
+> PM,i,K
+
+¯
+
+, (8) which serves as the estimator of the local tragectory. It can be seen ∆i can be used to update both the global messenger and the global consensus variate on the cloud in (12). The local consensus variate is designed to estimate the local meta-gradient with the K averaging of rgi,k and is subsequently refreshed using an exponential moving average (EMA) as follows: 
+
+cpt`1q 
+
+> i
+
+“ “1 ` αpγ ´ 1q‰cptq 
+
+> i
+
+` α∆i,t ´ αγc ptq. (9) Then client i transmits the incremental consensus difference 
+
+∆ci “ cpt`1q 
+
+> i
+
+´ cptq 
+
+> i
+
+(10) to the cloud. It can be seen that with ∆ci, the cloud can recover ∆i,t by storing ci for updating the global messenger. Consequently, the upstream communication payload is reduced to a single low-dimensional consensus increment. 
+
+C. Server Update Procedure 
+
+As the centralized orchestrator, the server advances the global meta-initialization via consensus-informed aggregation and refining the global representation backbone via task-aware distillation. With our skillful design, CIDERS can update the client messengers and the consensus variate via recovering ∆i
+
+from ∆ci.
+
+Key information reconstruction. For each participated client 
+
+i P St, it receives the consensus variate increment ∆ci “
+
+cpt`1q 
+
+> i
+
+´ cptq 
+
+> i
+
+. Then the server exactly recovers the averaged local messenger update trajectory ∆i,t using its synchronized historical state cptq 
+
+> i
+
+:
+
+∆i,t “ 1
+
+α ∆ci ´ p γ ´ 1qcptq 
+
+> i
+
+` γc ptq. (11) The cloud-stored local consensus variate copies are subse-quently updated via cpt`1q 
+
+> i
+
+Ð cptq 
+
+> i
+
+` ∆ci. This strategic 
+
+Algorithm 2 Algorithmic Framwork of CIDERS 
+
+Input: Original LLM M˚, length of messenger a, com-pression rate β, consensus cp0q, c p0q 
+
+> i
+
+and the parameters 
+
+pα, γ, τ, η, K, T q. 
+
+> 1:
+
+tPM , BF , BLu Ð MODELPREP pM˚, a, β, Dpub q; 
+
+> 2:
+
+for t “ 0, 1, . . . , T ´ 1 do  
+
+> 3:
+
+Server performs the lower-level training  
+
+> 4:
+
+Recovers exact updates t∆i,t uiPSt from t∆ciuiPSt . 
+
+> 5:
+
+Performs the consensus and model aggregation via  
+
+> 6:
+
+cpt`1q Ð p 1´αqcptq ` α ř 
+
+> iPSt
+
+pi∆i,t and  
+
+> 7:
+
+wpt`1q 
+
+> PM
+
+Ð wptq 
+
+> PM
+
+´ τ ř 
+
+> iPSt
+
+pi∆i,t . 
+
+> 8:
+
+Performs TAKD for the coordination of BL and PM
+
+wpt`1q 
+
+> BL
+
+Ð arg min wBL LKD on Dpub  
+
+> 9:
+
+Transmits twpt`1q 
+
+> PM
+
+, w pt`1q 
+
+> BL
+
+, c pt`1qu to St`1; 
+
+> 10:
+
+Client performs upper-level training  
+
+> 11:
+
+for each client i P St in parallel do  
+
+> 12:
+
+Obtains the local messenger wptq 
+
+> PM,i,K
+
+via (4)  
+
+> 13:
+
+Calculates ∆i,t Ð 1{Kη 
+
+`wptq 
+
+> PM
+
+´ wptq
+
+> PM,i,K
+
+˘ 
+
+> 14:
+
+Updates cpt`1q 
+
+> i
+
+Ð r 1`αpγ´1qs cptq 
+
+> i
+
+`α∆i,t ´αγc ptq. 
+
+> 15:
+
+end for  
+
+> 16:
+
+Transmits ∆ci Ð cpt`1q 
+
+> i
+
+´ cptq 
+
+> i
+
+to the cloud.  
+
+> 17:
+
+end for  
+
+> 18:
+
+Edge inferences via: Mi Ð Compose pwpT q 
+
+> PM,i
+
+, w pT q 
+
+> BL
+
+q;recovery avoids the upstream transmission of raw messenger weights, thereby reducing the bandwidth costs and shielding the local optimization trajectories from direct privacy expo-sure. 
+
+Global aggregation. Given the reconstructed t∆i,t uiPSt , the server simultaneously advances the aggregation of the global messenger and the global consensus variate as follows: 
+
+wpt`1q 
+
+> PM
+
+“ wptq 
+
+> PM
+
+´ τ Kη ÿ
+
+> iPSt
+
+pi∆i,t ,cpt`1q “ p 1 ´ αqcptq ` α ÿ
+
+> iPSt
+
+pi∆i,t , (12) where pi “ | Di|{ ř 
+
+> jPSt
+
+|Dj | (here pi “ 1{N for simplicity), and τ ą 0. Geometrically, the global messenger update acts as a convex combination of the current meta-initialization and the local adaptations, with the learning rate τ dampening aggrega-tion noise inherent to partial client participation. Concurrently, 
+
+cpt`1q functions as a population-level consensus anchor. It tracks the moving average of the personalized gradients to smooth out round-to-round variance and provide an unbiased reference direction for subsequent client adaptations. 
+
+Learning BL via TAKD. Finally, the lower-level objective in (3) learns BL from BF . By fixing PM , this procedure also plays the role in coordination and adaptation, ensuring the alignment with the current meta-adaptation context. Specifi-cally, we have: 
+
+wpt`1q 
+
+> BL
+
+Ð arg min 
+
+> wBL
+
+LKD 
+
+´
+
+wBL ; wpt`1q
+
+> PM
+
+¯
+
+. (13) While this guarantees that BL absorbs foundational linguistic features, it establishes a robust, task-aligned representation foundation for the next round of client update. IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 7
+
+V. T HEORETICAL ANALYSIS 
+
+We have proposed CIDERS, and the key mechanisms are twofold: we first divide the LLM into functional modules and adopts different optimization strategies for each of them, then we incoporates the global tracjectory in the personalized bilevel optimization framework (3). This will bring complex principles. Luckily, our proposed framework is theoretically robust. 
+
+A. Convergence Analysis 
+
+In this section, we analyze the proposed personalized bilevel structure solved by CIDERS, which we show achieves a sublinear convergence rate to a neighborhood of the stationary point. For simplicity, we denote the PBO as: 
+
+min  
+
+> v
+
+Φpvq ` ε
+
+2
+
+››v ´ v´››2 , s.t. wS “ arg min 
+
+> wS
+
+LKD pwS ; vq ,
+
+(14) where v denotes the global messenger, wS the learnable student backbone, Φpvq “ 1
+
+> N
+
+ř 
+
+> i
+
+Li prvi, w ˚ 
+
+> S
+
+pvqq is the upper-level meta-objective with rvi “ v ´ ηinner ∇v Li pv, w ˚ 
+
+> S
+
+pvqq , and 
+
+w˚ 
+
+> S
+
+pvq is the exact minimizer of the lower-level task-aware knowledge distillation loss LKD p¨ ; vq on the public dataset. Since CIDERS maintains an inexact backbone wptq 
+
+> S
+
+together with consensus-corrected local messenger steps, the quantity of interest is the joint gap 
+
+Jt :“ E“Φpvptqq ´ Φ˚‰ ` E››wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq››2. (15) Moreover, to track the coupled evolution of all error sources, we construct a Lyapunov function to couple all error sources, i.e., the virtual messenger error, client drift Et, consensus lags 
+
+Ct, rCt, and the joint gap Jt:
+
+V ptq “ `1 ´ 4a2˘ E
+
+›››zptq ´ v˚
+
+›››2
+
+` ω1Et
+
+` Qw2ηC t ` Qw3η rCt ` Qw4ηJ t,
+
+(16) where we have defined zptq “ vptq ` p1´τ q{τ ¨ p vptq ´ vpt´1qq,
+
+and a, ω 1, Q w2, Q w3, Q w4 are positive. Then, the convergence of CIDERS solving PBO (3) is: 
+
+Theorem 1 (Ergodic convergence of CIDERS) . Under regular assumptions and moderate conditions, let the step size satisfies 
+
+η “ OpT ´1{2q, then the ergodic joint gap satisfies where 
+
+V p0q 
+
+> 0
+
+“ p 1 ´ 4a2qE}zp0q ´ v˚}2 ` ω1E0 and Cη2 ą 0 is a constant from the expansion of D1 
+
+> tot
+
+. Then the ergodic average of the joint gap satisfies 
+
+1
+
+T 
+
+> T´1
+
+ÿ
+
+> t“0
+
+Jt ď Cη
+
+δΦ
+
+` 2
+
+δΦ
+
+d
+
+V p0q 
+
+> 0
+
+Cη2
+
+T ` V p0q
+
+> 1
+
+δΦT ` Cη3 V p0q
+
+> 0
+
+δΦCη2 T `O
+
+´
+
+T ´3{2¯
+
+,
+
+(17) 
+
+where Cη , C η2 , C η3 are positive constants, V p0q 
+
+> 0
+
+“ p1 ´
+
+4a2qE}zp0q ´ v˚}2 ` ω1E0 collects the intial client drift, and V p0q 
+
+> 1
+
+“ Qw2C0 ` Qw3 rC0` Qw4J0 collects the initial consensus lags and the joint gap. 
+
+The detailed proof and discussions on the convergence result is moved to Appendix. 
+
+B. Geometry of the Trajectory 
+
+Consider a fixed communication round t, the client i obtains the global messenger ¯v :“ wptq 
+
+> PM
+
+from the server and performs multiple local updates, where the trajectory is simultaneously determined by three forces: the local meta-gradient provides a personalized direction, the consensus correction pulls the local messenger xk :“ wptq 
+
+> PM,i,k
+
+towards the global consensus, and the proximal constraint resists the messenger’s deviation from the starting point, which constitutes a tightly coupled nonlinear dynamical process, making it extremely difficult for an analysis. Here, we develop an approximate geometric characterization that isolates the core factors. Specifically, let us define ρ :“ 1 ´ ηε and SK :“ řK´1 
+
+> j“0
+
+ρK´1´j , we can unroll (4) 
+
+¯v ´ xK “ η ÿK´1 
+
+> j“0
+
+ρK´1´j gi,j ` ηS K ¨ γ
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+. (18) Then, we define the along-path average meta-gradient sgptq 
+
+> i
+
+:“
+
+> 1
+
+{SK
+
+řK´1 
+
+> j“0
+
+ρK´1´j gi,j . Then (18) can be rewritten as 
+
+∆i,t “ σK
+
+´
+
+¯gptq 
+
+> i
+
+` γ
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯¯ 
+
+, (19) where σK :“ SK {K P p 0, 1s. It can be seen the correction shapes the direction and the proximity modulates the magni-tude. 
+
+1) Convex Combination: Let rgptq 
+
+> i
+
+:“ ∇L ip¯vq denote the lo-cal meta-gradient at the broadcast point and rGptq :“ ř 
+
+> j
+
+pj rgptq
+
+> j
+
+the global average gradient. Define the heterogeneity gap 
+
+δptq 
+
+> i
+
+:“ rgptq 
+
+> i
+
+´ rGptq. To render the directional dynamics analytically tractable and obtain a closed-form characterization of the personalization and globalization trade-off, we introduce the idealizing approximations: A1. Short local step : The total local displacement is suffi-ciently small, i.e., Kη ! 1{L, where L is the Lip-schitz constant of the meta-gradient, so that sgptq 
+
+> i
+
+«
+
+˜gptq 
+
+> i
+
+. The path error ϕptq 
+
+> i
+
+:“ sgptq 
+
+> i
+
+´ ˜gptq 
+
+> i
+
+is bounded by 
+
+O pLC K ηG bd q.A2. Fixed heterogeneity : The heterogeneity gap is constant across rounds, i.e., δpt`1q 
+
+> i
+
+“ δptq 
+
+> i
+
+“ δi. This holds exactly for quadratic meta-losses and serves as a first-order approximation when the messenger moves slowly. A3. No proximal damping : We set ε “ 0, hence σK “ 1. The case σK ‰ 1 is treated separately and shown to preserve span invariance while renormalizing the scalar recurrence. A4. Cold start : Initializes cp0q “ cp0q 
+
+> i
+
+“ 0, thus rp0q 
+
+> i
+
+“ δi.A5. Full participation : All clients participate in every round. Under (A1-A5), the displacement is simplified to ∆i,t «
+
+rgptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+q, We now define the reference field, which is he effective total direction as follows 
+
+uptq 
+
+> i
+
+:“ rgptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+q. (20) To track how this reference field relates to the global consensus direction rGptq, we introduce the residual 
+
+rptq 
+
+> i
+
+:“ uptq 
+
+> i
+
+´ rGptq “ δptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+q. (21) Under the idealizing assumptions, the consensus-gap recursion yields a closed-form recurrence for rptq 
+
+> i
+
+:
+
+rpt`1q 
+
+> i
+
+“ p 1 ´ αqrptq 
+
+> i
+
+` αp1 ´ γqδi where rp0q 
+
+> i
+
+“ δi. (22) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 8
+
+In fact, the residual remains strictly proportional to δi:
+
+rptq 
+
+> i
+
+“ ψtδi where ψt :“ p 1 ´ γq ` γp1 ´ αqt. (23) Substituting (23) back into the definition of uptq 
+
+> i
+
+yields: 
+
+Proposition 2 (Convex combination of local and global directions) . Under approximations (A1)-(A5), the reference direction uptq 
+
+> i
+
+at client i in round t lies exactly on the line segment joining the local starting gradient rgi and the global average gradient rG :
+
+uptq 
+
+> i
+
+“ ψtrgi ` p 1 ´ ψtq rG, ψt “ p 1 ´ γq ` γp1 ´ αqt. (24) 
+
+Moreover, the displacement satisfies ∆i,t « uptq 
+
+> i
+
+.
+
+Proposition 2 provides a geometric characterization of the local messenger trajectory. The global consensus weight 
+
+p1 ´ ψtq “ γ p1 ´ p 1 ´ αqtq increases monotonically from 0 at t “ 0 to γ as t Ñ 8 , with a half-life of approximately 
+
+Θplog 2 {| log p1 ´ αq|q rounds. The scalar ψt thus interpolates between two regimes: at cold start pψ0 “ 1q, the direction is purely local; at lock-in ψ8 “ 1 ´ γ, the direction stabilizes at the convex combination specified by γ. The parameter α
+
+controls the speed of transition, while the pair pc, c iq imple-ments this transition through an exponential moving average that smoothly drives the translation from 0 to ´γδ i.
+
+2) Quantifying Deviations.: We quantify the direction devi-ations from the idea segment under the idealizing assumptions. Our first key insight is relaxing the short-inner-loop assump-tion (A1) introduces a path-averaging error. Note the alongpath error ϕptq 
+
+> i
+
+:“ ¯gptq 
+
+> i
+
+´ ˜gptq 
+
+> i
+
+is bounded by }ϕptq 
+
+> i
+
+} ď LC K ηG bd .Applying a variation of constants argument to the residual recurrence gives the uniform bound 
+
+}uptq 
+
+> i
+
+´ uptq 
+
+> i
+
+|pE0 q} ď 2γR `1 ´ p 1 ´ αqt˘ ď 2γR, (25) where R :“ LC K ηG bd and uptq 
+
+> i
+
+|pE0 q denotes the ideal direction from Proposition 2. Thus, the true direction lies within an O pγLKηG bd q neighborhood of the ideal segment. This deviation vanishes as Kη Ñ 0 and scales linearly with γ,reflecting the fact that stronger consensus alignment amplifies the sensitivity of the consensus variates to gradient estimation error. Second, even when the consensus are ideally locked, i.e., c « rG and ci « rgi, the executed field at an arbitrary point x along the inner path contains a Hessian remainder. Specifically, the Taylor expansion around ¯v gives 
+
+∇L ipxq ` γ pc ´ ciq « p 1 ´ γq∇L ipxq` γ∇L pxq ` γ `Hi ´ sH˘ px ´ ¯vq, (26) where Hi :“ ∇2Lip¯vq and ¯H :“ ř 
+
+> j
+
+pj Hj . The remainder is bounded by γχ }x´ ¯v}, with χ :“ max i
+
+››Hi ´ ¯H›› quantifying the heterogeneity of meta-Hessians across clients. This implies that when γ is large to extent, long local step may accumulate Hessian mismatch rather than improve consensus. 
+
+3) The Case σK ‰ 1: When ε ą 0, it satisfies σK “
+
+SK {K ă 1. Under (A1), (A2), and (A4), the recurrence generalizes to 
+
+rpt`1q 
+
+> i
+
+“ r 1 ´ α ` αγ p1 ´ σK qs rptq 
+
+> i
+
+` αp1 ´ γqδi. (27) It can be seen the span-invariance property rptq 
+
+> i
+
+P span tδiu is preserved, i.e., rptq 
+
+> i
+
+“ ψtδi, but ψt is modified as, 
+
+ψt`1 “ r 1 ´ α ` αγ p1 ´ σK qs ψt ` αp1 ´ γq, ψ 0 “ 1, (28) whose steady-state solution can be derived as follows 
+
+ψ8 “ 1 ´ γ
+
+1 ´ γ p1 ´ σK q . (29) Note σK ă 1, then ψ8 ą 1 ´ γ. Since up8q  
+
+> i
+
+“ rG ` ψ8δi “
+
+ψ8rgi ` p 1 ´ ψ8q rG, a larger ψ8 means the reference field is closer to rgi than the undamped counterpart 1 ´ γ in (24). The mechanism can be therefore concluded that the compression of the displacement σK ă 1 attenuates ∆i,t , so the consensus underestimate the gap δi and γpc ´ ciq is weaker than in the undamped case, resulting in the proximal damping driving the EMA to a more personalized field. 
+
+4) Quantitive Metric Design.: According to above, we define two complementary metrics that measure where agiven trajectory lies on the segment between. Let rgi, K “
+
+rgi ´ Proj rGprgiq be the component of rgptq 
+
+> i
+
+orthogonal to the global consensus direction. This axis captures updates that have zero directional derivative on the global average objective while contributing to client i ’s personalization. We define the drift reduction (DR) as DR ptq 
+
+> i
+
+:“ 1 ´ }rptq 
+
+> i}
+
+{}δptq 
+
+> i}
+
+, which measures the fraction of the initial heterogeneity gap δptq
+
+> i
+
+that has been cancelled toward the consensus direction. When 
+
+ri “ 0, we have DR “ 1, indicating full drift elimination; when ri “ δi, we have DR “ 0, indicating no drift reduction. Similarly, we define the personalization preservation (PPR) as 
+
+PPR ptq 
+
+> i
+
+:“ xuptq 
+
+> i,˜gptq
+> i, Ky
+
+{}˜gptq
+
+> i, K}2
+
+, which measures the projection of the reference field onto the purely local axis. When ui is fully aligned with ˜gi, we have PPR “ 1; when ui is fully aligned with rG, we have PPR “ 0. Substituting rptq 
+
+> i
+
+“ ψtδi and 
+
+uptq 
+
+> i
+
+“ ψtrgi ` p 1 ´ ψtq rG into the definitions of DR and PPR yields DR ptq 
+
+> i
+
+“ 1 ´ ψt and PPR ptq 
+
+> i
+
+“ ψt.VI. E XPERIMENTS 
+
+A. Experimental Setup and Protocols 
+
+We evaluate CIDERS through three protocols. Protocol A measures downstream performance and output alignment. Protocol B examines matched-domain performance of person-alized messengers, and Protocol C tracks PBO consensus-state dynamics under non-IID data. Table I summarizes the datasets, client-training-example totals, partitions, and evaluation units. We also run a separate compression sweep over messen-ger depths and learnable backbone drop ratios to quantify the quality and storage trade-off. Unless otherwise specified, CIDERS denotes CIDERS-FO, the first-order implementation; CIDERS-FD denotes the finite-difference variant. 
+
+Model composition. The main configurations in Protocols A and B use a six-layer messenger. For Qwen2.5-3B, the teacher-side segment uses 30 of the 36 backbone layers, while the student learnable backbone uses 24. For Qwen2-1.5B, the corresponding counts are 22 teacher-side layers and 18 learnable backbone layers. Clients train only the messenger LoRA parameters, with rank 4, LoRA scaling αLoRA “ 16 ,IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 9                              
+
+> Protocol Dataset Samples Clients Partition Evaluation basis Measurements
+> GSM8K 7,458 GSM8K: 1,319 questions Exact-match accuracy ADolly-15K 14,980 5Identical independence PPL: 6,698 target tokens PPL and ROUGE-L Rosetta 7,953 HumanEval-X: 164/language pass@1 BFive-domain 5,000 5One domain/client 1,500 test examples; 300/domain Response-NLL matrix CMetaMath 45,000 8MetaMath LDA 16,912 client-round observations Loss; consensus statistics
+
+Table I: Datasets and evaluation scope for Protocols A–C. Training samples are totals across all clients and include only samples assigned to client training; public-distillation and held-out samples are excluded. Evaluation units are reported in their native form: benchmark questions for GSM8K, target tokens for Dolly PPL, examples for Protocol B, and client-round observations for Protocol C. 
+
+and dropout 0.05. Protocol C additionally evaluates two- and four-layer messengers. A six-layer messenger uses 84 trainable LoRA tensors across attention and MLP projections. Server-side TAKD updates the learnable backbone LoRA separately, and AdapEmu combines the personalized messenger with the compressed learnable backbone at deployment. Each consen-sus state has the same dimensionality as the corresponding messenger LoRA state. Table II lists the reference layer counts and parameter sizes.           
+
+> Backbone Qwen2.5-3B Qwen2-1.5B
+> Full/Emu./Msg. layers 36/24/6 28/18/6 messenger LoRA params 1.247M 0.989M Student LoRA params 4.989M 2.968M Consensus state (MiB) 4.76 3.77
+
+Table II: Model composition and FP32 LoRA states for the six-layer messenger configurations. Clients train messenger LoRA, and server-side TAKD trains learnable backbone LoRA. 
+
+Data and evaluation. Protocol A uses five IID clients for GSM8K, Dolly, and Rosetta. The loader uses train/valida-tion/test proportions r0.998 , 0.001 , 0.001 s, respectively. The effective training counts in Table I exclude the loader’s held-out portions. Task evaluation instead uses GSM8K benchmark questions, a Dolly prompt–response corpus for corpus-level PPL and ROUGE-L, and HumanEval-X Python, Java, and Go problems. Rosetta supplies code-training data, whereas HumanEval-X supplies the code-evaluation benchmark. For Dolly, 6,698 is the target-token denominator for PPL. Pro-tocol B assigns medical, finance, customer support, code, and general-domain data to five separate clients. Each do-main contains 1,000 private training examples, 200 public examples used for distillation, and 300 evaluation examples. The five-domain evaluation uses Qwen2-1.5B with an 18-layer learnable backbone, the drop ratio 0.2, and a six-layer messenger. CIDERS-FO, CIDERS-FD, FedOT, and FedBiOT use the same client and evaluation split. Each source-domain messenger is evaluated on the same 300 examples in every tar-get domain, yielding a 5 ˆ 5 response-NLL matrix over 1,500 test examples rather than 7,500 distinct examples.Response negative log-likelihood (NLL) is used to evaluate the qual-ity of each source-domain messenger on a target domain. Lower values indicate better response modeling. The client and evaluation splits are shared across methods, whereas the server-side distillation sources differ. FedBiOT logs use a separate 4,500-record alignment artifact with a 3,600/450/450 training/validation/test split, while the corresponding FedOT alignment source was not consistently recorded. This mis-match limits direct component-level attribution. Protocol C uses a 50,000-example MetaMath source with logged split proportions r0.9, 0.05 , 0.05 s: 45,000 training examples and 2,500 examples in each held-out split. Training data are partitioned across eight clients by the MetaMath LDA splitter at Dirichlet parameters α “ 0.1 and α “ 0.4. In the plots, these settings are labeled h “ 1 and h “ 4, respectively. Protocol C is a mechanism study; its reported outcomes are training loss and consensus-state statistics. The temporal and PCA analyses use 14 complete FO/FD training trajectories covering two messenger depths and two learnable backbone drop ratios. Across eight clients and rounds 0–150, these trajectories provide 16,912 client-round observations. The coefficient-response analysis adds one further configuration, giving 15 configurations in total. 
+
+Training. Protocol A compares CIDERS with FedBiOT [32], FedOT [31], and LocalOT. Federated methods run for 150 rounds, with K “ 10 local optimizer updates per participating client in each round. LocalOT runs for 150 outer iterations without cross-client communication or aggregation. Protocol B uses 150 rounds with K “ 20 local updates per round and batch size 2. CIDERS client updates use AdamW with base learning rate 10 ´4, weight decay 0.01, global-norm clipping at 1.0, and a warmup-cosine schedule. The lookahead step size ηin follows the same learning-rate schedule. Gradient accumulation specifies how many microbatches contribute to one optimizer update. The server aggregation step is τ “ 0.02 ,the client-consensus update coefficient is αc “ 0.002 , and the local anchoring weight is ϵprox “ 0.01 . The coeffi-cient αc is distinct from the Dirichlet parameter α used in Protocol C. In Protocols A and B, the consensus-correction coefficient is fixed at γt “ 0.01 for Qwen2.5-3B and 0.05 for Qwen2-1.5B; Protocol C uses the schedule described in Section VI-D. Server-side TAKD begins with task-supervised bootstrap alignment. In subsequent rounds, it performs TL “ 5
+
+warm-started representation and output-alignment steps, with 
+
+λout “ 0.5 in Eq. (2). 
+
+B. Task Performance and Output Alignment 
+
+Protocol A evaluates the complete AdapEmu deployment path. Table III compares CIDERS with FedBiOT, FedOT, and IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 10 
+
+GSM8K Dolly HumanEval-X pass@1 Method Acc. Ò PPL Ó R-L Ò Py Ò Java Ò Go Ò
+
+Qwen2-1.5B / AdapEmu 18-layer learnable backbone + messenger 
+
+CIDERS 7.88% 9.53 0.2176 7.9% 3.0% 4.9% 
+
+FedBiOT 2.58% 10.52 0.1812 3.0% 3.7% 1.8% FedOT 2.05% 11.52 0.1639 1.2% 1.8% 1.2% LocalOT 2.20% 11.52 0.1612 1.2% 2.4% 1.2% 
+
+Qwen2.5-3B / AdapEmu 24-layer learnable backbone + messenger 
+
+CIDERS 16.38% 8.60 0.2384 9.1% 11.0% 6.7% 
+
+FedBiOT 5.23% 9.42 0.2307 6.7% 6.7% 3.0% FedOT 4.70% 10.50 0.2234 6.7% 4.3% 1.2% LocalOT 4.40% 10.50 0.2151 6.7% 3.0% 1.2% 
+
+Table III: Protocol A downstream performance of compressed AdapEmu. Code models are trained on Rosetta and evaluated using HumanEval-X pass@1. Bars are normalized within each backbone and metric, with PPL reversed. Numbers give the reported scores. Bold and underlined values mark the best and second-best scores at the displayed precision, including ties. 
+
+LocalOT on Qwen2-1.5B and Qwen2.5-3B. These are system-level comparisons under the recorded configurations. CIDERS ranks first on five of six Qwen2-1.5B metrics and all six Qwen2.5-3B metrics. Its GSM8K margins over FedBiOT are 5.30 and 11.15 percentage points, respectively. On Qwen2.5-3B, Dolly PPL decreases from 9.42 to 8.60, an approximately 8.7% reduction, and Python, Java, and Go pass@1 improve by 2.4–4.3 percentage points. On Qwen2-1.5B, Python and Go improve, whereas Java is 0.7 percent-age points lower. The largest percentage-point gains are on GSM8K, whereas code-generation gains vary by language. CIDERS therefore shows its clearest advantage on numerical reasoning; the code results are language-dependent. The paired Protocol A results also evaluate AdapFu, the full-backbone deployment setting. For CIDERS-FO, reconnecting the full backbone raises GSM8K accuracy from 16.38% to 47.46% on Qwen2.5-3B and from 7.88% to 29.80% on Qwen2-1.5B. HumanEval-X macro pass@1, averaged across Python, Java, and Go, increases from 8.94% to 39.02% and from 5.28% to 33.54%, respectively. These results show a substantial re-maining capability gap between compressed and full-backbone deployment, even when CIDERS improves on the compressed baselines. AdapEmu remains the primary setting for method comparison. The recurring Output-KL term encourages the Student Emulator to match the frozen teacher’s predictive distribution during server-side TAKD. Figure 2 compares CIDERS-FO configurations with and without this term; Ta-ble IV gives the CIDERS-FD comparison. The baseline mark-ers show the corresponding Protocol A results for context. Fig. 2 and Table IV show the FO comparison, the con-figuration with Output-KL has higher GSM8K accuracy by 4.40 percentage points, Java and Go pass@1 by 3.05 and 1.83 percentage points, and ROUGE-L by 0.0076. Dolly PPL changes by only 0.016, while Python pass@1 decreases by 1.22 percentage points. FD shows the same task-selective directions: GSM8K, Java, Go, and ROUGE-L improve, Python declines, and PPL changes little. Thus, adding Output-KL has task-selective effects rather than a uniform capability gain. The opposite changes across code languages make per-language reporting more informative than a single code average. A cautious interpretation is that Output-KL may favor some 5 10 15 
+
+> Accuracy (%)
+> LocalOT CIDERS FedOT FedBiOT
+
+(a) GSM8K   
+
+> 0.22 0.23 0.24
+> ROUGE-L
+> LocalOT CIDERS FedOT FedBiOT
+
+(b) Dolly ROUGE-L  
+
+> 910
+> Conditioned PPL
+> LocalOT CIDERS FedOT FedBiOT
+> ΔPPL = −0.016
+
+(c) Dolly PPL  
+
+> 510
+> pass@1 (%)
+> Go Java Python
+
+(d) HumanEval-X 
+
+> w/o Output-KL with Output-KL FedBiOT reference FedOT reference LocalOT reference
+
+Figure 2: Output-KL comparison for CIDERS-FO on Qwen2.5-3B. Segments connect configurations without and with recurring Output-KL. Additional method markers show Protocol A baseline performance. 
+
+tasks over others rather than improve all tasks uniformly. This pattern is consistent with Output-KL acting selectively across tasks, but the present results do not identify the mechanism behind the language-specific changes. 
+
+C. Finite Difference Diagnostics 
+
+CIDERS-FD adds a curvature correction estimated by a finite-difference Hessian–vector product (HVP). The correc-tion scale ηHVP is set by fd_eta and need not equal the lookahead step size ηin . Protocol A uses a finite-difference perturbation εFD “ 10 ´4 and ηHVP “ 0.001 ; the five-domain IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 11 
+
+Metric Without KL With KL Change 
+
+GSM8K accuracy 11.98 16.38 `4.40 
+
+Dolly PPL 8.616 8.602 ´0.014 
+
+Dolly ROUGE-L 0.2271 0.2339 `0.0068 
+
+Python pass@1 10.37 9.15 ´1.22 
+
+Java pass@1 7.93 11.59 `3.66 
+
+Go pass@1 4.27 6.71 `2.44 
+
+Table IV: Output-KL comparison for CIDERS-FD on Qwen2.5-3B. Accuracy and pass@1 are percentages, with changes reported in percentage points. PPL and ROUGE-L changes use their original scales. All changes are computed from the displayed values. 
+
+Protocol B FD evaluation uses ηHVP “ 0.0005 . We measure the relative correction magnitude as 
+
+rFD “ }ηHVP xHv }2
+
+}v}2 ` 10 ´12 ,
+
+where v is the first-order direction used in the optimizer step and xHv is its finite-difference HVP estimate. Both are restricted to trainable LoRA parameters. An optimizer-step observation is classified as small for rFD ď 0.1, moderate for 0.1 ă rFD ď 0.2, and large for rFD ą 0.2. These thresholds describe relative correction magnitude, not numer-ical instability. Fig. 3 compares ηHVP “ 0.005 and 0.0005 in a separate 50-round diagnostic. Each setting contains 4,996 recorded optimizer-step observations out of 5,000 nominal observations. The available records do not identify why four nominal observations are missing. At ηHVP “ 0.005 , large and moderate corrections account for 68.9% (3,441/4,996) and 28.0% (1,401/4,996) of observations. At 0.0005 , these proportions fall to 0.26% (13/4,996) and 1.06% (53/4,996). Moderate or large events occur in 50/50 rounds at the larger scale and 26/50 rounds at the smaller scale. The smaller scale therefore makes such events rare at the observation level, although they still occur in roughly half the rounds. Because 
+
+ηHVP appears directly in rFD , this comparison reflects both the chosen correction scale and the recorded training trajectories; it should not be read as a standalone curvature estimate. Separately, the final Protocol A comparison finds identical reported FO and FD values in 9 of 12 AdapEmu cells at the displayed precision. Among the accuracy and pass@1 metrics, the largest difference is 0.6 percentage points on Qwen2.5-3B HumanEval-X Java. The Dolly ROUGE-L difference is 0.0045 on its original scale. Neither solver is uniformly better. We therefore use FO as the default because it avoids finite-difference HVP evaluations while showing no consistent disadvantage in the reported final metrics. Event frequency changes sharply across the two diagnostic scales, whereas the final task metrics show no consistent FO–FD advantage. Within the evaluated settings, event frequency is therefore not predictive of final quality. This supports a simpler solver choice, but it does not establish an end-to-end speedup or explain the 150-round task outcomes from the separate 50-round diagnostic. 0.005 0.0005           
+
+> λHVP
+> 01000 2000 3000 4000 5000
+> Batch count
+> 154
+> 4,930 (98.7%) 1,401 (28.0%)
+> 53
+> 3,441 (68.9%)
+> 13
+> Batch composition
+> 0.005 0.0005
+> λHVP
+> 0% 20% 40% 60% 80% 100%
+> Round share (%)
+> 50/50 (100%) 26/50 (52%)
+> Moderate/large rounds
+> small: rFD ≤ 0.1 ; moderate: 0.1 < rFD ≤ 0.2 ; large: rFD > 0.2
+> Small Moderate Large
+
+Figure 3: Finite-difference correction profiles under two ηHVP 
+
+settings. Each setting contains 4,996 recorded optimizer-step ob-servations across 50 rounds. The left panel shows the observation composition by correction magnitude; the right panel shows the fraction of rounds containing at least one moderate or large correction event. 
+
+D. PBO Dynamics under Data Heterogeneity 
+
+Protocol C tracks training loss and consensus statistics over time, across scheduled coefficients, and in a shared PCA projection. For client i at round t, let Si,t contain the indices of its recorded local steps. At step s “ p i, t, k q, let gs be the uncorrected local gradient and let cglobal ,s and clocal ,s be the consensus vectors used in that step. They correspond to the global consensus ct and client consensus cti in the update rule. The corrected gradient is 
+
+geff ,s “ gs ` γtpsq
+
+`cglobal ,s ´ clocal ,s 
+
+˘.
+
+All steps in a round use the coefficient broadcast at its start. The normalized squared-residual statistic is 
+
+E-RAE i,t “
+
+ř 
+
+> kPSi,t
+
+}geff ,s ´ cglobal ,s }22
+
+ř
+
+> kPSi,t
+
+`}gs}22 ` } cglobal ,s }22 ` ϵ˘ ,
+
+with ϵ “ 10 ´12 . Each client-round value is a ratio of sums. Zero indicates an exact match to the global consensus at every recorded step. Because this is a normalized ratio, a value near one should not be interpreted as a vanishing residual. We also track S-DR and S-PPR, the distance-reduction and perpendicular-preservation diagnostics. Positive S-DR denotes reduced distance to the global reference, whereas higher S-PPR denotes greater preservation of the local orthogonal component. Fig. 4 summarizes loss and E-RAE over rounds 0–150. Client-round values are first aggregated within each config-uration at each round; curves and bands then show the cross-configuration mean and standard deviation. Most of the loss reduction occurs early: by round 15, the curves have achieved 74.0–76.0% of their total round-0-to-150 decrease; by round 30, this fraction reaches 86.8–88.5%. E-RAE approaches its IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 12 0 50 100 150 
+
+> Communication round
+> 02468
+> Mean training loss
+
+(a) Training loss    
+
+> 050 100 150
+> Communication round
+> 0.8 0.9 1.0 1.1
+> E-RAE
+
+(b) E-RAE           
+
+> CIDERS-FO CIDERS-FD recorded setting h= 1 recorded setting h= 4 ±1 configuration SD E-RAE reference (=1)
+
+Figure 4: Temporal PBO dynamics under two non-IID settings (Protocol C). Training loss and E-RAE, the normalized squared-residual statistic, are shown over rounds 0–150 for CIDERS-FO and CIDERS-FD at h “ 1 (α “ 0.1) and h “ 4 (α “ 0.4). Bands denote ˘1
+
+configuration standard deviation. The horizontal line marks E-RAE “ 1 as a diagnostic reference. 
+
+late-stage range of 0.995–0.996 while loss continues to de-crease. Thus, consensus alignment can stabilize while task loss continues to improve. E-RAE summarizes normalized align-ment between update and consensus vectors, whereas training loss tracks progress on the task objective; the two statistics provide complementary views of adaptation. At round 150, loss at α “ 0.4 is 19.3% higher than at α “ 0.1 for CIDERS-FO and 26.9% higher for CIDERS-FD. The loss separation between the recorded LDA settings is larger than the FO–FD separation, despite similar late-stage E-RAE. This difference reflects the two realized data partitions, so it should not be interpreted as a monotonic effect of the Dirichlet parameter on training difficulty. In Fig. 5, the coefficient sequence reconstructed from the recorded telemetry is γ0 “ γ1 “ 0.9 and γt “ max p0.01 , 0.9 ¨
+
+0.86 t´1q for 2 ď t ď 150 . It reaches the floor at round 31, giving 31 distinct values. This describes the recorded trajectory; it is not an independent check of the coefficient schedule used in training. Fig. 5 groups consensus statistics by the scheduled coefficient within each configuration before summarizing the distribution across configurations. Because 
+
+γt decreases with round and its floor is shared by multiple late rounds, these curves describe the training trajectory rather than an independent coefficient sweep. At small γt, S-DR is close to zero; it becomes more negative at middle and high coefficient values and partially rebounds at the largest recorded coefficient. Negative S-DR means that the corrected direction is farther from the global reference than the un-corrected local direction under this proxy. S-PPR remains high with a shallow U-shaped profile rather than following the 1 ´ γt reference. Thus, preserving the local orthogonal component can coincide with increased distance to the global reference. E-RAE also has a U-shaped profile, with smaller normalized residuals in the middle coefficient range. These patterns do not identify an optimal correction coefficient. Panel (c) traces the configuration-mean S-DR/S-PPR path, with endpoints aggregated from the actual round-0 and round-150 observations. FO and FD follow nearby but non-identical 0.0 0.5 
+
+> Scheduled coe ffi cient
+> γt
+> −0.25 0.00 0.25 0.50 0.75
+> S-DR
+
+(a) S-DR response  
+
+> 0.0 0.5
+> Scheduled coe ffi cient
+> γt
+> 0.2 0.4 0.6 0.8 1.0
+> S-PPR
+
+(b) S-PPR response  
+
+> −0.1 0.0
+> S-DR
+> 0.92 0.94 0.96 0.98 1.00
+> S-PPR
+
+(c) S-DR–S-PPR path  
+
+> 0.0 0.5
+> Scheduled coe ffi cient
+> γt
+> 0.7 0.8 0.9 1.0 1.1
+> E-RAE
+
+(d) E-RAE response 
+
+> CIDERS-FO CIDERS-FD 10--90% across con fi gurations Oracle diagnostic reference Round 0 Round 150
+
+Figure 5: Empirical consensus response to the scheduled coeffi-cient (Protocol C). S-DR, S-PPR, and E-RAE are aggregated within each configuration and then across configurations. Shaded regions show the 10th–90th percentile across 15 configurations. Dashed curves are idealized diagnostic references, not fitted trends. 
+
+trajectories. The scheduled coefficient scales the consensus correction; it should not be interpreted as a measured mixture of global and personalized updates. Fig. 6 projects five scalar statistics, i.e., local-consensus norm, consensus-increment norm, E-RAE, S-DR, and S-PPR, into a shared PCA basis. We fit the projection after globally IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 13 −17.5 −15.0 −12.5 −10.0 −7.5 −5.0 −2.5 0.0   
+
+> PC1 (42.4% variance)
+> −6 −4 −2 024
+> PC2 (23.2% variance)
+> C7 Point stage
+> Shared PCA of consensus-related statistics
+> Early Middle Late
+
+Figure 6: Shared PCA of consensus-related statistics (Protocol C). Five scalar statistics are globally standardized before a shared PCA fit over 16,912 client-round observations from 14 configurations, eight clients, and rounds 0–150. Point shading denotes training stage, paths connect client-stage centroids, and Client 7’s late-stage centroid is annotated. 
+
+standardizing these statistics with z-scores across the 16,912 client-round observations. Each point is one observation; paths join each client’s early-, middle-, and late-stage centroids. Late-stage centroids generally cluster more tightly in this projection, while Client 7 remains relatively displaced. This indicates a client-specific difference in the recorded scalar statistics, but the projection does not identify its cause or establish separation of the underlying consensus vectors. The PCA view therefore complements the time-series summaries rather than directly measuring personalization in the task output. Thus, consensus-state geometry and task loss should be read together: distinct client states can coexist with continued task improvement. 
+
+E. Personalized Messenger Evaluation 
+
+Protocol B asks whether each messenger has lower response NLL on its matched target domain than messengers trained for other source domains. Fig. 7 shows the five-domain matrices, computed from 300 shared examples per target domain. Let 
+
+Lij be the NLL of source-domain messenger i on target domain j. The average matched-domain advantage is 
+
+∆cross “ 120 
+
+ÿ
+
+> 1ďi,j ď5
+> i‰j
+
+Lij ´ 15
+
+ÿ5 
+
+> i“1
+
+Lii .
+
+Equivalently, each target domain contributes the difference between its four unmatched messengers’ mean NLL and its matched messenger’s NLL, with equal weight across domains. A positive gap favors the matched messenger. For CIDERS-FO, ∆cross “ 3.08 ˆ 10 ´4, or 0.0176% of mean self NLL. The range of target-column means is 2.1001 NLL, whereas the range of source-row means is only 
+
+1.88 ˆ 10 ´4. Target-domain differences are therefore much larger than source-messenger differences in these summaries. The small positive gap indicates a limited average matched-domain benefit, not strong output-level specialization. The CIDERS-FD matrix in the five-domain Protocol B evaluation shows a similar pattern. Mean self NLL is 1.7755 and ∆cross “ 4.66 ˆ 10 ´4 (0.0263% of self NLL); the target-column and source-row ranges are 2.0945 NLL and 
+
+3.56 ˆ 10 ´4, respectively. The reported evaluation-sample intervals are r2.50 , 3.66 sˆ 10 ´4 for FO and r2.56 , 6.76 sˆ 10 ´4
+
+for FD. Because the resampling procedure is unavailable, we report these intervals descriptively rather than as formal confidence intervals or measures of run-to-run variability. FedOT has mean diagonal and off-diagonal NLLs of 1.8745 and 1.8875, with a reported gap of 0.01298. FedBiOT has corresponding values of 1.8247, 1.8349, and 0.01020. Both baselines have larger matched- domain gaps than CIDERS-FO. A larger gap does not imply lower absolute NLL: response loss and the benefit of source–target matching are different criteria. Here, CIDERS combines a smaller matched-domain effect with lower absolute response NLL, so the two quantities should be reported separately. The shared evaluation makes this relative comparison possible, while the alignment-data mismatch limits component-level attribution. 
+
+F. Compression and Deployment Tradeoffs 
+
+Table V reports Qwen2-1.5B response NLL and stored FP32 LoRA payload for messenger depths of two, four, and six and learnable backbone drop ratios of 0.2 and 0.5. This is a separate compression sweep, not the Protocol B source– target matrix experiment. Its NLL values should therefore be interpreted separately from the Protocol B matrix. With six messenger layers, increasing the learnable back-bone drop ratio from 0.2 to 0.5 reduces the CIDERS LoRA payload by approximately 29.2%, but raises its NLL from 1.754 to 4.115. FedBiOT NLL rises from 1.945 to 5.290 over the same drop-ratio comparison. The more aggressive compression therefore trades lower storage for higher response loss. Increasing messenger depth from two to six reduces CIDERS NLL by 15.1% at drop ratio 0.2 and 36.9% at drop ratio 0.5, with payload increases of approximately 4.3% and 13.3%, respectively. The gain is not uniform across depth increments or methods. At drop ratio 0.2, CIDERS changes only from 2.0657 to 2.0600 between two and four layers, whereas FedBiOT NLL increases from 2.3576 to 2.4090. The larger CIDERS gain in this setting occurs from four to six layers. Within the tested CIDERS grid, the six-layer messenger gives the best NLL, but this does not imply that every method improves monotonically with depth. CIDERS has the lowest NLL in all six matched grid configurations, with NLL 9.9– 22.2% below FedBiOT. Its minimum, 1.754, occurs at six messenger layers and drop ratio 0.2. This is the best evaluated CIDERS configuration by NLL, not an optimum over untested depths, drop ratios, or deployment budgets. Payload measures stored LoRA state only; it does not measure total model storage or runtime memory. IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 14 Medical Finance Cust. support Code General 
+
+Target domain                     
+
+> Medical Finance Cust. support Code General
+> Source domain
+> 1.0985 3.0598 1.3446 0.9597 2.3063 1.0985 3.0595 1.3446 0.9596 2.3061 1.0986 3.0600 1.3441 0.9599 2.3067 1.0986 3.0597 1.3447 0.9594 2.3063 1.0986 3.0598 1.3447 0.9597 2.3062
+
+CIDERS 
+
+> Medical Finance Cust. support Code General
+
+Target domain                     
+
+> 1.4992 3.0036 1.5236 1.1103 2.2546 1.5420 2.9961 1.5306 1.1095 2.2514 1.5266 3.0077 1.5099 1.1132 2.2631 1.5313 3.0055 1.5291 1.1152 2.2617 1.5345 3.0033 1.5320 1.1160 2.2522
+
+FedOT 
+
+> Medical Finance Cust. support Code General
+
+Target domain                     
+
+> 1.4076 2.9995 1.4837 1.0427 2.2148 1.4255 2.9920 1.4861 1.0406 2.2112 1.4246 3.0021 1.4710 1.0442 2.2230 1.4233 2.9998 1.4861 1.0394 2.2211 1.4277 3.0007 1.4913 1.0495 2.2133
+
+FedBiOT 
+
+> 1.0 1.5 2.0 2.5 3.0
+> Response NLL
+
+Figure 7: Cross-domain evaluation of personalized messengers (Protocol B). CIDERS-FO, FedOT, and FedBiOT are evaluated on the same five-domain Qwen2-1.5B set, with 300 target-domain examples per cell. Rows identify source messengers, columns identify target domains, and outlines mark matched cells. The shared color scale denotes response NLL; cell labels show four decimal places. 
+
+Drop ratio β Depth d CIDERS-FO FedBiOT FedOT NLL Ó MiB NLL Ó MiB NLL Ó MiB 
+
+0.2 2 2.0657 14.570 2.3576 14.568 2.2375 14.568 4 2.0600 14.570 2.4090 14.568 2.2671 14.568 6 1.7537 15.203 1.9454 15.201 1.8845 15.201 0.5 2 6.5222 9.502 7.4351 9.501 7.0028 9.501 4 5.1666 10.136 6.2889 10.134 6.3932 10.134 6 4.1151 10.769 5.2901 10.768 5.6596 10.768 
+
+Table V: AdapEmu quality and storage trade-off on Qwen2-1.5B (separate compression sweep). β denotes learnable backbone drop ratio and d denotes messenger depth. NLL is the five-domain response NLL; MiB denotes stored FP32 LoRA deployment payload, not total model storage or runtime memory. Boldface marks the lowest NLL within each row. 
+
+Table VI reports a separate quantity: recurrent FP32 messenger/consensus-state communication. Each CIDERS downlink contains a Meta-messenger and a same-sized global consensus; each uplink contains a Personalized messenger and a same-sized consensus increment. Learnable backbone down-link and protocol overhead are excluded. For per-direction payload p in MiB, the totals are 150 ˆ 5 ˆ 2 ˆ p{1024 GiB, assuming participation by all five clients in every round. 
+
+Backbone Method Per direction (MiB) Total (GiB) 
+
+Qwen2.5-3B CIDERS 9.516 13.94 Qwen2.5-3B FedBiOT/FedOT 4.758 6.97 Qwen2-1.5B CIDERS 7.547 11.06 Qwen2-1.5B FedBiOT/FedOT 3.773 5.53 Both LocalOT n/a n/a 
+
+Table VI: FP32 messenger/consensus-state communication. Per-direction values are per client per round. Totals assume all five clients participate in all 150 rounds and include both directions. Learnable backbone downlink and protocol overhead are excluded. 
+
+CIDERS therefore communicates approximately twice the counted messenger/consensus tensor volume of the one-messenger baselines. This ratio concerns the stated compo-nents, not total network traffic. Taken together, the results define a tunable trade-off among quality, storage, and com-munication: using a lower drop ratio and a deeper messenger improves response NLL, whereas the consensus state doubles the counted recurrent payload. This is a trade-off, not an unconditional efficiency advantage. 
+
+G. Integrated Discussion and Limitations 
+
+Protocol A evaluates the complete compressed CIDERS deployment path under the recorded configurations. CIDERS leads on most reported metrics, but the gains vary by task and backbone. Output-KL comparisons remain task-selective, and FD has no consistent final-metric advantage over FO. These results characterize the tested systems; they do not isolate the contribution of any single component. The large differences between AdapEmu and AdapFu further show that better compressed performance does not remove the capability cost of the smaller learnable backbone. Protocols B and C measure different aspects of personalization. Protocol B measures matched-domain response quality, whereas Protocol C measures consensus-vector geometry. These signals are complementary, but they are not interchangeable. Because the protocols use different datasets and clients, they cannot establish a direct link between directional preservation and response quality. The separate compression sweep likewise characterizes only the tested quality and storage trade-offs. Ac-cordingly, the Output-KL, FO–FD, and cross-domain analyses IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 15 
+
+are descriptive rather than causal. The resampling procedure for the reported cross-domain intervals is unavailable, so these intervals are not interpreted as formal confidence intervals. In Protocol C, the bands show variation across configurations, not across independent training runs. The client partitions can be reconstructed from the available source code, logs, seed, and splitter, but no per-client manifests were saved with the checkpoints; the conclusions therefore remain limited to the two recorded LDA partitions. Runtime, peak memory, full network traffic, and provisioning costs were not measured on common hardware, so these component totals do not establish end-to-end system efficiency. VII. C ONCLUSION 
+
+This paper addresses the fundamental tension between global consensus and client personalization in cloud-edge LLM systems. We formalize the problem as a personalized bilevel optimization framework for cloud-edge LLM collabo-ration. Then, we further propose CIDERS, an efficient solver that decouples the model into a cloud-learnable backbone and a client-adaptable messenger. By embedding global trajec-tories into each local step via consensus-variate correction, CIDERS reconciles personalization with globalization. The-oretical analysis provides a geometric characterization of the local trajectory and a full convergence guarantee. Extensive ex-periments on Qwen2.5-3B/1.5B across the three complemen-tary protocols validate our approach: i) the local trajectories follows theories, ii) bilevel coordination preserves reasoning capability in compressed deployment, iii) backbone capacity matters more than messenger depth for response quality. These results establish CIDERS as a practically viable path toward the applicatoins of complex real-world intelligence. Future work will extend CIDERS to world models for embodied intelligence and physical-world simulation. REFERENCES [1] S. Yao, J. Zhao, D. Yu, N. Du, I. Shafran, K. Narasimhan, and Y. Cao, “ReAct: Synergizing reasoning and acting in language models,” in 
+
+International Conference on Learning Representations , 2023. [2] T. Schick, J. Dwivedi-Yu, R. Dess‘i, R. Raileanu, M. Lomeli, L. Zettle-moyer, N. Cancedda, and T. Scialom, “Toolformer: Language models can teach themselves to use tools,” in Advances in Neural Information Processing Systems , 2023. [3] A. Brohan, N. Brown, J. Carbajal, Y. Chebotar, X. Chen, K. Choroman-ski, T. Ding, D. Driess, A. Dubey, C. Finn, P. Florence, C. Fu, M. G. Arenas, K. Gopalakrishnan, K. Han, K. Hausman, A. Herzog, J. Hsu, B. Ichter, A. Irpan, N. Joshi, R. Julian, D. Kalashnikov, Y. Kuang, I. Leal, L. Lee, T.-W. E. Lee, S. Levine, Y. Lu, H. Michalewski, I. Mordatch, K. Pertsch, K. Rao, K. Reymann, M. Ryoo, G. Salazar, P. Sanketi, P. Sermanet, J. Singh, A. Singh, R. Soricut, H. Tran, V. Vanhoucke, Q. Vuong, A. Wahid, S. Welker, P. Wohlhart, J. Wu, F. Xia, T. Xiao, P. Xu, S. Xu, T. Yu, and B. Zitkovich, “RT-2: Vision-language-action models transfer web knowledge to robotic control,” arXiv preprint arXiv:2307.15818 , 2023. [4] D. Ha and J. Schmidhuber, “Recurrent world models facilitate policy evolution,” in Advances in Neural Information Processing Systems ,vol. 31, 2018. [5] X. Wang, Y. Han, V. C. M. Leung, D. Niyato, X. Yan, and X. Chen, “Convergence of edge computing and deep learning: A comprehensive survey,” IEEE Communications Surveys & Tutorials , vol. 22, no. 2, pp. 869–904, 2020. [6] H. Chen, W. Deng, S. Yang, J. Xu, Z. Jiang, E. C. H. Ngai, J. Liu, and X. Liu, “Towards edge general intelligence via large language models: Opportunities and challenges,” arXiv preprint arXiv:2410.18125 , 2024. [7] N. Houlsby, A. Giurgiu, S. Jastrzebski, B. Morrone, Q. de Laroussilhe, A. Gesmundo, M. Attariyan, and S. Gelly, “Parameter-efficient transfer learning for NLP,” in Proceedings of the 36th International Conference on Machine Learning , 2019, pp. 2790–2799. [8] X. L. Li and P. Liang, “Prefix-tuning: Optimizing continuous prompts for generation,” in Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing , 2021, pp. 4582– 4597. [9] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, “LoRA: Low-rank adaptation of large language models,” in International Conference on Learning Representations , 2022. [10] S. Ye, B. Ouyang, L. Zeng, T. Qian, X. Chu, J. Tang, and X. Chen, “Jupiter: Fast and resource-efficient collaborative inference of generative LLMs on edge devices,” in IEEE INFOCOM 2025 - IEEE Conference on Computer Communications . IEEE, 2025, pp. 1–10. [11] Y. Hu, C. Imes, X. Zhao, S. Kundu, P. A. Beerel, S. P. Crago, and J. P. Walters, “PipeEdge: Pipeline parallelism for large-scale model inference on heterogeneous edge devices,” in 2022 25th Euromicro Conference on Digital System Design (DSD) . IEEE, 2022, pp. 298–307. [12] M. Zhang, X. Shen, J. Cao, Z. Cui, and S. Jiang, “EdgeShard: Efficient LLM inference via collaborative edge computing,” IEEE Internet of Things Journal , vol. 12, no. 10, pp. 13 119–13 131, 2025. [13] S. Ye, J. Du, L. Zeng, W. Ou, X. Chu, Y. Lu, and X. Chen, “Galaxy: A resource-efficient collaborative edge AI system for in-situ transformer inference,” in IEEE INFOCOM 2024 - IEEE Conference on Computer Communications . IEEE, 2024, pp. 1001–1010. [14] A. Borzunov, D. Baranchuk, T. Dettmers, M. Riabinin, Y. Belkada, A. Chumachenko, P. Samygin, and C. Raffel, “Petals: Collaborative inference and fine-tuning of large models,” in Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 3: System Demonstrations) , 2023, pp. 558–568. [15] A. Mudvari, Y. Jiang, and L. Tassiulas, “SplitLLM: Collaborative inference of LLMs for model placement and throughput optimization,” 
+
+arXiv preprint arXiv:2410.10759 , 2024. [16] T. Berenbaum and M. Venkatachalam, “Pre-compiled pipeline shards for distributed LLM inference on intel AI PC fleets,” arXiv preprint arXiv:2608.19147 , 2026. [17] D. Macario, H. Seferoglu, and E. Koyuncu, “Model-distributed inference for large language models at the edge,” arXiv preprint arXiv:2505.18164 ,2025. [18] J. Park, S. Cho, and D. Han, “SpecEdge: Scalable edge-assisted serving framework for interactive LLMs,” in Advances in Neural Information Processing Systems , 2025. [19] Y. Han, Y. Gao, B. Hu, M. B. Mashhadi, Y. Duan, P. Xiao, and Y. Zhang, “PipeSD: An efficient cloud-edge collaborative pipeline inference framework with speculative decoding,” in Proceedings of the 43rd International Conference on Machine Learning , 2026. [20] Y. Zhang, Z. Gao, S. Yue, J. Li, and R. Wang, “PicoSpec: A pipelined collaborative speculative decoding framework for efficient edge-cloud LLM inference,” arXiv preprint arXiv:2603.19133 , 2026. [21] Z. Wang, Z. Shen, Y. He, G. Sun, H. Wang, L. Lyu, and A. Li, “FLoRA: Federated fine-tuning large language models with heterogeneous low-rank adaptations,” in Advances in Neural Information Processing Sys-tems , 2024. [22] J. Zhang, S. Vahidian, M. Kuo, C. Li, R. Zhang, T. Yu, G. Wang, and Y. Chen, “Towards building the federated GPT: Federated instruction tuning,” in ICASSP 2024 - IEEE International Conference on Acoustics, Speech and Signal Processing . IEEE, 2024. [23] Y. J. Cho, L. Liu, Z. Xu, A. Fahrezi, and G. Joshi, “Heterogeneous LoRA for federated fine-tuning of on-device foundation models,” in 
+
+Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , 2024, pp. 12 903–12 913. [24] P. Guo, S. Zeng, Y. Wang, H. Fan, F. Wang, and L. Qu, “Selective ag-gregation for low-rank adaptation in federated learning,” in International Conference on Learning Representations , 2025. [25] Y. Sun, Z. Li, Y. Li, and B. Ding, “Improving LoRA in privacy-preserving federated learning,” in International Conference on Learning Representations , 2024. [26] Z. Lin, X. Hu, Y. Zhang, Z. Chen, Z. Fang, X. Chen, A. Li, P. Vepakomma, and Y. Gao, “SplitLoRA: A split parameter-efficient fine-tuning framework for large language models,” arXiv preprint arXiv:2407.00952 , 2024. [27] T. Li, Y. Tang, Y. Song, C. Wu, X. Liu, P. Li, and X. Chen, “Split-Com: Communication-efficient split federated fine-tuning of LLMs via temporal compression,” arXiv preprint arXiv:2602.10564 , 2026. IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 16 
+
+[28] C. Gao and S. Q. Zhang, “DLoRA: Distributed parameter-efficient fine-tuning solution for large language model,” in Findings of the Association for Computational Linguistics: EMNLP 2024 , 2024, pp. 13 703–13 714. [29] P. Kairouz, H. B. McMahan, B. Avent, A. Bellet, M. Bennis, A. N. Bhagoji, K. Bonawitz, Z. Charles, G. Cormode, R. Cummings et al. ,“Advances and open problems in federated learning,” Foundations and Trends in Machine Learning , vol. 14, no. 1–2, pp. 1–210, 2021. [30] A. Z. Tan, H. Yu, L. Cui, and Q. Yang, “Towards personalized federated learning,” IEEE Transactions on Neural Networks and Learning Systems ,vol. 34, no. 12, pp. 9587–9603, 2023. [31] G. Xiao, J. Lin, and S. Han, “Offsite-tuning: Transfer learning without full model,” in Proceedings of the 40th International Conference on Machine Learning , 2023. [32] F. Wu, Z. Li, Y. Li, B. Ding, and J. Gao, “FedBiOT: LLM local fine-tuning in federated learning without full model,” in Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2024. [33] S. P. Karimireddy, S. Kale, M. Mohri, S. J. Reddi, S. U. Stich, and A. T. Suresh, “SCAFFOLD: Stochastic controlled averaging for federated learning,” in Proceedings of the 37th International Conference on Machine Learning , 2020, pp. 5132–5143. [34] H. B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. Ag¨ uera y Arcas, “Communication-efficient learning of deep networks from decen-tralized data,” in Proceedings of the 20th International Conference on Artificial Intelligence and Statistics , 2017, pp. 1273–1282. [35] T. Li, A. K. Sahu, A. Talwalkar, and V. Smith, “Federated optimization in heterogeneous networks,” in Proceedings of Machine Learning and Systems , vol. 2, 2020, pp. 429–450. [36] D. A. E. Acar, Y. Zhao, R. M. Navarro, M. Mattina, P. N. Whatmough, and V. Saligrama, “Federated learning based on dynamic regularization,” in International Conference on Learning Representations , 2021. [37] J. Wang, Q. Liu, H. Liang, G. Joshi, and H. V. Poor, “Tackling the ob-jective inconsistency problem in heterogeneous federated optimization,” in Advances in Neural Information Processing Systems , vol. 33, 2020, pp. 7611–7623. [38] Q. Li, B. He, and D. Song, “Model-contrastive federated learning,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2021, pp. 10 713–10 722. [39] M. G. Arivazhagan, V. Aggarwal, A. K. Singh, and S. Choud-hary, “Federated learning with personalization layers,” arXiv preprint arXiv:1912.00818 , 2019. [40] L. Collins, H. Hassani, A. Mokhtari, and S. Shakkottai, “Exploiting shared representations for personalized federated learning,” in Proceed-ings of the 38th International Conference on Machine Learning , 2021, pp. 2089–2099. [41] C. T. Dinh, N. H. Tran, and T. D. Nguyen, “Personalized federated learning with moreau envelopes,” in Advances in Neural Information Processing Systems , vol. 33, 2020, pp. 21 394–21 405. [42] T. Li, S. Hu, A. Beirami, and V. Smith, “Ditto: Fair and robust federated learning through personalization,” in Proceedings of the 38th International Conference on Machine Learning , 2021, pp. 6357–6368. [43] C. Finn, P. Abbeel, and S. Levine, “Model-agnostic meta-learning for fast adaptation of deep networks,” in Proceedings of the 34th International Conference on Machine Learning , 2017, pp. 1126–1135. [44] A. Fallah, A. Mokhtari, and A. Ozdaglar, “Personalized federated learning with theoretical guarantees: A model-agnostic meta-learning approach,” in Advances in Neural Information Processing Systems ,vol. 33, 2020, pp. 3557–3568. [45] Y. Wu, C. Tian, J. Li, H. Sun, K. Tam, L. Li, and C. Xu, “A survey on federated fine-tuning of large language models,” arXiv preprint arXiv:2503.12016 , 2025. [46] J. Zhang, S. Vahidian, M. Kuo, C. Li, R. Zhang, T. Yu, Y. Zhou, G. Wang, and Y. Chen, “Towards building the federated GPT: Federated instruction tuning,” arXiv preprint arXiv:2305.05644 , 2023. [47] J. Bian, Y. Peng, L. Wang, Y. Huang, and J. Xu, “A survey on parameter-efficient fine-tuning for foundation models in federated learning,” arXiv preprint arXiv:2504.21099 , 2025. [48] W. Kuang, B. Qian, Z. Li, D. Chen, D. Gao, X. Pan, Y. Xie, Y. Li, B. Ding, and J. Zhou, “FederatedScope-LLM: A comprehensive package for fine-tuning large language models in federated learning,” arXiv preprint arXiv:2309.00363 , 2023. [49] P. Guo, S. Zeng, Y. Wang, H. Fan, F. Wang, and L. Qu, “Selective ag-gregation for low-rank adaptation in federated learning,” arXiv preprint arXiv:2410.01463 , 2024. [50] J. Bian, L. Wang, L. Zhang, and J. Xu, “FedALT: Federated fine-tuning through adaptive local training with rest-of-the-world LoRA,” arXiv preprint arXiv:2503.11880 , 2025. [51] G. Hinton, O. Vinyals, and J. Dean, “Distilling the knowledge in a neural network,” arXiv preprint arXiv:1503.02531 , 2015. [52] V. Sanh, L. Debut, J. Chaumond, and T. Wolf, “DistilBERT, a distilled version of BERT: Smaller, faster, cheaper and lighter,” in NeurIPS Work-shop on Energy Efficient Machine Learning and Cognitive Computing ,2019. [53] X. Jiao, Y. Yin, L. Shang, X. Jiang, X. Chen, L. Li, F. Wang, and Q. Liu, “TinyBERT: Distilling BERT for natural language understanding,” in 
+
+Findings of the Association for Computational Linguistics: EMNLP ,2020, pp. 4163–4174. [54] W. Wang, F. Wei, L. Dong, H. Bao, N. Yang, and M. Zhou, “MiniLM: Deep self-attention distillation for task-agnostic compression of pre-trained transformers,” in Advances in Neural Information Processing Systems , vol. 33, 2020, pp. 5776–5788. IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 17 
+
+APPENDIX 
+
+DETAILED DERIVATIONS OF THEORETICAL ANALYSIS 
+
+We provide the complete algebraic derivations for the geometric characterization of the local messenger trajectory presented in Section V-B. 
+
+A. Derivation of Approximation A1 
+
+Recall (A1) the total inner-loop displacement is sufficiently small, i.e., Kη ! 1{L, so that ¯gptq 
+
+> i
+
+« ˜gptq 
+
+> i
+
+. The path error ϕptq 
+
+> i
+
+:“ ¯gptq 
+
+> i
+
+´ ˜gptq 
+
+> i
+
+is bounded by O pLKηG bd q. We now derive this bound. Let the meta-gradient map gpxq :“ ∇L ipxq be L-Lipschitz continuous }gpxq ´ gpyq} ď L}x ´ y}, @x, y . This is a standard smoothness assumption on the local meta-loss. Let Gbd :“ sup x }gpxq} be a uniform bound on the gradient norm. From the inner update (1) in the main text, we have: 
+
+xk`1 ´ ¯v “ ρ pxk ´ ¯vq ´ ηg i,k pxkq ´ ηγ pc ´ ciq , ρ :“ 1 ´ ηε. (30) For ε ě 0, we have ρ P p 0, 1s. Taking norms and applying the triangle inequality: 
+
+}xk`1 ´ ¯v} ď ρ }xk ´ ¯v} ` η }gi,k pxkq} ` ηγ }c ´ ci}ď ρ }xk ´ ¯v} ` ηG bd ` ηγC c “ ρ }xk ´ ¯v} ` ηG 1
+
+> bd
+
+. (31) where Cc :“ sup t }cptq ´ cptq 
+
+> i
+
+} is finite under the bounded gradient assumption, we further unrolling to derive: 
+
+}xK ´ ¯v} ď ηG 1
+
+> bd
+
+ÿK´1 
+
+> j“0
+
+ρK´1´j “ ηG 1
+
+> bd
+
+SK ď KηG 1
+
+> bd
+
+. (32) Now we bound the path error ϕptq 
+
+> i
+
+:“ ¯gptq 
+
+> i
+
+´ ˜gptq 
+
+> i
+
+. Recall: 
+
+¯gptq 
+
+> i
+
+“ 1
+
+SK
+
+ÿK´1 
+
+> j“0
+
+ρK´1´j gi,j pxj q , ˜gptq 
+
+> i
+
+“ gi, 0p¯vq, (33) and we can derive the path error ϕptq 
+
+> i
+
+as follows 
+
+}¯gptq 
+
+> i
+
+´ ˜gptq 
+
+> i
+
+} “ } 1
+
+SKK´1ÿ
+
+> j“0
+
+ρK´1´j pgi,j pxj q ´ gi, 0p¯vqq} ď 1
+
+SKK´1ÿ
+
+> j“0
+
+ρK´1´j }gi,j pxj q ´ gi, 0p¯vq} . (34) Using the Lipschitz property, it results in }gi,j pxj q ´ gi, 0p¯vq} ď L}xj ´ ¯v} ď KηG 1
+
+> bd
+
+, which we substitute into (34) and it leads to }ϕptq 
+
+> i
+
+} ď LC K ηG bd .
+
+B. Derivation of Approximation A2 
+
+A2 posits that the heterogeneity gap remains constant approximately across rounds, i.e., δpt`1q 
+
+> i
+
+« δptq 
+
+> i
+
+« δi.While this holds exactly for quadratic meta-losses, for general nonconvex losses it requires justification. Here, we demonstrate this locally valid via a second-order Taylor expansion of the loss function around the current broadcast point, and show that the approximation error decays naturally as the global model converges. Assume that each local loss function Li has an M -Lipschitz continuous Hessian, i.e., 
+
+››∇2Li pw1q ´ ∇2Li pw2q›› ď M }w1 ´ w2} , @w1, w 2. (35) Expanding the gradient ∇L i around the broadcast point ¯vptq and evaluating at an arbitrary nearby point w,we obtain: 
+
+∇L ipwq “ ∇L ip¯vptqq ` Hptq 
+
+> i
+
+pw ´ ¯vptqq ` Rptq 
+
+> i
+
+pwq, (36) where Hptq 
+
+> i
+
+:“ ∇2Lip¯vptqq is the local Hessian at the broadcast point, and the remainder term satisfies 
+
+}Rptq 
+
+> i
+
+pwq} ď M
+
+2 }w ´ ¯vptq}2. (37) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 18 
+
+Similarly, for the global average gradient ∇L :“ ř 
+
+> j
+
+pj ∇L j , we have: 
+
+∇L pwq “ ∇L p¯vptqq ` ¯Hptqpw ´ ¯vptqq ` Rptqpwq, (38) where ¯Hptq :“ ř 
+
+> j
+
+pj Hptq 
+
+> j
+
+is the average Hessian, and the global remainder Rptqpwq satisfies 
+
+}Rptqpwq} ď M
+
+2 }w ´ ¯vptq}2. (39) Our objective is to characterize the change in δi between rounds t and t ` 1. Let ¯vpt`1q “ ¯vptq` ∆¯ vptq, where 
+
+∆¯ vptq denotes the global messenger update from round t to t ` 1. Applying the expansions (36) and (38) at 
+
+w “ ¯vpt`1q, we obtain: 
+
+δpt`1q 
+
+> i
+
+“∇L ip¯vpt`1qq ´ ∇L p¯vpt`1qq“r ∇L ip¯vptqq ` Hptq 
+
+> i
+
+∆¯ vptq ` Rptq 
+
+> i
+
+p¯vpt`1qqs ´ r ∇L p¯vptqq ` ¯Hptq∆¯ vptq ` Rptqp¯vpt`1qqs “δptq 
+
+> i
+
+` p Hptq 
+
+> i
+
+´ ¯Hptqq∆¯ vptq ` p Rptq 
+
+> i
+
+p¯vpt`1qq ´ Rptqp¯vpt`1qqq .
+
+(40) Therefore, the cross-round variation of the heterogeneity gap is: 
+
+δpt`1q 
+
+> i
+
+´ δptq 
+
+> i
+
+“ p Hptq 
+
+> i
+
+´ ¯Hptqq∆¯ vptq ` Op} ∆¯ vptq}2q. (41) To justify treating δi as constant across rounds, we must show that the right-hand side of (B.18) is negligible at the scale of our analysis. First-order term (Hessian mismatch contribution): Define the worst-case Hessian heterogeneity as 
+
+χptq :“ max  
+
+> i
+
+}Hptq 
+
+> i
+
+´ ¯Hptq}. (42) Then the first-order term is bounded by: 
+
+}p Hptq 
+
+> i
+
+´ ¯Hptqq∆¯ vptq} ď χptq ¨ } ∆¯ vptq}. (43) Second-order remainder can be simply bounded by Op} ∆¯ vptq}2q. Therefore, we have }δpt`1q 
+
+> i
+
+´ δptq 
+
+> i
+
+} ď 
+
+Op} ∆¯ vptq}2q Ñ 0 as t Ñ 8 .
+
+C. Residual Recurrence 
+
+We first derive the consensus-gap recursion, recall the consensus updates are: 
+
+cpt`1q “ p 1 ´ αqcptq ` α ÿ
+
+> jPSt
+
+pj ∆j,t , and cpt`1q 
+
+> i
+
+“ r 1 ` αpγ ´ 1qs cptq 
+
+> i
+
+` α∆i,t ´ αγc ptq. (44) Under (A5) that St “ r N s, we can derive according to (44) 
+
+cpt`1q ´ cpt`1q 
+
+> i
+
+“p 1 ´ αqcptq ` α∆ptq 
+
+> avg
+
+´ r 1 ` αpγ ´ 1qs cptq 
+
+> i
+
+´ α∆i,t ` αγc ptq
+
+“p 1 ´ α ` αγ qcptq ´ p 1 ´ α ` αγ qcptq 
+
+> i
+
+` αp∆ptq 
+
+> avg
+
+´ ∆i,t q“r 1 ´ αp1 ´ γqsp cptq ´ cptq 
+
+> i
+
+q ` αp∆ptq 
+
+> avg
+
+´ ∆i,t q,
+
+(45) where ∆ptq 
+
+> avg
+
+:“ ř 
+
+> j
+
+pj ∆j,t . Thus, the consensus-gap recursion can be derived 
+
+cpt`1q ´ cpt`1q 
+
+> i
+
+“ r 1 ´ αp1 ´ γqsp cptq ´ cptq 
+
+> i
+
+q ` αp∆ptq 
+
+> avg
+
+´ ∆i,t q. (46) Next, we take average over ci in (44) and recall the definition cptq :“ ř 
+
+> j
+
+pj cptq 
+
+> j
+
+, we have 
+
+cpt`1q “ r 1 ´ αp1 ´ γqs cptq ` α∆ptq 
+
+> avg
+
+´ αγc ptq “ p 1 ´ αqcptq ` α∆ptq 
+
+> avg
+
+. (47) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 19 
+
+Subsequently, comparing to c update in (44), we have cptq “ cptq if it initializes cp0q “ cp0q. Next, we consider 
+
+∆ptq
+
+> avg
+
+. From ∆i,t “ ˜gptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+q, the average displacement is 
+
+∆ptq 
+
+> avg
+
+“ ÿ 
+
+> j
+
+pj p˜gptq 
+
+> j
+
+` γpcptq ´ cptq 
+
+> j
+
+qq “ rGptq. (48) Therefore, we obtain the following 
+
+∆ptq 
+
+> avg
+
+´ ∆i,t “ rGptq ´ p rgptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+qq “ ´ δptq 
+
+> i
+
+´ γpcptq ´ cptq 
+
+> i
+
+q. (49) Recall the reference field uptq 
+
+> i
+
+:“ ˜gptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+q and the residual relative to the global consensus direction satisfies rptq 
+
+> i
+
+:“ uptq 
+
+> i
+
+´ rGptq “ δptq 
+
+> i
+
+` γpcptq ´ cptq 
+
+> i
+
+q, which also lead to γpcptq ´ cptq 
+
+> i
+
+q “ rptq 
+
+> i
+
+´ δptq 
+
+> i
+
+. Under (A2) that δptq 
+
+> i
+
+“ δi, we Substituting (A.16) into (A.14): 
+
+cpt`1q ´ cpt`1q 
+
+> i
+
+“ r 1 ´ αp1 ´ γqs 
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+´ αδ i ´ αγ 
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+“ r 1 ´ αp1 ´ γq ´ αγ s
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+´ αδ i “ p 1 ´ αq
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+´ αδ i.
+
+(50) Now compute rpt`1q 
+
+> i
+
+with the result that γpcptq ´ cptq 
+
+> i
+
+q “ rptq 
+
+> i
+
+´ δptq 
+
+> i
+
+:
+
+rpt`1q 
+
+> i
+
+“ δi ` γ
+
+´
+
+cpt`1q ´ cpt`1q
+
+> i
+
+¯
+
+“ δi ` γ
+
+”
+
+p1 ´ αq
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+´ αδ i
+
+ı
+
+“ γp1 ´ αq
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+` p 1 ´ αγ qδi
+
+“ p 1 ´ αq
+
+´
+
+rptq 
+
+> i
+
+´ δi
+
+¯
+
+` p 1 ´ αγ qδi
+
+“ p 1 ´ αqrptq 
+
+> i
+
+` αp1 ´ γqδi.
+
+(51) Since the initial condition follows from (A4) that cp0q “ cp0q 
+
+> i
+
+“ 0, rp0q 
+
+> i
+
+“ δp0q 
+
+> i
+
+` γp0 ´ 0q “ δp0q 
+
+> i
+
+“ δi holds. Thus rpt`1q 
+
+> i
+
+“ p 1 ´ αqrptq 
+
+> i
+
+` αp1 ´ γqδi, rp0q 
+
+> i
+
+“ δi.
+
+D. Derivation of Proposition 2 
+
+We first solve the recurrence for ψt. Since the recurrence (51) expresses rpt`1q 
+
+> i
+
+as an R-linear combination of rptq 
+
+> i
+
+and δi, and rp0q 
+
+> i
+
+“ δi, it follows by induction that 
+
+rptq 
+
+> i
+
+P span tδiu @t ě 0. (52) Thus we can write rptq 
+
+> i
+
+“ ψtδi with a scalar ψt. Substituting into (51) leads to 
+
+ψt`1δi “ p 1 ´ αqψtδi ` αp1 ´ γqδi. (53) Since δi ‰ 0, we can cancel it which results in 
+
+ψt`1 “ p 1 ´ αqψt ` αp1 ´ γq, ψ0 “ 1. (54) We solve this nonhomogeneous first-order linear recurrence and the constant steady state ψ˚
+
+ψt “ p 1 ´ γq ` γp1 ´ αqt with ψ˚ “ 1 ´ γ. (55) Substituting (55) into the definition of the reference field we have 
+
+uptq 
+
+> i
+
+“ rGptq ` rptq 
+
+> i
+
+“ ψtrgi ` p 1 ´ ψtq rG. (56) This completes the derivation of the proposition 2. IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 20 
+
+E. Path-Averaging Error and Its Effect on the Residual 
+
+We now analyze the impact of relaxing the short-inner-loop assumption (A1). In the implemented local update, the along-path average ¯gptq 
+
+> i
+
+may differ from the starting oracle rgptq 
+
+> i
+
+, thus we introduce the path error 
+
+ϕptq 
+
+> i
+
+:“ ¯gptq 
+
+> i
+
+´ rgptq 
+
+> i
+
+. As established in Appendix B.1, this error is uniformly bounded, i.e., }ϕptq 
+
+> i
+
+} ď LC K ηG bd .We quantify how this path error propagates into the residual dynamics and the reference direction. We retain (A2)–(A5) and thus σK “ 1, ε “ 0 and ϕptq 
+
+> i
+
+‰ 0, then 
+
+∆i,t “ ¯gptq 
+
+> i
+
+` γ`cptq ´ cptq
+
+> i
+
+˘ “ rgptq 
+
+> i
+
+` ϕptq 
+
+> i
+
+` γ`cptq ´ cptq
+
+> i
+
+˘, (57) and we average over clients, it yields ∆ptq 
+
+> avg
+
+“ rGptq ` ¯ϕptq, where ¯ϕptq :“ ř 
+
+> j
+
+pj ϕptq 
+
+> j
+
+. Subsequently, we evaluate the displacement gap as follows 
+
+∆ptq 
+
+> avg
+
+´ ∆i,t “ ` rGptq ` ¯ϕptq˘ ´ `rgptq 
+
+> i
+
+` ϕptq
+
+> i
+
+˘ ` γ`cptq ´ ¯cptq˘ ´ γ`cptq ´ cptq
+
+> i
+
+˘
+
+“ ´ δptq 
+
+> i
+
+` ¯ϕptq ´ ϕptq 
+
+> i
+
+´ γ`cptq ´ cptq
+
+> i
+
+˘ (58) where rGptq ´ rgptq 
+
+> i
+
+“ ´ δptq 
+
+> i
+
+and ¯cptq “ cptq. Substituting into the consensus-gap recursion in (46) gives 
+
+cpt`1q ´ cpt`1q 
+
+> i
+
+“ “1 ´ αp1 ´ γq‰` cptq ´ cptq
+
+> i
+
+˘ ` α“´δptq 
+
+> i
+
+` ¯ϕptq ´ ϕptq 
+
+> i
+
+´ γ`cptq ´ cptq
+
+> i
+
+˘‰ 
+
+“ “1 ´ αp1 ´ γq ´ αγ ‰` cptq ´ cptq
+
+> i
+
+˘ ` α`´δptq 
+
+> i
+
+` ¯ϕptq ´ ϕptq
+
+> i
+
+˘
+
+“ p 1 ´ αq`cptq ´ cptq
+
+> i
+
+˘ ` α`´δptq 
+
+> i
+
+` ¯ϕptq ´ ϕptq
+
+> i
+
+˘.
+
+(59) Now let consider the residual, which satisfies rpt`1q 
+
+> i
+
+“ δpt`1q 
+
+> i
+
+` γ`cpt`1q ´ cpt`1q
+
+> i
+
+˘. Under (A2), we have the approximation δpt`1q 
+
+> i
+
+“ δptq 
+
+> i
+
+“ δi, and therefore it yields 
+
+rpt`1q 
+
+> i
+
+“ δi ` γ
+
+”
+
+p1 ´ αq`cptq ´ cptq
+
+> i
+
+˘ ` α`´δi ` ¯ϕptq ´ ϕptq
+
+> i
+
+˘ı
+
+“ γp1 ´ αq`cptq ´ cptq
+
+> i
+
+˘ ` p 1 ´ αγ qδi ` αγ ` ¯ϕptq ´ ϕptq
+
+> i
+
+˘
+
+“ p 1 ´ αqrptq 
+
+> i
+
+` αp1 ´ γqδi ` αγ ` ¯ϕptq ´ ϕptq
+
+> i
+
+˘,
+
+(60) where we have used the identity γ`cptq ´ cptq
+
+> i
+
+˘ “ rptq 
+
+> i
+
+´ δi. Now, let us turn to the ideal recurrence when 
+
+ϕptq 
+
+> i
+
+“ ¯ϕptq “ 0
+
+rpt`1q
+
+> i
+
+ˇˇpE0 q “ p 1 ´ αq rptq
+
+> i
+
+ˇˇpE0 q ` αp1 ´ γqδi, rp0q
+
+> i
+
+ˇˇpE0 q “ δi. (61) Subsequently, we define the path-induced deviation ˜rptq 
+
+> i
+
+:“ rptq 
+
+> i
+
+´ rptq
+
+> i
+
+ˇˇpE0 q, which can directly produce the following linear system 
+
+˜rpt`1q 
+
+> i
+
+“ p 1 ´ αq˜rptq 
+
+> i
+
+` αγ ` ¯ϕptq ´ ϕptq
+
+> i
+
+˘, with ˜rp0q 
+
+> i
+
+“ 0. (62) Unrolling (62) from s “ 0 to t ´ 1, we can obtain the following 
+
+˜rptq 
+
+> i
+
+“ αγ ÿt´1
+
+> s“0
+
+p1 ´ αqt´1´s` ¯ϕpsq ´ ϕpsq
+
+> i
+
+˘. (63) Taking norms and applying the triangle inequality, 
+
+}˜rptq 
+
+> i
+
+} ď 2αγR ÿt´1
+
+> s“0
+
+p1 ´ αqt´1´s “ 2αγR ¨ 1 ´ p 1 ´ αqt
+
+α “ 2γR `1 ´ p 1 ´ αqt˘, (64) where we have used }ϕpsq 
+
+> j
+
+} ď R for every client and ¯ϕpsq is a convex combination of ϕj , this leads to 
+
+} ¯ϕpsq ´ ϕpsq 
+
+> i
+
+} ď 2R. Therefore 
+
+}˜rptq 
+
+> i
+
+} ď 2αγR ÿt´1
+
+> s“0
+
+p1 ´ αqt´1´s “ 2αγR ¨ 1 ´ p 1 ´ αqt
+
+α “ 2γR `1 ´ p 1 ´ αqt˘. (65) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 21 
+
+Finally, rptq 
+
+> i
+
+“ uptq 
+
+> i
+
+´ rG and rptq
+
+> i
+
+ˇˇpE0 q “ uptq
+
+> i
+
+ˇˇpE0 q ´ rG, so the same bound holds for the reference direction: 
+
+››uptq 
+
+> i
+
+´ uptq
+
+> i
+
+ˇˇpE0 q
+
+›› ď 2γR `1 ´ p 1 ´ αqt˘ ď 2γR. (66) This proves the uniform bound and the deviation vanishes as Kη Ñ 0, which shows that a small local update step makes the convex-combination characterization hold with high accuracy. 
+
+F. Hessian remainder along the local path. 
+
+We now consider the effect of evaluating the meta-gradient at an intermediate point x along the local trajectory, rather than at the broadcast messenger ¯v. Even when the consensus variates are locked, c “ rG and 
+
+ci “ rgi, the executed field at x is 
+
+∇L ipxq ` γpc ´ ciq “ ∇L ipxq ` γ` rG ´ rgi
+
+˘. (67) We compare this with the designed convex combination p1 ´ γq∇L ipxq ` γ∇ ¯Lpxq. Subtracting yields 
+
+∇L ipxq ` γ` rG ´ rgi
+
+˘ ´ “p1 ´ γq∇L ipxq ` γ∇ ¯Lpxq‰ “ γ∇L ipxq ` γ` rG ´ rgi
+
+˘ ´ γ∇ ¯Lpxq“ γ“∇L ipxq ´ ∇ ¯Lpxq ´ p rgi ´ rGq‰ “ γ“` ∇L ipxq ´ rgi
+
+˘ ´ `∇ ¯Lpxq ´ rG˘‰ . (68) Now we compute the Taylor expansion of ∇L ipxq and ∇ ¯Lpxq respectively at ¯v
+
+∇L ipxq “ rgi ` Hipx ´ ¯vq ` O`}x ´ ¯v}2˘, and ∇ ¯Lpxq “ rG ` ¯Hpx ´ ¯vq ` O`}x ´ ¯v}2˘, (69) where Hi :“ ∇2Lip¯vq and ¯H :“ ř 
+
+> j
+
+pj Hj . Substituting these expansions produces 
+
+∇L ipxq ` γ` rG ´ rgi
+
+˘ “ p 1 ´ γq∇L ipxq ` γ∇ ¯Lpxq` γ“pHi ´ ¯Hqp x ´ ¯vq ` O`}x ´ ¯v}2˘‰ . (70) Thus the first-order remainder is exactly γpHi ´ ¯Hqp x ´ ¯vq. Recall χ :“ max i }Hi ´ ¯H} and the remainder is bounded by γχ }x ´ ¯v} ` Opγ}x ´ ¯v}2q. Therefore, the curvature mismatch introduces an error that scales with γ and with the local displacement }x ´ ¯v}.
+
+G. The case σK ‰ 1: detailed derivation of the renormalized recurrence 
+
+We now relax assumption (A3) and allow a proximal coefficient ε ą 0, which implies ρ “ 1 ´ ηε ă 1, and consequently 
+
+SK “ ÿK´1 
+
+> j“0
+
+ρK´1´j “ 1 ´ ρK
+
+1 ´ ρ ă K, (71) so that σK :“ SK{K P p 0, 1q. The displacement now carries the compression factor σK :
+
+∆i,t “ σK
+
+´
+
+¯gptq 
+
+> i
+
+` γ`cptq ´ cptq
+
+> i
+
+˘¯
+
+“ σK
+
+´rgi ` γ`cptq ´ cptq
+
+> i
+
+˘¯
+
+, (72) where under the small local update approximation (A1) and fixed heterogeneity (A2), we have used ¯gptq 
+
+> i
+
+“
+
+rgptq 
+
+> i
+
+“ rgi. The average displacement can be simply derived ∆ptq 
+
+> avg
+
+“ σK rG, this leads to 
+
+∆ptq 
+
+> avg
+
+´ ∆i,t “ σK
+
+´ rG ´ rgi ´ γ`cptq ´ cptq
+
+> i
+
+˘¯
+
+“ σK
+
+´
+
+´δi ´ γ`cptq ´ cptq
+
+> i
+
+˘¯
+
+, (73) where we substitute into the consensus gap recursion in (46) as follows 
+
+cpt`1q ´ cpt`1q 
+
+> i
+
+“ “1 ´ αp1 ´ γq‰` cptq ´ cptq
+
+> i
+
+˘ ` ασ K
+
+´
+
+´δi ´ γ`cptq ´ cptq
+
+> i
+
+˘¯
+
+“ “1 ´ αp1 ´ γq ´ αγσ K
+
+‰` cptq ´ cptq
+
+> i
+
+˘ ´ ασ K δi.
+
+(74) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 22 
+
+Now we substitute (74) into rpt`1q 
+
+> i
+
+“ δi ` γ`cpt`1q ´ cpt`1q
+
+> i
+
+˘ and subsequently we have 
+
+rpt`1q 
+
+> i
+
+“ δi ` γ
+
+”`1 ´ αp1 ´ γq ´ αγσ K
+
+˘` cptq ´ cptq
+
+> i
+
+˘ ´ ασ K δi
+
+ı
+
+“ γ`1 ´ αp1 ´ γq ´ αγσ K
+
+˘` cptq ´ cptq
+
+> i
+
+˘ ` p 1 ´ αγσ K qδi
+
+“ `1 ´ αp1 ´ γq ´ αγσ K
+
+˘rptq 
+
+> i
+
+`
+
+”
+
+´`1 ´ αp1 ´ γq ´ αγσ K
+
+˘ ` 1 ´ αγσ K
+
+ı
+
+δi
+
+“ “1 ´ α ` αγ p1 ´ σK q‰rptq 
+
+> i
+
+` αp1 ´ γqδi, rp0q 
+
+> i
+
+“ δi.
+
+(75) where we have also used γ`cptq ´ cptq
+
+> i
+
+˘ “ rptq 
+
+> i
+
+´ δi in (75), and we have complete the derivation of (27) in subsection V-B3. When σK “ 1, (75) reduces to the undamped recurrence in proposition 2, i.e., (51). Here, span invariance is also preserved with rp0q 
+
+> i
+
+“ δi P span tδiu, since (75) expresses rpt`1q 
+
+> i
+
+as an R-linear combination of rptq 
+
+> i
+
+and δi, so 
+
+rptq 
+
+> i
+
+P span tδiu for all t ě 0. (76) Writing rptq 
+
+> i
+
+“ ψtδi and substituting into (75) yields 
+
+ψt`1 “ “1 ´ α ` αγ p1 ´ σK q‰ψt ` αp1 ´ γq, ψ0 “ 1. (77) From (77), we can derive ψt with ψ0 “ 1 as follows 
+
+ψt “ 1 ´ γ
+
+1 ´ γp1 ´ σK q `
+
+˜
+
+1 ´ 1 ´ γ
+
+1 ´ γp1 ´ σK q
+
+¸
+
+¨ “1 ´ α ` αγ p1 ´ σK q‰t, (78) with the steady state of ψ when t Ñ 8 for α ą 0
+
+ψ8 “ 1 ´ γ
+
+1 ´ γp1 ´ σK q . (79) So the approach to (79) is exponential of rate ζ. From (79) we can see ψ8 ą 1 ´ γ, thus the residual retains a larger fraction of δi than the undamped lock-in 1 ´ γ in (55). Then we further derive the steady-state reference field as 
+
+up8q  
+
+> i
+
+“ rG ` ψ8δi “ ψ8rgi ` p 1 ´ ψ8q rG, (80) which lies closer to rgi than the undamped counterpart 1 ´ γ in (56). We present a complete convergence analysis of the CIDERS algorithm under the personalized bilevel optimization. The analysis establishes a joint convergence rate on the upper-level meta-objective gap and the lower-level approximation error. 
+
+H. Problem Statement 
+
+The bilevel optimization problem in CIDERS is simplified for our careful proof. Specifically, we denote the frozen full teacher backbone as wT , learnable student backbone as wS , global personalization messenger as v
+
+and the client i’s personalization messenger as vi. Each client i holds a private dataset Di and the server has access to a public dataset Dpub . Based on the global messenger v with a good meta-initialization for rapid client-specific adaptation, the upper-level objective is the meta-learning formulation 
+
+Φpvq “ 1{N
+
+ÿNi“1 Li
+
+`rv, w ˚ 
+
+> S
+
+pvq˘, (81) where rv “ v ´ η∇vLipv, w ˚ 
+
+> S
+
+pvqq is the one-step global personalized messenger, and the local client loss Li
+
+is evaluated on its private data Di. On the other hand, the server solves the lower-level problem to obtain a high-quality student backbone wS that is aligned with both the frozen teacher and the downstream task, conditioned on the current global messenger v:
+
+w˚ 
+
+> S
+
+pvq “ arg min wS LKD pwS ; vq, (82) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 23 
+
+where the TAKD loss is evaluated on the public data Dpub . The overall problem is the following personalized bi-level optimization: 
+
+min v Φpvq ` ϵ{2
+
+››v ´ v´››2 , s.t. wS “ arg min wS LKD pwS ; vq. (83) 
+
+I. Algorithm Abstraction 
+
+We simply illustrate the algorithm for further convergence analysis. At the t-th round, the server maintains the global messenger vptq, the teacher backbone wptq 
+
+> T
+
+, the student backbone wptq 
+
+> S
+
+, and the global consensus variate cptq. A subset St of clients performs local updates in parallel. Each client i P St initializes its local messenger as vptq 
+
+> i, 0
+
+“ vptq and retrieves its local consensus variate cptq 
+
+> i
+
+. Over K local steps, client i computes the personalized meta-gradient with one-step look-ahead: 
+
+pgi,k “ ∇vLi
+
+`rvptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+; ξi,k 
+
+˘, (84) where rvptq 
+
+> i,k
+
+“ vptq 
+
+> i,k
+
+´ηinner ∇vLi
+
+`vptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+; ξi,k 
+
+˘. The local messenger is then updated via the consensus-corrected rule: 
+
+vptq 
+
+> i,k `1
+
+Ð vptq 
+
+> i,k
+
+´ η
+
+”pgi,k ` γ`cptq ´ cptq
+
+> i
+
+˘ı
+
+´ εη `vptq 
+
+> i,k
+
+´ vptq˘. (85) After K local steps, client i computes the averaged displacement ∆i,t :“ 1{Kη 
+
+`vptq ´ vptq
+
+> i,K
+
+˘ and refreshes its local consensus variate by the exponential moving average: 
+
+cpt`1q 
+
+> i
+
+“ “1 ` αpγ ´ 1q‰cptq 
+
+> i
+
+` α∆i,t ´ αγc ptq. (86) Only the compact increment ∆ci “ cpt`1q 
+
+> i
+
+´ cptq 
+
+> i
+
+is transmitted to the server. Upon receiving t∆ciuiPSt , the server exactly reconstructs the displacements t∆i,t u by inverting the EMA update. It then performs global aggregation and solves the lower-level KD problem: 
+
+pcpt`1q, v pt`1q, w pt`1q 
+
+> S
+
+q Ð 
+
+$’’’&’’’%
+
+p1 ´ αqcptq ` α ÿ
+
+> iPSt
+
+pi∆i,t ,vptq ´ τ Kη ÿ
+
+> iPSt
+
+pi∆i,t ,
+
+arg min wS LKD 
+
+`wS ; vpt`1q˘.
+
+(87) After T communication rounds, the algorithm outputs the final global messenger vptq and the student backbone 
+
+wpT q 
+
+> S
+
+. The framework coordinates bi-level optimization through consensus-variate correction, enabling low-communication personalized adaptation while mitigating client drift under heterogeneous data distributions. 
+
+J. Definitions 
+
+We define the following auxiliary quantities used throughout the analysis:  
+
+> ‚
+
+Client drift Et at round t: client drift quantifies the average squared deviation of each client’s local messenger trajectory from the global messenger during the K local steps. It is defined as 
+
+Et :“ 1
+
+KN 
+
+ÿK´1
+
+> k“0
+
+ÿNi“1 E››vptq 
+
+> i,k
+
+´ vptq››2, (88) where vptq is the global messenger and vptq 
+
+> i,k
+
+denotes the local messenger trajectory of client i after k local steps in round t. 
+
+> ‚
+
+Local consensus lag Ct at round t: local consensus lag measures the average squared difference between the local consensus variates and the true personalized meta-gradients evaluated at the global messenger. It is defined as 
+
+Ct :“ 1
+
+N
+
+ÿNi“1 E››cptq 
+
+> i
+
+´ ∇Φ`vptq, w S pvptqq˘› ›2. (89) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 24  
+
+> ‚
+
+Glocal consensus lag rCt at round t: global consensus lag measures the deviation of the global consensus variate cptq from the meta-gradient of the upper-level objective evaluated at the current global messenger and the current student backbone. It is defined as 
+
+rCt :“ 1
+
+N
+
+ÿNi“1 E››cptq ´ ∇Φ`vptq, w S pvptqq˘› ›2. (90)  
+
+> ‚
+
+Joint quantity of interest: this quantity that jointly tracks upper-level meta-suboptimality and lower-level distillation error: 
+
+Φpvq ´ Φ˚ ` ››wS ´ w˚ 
+
+> S
+
+pvq››2, (91) where w˚ 
+
+> S
+
+pvq denotes the exact minimizer of the lower-level task-aware knowledge distillation loss 
+
+LKD pwS ; vq for a fixed messenger v. 
+
+> ‚
+
+Full practical meta-gradient: in CIDERS, the full practical meta-gadient at the local messenger vi,k with the current student backbone wS on the client i and the kth local iteration can be computed via 
+
+rgi,k pvi,k , w S q :“ ∇vLi
+
+´
+
+vi,k ´ ηinner ∇vLipvi,k , w S q, w S
+
+¯
+
+, (92) where wS is the approximate student backbone currently maintained by the server.  
+
+> ‚
+
+Stochastic practical meta-gradient estimator: CIDERS actually compute the meta-gradient at the local messenger vi,k with the current student backbone wS on the client i and the kth local iteration via 
+
+pgi,k pvi,k , w S q “ ∇vLiprvi,k , w S ; ξi,k q, (93) where the one-step look-ahead point is rvi,k “ vi,k ´ ηinner ∇vLi
+
+´
+
+vi,k , w S ; ξi,k 
+
+¯
+
+, and it satisfies 
+
+E“pgi,k pvi,k , w S q‰ “ rgi,k pvi,k , w S q. 
+
+> ‚
+
+Ideal meta-gradient: this is the meta-gradient that would be obtained if the lower-level problem are solved exactly with respect to the current global messenger v:
+
+gideal  
+
+> i,k
+
+pvi,k , w ˚ 
+
+> S
+
+pvqq :“ ∇vLi
+
+´
+
+vi,k ´ ηinner ∇vLipvi,k , w ˚ 
+
+> S
+
+pvqq , w ˚ 
+
+> S
+
+pvq
+
+¯
+
+, (94) where w˚ 
+
+> S
+
+pvq denotes the exact minimizer of the lower-level task-aware knowledge distillation objective: 
+
+w˚ 
+
+> S
+
+pvq :“ arg min 
+
+> wS
+
+LKD pwS ; vq.
+
+K. Assumptions 
+
+We state the complete set of assumptions for the convergence analysis. 
+
+Assumption 1 (Joint Smoothness) . For each client i “ 1, . . . , N , the loss function Lipv, w S q is jointly L-smooth with respect to the pair of variables pv, w S q. That is, for any pv, w S q and pv1, w 1 
+
+> S
+
+q,
+
+}∇L ipv, w S q ´ ∇L ipv1, w 1 
+
+> S
+
+q} ď L`}v ´ v1} ` } wS ´ w1 
+
+> S
+
+}˘. (95) 
+
+Consequently, the upper-level meta-objective Φpvq is β-smooth, where the effective smoothness constant β is given by 
+
+β “ Lp1 ` ηinner Lq2 ` ηinner ρ, (96) 
+
+and ρ denotes the Lipschitz constant of the Hessian of Li with respect to the messenger v. In addition, we assume the lower-level TAKD objective LKD pwS ; vq is Ly-smooth with respect to wS .
+
+Assumption 2 (Polyak-Łojasiewicz Inequality) . The upper-level objective satisfies }∇Φpvq} 2 ě 2μ`Φpvq ´ 
+
+Φ˚˘ for some μ ą 0.IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 25 
+
+Assumption 3 (Meta-Gradient Dissimilarity) . There exist constants G, B ě 0 such that, for any local mesenger 
+
+vi,k on the client i k th local iteration, global messenger v and current student backbone wS ,
+
+E››r gi,k pvi,k , w S q ´ ∇Φpvq››2 ď G2 ` B2}∇Φpvq} 2. (97) 
+
+Assumption 4 (Gradient Heterogeneity) . There exists ζ ě 0 such that 1{N
+
+řNi“1
+
+››∇vLipv, w S q´ ∇Φpvq››2 ď ζ2.
+
+Assumption 5 (Gradient Variance) . The stochastic meta-gradients used in the upper-level client updates have bounded variance for a constant ζ2 ě 0 such that: 
+
+Eξi,k 
+
+››r gi,k 
+
+`vptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+; ξi,k 
+
+˘ ´ ∇vLi
+
+`vptq 
+
+> i,k
+
+, w ptq
+
+> S
+
+˘› ›2 ď ζ2, (98) 
+
+Also for the lower-level TAKD objective, there exists a constant σ2KD ě 0 such that 
+
+Eξ
+
+››∇wS LKD pwS ; v; ξq ´ ∇wS LKD pwS ; vq››2 ď σ2KD . (99) 
+
+Assumption 6 (Bounded gradients and Hessian) . There exist nonnegative constants G, B such that the following bounds hold uniformly for all clients and for all messenger and backbone parameters v, w S , i.e., Gradient bound }∇vLipv, w S q} ď G, and Hessian norm bound }∇2
+
+> v
+
+Lipv, w S q} ď B. 
+
+Assumption 7 (Hessian Lipschitz Continuity) . There exists a nonnegative constant H such that, for each client i and for any two pairs of parameters pv, w S q and pv1, w 1 
+
+> S
+
+q, i.e., }∇2
+
+> v
+
+Lipv, w S q ´ ∇2
+
+> v
+
+Lipv1, w 1 
+
+> S
+
+q} ď 
+
+Hp} v ´ v1} ` } wS ´ w1 
+
+> S
+
+}q .
+
+L. Basic Lemmas 
+
+Lemma 3 (Personalized Meta-Gradient Dissimilarity) . Under Assps. A1 and A5, for any client i, messenger 
+
+v, and student backbone wS , let gipvq “ ∇vLipv, w S q denote the primal gradient. Then, 
+
+}rgipvq ´ gipvq} 2 ď L2η2 
+
+> inner
+
+}gipvq} 2 , (100) 
+
+where β is the effective smoothness constant of the upper-level meta-objective defined in Assps. A1. Proof. By Assumption A1 the client loss Li is jointly L-smooth in the pair pv, w S q. Fixing wS , it follows that Li p¨ , w S q is L-smooth in v, i.e., v Þ Ñ ∇vLi pv, w S q is L-Lipschitz continuous. Hence, we have 
+
+}∇vLi pv ´ ηinner gipvq, w S q ´ ∇vLi pv, w S q} ď L }p v ´ ηinner gipvqq ´ v} ď Lη inner }gipvq} . (101) This completes the proof. 
+
+Lemma 4 (Upper-level Gap Inequality) . Under A2 and A3, for any messenger parameter v and any admissible student backbone parameter wS ,
+
+1
+
+N
+
+> N
+
+ÿ
+
+> i“1
+
+E}rgi pv, w S q } 2 ď p 8L2η2 
+
+> inner
+
+` 4qζ2 ` p 16 L2η2 
+
+> inner
+
+β ` 4βq p Φpvq ´ Φ˚q , (102) 
+
+where Φ˚ “ min v Φpvq.Proof. Fix an arbitrary messenger parameter (v) and an admissible student backbone parameter wS . For notational convenience denote rgi :“ rgi pv, w S q and gi :“ ∇vLi pv, w S q. All expectations are taken with IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 26 
+
+respect to any stochasticity appearing in the gradient estimators. We first perform the decomposition via the triangle inequality: 
+
+1
+
+N
+
+ÿNi“1E }rgi}2 ď 2 ¨ 1
+
+N
+
+ÿNi“1 E }rgi ´ ∇Φpvq} 2 ` 2}∇Φpvq} 2
+
+ď 4
+
+N
+
+ÿNi“1 E }rgi ´ gi}2 ` 4
+
+N
+
+ÿNi“1 E }gi ´ ∇Φpvq} 2 ` 2}∇Φpvq} 2
+
+ď L2η2 
+
+> inner
+
+¨ 4
+
+N
+
+ÿNi“1 E }gi}2 ` 4ζ2 ` 2}∇Φpvq} 2
+
+ď L2η2 
+
+> inner
+
+¨ 8
+
+N
+
+ÿNi“1 }gi ´ ∇Φpvq} 2 ` 8L2η2 
+
+> inner
+
+}∇Φpvq} 2 ` 4ζ2 ` 2}∇Φpvq} 2
+
+ď p 8L2η2 
+
+> inner
+
+` 4qζ2 ` p 8L2η2 
+
+> inner
+
+` 2q} ∇Φpvq} 2
+
+ď p 8L2η2 
+
+> inner
+
+` 4qζ2 ` p 16 L2η2 
+
+> inner
+
+β ` 4βq p Φpvq ´ Φ˚q
+
+(103) where we have performed the decomposition of the dissimilarity term in the second inequality, i.e., 
+
+}rgi ´ ∇Φpvq} 2 ď 2 }rgi ´ gi}2 ` 2 }gi ´ ∇Φpvq} 2, decomposed via }gi}2 ď 2 }gi ´ ∇Φpvq} 2 ` 2}∇Φpvq} 2
+
+in the fourth inequality, and we have used }∇Φpvq} 2 ď 2βpΦpvq ´ Φ˚q in the last inequality. 
+
+Lemma 5 (Lower-level Approximation Dynamics) . Suppose it satisfies Assp. A1, after performing E steps of gradient descent on the lower-level task-aware knowledge distillation objective with fixed messenger parameter 
+
+vptq, the expected squared distance to the exact minimizer satisfies 
+
+E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ď 2p1 ´ μη KD qE E}wpt´1q 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvpt´1qq} 2 ` ηKD σ2KD 
+
+μ ` 8R2
+
+> w
+
+p1 ´ μη KD qE . (104) 
+
+Proof. We now explain the proof by starting from the deterministic contraction, which can be the foundational inequality. Specifically, because LKD 
+
+`¨; vptq˘ is Ly-smooth and μ-strongly convex, any deterministic gradient step with step size ηKD ď 1{Ly satisfies the contraction 
+
+}wS ´ ηKD ∇wS LKD pwS ; vptqq ´ w˚ 
+
+> S
+
+pvptqq} 2 ď p 1 ´ μη KD q} wS ´ w˚ 
+
+> S
+
+pvptqq} 2. (105) Next, we consider the one-step recursion with the SGD for the KD objective. Consider the SGD step by adding and subtracting the true gradient: 
+
+wk`1 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq “ p wkS ´ ηKD ∇wS LKD pwkS ; vptqq ´ w˚ 
+
+> S
+
+pvptqqq ´ ηKD pgpwkS ; ξkq ´ ∇wS LKD pwkS ; vptqqq . (106) We take the L2´norm and the conditional expectation with respect to the current mini-batch ξk conditioned on all previous randomness, with the notice that the cross term vanishes by unbiasedness of the stochastic gradient. This immediately yields 
+
+E}wk`1 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 | history up to k ď } wkS ´ ηKD ∇wS LKD pwkS ; vptqq ´ w˚ 
+
+> S
+
+pvptqq} 2 ` η2KD σ2KD . (107) Subsequently, by inserting the deterministic contraction from (105) into (107) produces the fundamental one-step inequality 
+
+E}wk`1 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 | history up to k ď p 1 ´ μη KD q} wkS ´ w˚ 
+
+> S
+
+pvptqq} 2 ` η2KD σ2KD . (108) Unrolling the recurrence (108) over E steps by taking the unconditional expectation yields the linear recurrence 
+
+E}wES ´ w˚ 
+
+> S
+
+pvptqq} 2 ď p 1 ´ μη KD qE E}w0 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` η2KD σ2KD 
+
+ÿE´1 
+
+> j“0
+
+p1 ´ μη KD qj . (109) Under the assumption that 0 ă μη KD ă 1, the geometric sum is bounded by řE´1 
+
+> j“0
+
+p1 ´ μη KD qj “ 
+
+> p1´p 1´μη KD qEq
+
+{μη KD ď 1{μη KD . Therefore, we have 
+
+E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ď p 1 ´ μη KD qE E}wpt´1q 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` ηKD σ2KD 
+
+μ . (110) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 27 
+
+At this point we have a bound expressed in terms of the distance to the current minimizer w˚
+
+> S
+
+`vptq˘, but the warm-start wpt´1q 
+
+> S
+
+was produced with respect to the previous minimizer. By performing the decomposition, we can simply handle the change of target minimizer with the bi-level coupling 
+
+}wpt´1q 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ď 2}wpt´1q 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvpt´1qq} 2 ` 2}w˚ 
+
+> S
+
+pvpt´1qq ´ w˚ 
+
+> S
+
+pvptqq} 2
+
+ď 2E
+
+›››wpt´1q 
+
+> S
+
+´ w˚
+
+> S
+
+´
+
+vpt´1q¯› ››2
+
+` 8R2
+
+> w
+
+(111) where for brevity, we assume the uniform boundedness }w˚ 
+
+> S
+
+pvq} ď Rw that is valid for every messenger, and it converts the movement of the target into an additive term that still contracts geometrically. Finally, we substitute the inequality (111) into (110): 
+
+E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ď 2p1 ´ μη KD qE E}wpt´1q 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvpt´1qq} 2 ` ηKD σ2KD 
+
+μ ` 8R2
+
+> w
+
+p1 ´ μη KD qE , (112) which completes the proof. 
+
+M. Key Lemmas 
+
+With client drift and consensus lag defined, we now present four lemmas that analyze the behavior of the PERCE algorithm. These lemmas address the variance of the server update, the evolution of consensus lag, the bounding of client drift, and the progress made per round. 
+
+Lemma 6 (Local Consensus Deviation) . For all t ě 0 and all clients i, there exist positive values p rG2, rB2q
+
+such that 
+
+E}cptq 
+
+> i
+
+´ ∇Φpvptqq} 2 ď rG2 ` rB2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+(113) 
+
+Proof. Let us recall the local update. At round t, client i initializes vptq 
+
+> i, 0
+
+“ vptq, i.e., the global messenger received at the beginning of the round and performs K local steps according to 
+
+vptq 
+
+> i,k `1
+
+“ vptq 
+
+> i,k
+
+´ η
+
+”rgi,k ` γ`cptq ´ cptq
+
+> i
+
+˘ı
+
+´ εη `vptq 
+
+> i,k
+
+´ vptq˘, (114) for k “ 0, . . . , K ´ 1, where rgi,k is the practical meta-gradient evaluated at the current local point and the current fixed backbone wptq 
+
+> BL
+
+. Then, we sum both sides from k “ 0 to k “ K ´ 1
+
+vptq ´ vptq 
+
+> i,K
+
+“ η ÿK´1 
+
+> k“0
+
+˜gi,k ` ηK ¨ γ
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+` ηε ÿK´1
+
+> k“0
+
+´
+
+vptq 
+
+> i,k
+
+´ vptq¯
+
+. (115) Define the averaged practical meta-gradient rgptq 
+
+> i
+
+:“ 1{K
+
+řK´1 
+
+> k“0
+
+rgi,k , and the averaged proximal residual 
+
+rptq 
+
+> prox ,i
+
+:“ ε{K
+
+řK´1 
+
+> k“0
+
+pvptq 
+
+> i,k
+
+´ vptqq, then according to ∆i,t :“ 1{Kη pvptq ´ vptq 
+
+> i,K
+
+q, we have 
+
+∆i,t “ rgptq 
+
+> i
+
+` γ
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+` rptq
+
+> prox ,i
+
+, and cpt`1q 
+
+> i
+
+“ p 1 ´ αqcptq 
+
+> i
+
+` αprgptq 
+
+> i
+
+` rptq
+
+> prox ,i
+
+q. (116) We further define the error vector eptq 
+
+> i
+
+:“ cptq 
+
+> i
+
+´ ∇Φpvptqq, the driving noise δptq 
+
+> i
+
+:“ rgptq 
+
+> i
+
+´ ∇Φpvptqq ` rptq
+
+> prox ,i
+
+,and ∆Φ ptq :“ ∇Φpvptqq ´ ∇Φpvpt`1qq for brevity. Subsequently, we can expand 
+
+E}ept`1q 
+
+> i
+
+}2 “ E}p 1 ´ αqeptq 
+
+> i
+
+` αδ ptq 
+
+> i
+
+` ∆Φ ptq}2
+
+“ p 1 ´ αq2E}eptq 
+
+> i
+
+}2 ` 2αp1 ´ αqExeptq 
+
+> i
+
+, δ ptq 
+
+> i
+
+y ` α2E}δptq 
+
+> i
+
+}2
+
+` 2p1 ´ αqExeptq 
+
+> i
+
+, ∆Φ ptqy ` 2αExδptq 
+
+> i
+
+, ∆Φ ptqy ` E}∆Φ ptq}2.
+
+(117) For the driving noise term E}δptq 
+
+> i
+
+}2, through triangle inequality we have 
+
+E}δptq 
+
+> i
+
+}2 ď 2E}rgptq 
+
+> i
+
+´ ∇Φpvptqq} 2 ` 2E}rptq 
+
+> prox ,i
+
+}2
+
+ď 2G2 ` 2B2}∇Φpvptqq} 2 ` 2σ2
+
+K ` 2Crε2,
+
+(118) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 28 
+
+where we have used the meta-gradient dissimilarity assumption, variance of the average over the local K
+
+steps, and the proximal term satisfies E}rptq
+
+> prox ,i
+
+}2 ď Crε2. Next, we bound the three cross terms in (117) using Young’s inequality with parameter ε1 ą 0 as follows:  
+
+> ‚
+
+For the term 2αp1 ´ αqExeptq 
+
+> i
+
+, δ ptq 
+
+> i
+
+y:
+
+2αp1 ´ αqExeptq 
+
+> i
+
+, δ ptq 
+
+> i
+
+y ď αp1 ´ αqε1E}eptq 
+
+> i
+
+}2 ` αp1 ´ αq
+
+ε1
+
+E}δptq 
+
+> i
+
+}2, (119)  
+
+> ‚
+
+For the term 2p1 ´ αqExeptq 
+
+> i
+
+, ∆Φ ptqy:
+
+2p1 ´ αqExeptq 
+
+> i
+
+, ∆Φ ptqy ď p 1 ´ αqε1E}eptq 
+
+> i
+
+}2 ` 1 ´ αε1
+
+E}∆Φ ptq}2. (120)  
+
+> ‚
+
+For the term 2αExδptq 
+
+> i
+
+, ∆Φ ptqy:
+
+2αExδptq 
+
+> i
+
+, ∆Φ ptqy ď αε 1E}δptq 
+
+> i
+
+}2 ` αε1
+
+E}∆Φ ptq}2. (121) Note by β-smoothness of Φ, we have E}∆Φ ptq}2 ď β2E}vpt`1q ´ vptq}2, it subsequently leads to 
+
+E}∆Φ ptq}2 ď β2E
+
+›››vpt`1q ´ vptq
+
+›››2
+
+“ β2τ 2K2η2E
+
+›››››ÿ
+
+> iPSt
+
+pi∆i,t 
+
+›››››
+
+> 2
+
+ď β2τ 2K2η2 r∆2, (122) where we have defined Ă∆2 :“ sup t E ››ř 
+
+> iPSt
+
+pi∆i,t 
+
+››2 for simplicity, since ∆i,t “ 1{Kη pvptq ´ vptq 
+
+> i,K
+
+q. Hence, we substitute (118)-(122) into (117) and it leads to 
+
+E}ept`1q 
+
+> i
+
+}2 ď“p1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1
+
+‰ E}eptq 
+
+> i
+
+}2
+
+`
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ ˆ 
+
+2G2 ` 2B2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` 2σ2
+
+K ` 2Crε2
+
+˙
+
+`
+
+„ 1 ´ αε1
+
+` αε1
+
+` 1
+
+ȷ
+
+β2τ 2K2η2 r∆2.
+
+(123) Note (123) has the form Vt`1 ď ρ1Vt ` ρ2 for the sequence Vt, thus we can obtain the rsult as follows: 
+
+E}cptq 
+
+> i
+
+´ ∇Φpvptqq} 2 ď E}cp0q 
+
+> i
+
+´ ∇Φpvp0qq} 2 `
+
+2
+
+”
+
+α2 ` αp1´αq 
+
+> ε1
+
+` αε 1
+
+ı
+
+B2 ››∇Φ `vptq˘› ›2
+
+1 ´ rp 1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1s`
+
+”
+
+α2 ` αp1´αq 
+
+> ε1
+
+` αε 1
+
+ı ´ 
+
+2G2 ` 2σ2 
+
+> K
+
+` 2Crε2
+
+¯
+
+`
+
+´ 1 
+
+> ε1
+
+` 1
+
+¯
+
+β2τ 2K2η2 r∆2
+
+1 ´ rp 1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1s ,
+
+(124) where it can be seen that rB2 and rG2 satisfies the following 
+
+rB2 “
+
+2
+
+”
+
+α2 ` αp1´αq 
+
+> ε1
+
+` αε 1
+
+ı
+
+B2
+
+1 ´ rp 1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1s ,
+
+rG2 “ E}cp0q 
+
+> i
+
+´ ∇Φpvp0qq} 2 `
+
+”
+
+α2 ` αp1´αq 
+
+> ε1
+
+` αε 1
+
+ı ´ 
+
+2G2 ` 2σ2 
+
+> K
+
+` 2Crε2
+
+¯
+
+`
+
+´ 1 
+
+> ε1
+
+` 1
+
+¯
+
+β2τ 2K2η2 r∆2
+
+1 ´ rp 1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1s .
+
+(125) 
+
+Lemma 7 (Variance of Reconstructed Updates) . Under Assumptions A3, A4 and A7, we have 
+
+E
+
+›››››
+
+1
+
+S
+
+ÿ
+
+> iPSt
+
+∆i,t ´ ∇Φ
+
+´
+
+vptq¯›››››
+
+> 2
+
+ď 1
+
+p
+
+ˆ 6σ2
+
+K ` 12 `G2 ` B2}∇Φ}2˘
+
+`12 γ2pCt ` rCtq ` 6L2
+
+> y
+
+E
+
+›››wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq
+
+›››2
+
+` 2ε22
+
+˙ (126) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 29 
+
+Proof. We prove the stated bound under Assumptions A3, A4 and A7. We work at a fixed communication round t, with the global messenger fixed at v “ vptq and the current backbone fixed at w “ wptq 
+
+> S
+
+. Let 
+
+∇Φ “ ∇Φ `vptq˘ for brevity. By Lemma 1 the reconstruction of each ∆i,t is exact up to the additive residual 
+
+rptq 
+
+> recon
+
+whose second moment is bounded by the finite constant ε23 (Assumption A5). The proximal residual 
+
+rptq  
+
+> prox ,i
+
+is likewise bounded in second moment by the finite constant ε22 (Assumption A5). Both residuals contribute additive terms that are absorbed into the explicit constants of the overall convergence rate (as visible in Lemma 4); they do not appear in the leading expression of the present lemma. We first telescoping identity for the client displacement. Specifically, the client executes the consensus-corrected local update 
+
+vptq 
+
+> i,k `1
+
+“ vptq 
+
+> i,k
+
+´ ηrrgi,k ` γpcptq ´ cptq 
+
+> i
+
+qs ´ εη pvptq 
+
+> i,k
+
+´ vptqq, (127) for k “ 0, . . . , K ´ 1, starting from vptq 
+
+> i, 0
+
+“ vptq. Telescoping the recurrence yields the exact identity 
+
+vptq ´ vptq 
+
+> i,K
+
+“ η ÿK´1 
+
+> k“0
+
+ui,k , (128) where we define the instantaneous effective direction as 
+
+ui,k “ rgi,k ` γpcptq ´ cptq 
+
+> i
+
+q ` εpvptq 
+
+> i,k
+
+´ vptqq. (129) Dividing by Kη and invoking the definition of the averaged displacement therefore gives 
+
+∆i,t “ 1
+
+K
+
+ÿK´1 
+
+> k“0
+
+ui,k . (130) We consider the separation of the proximal contribution for simplicity, let ∆i,t “ ∆1 
+
+> i,t
+
+` rptq 
+
+> prox, ,i
+
+, where we define ∆1 
+
+> i,t
+
+as 
+
+∆1 
+
+> i,t
+
+:“ 1
+
+K
+
+ÿK´1 
+
+> k“0
+
+prgi,k ` γpcptq ´ cptq 
+
+> i
+
+qq , (131) and rptq  
+
+> prox, i
+
+denotes the averaged proximal contribution. Therefore, we can evaluate Vi :“ E }∆i,t ´ ∇Φ}2 via the triangle inequality }a ` b}2 ď 2}a}2 ` 2}b}2 as follows: 
+
+Vi ď 2E ››∆1 
+
+> i,t
+
+´ ∇Φ››2 ` 2ε22, (132) with the Assumption A5 that E}rptq 
+
+> prox, i
+
+}2 ď ε22. It therefore suffices to bound the deviation of ∆1
+
+> i,t
+
+. Next, we define the averaged stochastic meta-gradient 
+
+rgi :“ 1
+
+K
+
+ÿK´1 
+
+> k“0
+
+rgi,k . (133) Then it can be obtained ∆1 
+
+> i,t
+
+“ rgi ` γpcptq ´ cptq 
+
+> i
+
+q, and we can decompose the following 
+
+∆1 
+
+> i,t
+
+´ ∇Φ “ Si ` Dptq 
+
+> i
+
+` bias L,i , (134) where have defined Si “ ˜gi ´ gi to capture client-specific stochastic, Dptq 
+
+> i
+
+“ gi ´ ∇Φ ` γpcptq ´ cptq 
+
+> i
+
+q to measure the consensus variation, and bias L,i tracks the lower-level bias and is defined exactly by 
+
+bias L,i : “ ∇vLi
+
+´
+
+v ´ ηinner ∇vLi
+
+´
+
+v, w ptq
+
+> S
+
+¯
+
+, w ptq
+
+> S
+
+¯
+
+´ ∇vLipvd ´ηinner ∇vLipv, w ˚ 
+
+> S
+
+pwqq , w ˚ 
+
+> S
+
+pvqq . (135) Here w˚ 
+
+> S
+
+pvq is the unique minimizer of the lower-level TAKD loss LKD p¨ ; wq. The term bias L,i therefore measures the exact difference between the meta-gradient evaluated at the algorithm’s current approximate backbone wptq 
+
+> S
+
+and the meta-gradient that would be obtained if the lower level were solved exactly to optimality for the current messenger w. By Assumption A4, each stochastic meta-gradient rgi,k is an unbiased estimator of the true client meta-gradient gipv, w S q :“ ∇vLipv ´ηinner ∇vLipv, w S q, w S ) and satisfies the exact variance bound E}rgi,k ´ gi}2 ď σ2. The first term in (134) can be evaluated by averaging the K terms 
+
+E}rgi ´ gi}2 ď σ2{K. (136) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 30 
+
+Next, we consider Lipschitz bound on the lower-level bias. By Assumption A2, the lower-level loss LKD p¨ ; wq
+
+is Ly-smooth for any fixed w. Combined with the chain-rule dependence of the upper-level loss Li on the backbone parameters through the composition PM,i ˝ BL, the map 
+
+wS Þ Ñ ∇vLi pw ´ ηinner ∇vLi pv, w S q , w S q (137) is Lipschitz continuous with constant at most Ly. Consequently we have 
+
+}bias L,i }2 ď L2
+
+> y
+
+E
+
+›››wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvq
+
+›››2
+
+. (138) Hence, it remains to bound the contribution Dptq 
+
+> i
+
+“ gi ´ ∇Φ ` γpcptq ´ cptq 
+
+> i
+
+q, by using the triangle inequality, we can obtain 
+
+E
+
+›››Dptq
+
+> i
+
+›››2
+
+ď 2Ei }gi ´ ∇Φ}2 ` 2γ2E
+
+›››cptq ´ cptq
+
+> i
+
+›››2
+
+. (139) The first term on the right hand side of (139) can be bounded by Assumption A3 that E}gi ´ ∇Φ}2 ď
+
+G2 ` B2}∇Φ}2. We continue to analyze E}cptq ´ cptq 
+
+> i
+
+}2. Specifically, while we recall Ct “ E}cptq 
+
+> i
+
+´
+
+∇Φ`vptq, w S pvptqq˘}2, and with the decomposition pcptq ´ ∇Φ`vptq, w S pvptqq˘q ´ t cptq 
+
+> i
+
+´ ∇Φ`vptq, w S pvptqq˘u,and summing it leads to 
+
+E
+
+›››cptq ´ cptq
+
+> i
+
+›››2
+
+ď 2E
+
+›››cptq 
+
+> i
+
+´ ∇Φ`vptq, w S pvptqq˘›››2
+
+` 2E
+
+›››cptq ´ ∇Φ`vptq, w S pvptqq˘›››2
+
+“ 2Ct ` 2 rCt,
+
+(140) which we substitute into (139) and it yields 
+
+Ei
+
+›››Dptq
+
+> i
+
+›››2
+
+ď 2 `G2 ` B2}∇Φ}2˘ ` 2γ2pCt ` rCtq. (141) Combining these inequalities (136)(141)(134), we have 
+
+Eξ
+
+››∆1 
+
+> i,t
+
+´ ∇Φ››2 ď 3
+
+ˆ σ2
+
+K ` 2 `G2 ` B2}∇Φ}2˘ ` 2γ2pCt ` rCtq ` L2
+
+> y
+
+E
+
+›››wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvq
+
+›››2˙
+
+. (142) Substituting Eξ }∆1i,t ´ ∇Φ}2 into Vi ď 2E
+
+›››∆1 
+
+> i,t
+
+´ ∇Φ
+
+›››2
+
+` 2ε22, we have 
+
+Vi ď 6σ2
+
+K ` 12 `G2 ` B2}∇Φ}2˘ ` 12 γ2pCt ` rCtq ` 6L2
+
+> y
+
+E
+
+›››wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pwq
+
+›››2
+
+` 2ε22, (143) thus we can obtain the result in (126), this completes the proof. 
+
+Lemma 8 (Server Messenger Update) . Under Assumptions A1–A8, there exist positive values pΛ, Ω, Υ, Ψ, Γq
+
+that the expected squared displacement of the global personalization messenger between consecutive communication rounds is bounded as: 
+
+E
+
+›››vpt`1q ´ vptq
+
+›››2
+
+ď ΛpCt ` rCtq ` ΥE
+
+›››wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq
+
+›››2
+
+` ΩEt ` Ψ
+
+´
+
+Φpvptqq ´ Φ˚¯
+
+` Γ. (144) 
+
+Proof. Fix an arbitrary communication round t ě 1. For brevity we write v “ vptq, Φ “ Φpvptqq, ∇Φ “
+
+∇Φpvptqq, and wS “ wptq 
+
+> S
+
+. All expectations are taken jointly over the random subset of participating clients 
+
+St and the stochastic gradients realized inside those clients. According to the server aggregation rule, the global messenger is updated by 
+
+vpt`1q “ vptq ´ τ Kη ¨ 1
+
+S
+
+ÿ
+
+> iPSt
+
+∆i,t , (145) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 31 
+
+here we decompose 1{S
+
+ř 
+
+> iPSt
+
+∆i,t “ 1{S
+
+ř 
+
+> iPSt
+
+∆i,t ´ ∇Φ ` ∇Φ, which leads to 
+
+E››vpt`1q ´ vptq››2 “ τ 2K2η2 ¨ E
+
+››› 1
+
+S
+
+ÿ
+
+> iPSt
+
+∆i,t 
+
+›››2
+
+ď 2τ 2K2η2 ¨ E
+
+››››
+
+1
+
+S
+
+ÿ
+
+> iPSt
+
+∆i,t ´ ∇Φ
+
+››››
+
+> 2
+
+` 2τ 2K2η2E}∇Φ}2
+
+ď 12 N τ 2K2η2
+
+S
+
+˜
+
+6σ2
+
+K ` 12 G2 ` 12 γ2pCt ` rCtq ` 6L2
+
+> y
+
+E}wS ´ w˚ 
+
+> S
+
+pvq} 2 ` 2ε22
+
+¸
+
+`
+
+˜
+
+12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+¸
+
+}∇Φ}2.
+
+(146) where we have substituted the result in Lemma 7 into the first inequality of (146). Next, we continue to analyze the term E}∇Φ}2, and decompose it as ∇Φ ď ∇Φ ´ 1{N
+
+řNi“1 ˜gipvq ` 1{N
+
+řNi“1 ˜gipvq, which result in 
+
+E}∇Φ}2 ď 2E
+
+››››∇Φ ´ 1
+
+N
+
+ÿNi“1 ˜gipvq
+
+››››
+
+> 2
+
+` 2
+
+N
+
+ÿNi“1 E }rgipvq} 2
+
+ď 2E
+
+››››∇Φ ´ 1
+
+N
+
+ÿNi“1 ˜gipvq
+
+››››
+
+> 2
+
+` p 16 L2η2 
+
+> inner
+
+` 8qζ2 ` p 32 L2η2 
+
+> inner
+
+β ` 8βq p Φpvq ´ Φ˚qď 2
+
+N
+
+ÿNi“1 E }∇Φ ´ ˜gipvq} 2 ` p 16 L2η2 
+
+> inner
+
+` 8qζ2 ` p 32 L2η2 
+
+> inner
+
+β ` 8βq p Φpvq ´ Φ˚q ,
+
+(147) where the second inequality in (147) is evaluated via Lemma 4, and it remains to evaluate the first term. Define the averaged local practical meta-gradient for client i by ¯˜gi :“ 1{K
+
+řK´1 
+
+> k“0
+
+˜gi,k , where each ˜gi,k is evaluated at the local point vi,k . Subsequently E}∇Φ ´ ˜gipvq} 2 can be decomposed as: 
+
+E}∇Φ ´ ˜gipvq} 2 ď 2E}˜gipvq ´ ˜gi}2 ` 4
+
+K
+
+> K´1
+
+ÿ
+
+> k“0
+
+E}˜gi,k ´ gideal  
+
+> i
+
+pvi,k q} 2 ` E
+
+›››››
+
+4
+
+K
+
+> K´1
+
+ÿ
+
+> k“0
+
+`gideal  
+
+> i
+
+pvi,k q ´ ∇Φ˘›››››
+
+> 2
+
+ď 2β2Et ` 4L2
+
+> y
+
+E }wS ´ w˚ 
+
+> S
+
+pvq} 2 ` 4
+
+K
+
+ÿK´1 
+
+> k“0
+
+E
+
+›››`gideal  
+
+> i
+
+pvi,k q ´ ∇Φ˘›››2
+
+(148) Here, the first term has been simply obtained by the β-smoothness of each client loss (Assumption A1) and the triangle inequality,i.e., E}˜gipvq ´ ˜gi}2 ď β2Et. Similarly, with the meta-gradient map w.r.t. the backbone is Ly-Lipschitz, the second term can be obtained via }˜gi,k ´ gideal  
+
+> i
+
+pvi,k q} ď Ly}wS ´ w˚ 
+
+> S
+
+pvq} .We now consider the last term, specifically E}gideal  
+
+> i
+
+pvi,k q ´ ∇Φ}2. Apply the triangle inequality, it can be decomposed 
+
+}gideal  
+
+> i
+
+pvi,k q ´ ∇Φ}2 ď 2}gideal  
+
+> i
+
+pvi,k q ´ gideal  
+
+> i
+
+pvq} 2 ` 2}gideal  
+
+> i
+
+pvq ´ ∇Φ}2
+
+ď 2β2}vi,k ´ v}2 ` 4}gideal  
+
+> i
+
+pvq ´ hipvq} 2 ` 4}hipvq ´ ∇Φ}2, (149) where for the first term in the first inequality, we apply β-smoothness of each client loss Li (Assumption A1), while for the second term, we define hipvq “ ∇vLi pv, w ˚ 
+
+> S
+
+pvqq , and further employ the decomposition 
+
+}gideal  
+
+> i
+
+pvq ´ ∇Φ}2 ď 2}gideal  
+
+> i
+
+pvq ´ hipvq} 2 ` 2}hipvq ´ ∇Φ}2. Specifically for }gideal  
+
+> i
+
+pvq ´ hipvq} , we have 
+
+}gideal  
+
+> i
+
+pvq ´ hipvq} ď 
+
+ż 10
+
+››∇2
+
+> v
+
+Li
+
+`v ` tp´ ηinner ∇vLipv, w ˚ 
+
+> S
+
+pvqqq , w ˚ 
+
+> S
+
+pvq˘› ›
+
+¨ } ´ ηinner ∇vLipv, w ˚ 
+
+> S
+
+pvqq} dt “ ηinner BG, 
+
+(150) and for }hipvq ´ ∇Φ}2, we can use Assumption A3 to directly bound it 
+
+1
+
+N
+
+ÿNi“1 E }hipvq ´ ∇Φpvq} 2 ď ζ2. (151) Hence, by combining (149)(150)(151), it leads to 
+
+1
+
+KN 
+
+ÿK´1
+
+> k“0
+
+ÿNi“1 E ››gideal  
+
+> i
+
+pvi,k q ´ ∇Φ››2 ď 2β2Et ` 4η2 
+
+> inner
+
+B2G2 ` 4ζ2. (152) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 32 
+
+With (147)(148)(152), we can obtain the evaluation of E}∇Φ}2 as follows: 
+
+E}∇Φpvq} 2 ď 2
+
+N
+
+ÿ
+
+> i
+
+E››∇Φpvq ´ rgipvq››2 ` p 16 L2η2inner ` 8qζ2 ` p 32 L2η2inner β ` 8βq`Φpvq ´ Φ˚˘
+
+ď 20 β2Et ` 8L2
+
+> y
+
+E››wS ´ w˚ 
+
+> S
+
+pvq››2 ` 32 η2inner B2G2 ` p 40 ` 16 L2η2inner qζ2
+
+` p 32 L2η2inner β ` 8βq`Φpvq ´ Φ˚˘.
+
+(153) By subtituting (153) into (146), we can obtain the final result of (144) in Lemma 8 as follows: 
+
+E
+
+›››vpt`1q ´ vptq
+
+›››2
+
+ď 144 N τ 2K2η2γ2
+
+S pCt ` rCtq ` 20 β2
+
+ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙
+
+Et
+
+`
+
+« 72 N τ 2K2η2L2
+
+> y
+
+S ` 8L2
+
+> y
+
+ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙ff 
+
+E }wS ´ w˚ 
+
+> S
+
+pvq} 2
+
+` `32 L2η2 
+
+> inner
+
+β ` 8β˘ ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙
+
+pΦpvq ´ Φ˚q ` 12 N τ 2K2η2
+
+S
+
+ˆ 6σ2
+
+K ` 12 G2 ` 2ε22
+
+˙
+
+`
+
+ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙ `32 η2 
+
+> inner
+
+B2G2 ` `40 ` 16 L2η2
+
+> inner
+
+˘ ζ2˘ ,
+
+(154) subsequently, we obtain pΛ, Ω, Υ, Ψ, Γq as follows 
+
+Λ “ 144 N τ 2K2η2γ2
+
+S , Ω “ 20 β2
+
+ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙
+
+Υ “ 72 N τ 2K2η2L2
+
+> y
+
+S ` 8L2
+
+> y
+
+ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙
+
+Ψ “ `32 L2η2 
+
+> inner
+
+β ` 8β˘ ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙
+
+Γ “ 12 N τ 2K2η2
+
+S
+
+ˆ 6σ2
+
+K ` 12 G2 ` 2ε22
+
+˙
+
+`
+
+ˆ 12 N τ 2K2η2B2
+
+S ` 2τ 2K2η2
+
+˙
+
+¨
+
+`32 η2 
+
+> inner
+
+B2G2 ` `40 ` 16 L2η2
+
+> inner
+
+˘ ζ2˘
+
+(155) 
+
+Lemma 9 (Evolution of Global Consensus Lag) . Under Assumptions A1–A8 the global, there exists positive values p rρg, ρ g, κ g
+
+> 2
+
+, Ăκg
+
+> 3
+
+, Ăκ4
+
+> g
+
+q such that the global consensus lag evolution satisfies the following 
+
+rCt`1 ď rρg rCt ` ρgCt ` κg
+
+> 2
+
+ΥE}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` κg
+
+> 2
+
+ΩEt ` Ăκg
+
+> 3
+
+pΦpvptqq ´ Φ˚q ` Ăκ4
+
+> g
+
+. (156) 
+
+Proof. We derive the bound directly from the per-client Consensus Deviation result and the algorithm rules. Let us define the global error vector as eptq :“ cptq ´ ∇Φpvptqq, recall the server-side update rule for the global consensus variate cpt`1q “ p 1 ´ αqcptq ` α ř 
+
+> iPSt
+
+pi∆i,t , subtracting ∇Φ `vpt`1q˘ from both sides yields 
+
+ept`1q “ p 1 ´ αqeptq ` α
+
+˜ ÿ
+
+> iPSt
+
+pi∆i,t ´ ∇Φ
+
+´
+
+vptq¯¸
+
+` ∆Φ ptq, (157) where ∆Φ ptq “ ∇Φ `vptq˘ ´ ∇Φ `vpt`1q˘. Taking the squared norm and expectation, we expand 
+
+E
+
+›››ept`1q
+
+›››2
+
+“ p 1 ´ αq2E
+
+›››eptq
+
+›››2
+
+` α2E
+
+›››››ÿ
+
+> iPSt
+
+pi∆i,t ´ ∇Φ
+
+´
+
+vptq¯›››››
+
+> 2
+
+` E
+
+›››∆Φ ptq
+
+›››2
+
+` 2αp1 ´ αqE
+
+C
+
+eptq, ÿ
+
+> iPSt
+
+pi∆i,t ´ ∇Φ
+
+´
+
+vptq¯G
+
+` 2αE 
+
+C ÿ
+
+> iPSt
+
+pi∆i,t ´ ∇Φ
+
+´
+
+vptq¯
+
+, ∆Φ ptq
+
+G
+
+.
+
+(158) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 33 
+
+For brevity, we define δpt´1q 
+
+> g
+
+:“ ř 
+
+> iPSt´1
+
+pi∆i,t ´1 ´ ∇Φpvpt´1qq. Then, we can bound the three cross terms in (158) by Young’s inequality with a positive parameter ε1 ą 02αp1 ´ αqE
+
+A
+
+ept´1q 
+
+> g
+
+, δ pt´1q
+
+> g
+
+E
+
+ď αp1 ´ αqε1E
+
+›››ept´1q
+
+> g
+
+›››2
+
+` αp1 ´ αq
+
+ε1
+
+E
+
+›››δpt´1q
+
+> g
+
+›››2
+
+,
+
+2p1 ´ αqE
+
+A
+
+ept´1q 
+
+> g
+
+, ∆Φ pt´1qE
+
+ď p 1 ´ αqε1E
+
+›››ept´1q
+
+> g
+
+›››2
+
+` 1 ´ αε1
+
+E
+
+›››∆Φ pt´1q
+
+›››2
+
+,
+
+2αE 
+
+A
+
+δpt´1q 
+
+> g
+
+, ∆Φ pt´1qE
+
+ď αε 1E
+
+›››δpt´1q
+
+> g
+
+›››2
+
+` αε1
+
+E
+
+›››∆Φ pt´1q
+
+›››2
+
+,
+
+(159) which we substitute it into (158) and the inequality becomes 
+
+E
+
+›››eptq
+
+›››2
+
+ď “p1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1
+
+‰ E
+
+›››ept´1q
+
+›››2
+
+`
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ
+
+E
+
+›››δpt´1q
+
+> g
+
+›››2
+
+`
+
+„ 1 ´ αε1
+
+` αε1
+
+` 1
+
+ȷ
+
+E
+
+›››∆Φ pt´1q
+
+›››2
+
+.
+
+(160) Next, we evaluate δg. Notice from the exact summation of the local update over K steps we have the identity 
+
+∆i,t ´1 “ rgpt´1q 
+
+> i
+
+` γpcpt´1q ´ cpt´1q 
+
+> i
+
+q ` rpt´1q  
+
+> prox, i
+
+, where rgpt´1q 
+
+> i
+
+is the averaged practical meta-gradient on client i
+
+and rpt´1q 
+
+> prox ,i
+
+is the averaged proximal residual. Substituting this identity yields the decomposition 
+
+E}δpt´1q 
+
+> g
+
+}2 “ 3 E} ÿ
+
+> iPSt´1
+
+pi
+
+´rgpt´1q 
+
+> i
+
+´ ∇Φ
+
+´
+
+vpt´1q¯¯ loooooooooooooooooooooomoooooooooooooooooooooon 
+
+> :“Ta
+
+}2 ` 3γ E} ÿ
+
+> iPSt´1
+
+pi
+
+´
+
+cpt´1q ´ cpt´1q
+
+> i
+
+¯
+
+}2
+
+loooooooooooooooooomoooooooooooooooooon 
+
+> :“Tb
+
+` 3 E} ÿ
+
+> iPSt´1
+
+pirpt´1q  
+
+> prox, i
+
+}2
+
+loooooooooomoooooooooon 
+
+> :“Tc
+
+.
+
+(161) For bounding Term Ta, we can first use Jensen’s inequality and then the meta-gradient dissimilarity assumption together with the bounded variance of the stochastic meta-gradients over the K local steps, thus it leads to 
+
+Ta ď ÿ
+
+> iPSt´1
+
+pi
+
+›››r gpt´1q 
+
+> i
+
+´ ∇Φ
+
+´
+
+vpt´1q¯› ››2
+
+ď G2 ` B2
+
+›››∇Φ
+
+´
+
+vpt´1q¯› ››2
+
+` σ2
+
+K . (162) For bounding Term Tb, Using the decomposition cpt´1q´cpt´1q 
+
+> i
+
+“ p cpt´1q´∇Φpvpt´1qqq´p cpt´1q 
+
+> i
+
+´∇Φpvpt´1qqq 
+
+together with Jensen’s inequality and the Local Consensus Deviation Lemma, we obtain 
+
+Tb ď 2
+
+›››cpt´1q ´ ∇Φ
+
+´
+
+vpt´1q¯› ››2
+
+` 2
+
+ˆrG2 ` rB2
+
+›››∇Φ
+
+´
+
+vpt´1q¯› ››2˙
+
+. (163) By the standing second-moment assumption on the proximal residual, the third term can be bounded as 
+
+Tc ď Crε2. Substitute these three estimates into the inequality for E}δpt´1q 
+
+> g
+
+}2:
+
+E
+
+›››δpt´1q
+
+> g
+
+›››2
+
+ď6γ2
+
+›››ept´1q
+
+›››2
+
+`
+
+´
+
+3B2 ` 6γ2 rB2¯ › ››∇Φ
+
+´
+
+vpt´1q¯› ››2
+
+`
+
+ˆ
+
+3G2 ` 3 σ2
+
+K ` 6γ2 rG2 ` 3Crε2
+
+˙
+
+.
+
+(164) We substitute (164) into (160) and it leads to 
+
+rCt ď
+
+"
+
+p1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1 ` 6γ2
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ* rCt´1
+
+`
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ ´
+
+3B2 ` 6γ2 rB2¯ › ››∇Φ
+
+´
+
+vpt´1q¯› ››2
+
+`
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ ˆ 
+
+3G2 ` 3 σ2
+
+K ` 6γ2 rG2 ` 3Crε2
+
+˙
+
+`
+
+„ 1 ´ αε1
+
+` αε1
+
+` 1
+
+ȷ
+
+β2E
+
+›››vptq ´ vpt´1q
+
+›››2
+
+,
+
+(165) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 34 
+
+which is exactly (156) in the lemma, moreover we define the following positive values as 
+
+ρg “
+
+"
+
+p1 ´ αq2 ` αp1 ´ αqε1 ` p 1 ´ αqε1 ` 6γ2
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ* 
+
+,κg 
+
+> 1
+
+“
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ ´
+
+3B2 ` 6γ2 rB2¯
+
+, κg 
+
+> 2
+
+“
+
+„ 1 ´ αε1
+
+` αε1
+
+` 1
+
+ȷ
+
+β2
+
+κg 
+
+> 3
+
+“
+
+„
+
+α2 ` αp1 ´ αq
+
+ε1
+
+` αε 1
+
+ȷ ˆ 
+
+3G2 ` 3 σ2
+
+K ` 6γ2 rG2 ` 3Crε2
+
+˙
+
+,
+
+(166) and recall }∇Φpvq} 2 ď 2β pΦpvq ´ Φ˚q, which can be substituted into and it leads to 
+
+rCt`1 ď rρg rCt ` ρgCt ` κg
+
+> 2
+
+ΥE}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` κg
+
+> 2
+
+ΩEt ` Ăκg
+
+> 3
+
+pΦpvptqq ´ Φ˚q ` Ăκ4
+
+> g
+
+, (167) where rρg “ ρg ` κg
+
+> 2
+
+Λ, ρg “ κg
+
+> 2
+
+Λ, Ăκg 
+
+> 3
+
+“ κg
+
+> 2
+
+Ψ ` 2βκ g
+
+> 1
+
+, and Ăκ4 
+
+> g
+
+“ κg
+
+> 2
+
+Γ ` κg
+
+> 3
+
+.
+
+Lemma 10 (Evolution of Local Consensus Lag) . Under Assumptions A1–A8, there exsits positive values 
+
+pρC , κ rC , κ E , κ w, κ 0q such that the local consensus lag satisfies the following 
+
+Ct`1 ď ρC Ct ` κ rC rCt ` κE Et ` κwE}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` κΦpΦpvptqq ´ Φ˚q ` κ0 (168) 
+
+Proof. Let Iptq 
+
+> i
+
+be the indicator that client (i) is selected in round (t), so that ErIptq 
+
+> i
+
+s “ p. Non-selected clients keep their consensus variates unchanged. Define the local error and the target change 
+
+eptq 
+
+> i
+
+:“ cptq 
+
+> i
+
+´ ∇Φpvptq, w S pvptqqq , dptq 
+
+> i
+
+:“ ∇Φpvptq, w S pvptqqq ´ ∇Φpvpt`1q, w S pvpt`1qqq . (169) On a selected client the EMA update together with the exact reconstruction of the displacement ∆i,t produces the linear error recursion 
+
+ept`1q 
+
+> i
+
+“ p 1 ´ Iptq 
+
+> i
+
+αqp cptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqqq ` Iptq 
+
+> i
+
+αprgptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqqq . (170) Subsequently, the unconditional second moment satisfies 
+
+E}ept`1q 
+
+> i
+
+}2 ďp 1 ´ pα qE}cptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqq} 2
+
+` pαE }¯gptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqq} 2. (171) We further decompose the first term on the right-hand side by incorporating ∇Φpvptq, w S pvptqqq ,
+
+E}cptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqq} 2 ď p 1 ` εqE}eptq 
+
+> i
+
+}2 ` p 1 ` 1
+
+ε qE}dptq 
+
+> i
+
+}2, (172) which we substitute into (171) to produce 
+
+Ct`1 ď p 1 ´ pα qp 1 ` εqCt ` p 1 ´ pα qp 1 ` 1
+
+ε qE}dptq 
+
+> i
+
+}2 ` pαE }¯gptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqq} 2. (173) For evaluating E}dptq 
+
+> i
+
+}2, we start from the joint Lipschitz estimate 
+
+E}dptq 
+
+> i
+
+}2 ď β2E}vpt`1q ´ vptq}2 ` β2E}wS pvptqq ´ wS pvpt`1qq} 2
+
+ď β2E}vpt`1q ´ vptq}2 ` 2β2}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 2β2}w˚ 
+
+> S
+
+pvptqq ´ wpt`1q 
+
+> S
+
+}2
+
+ď β2E}vpt`1q ´ vptq}2 ` 2β2}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 2β2p2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 8R2
+
+> w
+
+q“ β2E}vpt`1q ´ vptq}2 ` 6β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 16 β2R2
+
+> w
+
+ď β2ΛpCt ` rCtq ` β2ΩEt ` β2ΨpΦpvptqq ´ Φ˚q` p β2Υ ` 6β2qE}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` p β2Γ ` 16 β2R2
+
+> w
+
+q
+
+(174) where we have applies the already-established lower-level approximation bound in the third inequality that 
+
+}wpt`1q 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ď 2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 8R2 
+
+> w˚
+
+, (175) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 35 
+
+and the Lemma 8 for the final substitution of E}vpt`1q ´ vptq}2. Next, we consider the last term E}¯gptq 
+
+> i
+
+´
+
+∇Φpvpt`1q, w S pvpt`1qqq} 2 in (173). Specifically, 
+
+E}rgptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqq} 2
+
+ď 2E}rgptq 
+
+> i
+
+´ ∇Φpvptq, w S pvptqqq} 2 ` 2E}∇Φpvptq, w S pvptqqq ´ ∇Φpvpt`1q, w S pvpt`1qqq} 2
+
+ď 2σ2
+
+K ` 2
+
+K
+
+> K´1
+
+ÿ
+
+> k“0
+
+›››∇Φpvptq 
+
+> i,k
+
+, w S pvptqqq ´ ∇Φpvptq, w S pvptqqq 
+
+›››2
+
+` 2β2E}vpt`1q ´ vptq}2 ` 12 β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 32 β2R2
+
+> w
+
+ď 2σ2
+
+K ` 2β2Et ` 2β2E}vpt`1q ´ vptq}2 ` 12 β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 32 β2R2
+
+> w
+
+ď 2β2ΛCt ` 2β2Λ rCt ` p 2β2 ` 2β2ΩqEt ` p 12 β2 ` 2β2ΥqE}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2
+
+` 2β2ΨpΦpvptqq ´ Φ˚q ` p 2σ2
+
+K ` 32 β2R2 
+
+> w
+
+` 2β2Γq
+
+(176) Hence, by substituting E}dptq 
+
+> i
+
+}2 in (174) and E}rgptq 
+
+> i
+
+´ ∇Φpvpt`1q, w S pvpt`1qqq} 2 in (176), we can obtain the result in the Lemma 
+
+Ct`1 ď
+
+«
+
+p1 ´ pα qp 1 ` εq ` p 1 ´ pα q
+
+´
+
+1 ` 1
+
+ε
+
+¯
+
+β2Λ ` 2pαβ 2Λ
+
+ff 
+
+Ct
+
+`
+
+«
+
+p1 ´ pα q
+
+´
+
+1 ` 1
+
+ε
+
+¯
+
+β2Λ ` 2pαβ 2Λ
+
+ff rCt `
+
+«
+
+p1 ´ pα q
+
+´
+
+1 ` 1
+
+ε
+
+¯
+
+β2Ω ` pα p2β2 ` 2β2Ωq
+
+ff 
+
+Et
+
+`
+
+«
+
+p1 ´ pα q
+
+´
+
+1 ` 1
+
+ε
+
+¯
+
+β2Ψ ` 2pαβ 2Ψ
+
+ff `Φpvptqq ´ Φ˚˘
+
+`
+
+«
+
+p1 ´ pα q
+
+´
+
+1 ` 1
+
+ε
+
+¯
+
+pβ2Υ ` 6β2q ` pα p12 β2 ` 2β2Υq
+
+ff 
+
+E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2
+
+` p 1 ´ pα q
+
+´
+
+1 ` 1
+
+ε
+
+¯
+
+pβ2Γ ` 16 β2R2
+
+> w
+
+q ` pα 
+
+´ 2σ2
+
+K ` 32 β2R2 
+
+> w
+
+` 2β2Γ
+
+¯
+
+,
+
+(177) with the positive values defined as follows 
+
+ρC “ p 1 ´ pα qp 1 ` εq ` p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+β2Λ ` 2pαβ 2Λ,κ rC “ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+β2Λ ` 2pαβ 2Λ,κE “ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+β2Ω ` pα `2β2 ` 2β2Ω˘ ,κw “ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙ `β2Υ ` 6β2˘ ` pα `12 β2 ` 2β2Υ˘ ,κΦ “ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+β2Ψ ` 2pαβ 2Ψ,κ0 “ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙ `β2Γ ` 16 β2R2
+
+> w
+
+˘ ` pα 
+
+ˆ 2σ2
+
+K ` 32 β2R2 
+
+> w
+
+` 2β2Γ
+
+˙
+
+.
+
+(178) 
+
+Lemma 11. Lemma (Client Drift Bound for CIDERS). Under Assumptions A1–A8, there exists positive values 
+
+A, B, rD and E that the client-drift satisfies the fully explicit bound 
+
+Et ď pK´1q{2tD1A `Φ `vptq˘ ´ Φ˚˘ ` 2EpCt ` rCtq ` rDu
+
+1 ´ KL 2D1 . (179) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 36 
+
+Proof. For brevity, at an arbitrary communication round t ě 0, we write v “ vptq, wS “ wptq 
+
+> S
+
+, ∇Φ “ ∇Φpvptqq,
+
+c “ cptq and ci “ cptq 
+
+> i
+
+. Define the local displacement of client i at local step k by di,k :“ vi,k ´ v. The initialization vi, 0 “ v immediately yields di, 0 “ 0. The local update of CIDERS is therefore equivalent to the linear recurrence 
+
+di,k `1 “ di,k ´ η
+
+”rgi,k ` γ`c ´ ci
+
+˘ ` ε d i,k 
+
+ı
+
+(180) Taking L2-norm and the conditional expectation with respect to the stochasticity of the practical meta-gradient 
+
+rgi,k given the current local messenger vi,k produces 
+
+E“}di,k `1}2 ˇˇ vi,k 
+
+‰ “ } di,k }2 ´ 2η@di,k , Errgi,k | vi,k s ` γpc ´ ciq ` ε d i,k 
+
+D
+
+` η2E“}rgi,k ` γpc ´ ciq ` ε d i,k }2 ˇˇ vi,k 
+
+‰, (181) where the practical meta-gradient is written as rgi,k “ gipvi,k ; wS q ` ξi,k , and gipvi,k ; wS q denotes the deter-ministic one-step meta-gradient of client i. The noise ξi,k satisfies Erξi,k | vi,k s “ 0 and Er} ξi,k }2 | vi,k s ď σ2
+
+by Assumption A4. Define the auxiliary vector ui,k :“ gipvi,k ; wS q ` γpc ´ ciq ` ε d i,k . Then the third term in (181) can be simply evaluated via 
+
+E“}rgi,k ` γpc ´ ciq ` ε d i,k }2 ˇˇ vi,k 
+
+‰ “ } ui,k }2 ` Er} ξi,k }2 | vi,k s ď } ui,k }2 ` σ2. (182) We substitute (182) into (181) and it yields 
+
+E“}di,k `1}2 ˇˇ vi,k 
+
+‰ ď } di,k }2 ´ 2η@di,k , g ipvi,k ; wS q ` γpc ´ ciq ` ε d i,k 
+
+D
+
+` η2}gipvi,k ; wS q ` γpc ´ ciq ` ε d i,k }2 ` η2σ2. (183) The quadratic term on the right-hand side of (183) is expanded by: 
+
+η2}gi ` γpc ´ ciq ` ε d i,k }2 ď 3η2}gi}2 ` 3η2γ2}c ´ ci}2 ` 3η2ε2}di,k }2. (184) The inner-product term is split into three contributions: 
+
+´2η@di,k , g i ` γpc ´ ciq ` ε d i,k 
+
+D “ ´ 2η@di,k , g i
+
+D ´ 2ηγ @di,k , c ´ ci
+
+D ´ 2ηε }di,k }2. (185) Next, we proof the following: by the definition of the one-step meta-gradient and the β-smoothness of each client meta-loss (Assumption A1) there exists a remainder vector ei,k satisfying }ei,k } ď Qη }gipvi,k ; wS q} 
+
+such that 
+
+gipvi,k ; wS q “ p I ´ ∇2
+
+> v
+
+Lipvi,k ; wS qq `∇vLipvi,k ; wS q ` ei,k 
+
+˘. (186) Recall the practical one-step meta-gradient of client i g ipvi,k ; wS q is defined as 
+
+gi
+
+`vi,k ; wS
+
+˘ :“ ∇vLi
+
+´
+
+vi,k ´ ηinner ∇vLi
+
+`vi,k ; wS
+
+˘, w S
+
+¯
+
+. (187) Then, we introduce the corresponding look-ahead point zi,k :“ vi,k ´ ηinner ∇vLi
+
+`vi,k ; wS
+
+˘. Assumption A1 guarantees that Lip ¨ ; wS q is twice continuously differentiable with respect to the messenger variable. Consequently the gradient map v Þ Ñ ∇vLipv; wS q is continuously differentiable. The fundamental theorem of calculus applied along the line segment joining vi,k and zi,k yields the exact identity 
+
+∇vLi
+
+`zi,k ; wS
+
+˘ “ ∇vLi
+
+`vi,k ; wS
+
+˘ `
+
+ż 10
+
+∇2
+
+> v
+
+Li
+
+´
+
+vi,k ` t`zi,k ´ vi,k 
+
+˘; wS
+
+¯`zi,k ´ vi,k 
+
+˘ dt 
+
+“ ∇vLi
+
+`vi,k ; wS
+
+˘ ´ ηinner 
+
+˜ż 10
+
+∇2
+
+> v
+
+Li
+
+´
+
+vi,k ` t`zi,k ´ vi,k 
+
+˘; wS
+
+¯
+
+dt 
+
+¸
+
+∇vLi
+
+`vi,k ; wS
+
+˘.
+
+(188) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 37 
+
+Define the averaged Hessian along the segment by Havg ,i,k :“ ş10 ∇2
+
+> v
+
+Li
+
+´
+
+vi,k ` t`zi,k ´ vi,k 
+
+˘; wS
+
+¯
+
+dt and the difference between this averaged Hessian and the Hessian evaluated at the original local messenger Ri,k :“
+
+Havg ,i,k ´ ∇2
+
+> v
+
+Li
+
+`vi,k ; wS
+
+˘. Equation (188) then becomes 
+
+gi
+
+`vi,k ; wS
+
+˘ “ ∇vLi
+
+`vi,k ; wS
+
+˘ ´ ηinner 
+
+`∇2
+
+> v
+
+Li
+
+`vi,k ; wS
+
+˘ ` Ri,k 
+
+˘∇vLi
+
+`vi,k ; wS
+
+˘
+
+“ `I ´ ∇2
+
+> v
+
+Li
+
+`vi,k ; wS
+
+˘˘ ∇vLi
+
+`vi,k ; wS
+
+˘ ´ ηinner Ri,k ∇vLi
+
+`vi,k ; wS
+
+˘. (189) Subsequently, the remainder ei,k can be uniquely determined via a direct comparison of (189) and (186) as 
+
+ei,k “ ´p I ´ ∇2
+
+> v
+
+Lipvi,k ; wS qq ´1pηinner Ri,k ∇vLipvi,k ; wS qq , whenever the indicated inverse exists. When the inverse does not exist, the same identity continues to hold after a standard δ-regularization ( I ´ ∇2
+
+> v
+
+Li ` δI )followed by the limit δ Ñ 0`; the resulting ei,k remains well-defined and bounded. From the Hessian-Lipschitz continuity of Li in Assumption A6 together with }zi,k ´ vi,k } “
+
+ηinner }∇vLipvi,k ; wS q} , it leads to 
+
+}Ri,k } “ 
+
+›››››ż 10
+
+˜
+
+∇2
+
+> v
+
+Li
+
+´
+
+vi,k ` t`zi,k ´ vi,k 
+
+˘; wS
+
+¯
+
+´ ∇2
+
+> v
+
+Li
+
+`vi,k ; wS
+
+˘¸
+
+dt 
+
+›››››
+
+ď
+
+ż 10
+
+››∇2
+
+> v
+
+Li
+
+´
+
+vi,k ` t`zi,k ´ vi,k 
+
+˘; wS
+
+¯
+
+´ ∇2
+
+> v
+
+Li
+
+`vi,k ; wS
+
+˘› › dt 
+
+ď
+
+ż 10
+
+H t }zi,k ´ vi,k } dt “ Hη inner {2
+
+››∇vLipvi,k ; wS q››,
+
+where H is the Hessian-Lipschitz constant of Li. Consequently, we can bound }ei,k } via 
+
+}ei,k } ď Q η inner 
+
+››∇vLipvi,k ; wS q››, where Q “ Hη 2 
+
+> inner
+
+G
+
+2|p 1 ´ Bq| . (190) Let’s denote Hi,k “ ∇2
+
+> v
+
+Lipvi,k ; wS q, then from (185), we have 
+
+gipvi,k ; wS q “ p I ´ Hi,k q∇vLipvi,k ; wS q ` p I ´ Hi,k qei,k . (191) Consequently the inner-product term that appears in the drift recursion becomes 
+
+@di,k , g ipvi,k ; wS qD “ @di,k , pI ´ Hi,k q∇vLipvi,k ; wS qD ` @di,k , pI ´ Hi,k qei,k 
+
+D, (192) Use Young’s inequality on the error term ( 2ab ď a2 
+
+> ϵ
+
+` ϵb 2 ): 
+
+2
+
+ˇˇˇA
+
+dptq
+
+> i,k
+
+, pI ´ Hi,k q ei,k 
+
+Eˇ ˇˇ ď
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ1
+
+> 1
+
+` ϵ1 
+
+> 1
+
+}I ´ Hi,k }2 Q2η2 }∇vLipvi,k ; wS q} 2
+
+ď
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ1
+
+> 1
+
+` ϵ1
+
+> 1
+
+p1 ´ M q2Q2η2 }∇vLipvi,k ; wS q} 2 ď
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ1
+
+` ϵ1Q2η2 }∇vLipvi,k ; wS q} 2 ,
+
+(193) where we have used the assumption that the Hessian is bounded, i.e., }Hi,k } ď M . Similarly, applying Cauchy-Schwarz and Young‘s inequalities leads to: 
+
+´ 2
+
+A
+
+dptq 
+
+> i,k 1
+
+pI ´ Hi,k q ∇vLipvi,k ; wS q
+
+E
+
+ď
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ1
+
+> 2
+
+` ϵ1 
+
+> 2
+
+}I ´ Hi,k }2 Q2η2 }∇vLipvi,k ; wS q} 2
+
+ď
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ1
+
+> 2
+
+` ϵ1
+
+> 2
+
+p1 ´ M q2Q2η2 }∇vLipvi,k ; wS q} 2 ď
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ2
+
+` ϵ2 }∇vLipvi,k ; wS q} 2 .
+
+(194) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 38 
+
+Combining the two inner-product bounds (193)(194) and substituting them into (192) leads to: 
+
+´2η
+
+A
+
+dptq
+
+> i,k
+
+, g ipvi,k ; wS q
+
+E
+
+ď η
+
+¨˚˝›››dptq
+
+> i,k
+
+›››2
+
+ϵ2
+
+` ϵ2 }∇vLipvi,k ; wS q} 2
+
+˛‹‚` η
+
+›››dptq
+
+> i,k
+
+›››2
+
+ϵ1
+
+`ηϵ 1Q2η2 }∇vLipvi,k ; wS q} 2 “ η
+
+ˆ 1
+
+ϵ2
+
+` 1
+
+ϵ1
+
+˙ ›››dptq
+
+> i,k
+
+›››2
+
+` η `ϵ2 ` ϵ1Q2η2˘ }∇vLipvi,k ; wS q} 2 .
+
+(195) Also for the consensus variate term via Young’s inequality: 
+
+´2ηγ 
+
+A
+
+dptq 
+
+> i,k 1
+
+, c ptq ´ cpt´1q
+
+> i
+
+E
+
+ď 2ηγ 
+
+›››dptq
+
+> i,k
+
+››››››cptq ´ cpt´1q
+
+> i
+
+››› ď ηγ 
+
+¨˚˝›››dptq
+
+> i,k
+
+›››2
+
+ϵ3
+
+` ϵ3
+
+›››cptq ´ cptq
+
+> i
+
+›››2
+
+˛‹‚ (196) Substituting (195)(196) into (185), we have 
+
+´ 2η@di,k , g ipvi,k ; wS q ` γpc ´ ciq ` ε d i,k 
+
+D ď η
+
+´ 1
+
+ϵ1
+
+` 1
+
+ϵ2
+
+` γϵ3
+
+´ 2ε
+
+¯
+
+}di,k }2
+
+` η`ϵ2 ` ϵ1Q2η2˘› ›∇vLipvi,k ; wS q››2 ` ηγϵ 3
+
+››c ´ ci
+
+››2.
+
+(197) We continue to combine (197)(184) into (183), and it results in 
+
+E“}di,k `1}2 ˇˇ vi,k 
+
+‰ ď
+
+´
+
+1 ` η
+
+´ 1
+
+ϵ1
+
+` 1
+
+ϵ2
+
+` γϵ3
+
+´ 2ε
+
+¯
+
+` 3η2ε2¯
+
+}di,k }2
+
+` η`ϵ2 ` ϵ1Q2η2˘› ›∇vLipvi,k ; wS q››2 ` `ηγϵ 3 ` 3η2γ2˘}c ´ ci}2 ` 3η2}gipvi,k ; wS q} 2 ` η2σ2.
+
+(198) Recall the client drift definition Et “ 1{KN 
+
+řNi“1
+
+řK´1 
+
+> k“0
+
+E}dptq
+
+> i,k
+
+}2, we take the relavant summation with dp0q 
+
+> i,k
+
+“ 0
+
+and unroll the bound to yield 
+
+Et ď 1
+
+KN 
+
+> N
+
+ÿ
+
+> i“1
+> K´1
+
+ÿ
+
+> k“1
+> k´1
+
+ÿ
+
+> m“0
+
+”
+
+η `ϵ2 ` ϵ1Q2η2˘ E }∇vLi pvi,m ; wS q} 2 ` `ηγϵ 3 ` 3η2γ2˘ E }c ´ ci}2
+
+`3η2E }gi pvi,m ; wS q} 2 ` η2σ2ı „
+
+1 ` η
+
+ˆ 1
+
+ϵ1
+
+` 1
+
+ϵ2
+
+` γϵ3
+
+´ 2ε
+
+˙
+
+` 3η2ε2
+
+ȷk´1´m
+
+ď 1
+
+KN 
+
+> N
+
+ÿ
+
+> i“1
+> K´2
+
+ÿ
+
+> m“0
+
+˜ K´1ÿ
+
+> k“m`1
+
+„
+
+1 ` η
+
+ˆ 1
+
+ϵ1
+
+` 1
+
+ϵ2
+
+` γϵ3
+
+´ 2ε
+
+˙
+
+` 3η2ε2
+
+ȷk´1´m¸
+
+¨ “η `ϵ2 ` ϵ1Q2η2˘
+
+¨E }∇vLi pvi,m ; wS q} 2 ` `ηγϵ 3 ` 3η2γ2˘ E }c ´ ci}2 ` 3η2E }gi pvi,m ; wS q} 2 ` η2σ2ı
+
+ď 1
+
+KN 
+
+> N
+
+ÿ
+
+> i“1
+> K´2
+
+ÿ
+
+> m“0
+
+ρK´m´1 ´ 1
+
+ρ ´ 1 ¨
+
+”
+
+η `ϵ2 ` ϵ1Q2η2˘ E }∇vLi pvi,m ; wS q} 2
+
+` `ηγϵ 3 ` 3η2γ2˘ E }c ´ ci}2 ` 3η2E }gi pvi,m ; wS q} 2 ` η2σ2ı
+
+,
+
+(199) where we have defined ρ “ 1 ` η p1{ϵ1 ` 1{ϵ2 ` γ{ϵ3 ´ 2εq ` 3η2ε2. For small η, it simply holds 
+
+ρK´m´1 ´ 1
+
+ρ ´ 1 « K ´ m ´ 1, (200) and combined with the result E}cptq ´ cptq 
+
+> i
+
+}2 ď 2Ct ` 2 rCt in ( ?? ) leads (199) to 
+
+Et ď 1
+
+KN 
+
+> N
+
+ÿ
+
+> i“1
+> K´2
+
+ÿ
+
+> m“0
+
+pK ´ m ´ 1q
+
+«
+
+η`ϵ2 ` ϵ1Q2η2˘E››∇vLipvi,m ; wS q››2
+
+` `ηγϵ 3 ` 3η2γ2˘p2Ct ` 2 rCtq ` 3η2E}gipvi,m ; wS q} 2 ` η2σ2
+
+ff 
+
+.
+
+(201) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 39 
+
+Moreover, since K ´ m ´ 1 ď K, and there are K ´ 1 terms, it leads to řK´2
+
+> m“0
+
+pK ´ m ´ 1q “ řK´1 
+
+> j“1
+
+j “
+
+> pK´1qK
+
+{2 ď K2{2. Then, for }gipvi,m ; wS q} 2, it can be related to }∇vLipvi,m ; wS q} 2:
+
+}gipvi,m ; wS q} 2 ď 2}∇vLipvi,m ; wS q} 2 ` 2η2inner L2}∇vLipvi,m ; wS q} 2
+
+“ 2`1 ` η2inner L2˘}∇vLipvi,m ; wS q} 2, (202) where we have decomposed gipvi,m ; wS q with the triangle inequality, and used the bound 
+
+}gipvi,m ; wS q ´ ∇vLipvi,m ; wS q} 2 ď η2inner L2}∇vLipvi,m ; wS q} 2. (203) From (201)(202), we now turn to the evaluation of }∇vLipvi,m ; wS q} 2, which we aim to relate to the global meta-objective value via the algorithm’s progress. Specifically, we have the following by the standard descent inequality for a L-smooth function: 
+
+E }∇vLi pvi,m ; wS q} 2 ď 2LE rLi pvi,m ; wS q ´ L˚ 
+
+> i
+
+s (204) We can bound E}∇vLipvi,m ; wS q} 2 by starting via the L-smoothness of Lip ¨ ; wS q about the global messenger at the beginning of the round: 
+
+E“Lipvi,m ; wS q‰ ď Lipvptq; wS q ` @∇vLipvptq; wS q, Ervi,m ´ vptqsD ` β
+
+2 E}vi,m ´ vptq}2. (205) Then the inner-product term can be bounded simply by Cauchy–Schwarz and Young’s inequalities subse-quently: 
+
+@∇vLipvptq; wS q, Ervi,m ´ vptqsD ď ››∇vLipvptq; wS q›› ››Ervi,m ´ vptqs››
+
+ď 12L
+
+››∇vLipvptq; wS q››2 ` L
+
+2
+
+››Ervi,m ´ vptqs››2 ď 12L
+
+››∇vLipvptq; wS q››2 ` L
+
+2 E}vi,m ´ vptq}2, (206) where the last step uses Jensen’s inequality. Substituting (206) into (205) and subtracting the minimum value 
+
+L˚ 
+
+> i
+
+yields 
+
+E“Lipvi,m ; wS q ´ L˚
+
+> i
+
+‰ ď Lipvptq; wS q ´ L˚ 
+
+> i
+
+` 12L
+
+››∇vLipvptq; wS q››2 ` L E}vi,m ´ vptq}2. (207) Next we bound the gradient term at the global messenger by client heterogeneity. By Assumption A3, we have 
+
+E}gipvi,m ; wS q ´ ∇Φpvq} 2 ď G2 ` B2}∇Φpvq} 2, (208) Decomposing the squared norm therefore gives 
+
+E››∇vLipvptq; wS q››2 “ E››∇vLipvptq; wS q ´ gipvi,m ; wS q ` gipvi,m ; wS q ´ ∇Φpvptqq ` ∇Φpvptqq››2
+
+ď 3E››∇vLipvptq; wS q ´ gipvi,m ; wS q››2 ` 3E››gipvi,m ; wS q ´ ∇Φpvptqq›› ` 3E››∇Φpvptqq››2
+
+ď 3L2η2 
+
+> inner
+
+E}∇vLipvptq; wS q} 2 ` 3G2 ` p 3 ` 3B2qE}∇Φpvptqq} 2.
+
+(209) By letting rC “ 3p1`B2q{p1´3L2η2  
+
+> inner q
+
+and rLy “ 3G2{p1´3L2η2 
+
+> inner q
+
+, this will result in 
+
+E}∇vLipvptq; wS q} 2 ď rCE}∇Φpvptqq} 2 ` rLy. (210) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 40 
+
+We now bound the client gap Lipvptq; wS q ´ L˚ 
+
+> i
+
+that appears in ( ?? ). Define the one-step point from the global messenger by zptq 
+
+> i
+
+“ vptq ´ η∇vLipvptq; wS q. By L-smoothness we have 
+
+Lipvptq; wS q ď Lipzptq 
+
+> i
+
+; wS q ` @∇vLipzptq 
+
+> i
+
+; wS q, v ptq ´ zptq
+
+> i
+
+D ` L
+
+2 }vptq ´ zptq 
+
+> i
+
+}2
+
+ď Lipzptq 
+
+> i
+
+; wS q ` η@∇vLipzptq 
+
+> i
+
+; wS q, ∇vLipvptq; wS qD ` Lη 2
+
+2
+
+››∇vLipvptq; wS q››2
+
+ď Lipzptq 
+
+> i
+
+; wS q ` η}∇vLipzptq 
+
+> i
+
+; wS q} } ∇vLipvptq; wS q} ` Lη 2
+
+2
+
+››∇vLipvptq; wS q››2
+
+ď Lipzptq 
+
+> i
+
+; wS q ` η
+
+´
+
+1 ` 3Lη 
+
+2
+
+¯››∇vLipvptq; wS q››2
+
+ď Lipzptq 
+
+> i
+
+; wS q ` η
+
+´
+
+1 ` 3Lη 
+
+2
+
+¯ rCE}∇Φpvptqq} 2 ` η
+
+´
+
+1 ` 3Lη 
+
+2
+
+¯ rLy.
+
+(211) Because Φpv˚q “ 1{N
+
+řNj“1 Lj pzj pv˚q; wS q ě 1{N
+
+řNj“1 L˚ 
+
+> j
+
+, we write the client gap at the one-step point zptq
+
+> i
+
+as 
+
+Li
+
+`zptq 
+
+> i
+
+; wS
+
+˘ ´ L˚ 
+
+> i
+
+“ N Φpvptqq ´ ÿ
+
+> j‰i
+
+Lj
+
+`zptq 
+
+> j
+
+; wS
+
+˘ ´ L˚ 
+
+> i
+
+´ `N Φpvptqq ´ Li
+
+`zptq 
+
+> i
+
+; wS
+
+˘˘ 
+
+ď N Φpvptqq ´ ÿ
+
+> j‰i
+
+Lj
+
+`zptq 
+
+> j
+
+; wS
+
+˘ ´ L˚
+
+> i
+
+(212) Note that each remaining client loss is bounded from below by its own minimum Lj
+
+`zptq 
+
+> j
+
+; wS
+
+˘ ě L˚ 
+
+> j
+
+pj ‰ iq.
+
+Therefore ´ ř 
+
+> j‰i
+
+Lj
+
+`zptq 
+
+> j
+
+; wS
+
+˘ ď ´ ř 
+
+> j‰i
+
+L˚ 
+
+> j
+
+, and we obtain 
+
+Li
+
+`zptq 
+
+> i
+
+; wS
+
+˘ ´ L˚ 
+
+> i
+
+ď N Φpvptqq ´ ÿNj“1 L˚ 
+
+> j
+
+ď N `Φpvptqq ´ Φ˚˘, (213) where we have adopted the comparison ř 
+
+> j
+
+L˚ 
+
+> j
+
+ď N Φpv˚q. As for ››∇vLi
+
+`vptq; wS
+
+˘› ›2, we can evaluate it through 
+
+}∇vLipvptq; wS q} 2 “ } ∇vLipvptq; wS q ´ ∇Φpvptqq ` ∇Φpvptqq} 2
+
+ď 2}∇vLipvptq; wS q ´ ∇Φpvptqq} 2 ` 2}∇Φpvptqq} 2
+
+ď 2N ζ 2 ` 4βpΦpvptqq ´ Φ˚q.
+
+(214) By subsituting (211)(213)(214) into (204), we can obtain 
+
+Et ď 1
+
+KN 
+
+> N
+
+ÿ
+
+> i“1
+> K´2
+
+ÿ
+
+> m“0
+
+pK ´ m ´ 1q
+
+«
+
+D1´`2LN ` 4β˘` Φpvptqq ´ Φ˚˘ ` 2Lη 
+
+´
+
+1 ` 3Lη 
+
+> 2
+
+¯ rC E››∇Φpvptqq››2
+
+` 2Lη 
+
+´
+
+1 ` 3Lη 
+
+> 2
+
+¯ rLy ` 2N ζ 2 ` 2L2 E}vi,m ´ vptq}2¯
+
+` `ηγϵ 3 ` 3η2γ2˘p2Ct ` 2 rCtq ` η2σ2
+
+ff 
+
+ď K ´ 12
+
+«
+
+D1´`2LN ` 4β˘` Φpvptqq ´ Φ˚˘ ` 2Lη 
+
+´
+
+1 ` 3Lη 
+
+> 2
+
+¯ rC E››∇Φpvptqq››2
+
+` 2Lη 
+
+´
+
+1 ` 3Lη 
+
+> 2
+
+¯ rLy ` 2N ζ 2¯
+
+` 2L2D1 Et ` `ηγϵ 3 ` 3η2γ2˘p2Ct ` 2 rCtq ` η2σ2
+
+ff 
+
+.
+
+(215) where recall we have defined the positive prefactor 
+
+D1 “ η`ϵ2 ` ϵ1Q2η2˘ ` 6η2`1 ` η2inner L2˘, (216) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 41 
+
+then move Et to the left hand side we can obtain 
+
+Et
+
+`1 ´ p K ´ 1qL2D1˘ ď K ´ 12 D1
+
+ˆ
+
+2LN ` 4β ` 4βLη 
+
+ˆ
+
+1 ` 3Lη 
+
+2
+
+˙
+
+˜C
+
+˙ ´
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚¯
+
+` K ´ 12 ¨ 2Lη 
+
+ˆ
+
+1 ` 3Lη 
+
+2
+
+˙rLyD1 ` p K ´ 1q `ηγϵ 3 ` 3η2γ2˘ pCt ` rCtq` K ´ 12 p2N ζ 2D1 ` η2σ2q,
+
+(217) where the positive variables A, B, rD and E can be obtained 
+
+A “ 2LN ` 4β ` 4βLη 
+
+ˆ
+
+1 ` 3Lη 
+
+2
+
+˙
+
+˜C, E “ ηγϵ 3 ` 3η2γ2
+
+rD “ 2N ζ 2D1 ` η2σ2 ` 2Lη 
+
+ˆ
+
+1 ` 3Lη 
+
+2
+
+˙rLyD1.
+
+(218) 
+
+Lemma 12. Under Assumptions A1-A8 and the step-size restriction τ Kη ď min t 18β , μ 
+
+> 4pγ2β`ε2β`Ψ{p 2τ ηK qq
+
+u,
+
+the expected one-round progress of the meta-objective satisfies 
+
+ErΦpvpt`1qq ´ Φpvptqqs ď ´p τ ηKμ ´ βΨ2 ´ τ 2η2Kβ pγ2 ` ε2qqp Φ
+
+´
+
+vptq¯
+
+´ Φ˚q` p τ ηKβ 2
+
+2 ` τ ηε 
+
+2 ` βΩ2 qEt ` p τ ηγ ` βΛ2 qp Ct ` rCtq ` βΥ2 E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` βΓ2 .
+
+(219) 
+
+For simplicity but without loss of generality, the higher-order terms can be omitted when η is sufficiently small, 
+
+ErΦpvpt`1qq ´ Φpvptqqs ď ´ τ ηKμ 
+
+2 pΦpvptqq ´ Φ˚q ` p τ ηKβ 2
+
+2 ` τ ηε 
+
+2 ` βΩ2 qEt
+
+` p τ ηγ ` βΛ2 qp Ct ` rCtq ` βΥ2 E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` βΓ2 .
+
+(220) 
+
+Proof. By taking the Talor expansion on ErΦpvpt`1qqs at vptq, we combine the β´smoothness of Φ, it leads to 
+
+ErΦpvpt`1qqs ď Φpvptqq ` Ex∇Φpvptqq, v pt`1q ´ vptqy ` β
+
+2 E}vpt`1q ´ vptq}2. (221) Note exact reconstruction of the client displacements the server update takes the form 
+
+vpt`1q “ vptq ´ τ η ¨ 1
+
+|St|
+
+ÿ
+
+> iPSt
+> K´1
+
+ÿ
+
+> k“0
+
+”
+
+ˆgi,k 
+
+´
+
+vptq 
+
+> i,k
+
+, w ptq
+
+> S
+
+¯
+
+` γ
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+` ε
+
+´
+
+vptq 
+
+> i,k
+
+´ vptq¯ı 
+
+, (222) which we substitute into the cross term in (221) and it results in 
+
+Ex∇Φpvptqq, v pt`1q ´ vptqy “ ´ τ η ¨ 1
+
+N
+
+> N
+
+ÿ
+
+> i“1
+> K´1
+
+ÿ
+
+> k“0
+
+E
+
+A
+
+∇Φ
+
+´
+
+vptq¯
+
+, ˆgi,k 
+
+´
+
+vptq 
+
+> i,k
+
+, w ptq
+
+> S
+
+¯E loooooooooooooooooooooooooooooooomoooooooooooooooooooooooooooooooon 
+
+> :“T1
+
+` ´ τ ηγ ¨ 1
+
+N
+
+> N
+
+ÿ
+
+> i“1
+> K´1
+
+ÿ
+
+> k“0
+
+E
+
+A
+
+∇Φ
+
+´
+
+vptq¯
+
+, c ptq ´ cptq
+
+> i
+
+Elooooooooooooooooooooooooooooomooooooooooooooooooooooooooooon 
+
+> :“T2
+
+` ´ τ ηε ¨ 1
+
+N
+
+> N
+
+ÿ
+
+> i“1
+> K´1
+
+ÿ
+
+> k“0
+
+E
+
+A
+
+∇Φ
+
+´
+
+vptq¯
+
+, v ptq 
+
+> i,k
+
+´ vptqElooooooooooooooooooooooooooooomooooooooooooooooooooooooooooon 
+
+> :“T3
+
+(223) For T1, we decompose each practical meta-gradient 
+
+T1 “ ´ τ η 1
+
+N
+
+ÿ
+
+> i,k
+
+Erx ∇Φpvptqq, g i,k pvptq, w ptq 
+
+> S
+
+qy ` x ∇Φpvptqq, g i,k pvptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+q ´ gi,k pvptq, w ptq 
+
+> S
+
+qys . (224) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 42 
+
+The first average exactly equals }∇Φpvptqq} 2, and the second average can be evaluated via the joint β-smoothness, namely }gi,k pvptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+q ´ gi,k pvptq, w ptq 
+
+> S
+
+q} ď β}vptq 
+
+> i,k
+
+´ vptq}, hence we have 
+
+T1 ď ´ τ ηK 
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` τ η ¨ 1
+
+N
+
+ÿ
+
+> i,k
+
+›››∇Φ
+
+´
+
+vptq¯› ›› ¨ β
+
+›››vptq 
+
+> i,k
+
+´ vptq
+
+›››
+
+ď ´ τ ηK 
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` τ ηK 
+
+2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` τ ηβ 2
+
+2 ¨ 1
+
+N
+
+ÿ
+
+> i,k
+
+E
+
+›››vptq 
+
+> i,k
+
+´ vptq
+
+›››2
+
+“ ´ τ ηK 
+
+2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` τ ηKβ 2
+
+2 Et ď ´ τ ηKμ 
+
+´
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚¯
+
+` τ ηKβ 2
+
+2 Et,
+
+(225) where we have used the Polyak-Łojasiewicz inequality }∇Φpvptqq} 2 ě 2μpΦpvptqq ´ Φ˚q. For T2, we first apply Young’s inequality 
+
+ˇˇˇE
+
+A
+
+´τ ηγ ¨ ∇Φ
+
+´
+
+vptq¯
+
+, c ptq ´ cptq
+
+> i
+
+Eˇ ˇˇ ď pτ ηγ q2
+
+2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` 12 E
+
+›››cptq ´ cptq
+
+> i
+
+›››2
+
+, (226) and we take the averaging over the N clients and the K local steps and use the bound E}cptq ´ cptq 
+
+> i
+
+}2 ď
+
+2pCt ` rCtq leads to 
+
+T2 ď pτ ηγ q2K
+
+2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` τ ηγ 
+
+´
+
+Ct ` rCt
+
+¯
+
+ď τ 2η2γ2Kβ 
+
+´
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚¯
+
+` τ ηγ 
+
+´
+
+Ct ` rCt
+
+¯
+
+,
+
+(227) where we have used the smoothness result }∇Φpvptqq} 2 ď 2βpΦpvptqq ´ Φ˚q. For T3 we apply the identical rewriting and Young’s inequality: 
+
+ˇˇˇE
+
+A
+
+´τ ηε ¨ ∇Φ
+
+´
+
+vptq¯
+
+, v ptq 
+
+> i,k
+
+´ vptqEˇ ˇˇ ď pτ ηε q2
+
+2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` 12 E
+
+›››vptq 
+
+> i,k
+
+´ vptq
+
+›››2
+
+. (228) Subsequently, we take the averaging over the N clients and the K local steps, then using the smoothness result, it leads to 
+
+T3 ď pτ ηε q2K
+
+2
+
+›››∇Φ
+
+´
+
+vptq¯› ››2
+
+` τ ηε 
+
+2 Et ď τ 2η2ε2Kβ 
+
+´
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚¯
+
+` τ ηε 
+
+2 Et. (229) Therefore, by substituting the Lemma 8, T1 in (225), T2 in (227) and T3 in (229) into (221), we can obtain the Lemma result (219). 
+
+Lemma 13 (Lyapunov Evolution) . Consider the bi-level CIDERS algorithm under Assumptions A1–A8. We design the Lyapunov function as follows: 
+
+V ptq “ p 1 ´ 4a2q E}zptq ´ v˚}2 ` ω1Et ` Qw2ηC t ` Qw3η rCt ` Qw4ηJ t, (230) 
+
+where Jt “ E“Φpvptqq ´ Φ˚‰ ` E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 is the convergence quantity of interest, zptq is the virtual messenger sequence defined by 
+
+zptq “ vptq ` 1 ´ ττ
+
+`vptq ´ vpt´1q˘, (231) 
+
+and Qw1, Q w2, Q w3, Q w4 are the positive weights that satisfies the following conditions 
+
+Qw3 ă p1 ´ 2aqKβκ g
+
+> 1
+
+, Qw4 p1 ´ ρRq ą 6β2Qw2
+
+„
+
+p1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+` 2pα 
+
+ȷ
+
+. (232) 
+
+Then the one-round progress of the Lyapunov function satisfies 
+
+V pt`1q ď V ptq ´ δΦη ¨ Jt ` D1
+
+> tot
+
+, (233) 
+
+where D1 
+
+> tot
+
+is a postive value and δΦ satisfies the following 
+
+δΦ “ min 
+
+"
+
+2p1 ´ 2aqK ´ 2Qw3βκ g
+
+> 1
+
+, Q w4 p1 ´ ρRq ´ 6β2Qw2
+
+„
+
+p1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+` 2pα 
+
+ȷ* 
+
+. (234) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 43 
+
+Proof. Our main target is to evaluate each term’s evolution. We first expand the Lyapunov difference as 
+
+V pt`1q ´ V ptq “ p 1 ´ 4a2q`E}zpt`1q ´ v˚}2 ´ E}zptq ´ v˚}2˘loooooooooooooooooooooooooooomoooooooooooooooooooooooooooon 
+
+> V1
+
+` ω1pEt`1 ´ Etqlooooooomooooooon 
+
+> V2
+
+` ω2pCt`1 ´ Ctqlooooooomooooooon 
+
+> V3
+
+` ω3p rCt`1 ´ rCtqlooooooomooooooon 
+
+> V4
+
+` ω4pJt`1 ´ Jtqlooooooomooooooon 
+
+> V5
+
+. (235) It can be seen the evaluation of the Lyapunnov function V evolution depends on each term’s evolution, hence we derive them term by term. Notice we have derived the corresponding evolution Et, Ct, rCt and Φ, hence we first foucs on V1. Specifically, the server update vpt`1q “ vptq ´ τ Kη ¯∆ptq implies zpt`1q ´ zptq “ ´ Kη ¯∆ptq,where we define ¯∆ptq and recall ∆i,t 
+
+¯∆ptq “ 1
+
+|St|
+
+ÿ
+
+> iPSt
+
+∆i,t , ∆i,t “ 1
+
+K
+
+> K´1
+
+ÿ
+
+> k“0
+
+pgi,k 
+
+´
+
+vptq 
+
+> i,k
+
+, w ptq
+
+> S
+
+¯
+
+` γ
+
+´
+
+cptq ´ cptq
+
+> i
+
+¯
+
+` rptq 
+
+> prox ,i
+
+(236) which we have used for the expansion of E ››zpt`1q ´ v˚››2 and it leads to 
+
+E}zpt`1q ´ v˚}2 “ E}zptq ´ v˚ ´ Kη ¯∆ptq}2
+
+“ E}zptq ´ v˚}2 ´ 2Kη Exzptq ´ v˚, ¯∆ptqy ` K2η2E} ¯∆ptq}2. (237) For the inner product term Exzptq ´ v˚, ¯∆ptqy, we decompose it as follows 
+
+Exzptq ´ v˚, ¯∆ptqy “ Exvptq ´ v˚, ¯∆ptqy ` 1 ´ ττ Exvptq ´ vpt´1q, ¯∆ptqy“ E
+
+A
+
+vptq ´ v˚, ∇Φ
+
+´
+
+vptq¯E 
+
+` 1
+
+ηK E
+
+A
+
+vptq ´ v˚, b ptqE
+
+` 1 ´ ττ Exvptq ´ vpt´1q, ¯∆ptqy,
+
+(238) where we have rewritten the following for the decomposition in the first equality 
+
+zptq ´ v˚ “
+
+´
+
+vptq ´ v˚¯
+
+` 1 ´ ττ
+
+´
+
+vptq ´ vpt´1q¯
+
+(239) and for the second equality we have used 
+
+E
+
+” ¯∆ptq | vptqı
+
+“ ∇Φ
+
+´
+
+vptq¯
+
+` 1
+
+ηK bptq, (240) moreover, we have incorporated the bias that measures the averaged local direction deviation with the true meta-gradient 
+
+bptq :“ ηK E“ ¯∆ptq ˇˇ vptq‰ ´ ηK ∇Φpvptqq, (241) and it can be expanded via 
+
+bptq “ ηN
+
+> N
+
+ÿ
+
+> i“1
+> K´1
+
+ÿ
+
+> k“0
+
+E“pgi,k pvptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+q ´ rgideal  
+
+> i,k
+
+pvptq, w ˚ 
+
+> S
+
+pvptqqq ˇˇ vptq‰looooooooooooooooooooooooooooooooooooomooooooooooooooooooooooooooooooooooooon   
+
+> TI:local-to-global meta-gradient deviation
+
+` ηKγ `cptq ´ ¯cptq˘looooooooomooooooooon   
+
+> TII :consensus-variate deviation
+
+` ηK ¨ 1
+
+N
+
+> N
+
+ÿ
+
+> i“1
+
+E“rptq
+
+> prox ,i
+
+ˇˇ vptq‰loooooooooooooooomoooooooooooooooon   
+
+> TIII :proximal residual
+
+,
+
+(242) where ¯cptq “ 1{N
+
+řNi“1 cptq 
+
+> i
+
+. Recall the joint smoothness of each client loss (Assumption A1) the map pv, w S q Þ Ñ 
+
+∇vLi
+
+`v ´ ηinner ∇vLipv, w S q, w S
+
+˘. Consequently 
+
+E››p gi,k pvptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+q ´ rgideal  
+
+> i,k
+
+pvptq, w ˚ 
+
+> S
+
+pvptqqq ››2
+
+ď 2β2E}vptq 
+
+> i,k
+
+´ vptq}2 ` 2β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2. (243) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 44 
+
+Averaging over the K local steps and the N clients, and using the definition of client drift Et, it produces 
+
+E}TI }2 “ η2E
+
+›››››
+
+1
+
+N
+
+> N
+
+ÿ
+
+> i“1
+
+1
+
+K
+
+> K´1
+
+ÿ
+
+> k“0
+
+`pgi,k pvptq 
+
+> i,k
+
+, w ptq 
+
+> S
+
+q ´ rgideal  
+
+> i,k
+
+pvptq, w ˚ 
+
+> S
+
+pvptqqq ˘›››››
+
+> 2
+
+ď 2η2β2Et ` 2η2β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} ,
+
+(244) For the averaged consensus-variate deviation term TII , it can be simply derived E}cptq ´ ¯cptq}2 ď 2pCt ` rCtq,which subsequently leads to 
+
+E}TII }2 “ η2K2γ2E
+
+›››cptq ´ ¯cptq
+
+›››2
+
+ď 2η2K2γ2 ´
+
+Ct ` rCt
+
+¯
+
+. (245) For the proximal residual TIII , we can apply the assumption E}rptq 
+
+> prox, i
+
+}2 ď ε22, which leads to 
+
+E}TIII }2 ď η2K2ε22. (246) Combining the inequalities (244)–(246) gives the full bound 
+
+E}bptq}2 ď 3`2η2β2Et ` 2η2β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2˘ ` 3`2η2K2γ2pCt ` rCtq˘ ` 3η2K2ε22
+
+“ 6η2β2Et ` 6η2K2γ2pCt ` rCtq ` 6η2β2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 3η2K2ε22. (247) Hence, the third term in (238) can be evaluated via 
+
+E
+
+A
+
+vptq ´ v˚, b ptqE
+
+ď a
+
+2 E
+
+›››vptq ´ v˚
+
+›››2
+
+` 12a E
+
+›››bptq
+
+›››2
+
+ď a
+
+2 E
+
+›››vptq ´ v˚
+
+›››2
+
+` 6η2β2Et
+
+` 3η2β2
+
+a Et ` 3η2K2γ2
+
+a
+
+´
+
+Ct ` rCt
+
+¯
+
+` 3η2β2
+
+a E
+
+›››wptq 
+
+> S
+
+´ w˚
+
+> S
+
+´
+
+vptq¯› ››2
+
+` 3η2K2ε22
+
+2a .
+
+(248) For the term Exvptq ´ vpt´1q, ¯∆ptqy in (238), assumption A6 together with the definition of the consensus variates and the proximal residual gives the uniform bound 
+
+}pgi,k } ď G, }cpt´1q ´ cpt´1q 
+
+> i
+
+} ď 2G, }rpt´1q
+
+> prox ,i
+
+} ď ε2 ď G, (249) where without loss of generality the residual bound can be absorbed into the same constant G). Consequently, according to the definitions of ∆i,t in (236), we simply obtain 
+
+}∆i,t ´1} ď G ` γ ¨ 2G ` G “ Gp1 ` 2γq, E} ¯∆pt´1q}2 ď G2p1 ` 2γq2. (250) This leads to third second term in (238) to become 
+
+ˇˇˇˇ
+
+1 ´ ττ E
+
+A
+
+vptq ´ vpt´1q, ¯∆ptqEˇˇˇˇ ď p 1 ´ τ qKηG 2p1 ` 2γq2. (251) Substituting (248)(251) and the convexity of Φ that Exvptq ´ v˚, ∇Φpvptqqy ě E“Φpvptqq ´ Φ˚‰ into (238), we can obtain 
+
+´2Kη Exzptq ´ v˚, ¯∆ptqy ď ´ 2Kη E“Φpvptqq ´ Φ˚‰ ` a E}vptq ´ v˚}2 ` 6η2β2
+
+a Et ` 6η2K2γ2
+
+a pCt ` rCtq` 6η2β2
+
+a E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` 3η2K2ε22
+
+a ` 2p1 ´ τ qK2η2 G2p1 ` 2γq2.
+
+(252) Notice the term E}vptq ´ v˚}2 satisifies the elementary expansion that relates the true messenger distance to the virtual-messenger distance: 
+
+E
+
+›››vptq ´ v˚
+
+›››2
+
+ď 2E
+
+›››zptq ´ v˚
+
+›››2
+
+` 2
+
+ˆ 1 ´ ττ
+
+˙2
+
+E
+
+›››vptq ´ vpt´1q
+
+›››2
+
+ď 2E
+
+›››zptq ´ v˚
+
+›››2
+
+` 2p1 ´ τ 2qK2η2E
+
+››› ¯∆pt´1q
+
+›››2
+
+“ 2E
+
+›››zptq ´ v˚
+
+›››2
+
+` 2p1 ´ τ q2K2η2G2p1 ` 2γq2
+
+(253) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 45 
+
+For the last term in (237), the Server Messenger Update lemma together with the identity K2η2E} ¯∆ptq}2 “  
+
+> 1
+> τ2
+
+E}vpt`1q ´ vptq}2 yields 
+
+K2η2E} ¯∆ptq}2 ď Λ
+
+τ 2 pCt ` rCtq ` Υ{τ 2E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` Ω
+
+τ 2 Et ` Ψ
+
+τ 2 E“Φpvptqq ´ Φ˚‰ ` Γ
+
+τ 2 , (254) and multiplying by p1 ´ 4a2q yields V1
+
+V1 “ p 1 ´ 4a2q
+
+´
+
+´2Kη Exzptq ´ v˚, ¯∆ptqy ` K2η2E} ¯∆ptq}2¯
+
+. (255) By substituting (252)(253)(254) into (237) we have 
+
+E}zpt`1q ´ v˚}2 ´ p 1 ` 2aqE}zptq ´ v˚}2 ď
+
+˜
+
+´2Kη ` Ψ
+
+τ 2
+
+¸
+
+E“Φpvptqq ´ Φ˚‰
+
+`
+
+˜
+
+6η2β2
+
+a ` Ω
+
+τ 2
+
+¸
+
+Et `
+
+˜
+
+6η2K2γ2
+
+a ` Λ
+
+τ 2
+
+¸
+
+pCt ` rCtq ` 
+
+˜
+
+6η2β2
+
+a ` Υ
+
+τ 2
+
+¸
+
+E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2
+
+` 3η2K2ε22
+
+a ` 2p1 ´ τ qK2η2 G2p1 ` 2γq2 ` 2ap1 ´ τ q2K2η2 G2p1 ` 2γq2 ` Γ
+
+τ 2 .
+
+(256) Since a ă 1{2, we simply have 1 ´ 2a ą 1 ´ 4a2, this leads to 
+
+V1 ď p 1 ´ 2aq
+
+˜
+
+´2Kη ` Ψ
+
+τ 2
+
+¸
+
+E“Φpvptqq ´ Φ˚‰ ` p 1 ´ 2aq
+
+˜
+
+6η2β2
+
+a ` Ω
+
+τ 2
+
+¸
+
+Et
+
+` p 1 ´ 2aq
+
+˜
+
+6η2K2γ2
+
+a ` Λ
+
+τ 2
+
+¸
+
+pCt ` rCtq ` p 1 ´ 2aq
+
+˜
+
+6η2β2
+
+a ` Υ
+
+τ 2
+
+¸
+
+E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2
+
+` p 1 ´ 2aq
+
+˜
+
+3η2K2ε22
+
+a ` 2p1 ´ τ qK2η2 G2p1 ` 2γq2 ` 2ap1 ´ τ q2K2η2 G2p1 ` 2γq2 ` Γ
+
+τ 2
+
+¸
+
+,
+
+(257) which is further simplified to 
+
+V1 ď ´ Az E“Φpvptqq ´ Φ˚‰ ` Bz Et ` Cz pCt ` rCtq ` Dz E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 ` D1 
+
+> z
+
+, (258) and we have defined 
+
+Az “ p 1 ´ 2aq
+
+ˆ
+
+2Kη ´ Ψ
+
+τ 2
+
+˙
+
+, Bz “ p 1 ´ 2aq
+
+ˆ 6η2β2
+
+a ` Ω
+
+τ 2
+
+˙
+
+,Cz “ p 1 ´ 2aq
+
+ˆ 6η2K2γ2
+
+a ` Λ
+
+τ 2
+
+˙
+
+, Dz “ p 1 ´ 2aq
+
+ˆ 6η2β2
+
+a ` Υ
+
+τ 2
+
+˙
+
+D1 
+
+> z
+
+“ p 1 ´ 2aq
+
+ˆ 3η2K2ε22
+
+a ` 2p1 ´ τ qK2η2G2p1 ` 2γq2 ` 2ap1 ´ τ q2K2η2G2p1 ` 2γq2 ` Γ
+
+τ 2
+
+˙
+
+.
+
+(259) For V2, we can use the client drift Lemma 11 for Et`1 ´ Et:
+
+Et`1 ´ Et ď pK ´ 1q{ 21 ´ KL 2D1
+
+!
+
+D1AE
+
+”
+
+Φ
+
+´
+
+vpt`1q¯
+
+´ Φ˚ı
+
+` 2E
+
+´
+
+Ct`1 ` rCt`1
+
+¯
+
+` rD
+
+)
+
+´ Et
+
+ď pK ´ 1q{ 21 ´ KL 2D1 D1A␣p1 ´ τ ηKμ 
+
+2 qErΦpvptqq ´ Φ˚s ` p τ ηKβ 2
+
+2 ` τ ηε 
+
+2 ` βΩ2 qEt
+
+` p τ ηγ ` βΛ2 qp Ct ` rCtq ` βΥ2 Rt ` βΓ2
+
+(
+
+` pK ´ 1q{ 21 ´ KL 2D1 D1A ¨ 2E␣ pρC ` ρgq Ct ` `κ rC ` ˜ρg
+
+˘ rCt ` p κE ` κg
+
+> 2
+
+Ωq Et
+
+` p κw ` κg
+
+> 2
+
+Υq Rt ` p κΦ ` rκg
+
+> 3
+
+q E
+
+”
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚ı
+
+` `κ0 ` rκ4
+
+> g
+
+˘ ( ` pK ´ 1q{ 21 ´ KL 2D1 ¨ rD ´ Et,
+
+(260) where we have used the Lemma 218 for evaluating the term pΦpvpt`1qq ´ Φ˚q and the Lemmas 10 and 9 for evaluating the term pCt`1` rCt`1q. Moreover, we have defined Rt “ E}wptq 
+
+> S
+
+´w˚ 
+
+> S
+
+pvptqq} 2 and used the Lemma 5 IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 46 
+
+for its evolution ρRRt`DR, with the definitions of ρR “ 2p1´μη KD qE and DR “ ηKD σ2KD {μ`8R2
+
+> w
+
+p1´μη KD qE .For brevity, we let κkl “ pK´1q{ 2{p1´KL 2D1q, then it leads to 
+
+Et`1 ´ Et ď AE E
+
+”
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚ı
+
+` p ρE ´ 1q Et ` CCE Ct ` C rCE rCt ` DE Rt ` D1 
+
+> E
+
+, (261) where the coefficients for ErΦpvptqq ´ Φ˚s, Rt, Ct, rCt and Et are provided 
+
+AE “ κkl D1A
+
+„ˆ 
+
+1 ´ τ ηKμ 
+
+2
+
+˙
+
+` 2E pκΦ ` rκg
+
+> 3
+
+q
+
+ȷ
+
+, ρ E “ κkl D1A
+
+ˆ τ ηKβ 2
+
+2 ` τ ηε 
+
+2 ` βΩ2 ` 2E pκE ` κg
+
+> 2
+
+Ωq
+
+˙
+
+DE “ κkl 
+
+„
+
+D1A
+
+ˆ βΥ2 ` 2E pκw ` κg
+
+> 2
+
+Υq
+
+˙ȷ 
+
+, C CE “ κkl D1A
+
+ˆ
+
+τ ηγ ` βΛ2 ` 2E pρC ` ρgq
+
+˙
+
+,C rCE “ κkl D1A
+
+ˆ
+
+τ ηγ ` βΛ2 ` 2E `κ rC ` rρg
+
+˘˙
+
+, D 1 
+
+> E
+
+“ κkl 
+
+„
+
+D1A
+
+ˆ βΓ2 ` 2E `κ0 ` rκ4
+
+> g
+
+˘˙
+
+` rD
+
+ȷ
+
+.
+
+(262) Next, we continue to derive V3, which can be directly obtained from Lemma 10 that 
+
+V3 ď ω2pρC ´ 1qCt ` ω2κ rC rCt ` ω2κE Et ` ω2κwRt ` ω2κΦE“Φpvptqq ´ Φ˚‰ ` ω2κ0. (263) Similarly, V4 can be directly derived via Lemma 9 that 
+
+V4 ď ω3prρg ´ 1q rCt ` ω3ρgCt ` ω3κg
+
+> 2
+
+ΥRt ` ω3κg
+
+> 2
+
+ΩEt ` ω3rκg
+
+> 3
+
+E“Φpvptqq ´ Φ˚‰ ` ω3rκ4
+
+> g
+
+. (264) For V5, Lemmas 218 and 5 can be adopted and it directly leads to 
+
+V5 “ω4 pJt`1 ´ Jtq ď ω4
+
+ˆ
+
+´ τ ηKμ 
+
+2
+
+˙
+
+E
+
+”
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚ı
+
+` ω4
+
+ˆ τ ηKβ 2
+
+2 ` τ ηε 
+
+2 ` βΩ2
+
+˙
+
+Et
+
+` ω4
+
+ˆ
+
+τ ηγ ` βΛ2
+
+˙ ´
+
+Ct ` rCt
+
+¯
+
+` ω4
+
+ˆ βΥ2 ` ρR ´ 1
+
+˙
+
+Rt ` ω4
+
+ˆ βΓ2 ` DR
+
+˙
+
+.
+
+(265) Combine pV1, V2, V3, V4, V5q, we can have the Lyapunov evolution 
+
+V pt`1q ´ V ptq ď ´ Atot E
+
+”
+
+Φ
+
+´
+
+vptq¯
+
+´ Φ˚ı
+
+´ Btot Et ´ CC
+
+> tot
+
+Ct ´ C rC 
+
+> tot
+
+rCt ´ Dtot Rt ` D1
+
+> tot
+
+, (266) where we have defined Atot , B tot , C C
+
+> tot
+
+, C rC
+
+> tot
+
+, D tot , D 1
+
+> tot
+
+Atot “ Az ´ ω1AE ´ ω2κΦ ´ ω3rκg 
+
+> 3
+
+` ω4 ¨ τ ηKμ 
+
+2 « r 2p1 ´ 2aqK ´ 2Qw3βκ g
+
+> 1
+
+s ηBtot “ ω1 ´ Bz ´ ω1ρE ´ ω2κE ´ ω3κg
+
+> 2
+
+Ω ´ ω4
+
+ˆ τ ηKβ 2
+
+2 ` τ ηε 
+
+2 ` βΩ2
+
+˙
+
+« ω1 ´ 2pαβ 2Qw2η ´ Qw4 ¨ τ
+
+2
+
+`Kβ 2 ` ε˘ η2
+
+CC 
+
+> tot
+
+“ ω2 ´ Cz ´ ω1CCE ´ ω2ρC ´ ω3ρg ´ ω4
+
+ˆ
+
+τ ηγ ` βΛ2
+
+˙
+
+« ηQ w2p1 ´ p 1 ´ pα qp 1 ` εqq ´ Qw4τ γη 2,C rC 
+
+> tot
+
+“ ω3 ´ Cz ´ ω1C rCE ´ ω2κ rC ´ ω3 ˜ρg ´ ω4
+
+ˆ
+
+τ ηγ ` βΛ2
+
+˙
+
+« ω3 ´ Qw4τ γη 2,Dtot “ ω4 ´ Dz ´ ω1DE ´ ω2κw ´ ω3κg
+
+> 2
+
+Υ ´ ω4
+
+ˆ βΥ2 ` ρR
+
+˙
+
+«
+
+"
+
+Qw4 p1 ´ ρRq ´ 6β2Qw2
+
+„
+
+p1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+` 2pα 
+
+ȷ* 
+
+ηD1 
+
+> tot
+
+“ D1 
+
+> z
+
+` ω1D1 
+
+> E
+
+` ω2κ0 ` ω3rκ4 
+
+> g
+
+` ω4
+
+ˆ βΓ2 ` DR
+
+˙
+
+« Cηη ` Cη2 η2 ` Cη3 η3
+
+(267) IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 47 
+
+where especially for D1
+
+> tot
+
+, we have defined Cη, C η2 , C η3 as follows: 
+
+Cη “
+
+!
+
+ω1pK ´ 1qp 2N ζ 2ϵ2q ` 
+
+´
+
+Qw2κp0q 
+
+> 0
+
+` Qw3κg 
+
+> 3
+
+` Qw4DR
+
+¯) 
+
+Cη2 “ ω1pK ´ 1q
+
+”
+
+2ϵ2A0γϵ 3
+
+´
+
+κp0q 
+
+> 0
+
+` κg
+
+> 3
+
+¯
+
+` 12 N ζ 2 `1 ` η2 
+
+> inner
+
+L2˘ ` σ2 ` 2L rLyϵ2
+
+ı
+
+` p 1 ´ 2aq
+
+ˆ 3K2ε22
+
+a ` 2p1 ´ τ qK2G2p1 ` 2γq2 ` 2ap1 ´ τ q2K2G2p1 ` 2γq2 ` Γ2
+
+τ 2
+
+˙
+
+Cη3 “ ω1pK ´ 1q
+
+”
+
+ϵ2A0 ¨ P2 ` `ϵ2A1 ` 6 `1 ` η2 
+
+> inner
+
+L2˘ A0
+
+˘ ¨ 2γϵ 3
+
+´
+
+κp0q 
+
+> 0
+
+` κg
+
+> 3
+
+¯
+
+`2N ζ 2ϵ1Q2 ` 12 L rLy
+
+`1 ` η2 
+
+> inner
+
+L2˘ ` 3L2 rLyϵ2
+
+ı
+
+`
+
+ˆ
+
+Qw2κp1q 
+
+> 0
+
+` Qw3κg 
+
+> 2
+
+` Qw4
+
+β
+
+2
+
+˙
+
+Γ2,
+
+(268) and we have set the following definitions for brevity: 
+
+D1 “ ηϵ 2 ` η2D1
+
+> 2
+
+, D 1 
+
+> 2
+
+“ ϵ1Q2 ` 6 `1 ` η2 
+
+> inner
+
+L2˘ , P2 “ 6γ2 ´
+
+κp0q 
+
+> 0
+
+` κg
+
+> 3
+
+¯
+
+` β
+
+2 Γ2 ` 2γϵ 3
+
+´
+
+κp2q 
+
+> 0
+
+` κg
+
+> 2
+
+¯
+
+Γ2,
+
+A “ A0 ` ηA1 ` η2A2, A0 “ 2LN ` 4β, A1 “ 4βL ˜C, Γ “ η2Γ2 with Γ2 “ 12 N τ 2K2
+
+S
+
+ˆ 6σ2
+
+K ` 12 G2 ` 2ε22
+
+˙
+
+`
+
+ˆ 12 N τ 2K2B2
+
+S ` 2τ 2K2
+
+˙ `32 η2 
+
+> inner
+
+B2G2 ` `40 ` 16 L2η2
+
+> inner
+
+˘ ζ2˘
+
+κ0 “ κp0q 
+
+> 0
+
+` η2κp1q 
+
+> 0
+
+Γ2 with κp1q 
+
+> 0
+
+“ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+β2 ` 2pαβ 2 and 
+
+κp0q 
+
+> 0
+
+“ p 1 ´ pα q
+
+ˆ
+
+1 ` 1
+
+ε
+
+˙
+
+16 β2R2 
+
+> w
+
+` pα 
+
+ˆ 2σ2
+
+K ` 32 β2R2
+
+> w
+
+˙
+
+.
+
+(269) It can be verified simply from (267) that when η is sufficiently small, all pBtot , C C 
+
+> tot
+
+, C rC 
+
+> tot
+
+q ą 0. Moreover, (234) holds. Therefore, (266) can be simplified to V pt`1q ď V ptq ´ δΦη ¨ Jt ` D1
+
+> tot
+
+, which is exactly (233) in the lemma. 
+
+Theorem 14 (Ergodic Convergence) . Under Assumptions A1–A8, let the weights of the Lyapunov function 
+
+V ptq “ p 1 ´ 4a2qE}zptq ´ v˚}2 ` ω1Et ` Qw2ηC t ` Qw3η rCt ` Qw4ηJ t to be positive pω1, Q w2, Q w3, Q w4q ą 0,with Qw2, Q w3, Q w4 obeying Qw3 ă p1´2aqK{βκ g 
+
+> 1
+
+, and Qw4p1 ´ ρRq ą 6β2Qw2rp 1 ´ pα qp 1 ` 1{εq ` 2pα s.Moreover, the upper-level step-size be chosen as 
+
+η “
+
+d
+
+V p0q
+
+> 0
+
+Cη2 T , where V p0q 
+
+> 0
+
+“ `1 ´ 4a2˘ E
+
+›››zp0q ´ v˚
+
+›››2
+
+` ω1E0, (270) 
+
+Then the ergodic average of the joint gap Jt “ ErΦpvptqq ´ Φ˚s ` E}wptq 
+
+> S
+
+´ w˚ 
+
+> S
+
+pvptqq} 2 satisfies 
+
+1
+
+T 
+
+> T´1
+
+ÿ
+
+> t“0
+
+Jt ď Cη
+
+δΦ
+
+` 2
+
+δΦ
+
+d
+
+V p0q 
+
+> 0
+
+Cη2
+
+T ` V p0q
+
+> 1
+
+δΦT ` Cη3 V p0q
+
+> 0
+
+δΦCη2 T ` O
+
+´
+
+T ´3{2¯ (271) 
+
+Proof. Summing the inequality (233) from t “ 0 to T ´ 1 yields 
+
+1
+
+T 
+
+> T´1
+
+ÿ
+
+> t“0
+
+Jt ď V p0q
+
+δΦηT ` D1
+
+> tot
+
+δΦη “ V p0q
+
+> 0
+
+δΦηT ` V p0q
+
+> 1
+
+δΦT ` Cη
+
+δΦ
+
+` Cη2
+
+δΦ
+
+η ` Cη3
+
+δΦ
+
+η2 ` O `η3˘ , (272) where we have defined 
+
+V p0q 
+
+> 0
+
+“ `1 ´ 4a2˘ E
+
+›››zp0q ´ v˚
+
+›››2
+
+` ω1E0, V p0q 
+
+> 1
+
+“ Qw2C0 ` Qw3 rC0 ` Qw4J0. (273) We consider the function Hpηq “ V p0q 
+
+> 0
+
+{pδΦηT q ` Cη2{δΦ, by minimizing it we can obtain the step size η˚ “b  
+
+> Vp0q
+> 0
+
+{Cη2 T exactly as (270) and substituting it into (272) we can obtain the convergence result in (271). IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, SEPT. 2026 48 
+
+N. Discussion of the Convergence Result 
+
+The convergence result in (271) provides several important insights into the behavior of CIDERS. 
+
+a) Convergence rate.: The leading term in (271) is OpT ´1{2q, which matches the standard sublinear rate for stochastic nonconvex optimization under heterogeneous settings [1]. The first term Cη{δΦ represents the asymptotic neighborhood of convergence, which is assembled from the local gradient heterogeneity, lower-level gap, and the proximal second-moment. It also confirms that larger client participation improves the convergence rate by reducing the variance of the aggregated update. The step-size choice η “ Op1{?T q is standard for stochastic gradient methods and balances the initial transient and the asymptotic variance [2]. In Lemma 12, the global learning rate τ satisfies 
+
+τ Kη ď min 
+
+" 18β , μ
+
+4pγ2β ` ε2β ` Ψ{p 2τ ηK qq 
+
+*
+
+, (274) which is the stability condition for smooth optimization with momentum-like updates. 
+
+b) Effect of local step K.: While the local step K can reduce communication, it may inflate client drift. In Lemma 11, the prefactor p1 ´ KL 2D1q´1 remains positive for K ă 1{p L2D1q, with D1 “ Opηq. Beyond this threshold, the Lyapunov descent inequality fails, which justifies the practical guideline that Kη must be sufficiently small to prevent divergence. This aligns with the client-drift phenomenon identified in prior federated learning analyses [3], [4]. 
+
+c) Effect of lower-level distillation.: The lower-level approximation error Rt :“ E}wptq 
+
+> S
+
+´w˚ 
+
+> S
+
+pvptqq} 2 contracts at rate ρR “ 2p1´μη KD qE from Lemma 5. To ensure that this error does not dominate the upper-level progress, the number of KD steps E should satisfy 
+
+E Á p μη KD q´1 log pηq´1, (275) This condition formalizes the requirement that the student backbone is sufficiently well aligned with the current messenger before the next round of client updates begins. 
+
+d) Comparison with baseline federated learning.: The convergence rate Op1`1{?T q matches the best-known rates for federated learning with client heterogeneity [3], [6], [7]. Compared to standard FL, which suffers from biased convergence due to client drift [4], CIDERS retains a comparable asymptotic neighborhood arising from the bilevel structure, i.e., the lower-level approximation error Rt is the additional sources of bias, thus the lower-level updates should be carefully controlled. Importantly, the consensus-variate correction effectively mitigates the heterogeneity from the asymptotic bias. This aligns with the qualitative finding in Section V-B that the consensus variates reduce the heterogeneity gap when c « rG and ci « rgi.
+
+REFERENCES [1] L. Bottou, F. E. Curtis, and J. Nocedal, “Optimization methods for large-scale machine learning,” SIAM Review , vol. 60, no. 2, pp. 223–311, 2018. [2] A. Khaled, K. Mishchenko, and P. Richt´ arik, “Tighter theory for local SGD on identical and heterogeneous data,” in Proc. Int. Conf. Artif. Intell. Stat. (AISTATS) , 2020. [3] S. P. Karimireddy, S. Kale, M. Mohri, S. Reddi, S. U. Stich, and A. T. Suresh, “SCAFFOLD: Stochastic controlled averaging for federated learning,” in Proc. Int. Conf. Mach. Learn. (ICML) , 2020. [4] X. Li, K. Huang, W. Yang, S. Wang, and Z. Zhang, “On the convergence of FedAvg on non-IID data,” in Proc. Int. Conf. Learn. Represent. (ICLR) , 2020. [5] N. Parikh and S. Boyd, “Proximal algorithms,” Found. Trends Optim. , vol. 1, no. 3, pp. 127–239, 2014. [6] D. A. E. Acar, Y. Zhao, R. Matas, M. Mattina, P. Whatmough, and V. Saligrama, “Federated learning based on dynamic regularization,” in Proc. Int. Conf. Learn. Represent. (ICLR) , 2021. [7] S. Reddi, Z. Charles, M. Zaheer, Z. Garrett, K. Rush, J. Koneˇ cn´ y, S. Kumar, and H. B. McMahan, “Adaptive federated optimization,” in Proc. Int. Conf. Learn. Represent. (ICLR) , 2021. [8] S. Ghadimi and M. Wang, “Approximation methods for bilevel programming,” arXiv preprint arXiv:1802.02246 , 2018. [9] T. Chen, Y. Sun, and W. Yin, “Closing the gap: Tighter analysis of alternating stochastic gradient methods for bilevel problems,” in Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , 2021.

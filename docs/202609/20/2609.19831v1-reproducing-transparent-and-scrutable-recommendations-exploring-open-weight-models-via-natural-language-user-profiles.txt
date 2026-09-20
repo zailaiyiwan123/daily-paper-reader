@@ -1,0 +1,467 @@
+Title: Reproducing Transparent and Scrutable Recommendations: Exploring Open-Weight Models via Natural-Language User Profiles
+
+URL Source: https://arxiv.org/pdf/2609.19831v1
+
+Published Time: Fri, 18 Sep 2026 00:58:52 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Reproducing Transparent and Scrutable Recommendations: Exploring Open-Weight Models via Natural-Language User Profiles 
+
+Noah Mamie 
+
+University of Zurich Department of Informatics 
+
+nmamie@ifi.uzh.ch 
+
+Laurin van den Bergh 
+
+University of Zurich Department of Informatics 
+
+bergh@ifi.uzh.ch 
+
+Abstract 
+
+In this reproducibility study, we investigate the transparency and scrutability of recommender systems enhanced by incorporating generated natural-language user profiles that represent user preferences. The original paper explores the synthesis of user profiles from raw user-generated review text across domains such as movies and accommodations (Amazon Movies & TV, TripAdvisor). Crucially, these natural-language user profiles enable direct user in-teraction and intervention, allowing users to customize recommendations by correcting mis-attributed preferences or addressing cold-start settings. We successfully reproduce the core findings of the original study. Additionally, we extend the evaluation by conducting system-atic context ablation experiments, multi-seed stability across five distinct random seeds to establish statistical reliability, and a mechanis-tic interpretability analysis using the nnsight 
+
+framework to probe internal model represen-tations under counterfactual profile perturba-tions. Our findings verify the original pa-per’s claim that User Profile Recommendation (UPR) achieves competitive performance un-der its test-set reranking protocol and makes recommendations more transparent. Perturb-ing the natural-language profiles does change predictions, but it shifts predicted ratings uni-formly across genres with no detectable genre-selective effect, leaving rankings unchanged even under direct activation steering. We trace this back to the rating-regression objective rather than the profile interface, with ranking-objective models clearly exceeding in this task. 
+
+1 Introduction 
+
+Recommender systems have increasingly transi-tioned from the classical content-based and col-laborative filtering paradigms to Large Language Model (LLM)-driven architectures (Deldjoo et al., 2024). While classical approaches represent users as dense, uninterpretable latent vectors, recent work by Ramos et al. (2024) introduces User Profile Rec-ommendation (UPR). UPR synthesizes a user’s past review history into a natural-language summary profile. This textual representation allows users to inspect, scrutinize, and directly modify their own profiles to customize future recommendations. In this work, we present a comprehensive repro-duction and extension of the UPR methodology. We evaluate the framework on the Amazon Movies & TV (He and McAuley, 2016) and TripAdvisor 1
+
+(Li et al., 2021) datasets, investigating both the rec-ommendation accuracy and the semantic properties of the generated user profiles. 2
+
+Our primary contributions are as follows: 
+
+Exact Reproduction & Codebase Fixes: We re-produce the original paper’s primary exper-imental results, resolving several issues and inconsistencies in the original repository. 
+
+End-to-End Reproducible Pipeline: We provide a fully reproducible codebase locked with uv 
+
+dependency management, standardized CLI interfaces, and hardware-agnostic execution (cuda , mps , cpu ). 
+
+Protocol Alignment & Comparison: We evalu-ate non-LLM baselines in Cornac (Salah et al., 2020) under standardized evaluation protocols matching the LLM evaluation script, present-ing side-by-side benchmark tables comparing original published numbers with our reproduc-tion. 
+
+Context Ablations & Multi-Seed Stability: 
+
+We conduct extensive context ablation experiments (comparing user profiles, raw        
+
+> 1https://www.tripadvisor.com
+> 2We release the full code for optimal reproducibility. We contacted the original authors to make them aware of this reproducibility study and to list points where the repository ac-companying the original paper can be improved. They offered to consider our pull request to their repository. arXiv:2609.19831v1 [cs.IR] 17 Sep 2026 User Review History Eu
+> “Loved classic comedies. . . ” “Great plot, fast pacing. . . ”
+> LLM Synthesizer (Llama2 / Mistral) Natural-Language Profile Pu
+> “User prefers classic comedy and high-pacing dramas.”
+> User Scrutiny & Intervention
+> (Inspect / Edit / Correct Preferences)
+> STAGE 1: PROFILE GENERATION
+> Recommender LLM fθ
+> (Sequence Classifier) Candidate Item Metadata Ii
+> Title: The Big Lebowski
+> Description: Classic Comedy. . .
+> Predicted Score ˆyu,i
+> Score / Rating / Rank
+> STAGE 2: RECOMMENDATION
+
+Figure 1: The UPR architecture pipeline by Ramos et al. (2024), including our modifications to test different context ablations. User review histories Eu are synthesized by an LLM into human-readable natural-language profiles Pu.Users can inspect and edit their profiles (scrutability/intervention). For user u and item i, a fine-tuned sequence classification model fθ predicts recommendation scores ˆyu,i given the profile Pu and candidate item metadata Ii.
+
+review history, and item-review history) and evaluate model variance across five distinct random initialization seeds. 
+
+Mechanistic Interpretability & Scrutability: 
+
+We leverage the nnsight interpretability library to probe internal model activations, map profile embeddings via UMAP, score cluster key terms via gradient attributions, and track latent representation trajectories under counterfactual user profile perturbations. 
+
+2 Background & Methodology 
+
+2.1 Problem Formulation 
+
+Let U denote the set of users and I denote the set of items. Each user u ∈ U has an associated interaction history Eu = {eu, 1, e u, 2, . . . , e u, |Eu|},where eu,i represents a written review for an item i
+
+previously consumed by u, and is often considered an explanation of a rating yu,i . The UPR approach consists of two primary stages depicted in Figure 1: 1. Profile Generation: An LLM (e.g., Llama 2-7B or Mistral-7B) synthesizes the review history Eu into a concise, natural-language user profile Pu:
+
+Pu = LLM_Gen (Eu) (1) 2. Recommendation / Rating Prediction: Asequence classification model fθ is fine-tuned to predict item relevance ˆyu,i given the user profile Pu and the item metadata Ii:
+
+ˆyu,i = fθ(Prompt (Pu, I i)) (2) 
+
+2.2 User Scrutability & Interventions 
+
+Unlike black-box latent vector embeddings hu ∈
+
+Rd, the natural-language profile Pu is human-readable. Users can edit Pu directly by removing incorrectly inferred preferences (e.g., removing a dislike for a specific subgenre) or inserting new preference constraints (e.g., adding an interest in horror movies). 
+
+3 Scope of Reproduction & Extensions 
+
+3.1 Scope of Reproduction 
+
+Our reproduction focuses on validating the core claim of Ramos et al. (2024): that natural-language user profiles can match or exceed the predictive performance of raw review histories while main-taining human interpretability and scrutability. We reproduce fine-tuning of the recommender LLM fθ
+
+and baseline evaluations on the Amazon Movies & TV and TripAdvisor datasets using open-weight Llama2-7B (Touvron et al., 2023) and Mistral-7B (Jiang et al., 2023) profile generations. We made sure to reuse the profiles generated by Ramos et al. (2024), to ensure an adequate and fair comparison. 
+
+3.2 Extensions Beyond the Original Paper 
+
+We extend the original study in three key directions: 1. Context Ablation Study: We systemati-cally evaluate model performance under three user representations ( user profile , review history , and item-review history ) paired with two item metadata representations ( item title and item title and description ). 2. Multi-Seed Robustness: To ensure that re-ported gains are not artifacts of favorable ran-dom initializations, we conduct 5-seed stabil-ity trials on the Amazon dataset. 3. Mechanistic Interpretability & Scrutabil-ity: We leverage the nnsight interpretability library (NDIF Team, 2024) to probe internal model activations, map profile embeddings via UMAP, score cluster key terms via gradi-ent attributions, and track latent representation trajectories under counterfactual user profile perturbations. 
+
+4 Experimental Setup 
+
+4.1 Datasets & Preprocessing 
+
+We utilize the preprocessed Amazon Movies & TV dataset and the TripAdvisor dataset, both formatted into the standard train.jsonl ,
+
+validation.jsonl , and test.jsonl splits. Com-prehensive details on data splits, prompt templates, fine-tuning configurations, hardware, and evalua-tion protocols are provided in Appendix A. 
+
+4.2 Baseline Models & Protocol Alignment 
+
+To ensure fair comparison, we evaluate several standard recommendation baselines using Cornac (Salah et al., 2020): MostPop , UserKNN , ItemKNN ,
+
+MF , and NeuMF .We aligned the baseline evaluation script (rec_baselines.py ) with the LLM evaluation protocol ( evaluate.py ). Exact metric formulas and candidate pool definitions are detailed in Ap-pendix A. 
+
+5 Results & Analysis 
+
+5.1 Baseline Comparison & UPR Reproduction 
+
+Table 1 presents a direct side-by-side compari-son between the original published numbers from Ramos et al. (2024) in Part (a) and our reproduced results in Part (b). Comparing Part (a) and Part (b) demonstrates strong qualitative alignment: classi-cal matrix factorization ( MF ) remains the strongest rating accuracy baseline across both published and reproduced benchmarks. Nevertheless, UPR mod-els achieve highly competitive ranking metrics on TripAdvisor (nDCG@10: 0.961, MAP: 0.939) while providing transparent natural-language pro-files. We highlight several key methodological nu-ances regarding baseline reproduction in Part (b): 
+
+Non-reproducible Baselines As indicated in gray ( †) in Table 1, PETER+ and PEPLER-MLP could not be reproduced because the official open-source repository contains no implementation code or exe-cution scripts for these architectures. We assume that the metrics reported in the original paper were imported directly from prior literature. 
+
+NeuMF Model Mismatch Cornac’s NeuMF is the implicit-feedback variant: rating values never enter its objective, and its scores correlate with held-out ratings at r=0 .017 , so no training length or rescal-ing reaches 0.943 . The published figure reflects a rating-prediction NeuMF; we therefore report only ranking metrics numerically and the rest as n/a .
+
+Single UPR Variant Execution Our objective is to validate the reproducibility of the core UPR methodology for recommending items from User Profile → Title ), rather than to assess profiles (the performance of various LLMs for user profile generation. Therefore, we focus Part (b) on repro-ducing the primary UPR configuration based on the original Llama2-generated user profiles. As shown in our subsequent context ablation study (Table 2), the UPR methodology is not only reproducible but also further improves when incorporating richer item metadata ( Title +Description ) or context history, achieving up to 0.895 MAP and 0.934 nDCG@10. 
+
+5.2 Context Ablation 
+
+Table 2 presents the ablation results across all input 
+
+Ii and output context configurations on the Ama-zon Movies & TV dataset. The ablation results confirm the core hypothesis of Ramos et al. (2024). Concise natural-language user profiles achieve rat-ing prediction errors (MAE 0.784, RMSE 1.063) and ranking performance (MAP 0.895, nDCG@10 0.929) that are highly competitive with full raw review histories (MAE 0.763, nDCG@10 0.926), while using substantially shorter prompt contexts and offering full human readability. 
+
+5.3 Multi-Seed Stability 
+
+To verify that evaluation significance is not im-pacted by random initialization or seed variance, we evaluated model performance across five dis-tinct random seeds (seeds 37–41) alongside the re-production baseline (Seed 42). Table 3 summarizes the results on the Amazon Movies & TV dataset. The metrics display tight variance ( σMAP =0.0009 , σnDCG = 0 .0007 ), demonstrating that per-formance gains are statistically robust and indepen-dent of random seed choices (see Appendix A for detailed seed setup). 
+
+5.4 Mechanistic Interpretability 
+
+To investigate how the fine-tuned recommender internalizes textual user profiles and responds to Table 1: Recommendation performance on Amazon Movies & TV and TripAdvisor: Side-by-side comparison between original published numbers (Ramos et al., 2024) in Part (a) and our reproduced results in Part (b). Best value per section per dataset is in bold , and second-best is underlined. Grayed-out entries ( †) in Part (a) denote baselines whose source code was omitted from the official repository and could not be reproduced. 
+
+Amazon Movies & TV TripAdvisor Model RMSE ↓ MAE ↓ nDCG@10 ↑ MAP ↑ RMSE ↓ MAE ↓ nDCG@10 ↑ MAP ↑
+
+(a) Original Paper Reported Results (Ramos et al., 2024) 
+
+MostPop 1.505 0.962 0.896 0.815 1.277 0.902 0.932 0.857 UserKNN 0.960 0.707 0.935 0.864 0.836 0.634 0.952 0.883 Item-KNN 1.045 0.790 0.897 0.823 0.890 0.683 0.953 0.852 MF 0.925 0.686 0.941 0.870 0.786 0.599 0.960 0.891 
+
+NeuMF 0.943 0.694 0.936 0.866 0.819 0.634 0.955 0.886 PETER+ † 0.924 0.685 0.941 0.870 0.803 0.621 0.958 0.889 PEPLER-MLP † 0.925 0.672 0.941 0.869 0.793 0.606 0.959 0.889 UPR (Llama2) 0.944 0.678 0.938 0.866 0.804 0.616 0.955 0.885 UPR (Mistral) 0.941 0.679 0.940 0.870 0.804 0.610 0.952 0.887 
+
+(b) Our Reproduced Results 
+
+MostPop 1.505 0.962 0.898 0.797 1.277 0.902 0.930 0.833 UserKNN 0.960 0.707 0.942 0.918 0.836 0.634 0.958 0.934 ItemKNN 1.045 0.790 0.906 0.874 0.890 0.683 0.934 0.901 MF 0.925 0.686 0.948 0.924 0.786 0.599 0.964 0.942 
+
+NeuMF n/a n/a 0.903 0.867 n/a n/a 0.937 0.905 
+
+UPR (Original) 0.952 0.687 0.945 0.920 0.809 0.618 0.961 0.939 
+
+Table 2: Context Ablation Results on Amazon Movies & TV. Original configuration in italics , best in bold ,second-best underlined. 
+
+User ( Pu) Item ( Ii) RMSE ↓ MAE ↓ nDCG ↑ MAP ↑
+
+Profile Title 1.062 0.788 0.928 0.894 
+
+Profile Title+Desc 1.063 0.784 0.929 0.895 Reviews Title 1.043 0.776 0.928 0.894 Reviews Title+Desc 1.055 0.763 0.926 0.891 Item-Rev Title 1.105 0.864 0.934 0.902 
+
+Item-Rev Title+Desc 1.108 0.879 0.934 0.902 
+
+Table 3: Multi-seed evaluation results on Amazon Movies & TV across seeds 37–41 vs baseline (Seed 42, in italics ). Best in bold , second-best underlined. 
+
+Seed RMSE ↓ MAE ↓ nDCG@10 ↑ MAP ↑
+
+37 0.948 0.690 0.945 0.921 38 0.949 0.686 0.946 0.921 39 0.947 0.689 0.945 0.920 40 0.960 0.705 0.944 0.919 41 0.949 0.690 0.946 0.921 
+
+42 0.952 0.687 0.945 0.920 
+
+μ ± σ 0.951 ±.005 0.691 ±.007 0.945 ±.001 0.920 ±.001 
+
+user interventions, we probe the final normalized layer of the transformer backbone using nnsight ,extracting mean-pooled hidden activation vectors 
+
+hu ∈ Rd for every user profile prompt (Ap-pendix B). This captures the model’s representation state immediately before classification. 
+
+Table 4: Counterfactual profile perturbation states used in the trajectory analysis. Steering keywords added at each transition are in bold .
+
+State Natural-Language Pro-file Text Target 
+
+1 (baseline) “I like romantic comedies with authentic love sto-ries and lighthearted ro-mance.” 
+
+Romance 2 (weak) “I like romantic comedies with lots of action scenes and fast-paced thrillers .” 
+
+Action/Romance 3 (strong) “My favorite genre is crime and mystery thrillers with suspenseful plots, detec-tive investigations, and dark puzzles .” 
+
+Crime 
+
+5.4.1 Representational structure 
+
+Figure 2 shows that natural-language profiles form well-separated groups in the model’s 2D UMAP activation space, and tracks the representation un-der the three edits of Table 4. Re-embedding each edited profile yields smooth, continuous, and direc-tional shifts: textual interventions do measurably change the model’s internal user representation. These groups do not align with user tastes. La-beling 1500 users by the dominant genre of their 
+
+actual review history (romance 795 , crime 530 ,action 175 ; retained only when at least three re-viewed items carry a genre and one genre holds Figure 2: 2D UMAP visualization of final layer normalization activations extracted via nnsight . Background point clouds are population-wide groupings of profile representations, color-coded and labeled by their most salient profile terms. Trajectory vectors show the three counterfactual edits of Table 4, with a fitted linear probe boundary. 
+
+the majority) and comparing against K-means over the same representations gives chance agreement: adjusted Rand index 0.0008 , normalized mutual information 0.0038 , with every cluster reproduc-ing the population base rate ( 46 –59% romance). A linear probe for the same label reaches 0.449 accu-racy against a 0.530 majority-class baseline, above a shuffled-label control ( 0.406 ) but too weak to be useful. The clusters, therefore, organize profiles lexically, and the archetype labels describe profile language rather than validated taste segments. 
+
+5.4.2 Do profile edits change predictions? 
+
+Movement in representation space need not change recommendations. Table 5 decomposes predicted-rating variance over a profile × item grid. The pro-file is not inert, explaining 47 .6–48 .5% of the vari-ance, comparable to item identity, but it enters as a 
+
+user-level rating offset rather than a key matched against item content: the interaction term accounts for only 4.1% with item titles alone and 16 .1% 
+
+once descriptions are supplied. This bounds what any content-conditioned steering could explain, and all analyses below use the title-and-description configuration, since a title-only model never ob-serves the genre evidence such an effect requires. 
+
+Textual edits. We build three genre pools (ro-mance, action, crime) of N =110 catalog items each by weak supervision over item descriptions                  
+
+> Table 5: Variance decomposition of predicted ratings
+> ˆyover a grid of 25 real profiles ×24 catalog items. The profile explains roughly half the variance in both configurations, but as a user-level offset: the profile ×
+> item interaction, where content-based personalization must live, accounts for 4.1% and 16 .1% respectively.
+> Input Configuration Item Profile Interaction
+> Profile + item title 48.3% 47.6% 4.1% Profile + title & descr. 35.5% 48.5% 16.1%
+
+and score all 330 candidates under each state. Edit-ing the profile shifts predicted ratings substan-tially ( +0 .195 at State 2, +0 .070 at State 3, both 
+
+p < 10 −9), but identically across the three pools (one-way ANOVA, p=0 .79 and p=0 .60 ; Table 6). The residual differences point the predicted way: under the crime-targeting edit, crime items gain most ( +0 .086 against +0 .059 for romance) and are the only pool to rise in rank ( −3.9 of 330 posi-tions, while action items fall by 3.9). No contrast is significant (one-sided p=0 .15 for ∆ˆ y, p=0 .31 
+
+for ∆Rank), the crime share of the top-50 moves only from 28% to 30% , and a borderline result at 
+
+N =40 did not survive tripling N .
+
+Direct activation steering. A textual edit reaches behavior in two steps, and the above does not spec-ify which step fails. We therefore intervene on the representation itself, adding αd to the resid-Table 6: Behavioral validation of the perturbation states in Table 4. For each state, we score N =110 catalog items per genre pool ( 330 candidates) with the profile + title & description model, reporting mean predicted rating ˆy,mean rank in the pooled candidate set (lower is better), and the change relative to State 1.                                                   
+
+> State 1 (Baseline) State 2 (Weak) State 3 (Strong) Item Genre Pool ˆyRank ∆ˆ y∆Rank ∆ˆ y∆Rank Romance 4.096 151.8 +0 .186 +1 .9+0 .059 +0 .0
+> Action 4.008 167.8 +0 .195 −1.3+0 .066 +3 .9
+> Crime 3.999 176.9 +0 .204 −0.6+0.086 −3.9
+> Main effect (pooled) ——+0 .195 ,p< 10 −50 +0 .070 ,p< 10 −9
+> Genre-selectivity of ∆ˆ y——F=0 .24 ,p=0 .79 F=0 .51 ,p=0 .60
+> Genre-selectivity of ∆Rank ——F=0 .08 ,p=0 .92 F=0 .45 ,p=0 .64
+
+Table 7: Percentile at which each ranker places a user’s held-out positive item among 99 items never interacted with ( 200 users, identical candidate sets; 0.5 is chance).                     
+
+> Ranker Objective Percentile Top-1
+> WMF ranking 0.806 13 .0%
+> MostPop popularity 0.697 6.0%
+> MF rating 0.547 2.0%
+> UPR (title) rating 0.542 1.5%
+> UPR (title+desc) rating 0.510 †1.5%
+> †not different from chance ( p=0 .62 ); all others p < 0.05 .
+
+ual stream at the profile token positions, where d
+
+is the crime-minus-romance difference of means. Three checks precede any null: a zero vector and a constant vector are both exact no-ops (layer nor-malization removes the latter, so steering directions must be non-uniform), while a random direction is not. Additive steering of the final representa-tion cannot be selective at all, since the linear head shifts every item by the same α(w·d); we therefore steer at blocks 2, 6 and 9, early enough to interact with item tokens through attention. The result dissociates representation from behav-ior (Table 8 in Appendix B). The probe readout moves as intended, from P (crime )=0 .064 at α=0 
+
+to 1.000 at α≥4 – a complete reversal of apparent genre preference – while crime items’ mean rating 
+
+falls slightly ( 3.999 → 3.984 ) and their mean rank shifts by at most 0.2 of 330 positions at every layer. The probe reversal is partly guaranteed by construc-tion, since the injected direction is the class-mean difference the probe reads; the behavioral null is the finding. 
+
+5.4.3 Does the model personalize at all? 
+
+These nulls admit a simpler explanation: there may be no personalization signal to steer. For each of the 200 users, we rank one held-out pos-itive item against 99 items they have not inter-acted with, using identical never-interacted can-didate sets for each ranker. The task is feasible on this data with a ranking-objective model, as Weighted Matrix Factorization (WMF) achieves 
+
+0.806 . The profile model reaches only 0.542 
+
+with titles ( p=0 .047 ) and 0.510 with descriptions (p=0 .62 ), below MostPop (0.697 ), which person-alizes not at all (Table 7). Its scores are uncorre-lated with item popularity (Spearman’s r = −0.03 
+
+to −0.08 , n.s. ), even though the positives are far more popular than the distractors ( 81 .6 versus 41 .9
+
+training interactions). The ordering identifies the cause. While the ranking-objective model WMF reaches 0.806 ,rating-regression objectives reach 0.51 –0.55 . Ev-ery training pair is an item the user chose and re-viewed, so the data holds no mismatched user–item pairs from which a content-matching rule could be learned, and the loss is minimized by a user offset plus an item offset – the structure of Table 5. This is consistent with the metrics in §5: test-set rerank-ing over the Sakai condensed list orders only items the user already selected, for which item-side pri-ors suffice. The limitation is thus a property of the rating-regression objective, inherited from the orig-inal formulation, rather than of natural-language profiles as an interface. 
+
+5.4.4 Controls for the attribution analysis 
+
+Figures 3 and 4 report token-level gradient attribu-tion over profile tokens. This could equally reflect the architecture, the pretrained backbone or the pro-file corpus, so we repeat the global analysis on the pretrained backbone with a randomly initialized head, on the same architecture without pretrained weights, and on word-shuffled profiles, compar-ing against corpus-frequency and subword-count baselines. Because gradient magnitudes are not comparable across models, we summarize each Figure 3: Local feature attribution for a single user profile and target item. 
+
+> Figure 4: Global profile attributions over the Amazon user population.
+
+condition by a scale-invariant statistic: mean attri-bution on a fixed a priori genre lexicon divided by mean attribution on all other profile words. The controls (Table 9 in Appendix B) do not support reading these figures as evidence that fine-tuning concentrates attribution on pref-erence features. Genre words receive roughly 
+
+half the attribution of other profile words (ra-tio 0.546 , p=0 .002 ) and none appear in the top 
+
+20 , which is led by widescreen alongside dis-course and style terms ( however , while , levity ,
+
+cinematography ). Eleven of those 20 recur un-der random initialization, and attribution corre-lates at ρ=0 .807 with the fine-tuned model on word-shuffled profiles, so the pattern follows which words are present rather than their arrangement or meaning. Attribution is also negatively correlated with corpus frequency ( ρ= − 0.320 , p=0 .027 ), tracking word rarity, while subword count is not a significant driver ( ρ=0 .212 , n.s. ). We therefore treat these figures as descriptive of the saliency method and do not claim they isolate features ac-quired through fine-tuning. Profile edits thus move the model’s representa-tion but not its recommendations, and scrutability in this formulation gives a user control over how generously they are modeled rather than what they are recommended. Training the same interface on a ranking objective with negative sampling is the change most likely to make the profile-edit behav-ior meaningful. 
+
+6 Discussion on Reproducibility 
+
+What was easy? The conceptual framework of UPR is intuitive, and the availability of pre-processed interaction datasets and initial source code provided a valuable starting point to repro-duce the original paper’s findings. 
+
+What was hard? Replicating the results required modifying the codebase to fix several issues: Syn-tax & Variable Errors: The original codebase contained a few broken variable references and undeclared identifiers. Missing Environment Def-initions: No requirements.txt or environment locks were supplied. We fixed this by introduc-ing a clean uv environment specification. Evalua-tion Split Issue: The original code validated the model using the test split instead of the validation split. Correcting this to ensure the test split is used only during testing yielded metric values closely aligned with the reported numbers. Baseline Proto-col Realignment: Original baseline scripts evalu-ated models under mismatched candidate protocols. Standardizing all baselines in rec_baselines.py 
+
+resolved this discrepancy. 
+
+7 Conclusion 
+
+This paper reproduces transparent and scorable rec-ommendations using the UPR method developed by Ramos et al. (2024) and extends it to new con-text configurations, random seeds for robustness checks, and mechanistic interpretability for prob-ing the model activation space with counterfactuals. Our reproduction study confirms that the natural-language user profiles generated by UPR are both useful for the final recommendation task and in-crease the transparency and scrutability of the rec-ommendation model. This enables users to better understand the recommendations provided to them and modify the suggested user profile, steering pre-dictions towards a state that better reflects reality. Limitations 
+
+Our reproduction study focuses on the Amazon Movies & TV and TripAdvisor datasets, and evalu-ates profiles synthesized via the Llama2-7B model. While our mechanistic interpretability analysis confirms structured feature representations in la-tent space, exploring profile stability under varied prompt templates and open LLM generation set-tings remains an important area for future research. Furthermore, our steering validation experiments reveal an important issue with the regression ob-jective of the loss function, as it inherently dimin-ishes the model’s ability to rank items. A natural next step is to explore a ranking objective to assess whether the user-profile bottleneck allows mean-ingful steering of user predictions based on their interests. 
+
+References 
+
+Yashar Deldjoo, Zhankui He, Julian McAuley, Anton Korikov, Scott Sanner, Arnau Ramisa, René Vidal, Maheswaran Sathiamoorthy, Atoosa Kasirzadeh, and Silvia Milano. 2024. A Review of Modern Rec-ommender Systems Using Generative Models (Gen-RecSys). In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Min-ing , pages 6448–6458, Barcelona Spain. ACM. Ruining He and Julian McAuley. 2016. Ups and downs: Modeling the visual evolution of fashion trends with one-class collaborative filtering. In proceedings of the 25th international conference on world wide web ,pages 507–517. Albert Q Jiang, Alexandre Sablayrolles, Arthur Men-sch, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guil-laume Lample, Lucile Saulnier, et al. 2023. Mistral 7b. arXiv preprint arXiv:2310.06825 .Lei Li, Yongfeng Zhang, and Li Chen. 2021. Person-alized transformer for explainable recommendation. In Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Lan-guage Processing (Volume 1: Long Papers) , pages 4947–4957. NDIF Team. 2024. Nnsight: Mechanistic interpretabil-ity at scale. https://nnsight.net .Jerome Ramos, Hossein A. Rahmani, Xi Wang, Xiao Fu, and Aldo Lipani. 2024. Transparent and scrutable recommendations using natural language user pro-files. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Vol-ume 1: Long Papers) , pages 13971–13984, Bangkok, Thailand. Association for Computational Linguistics. Aghiles Salah, Quoc-Tuan Tran, and Hady W Lauw. 2020. Cornac: A comparative framework for multi-modal recommendation. Journal of Machine Learn-ing Research , 21(95):1–5. Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-bert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. 2023. Llama 2: Open founda-tion and fine-tuned chat models. arXiv preprint arXiv:2307.09288 .A Detailed Experimental Setup & Hyperparameters 
+
+To enable exact end-to-end reproduction, this sec-tion details the complete hardware, software, fine-tuning configuration, prompt formatting, model architectures, compute resources, and evaluation protocols used across all experiments. 
+
+A.1 Software Environment & Compute Resources 
+
+All models were fine-tuned and evaluated using Py-Torch 2.2+ and HuggingFace transformers 4.38+. Environment dependencies are strictly locked using 
+
+uv via pyproject.toml and uv.lock .
+
+Compute Resources & Training Efficiency: 
+
+Training a single UPR model configuration in its original baseline setup ( User Profile → Item Title ) on either the Amazon Movies & TV or Tri-pAdvisor dataset requires approximately 1 hour of wall-clock training time when executed in parallel across 8 × NVIDIA RTX 4090 (24GB) GPUs (using PyTorch DataParallel across device indices 
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 ). Computations were also validated for hardware-agnostic execution on mps (Apple Silicon) and 
+
+cpu .The full experiment scales proportionally based on the number of evaluated configurations: • Context Ablation Study: Evaluating all 6 combinations of input contexts (user profile , review history , item-review history ) and output contexts ( item title ,
+
+item title and description ) requires 6×
+
+single-run time ( ≈ 6 wall-clock hours on 8×
+
+RTX 4090 GPUs). • Multi-Seed Stability Study: Training across 5 distinct random initialization seeds (seeds 37–41) requires 5× single-run time ( ≈ 5 wall-clock hours on 8× RTX 4090 GPUs). 
+
+A.2 Fine-Tuning Configuration & Hyperparameters 
+
+In the codebase ( train.py ), recommendation scor-ing is framed as sequence classification fine-tuning. The model (fθ) is instantiated via Hugging-Face’s AutoModelForSequenceClassification 
+
+initialized from pretrained causal LM back-bones, defaulting to gpt2 (124M param-eters) or open-weight instruction models (meta-llama/Llama-2-7b-chat-hf and 
+
+mistralai/Mistral-7B-Instruct-v0.1 ), with a single scalar output regression head (num_labels=1 ). • Model Initialization & Tokenizer Setup: 
+
+Loaded via HuggingFace’s AutoTokenizer .Tokenizer padding is configured to right-side (padding_side="right" ) with sequence truncation enabled (truncation=True ,
+
+padding="max_length" ), capped at amaximum sequence length of 300 tokens (max_length=300 ). The padding token is ex-plicitly mapped to the end-of-sequence token (pad_token = eos_token ), and model config is aligned via model.config.pad_token_id = model.config.eos_token_id .• Target Normalization & Inverse Transfor-mation: Ground-truth user rating scores y ∈
+
+[1 , 5] are linearly normalized to [0 , 1] during dataset tokenization via yscaled = ( y − 1) /4.During evaluation, model scalar logit outputs 
+
+ˆs ∈ [0 , 1] are transformed back to the original rating scale via ˆy = ˆ s · 4 + 1 .• Optimizer, Learning Rate & Precision: 
+
+Fine-tuning uses the AdamW optimizer with a linear learning rate decay schedule (lr_scheduler_type="linear" ). The ini-tial learning rate is set to η = 3 × 10 −4
+
+(0.0003 ). Computation runs in full precision (FP32 / FP16 depending on CUDA hardware capability). • Batching, Epochs & Checkpoint Strategy: 
+
+Effective per-device batch size is set to 64 (per_device_train_batch_size=64 ,
+
+per_device_eval_batch_size=64 ). Fine-tuning runs for up to 5 epochs with epoch-wise evaluation and check-pointing (save_strategy="epoch" ,
+
+eval_strategy="epoch" ). Only the single best checkpoint is re-tained (save_total_limit=1 ,
+
+load_best_model_at_end=True ). Early stopping is monitored via 
+
+EarlyStoppingCallback with patience of 3 evaluation epochs (patience=3 ,
+
+threshold=0.0 ). Unused dataset columns are stripped during batch collation (remove_unused_columns=True ). • Random Seeds: Deterministic ran-dom initializations are enforced via set_random_seeds(seed) across PyTorch, NumPy, and Python random . Baseline reproduction uses seed 42, while multi-seed robustness tests evaluate seeds 37, 38, 39, 40, and 41. 
+
+A.3 Evaluation Protocol & Metric Definitions 
+
+Evaluation is conducted via evaluate.py using ground-truth test splits for both Amazon and Tri-pAdvisor Datasets. We used the original split sizes from Ramos et al. (2024) to ensure a fair compari-son: • Test Candidate Pool: For each user u, can-didate items evaluated during ranking are restricted to the test interaction items in 
+
+test.jsonl , aligning metric computation di-rectly with standard test-set reranking proto-cols. • Calculated Metrics: All metrics are imple-mented using the Cornac framework (Salah et al., 2020). 1. RMSE (Root Mean Squared Error): 
+
+RMSE =
+
+s 1
+
+N
+
+X
+
+> u,i
+
+(ˆ yu,i − yu,i )2 (3) 2. MAE (Mean Absolute Error): 
+
+MAE = 1
+
+N
+
+X
+
+> u,i
+
+|ˆyu,i − yu,i | (4) 3. nDCG@10 (Normalized Discounted Cumulative Gain): Measures ranking quality at cutoff k = 10 , normalized by the Ideal DCG (IDCG): DCG@k (u) = 
+
+> k
+
+X
+
+> j=1
+
+2yu,π (j) − 1log 2(j + 1) , (5) nDCG@k = 1
+
+|U |
+
+X
+
+> u∈U
+
+DCG@k (u)
+
+IDCG@k (u) ,
+
+(6) where π(j) represents the item ranked at position j for user u.4. MAP (Mean Average Precision): Com-putes the mean of Average Precision (AP) across all users U :AP (u) = 1
+
+|Ru|
+
+> Nu
+
+X
+
+> j=1
+
+P @j(u)·I(yu,π (j) > 0) ,
+
+(7) MAP = 1
+
+|U |
+
+X
+
+> u∈U
+
+AP (u), (8) where Ru is the set of relevant items for user u, P @j(u) is Precision at rank j,and I(·) is an indicator function for rele-vance. • Output Aggregation: Raw per-item predic-tion scores are saved, and aggregated dataset-wide metrics are written to disk. 
+
+A.4 Prompt Construction & Context Formats 
+
+The model is fed structured natural-language prompts formatted as follows: 
+
+Prompt Template Format: Input context and candidate item metadata are formatted as: 
+
+Input Context: {input_context} Based on the input context, from a scale of 1 to 5 (1 being lowest and 5 being highest), I would give "{output_context}" a rating of 
+
+Where the input and output contexts vary across our ablation configurations: 1. Input Context ( context_in ): 
+
+• user profile : The LLM-synthesized natural-language profile summary Pu.• review history : Concatenation of up to 5 recent item reviews written by user 
+
+u excluding target item i.• item-review history : Concatenation of up to 5 recent reviews written by other users for candidate item i.2. Output Context ( context_out ): 
+
+• item title : The candidate item title string Ii.• item title and description : Candi-date item title paired with text descrip-tion ( Ii + Di). 
+
+B Mechanistic Interpretability Setup with 
+
+nnsight 
+
+To probe the internal hidden representations of fine-tuned recommendation LMs, we leverage the 
+
+nnsight interpretability library: • Probed Layer: We trace hidden activa-tions from the final layer normalization layer (model.transformer.ln_f ). Table 8: Activation steering at block 6. Adding αd to the residual stream at the profile token positions, with d
+
+the crime-minus-romance difference of means, drives the probe readout across its full range while leaving ratings and rankings effectively unchanged. Blocks 2 and 9 behave identically. Rank is over the 330 -item set of Table 6.                                    
+
+> Probe readout Mean ˆyCrime
+> αP(crime )P(romance )Crime Romance rank
+> 00.064 0.934 3.999 4.096 176.9
+> 10.547 0.451 3.997 4.093 176.8
+> 20.952 0.047 3.995 4.091 176.8
+> 41.000 0.000 3.991 4.088 176.8
+> 81.000 0.000 3.984 4.082 176.8
+
+• Pooling Method: Mean-pooling across se-quence tokens weighted by the input attention mask: 
+
+hu =
+
+PTt=1 mt · hu,t 
+
+PTt=1 mt
+
+(9) where mt ∈ { 0, 1} is the attention mask at token position t.• UMAP & Clustering: High-dimensional representations hu ∈ Rd are projected into 2D UMAP space using cosine dis-tance (n_neighbors=10 , min_dist=0.05 ,
+
+random_state=42 ). K-Means clustering (K = 10 ) identifies preference archetype clus-ters. • Counterfactual Steering & Profile Texts: 
+
+Three profile states (Baseline Romance, Weak Action, Strong Dark Crime; exact text in Ta-ble 4) are embedded and transformed through the fitted UMAP reducer to trace displacement vectors ∆d across a fitted linear probe deci-sion boundary P (Romance ) vs. P (Crime ).The following tables further support the analysis in §5.4: Table 9: Controls for the global attribution analysis. The genre ratio is mean attribution on a fixed genre lexicon over mean attribution on all other profile words ( 1.0 = no distinction). Agreement is the Spearman correlation of per-word attribution with the fine-tuned condition. Genre words are under -attributed, and the pattern largely survives removing fine-tuning, removing pretraining, and shuffling word order.

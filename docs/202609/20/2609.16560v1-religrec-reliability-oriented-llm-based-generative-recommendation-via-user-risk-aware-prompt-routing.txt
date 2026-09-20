@@ -1,0 +1,477 @@
+Title: ReliGRec: Reliability-Oriented LLM-Based Generative Recommendation via User-Risk-Aware Prompt Routing
+
+URL Source: https://arxiv.org/pdf/2609.16560v1
+
+Published Time: Wed, 16 Sep 2026 00:34:14 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# ReliGRec: Reliability-Oriented LLM-Based Generative Recommendation via User-Risk-Aware Prompt Routing 
+
+## Haoran Yang 1, Fei Chen 1, Yutian Xiao 2, Jiahao Liang 3
+
+> 1
+
+Central South University, Changsha, China 
+
+> 2
+
+Beihang University, Beijing, China 
+
+> 3
+
+South China University of Technology, Guangzhou, China 
+
+Abstract 
+
+User behavior in real-world recommender systems is heteroge-neous. While some users exhibit coherent preferences, others show abrupt interest shifts, bursty interactions, excessive rep-etition, or inconsistency with collaborative neighborhoods. Such deviations may arise from benign variation or manip-ulation, including shilling attacks, but do not alone estab-lish malicious intent. Existing robust recommenders exploit user-risk signals through training-time reweighting or graph aggregation, whereas adapting generation to estimated user level weak risk remains underexplored in LLM-based gen-erative recommendation. We propose ReliGRec (Reliability-oriented Generative Recommendation), a weakly supervised framework whose name denotes its design goal rather than a supervised reliability variable. ReliGRec derives user-level weak-risk proxy labels from review-feedback signals for a subset of users and represents sequential behavior and collab-orative context using a Behavior Token and temporal Graph Tokens, respectively. A Dual-View Weak-Risk Estimator fuses the representations to produce a user-level weak-risk score that selects a Simple or Cautious Prompt at inference. The Cautious Prompt is designed to encourage attention to sta-ble, collaboratively supported evidence while reducing over-reliance on isolated, short-term, or repeated interactions. The Behavior Token affects generation through weak-risk estima-tion and routing, whereas the aggregated Graph Token pro-vides collaborative context for next-item Semantic ID gen-eration. ReliGRec thus turns weak-risk estimation from an auxiliary prediction into a generation-time control signal. Ex-periments report competitive recommendation and weak-risk proxy-label prediction, while routing analyses characterize the recommendation-quality and inference-cost behavior of weak-risk-guided prompting. 
+
+## Introduction 
+
+Traditional recommenders typically score and rank candidate items through sequential modeling or user–item graph learn-ing (Kang and McAuley 2018; He et al. 2020; Fan et al. 2021). More recently, generative recommendation has emerged as a complementary paradigm that predicts the next item by au-toregressively generating item identifiers (Rajput et al. 2023). With large language models (LLMs) demonstrating strong semantic understanding and autoregressive generation capa-bilities, recent studies have further explored LLMs as gen-erative backbones, representing items as discrete Semantic ID sequences and incorporating collaborative, multimodal, Interaction History A 
+
+> Abrupt Shift Bursty Activity Excessive Repetition
+> Interaction History B
+> Gradual Evolution Distributed Activity Natural Transitions
+> More Coherent Evidence
+> Uniform Prompting
+> Same Generation Strategy Potential Overreliance on Unstable Evidence
+> …
+> Our Motivation
+> Weak-Risk Guided Adaptive Prompting
+> Stronger Proxy-Deviation Patterns
+
+Figure 1: Motivation for user-level weak-risk-guided prompt routing. Uniform prompting applies the same generation pol-icy to users with different behavioral and collaborative devia-tion patterns, potentially overemphasizing unstable evidence. or pretrained semantic knowledge (Zheng et al. 2024; Wang et al. 2024; Zhang et al. 2025; Hu, Lu, and Wang 2026; Ye et al. 2026; Zhao et al. 2026; Mu et al. 2026). However, such LLM-based generation remains strongly conditioned on user interaction histories. Real histories may contain abrupt pref-erence shifts, bursty activity, excessive repetition, feedback noise, or collaborative inconsistency arising from benign variation or manipulation such as shilling attacks (Zhang et al. 2020, 2024; Nguyen et al. 2025). A uniform prompt may therefore cause the LLM to over-rely on unstable histor-ical evidence. Figure 1 motivates estimating user-level weak risk from observed interaction histories before decoding and using it to adapt the LLM’s generation strategy. Existing work improves recommendation reliability at three stages. Training-side robust recommenders use risk signals for reweighting, graph aggregation, or representa-tion rectification, as in GraphRfi, LoRec, PGT4Rec, Trust-GRS, and DITaR (Zhang et al. 2020, 2024; Nguyen et al. 2025; Mu et al. 2025; Qin et al. 2026), but their interven-tions mainly affect learning rather than inference-time gener-ation. Generation-side methods improve item tokenization, behavior modeling, collaborative injection, or inductive in-ference through TIGER, LC-Rec, LETTER, CoLLM, Musi-cRec, Align 3GR, GenCDR, GraphLoRA, and SpecGR (Ra-arXiv:2609.16560v1 [cs.IR] 15 Sep 2026 jput et al. 2023; Zheng et al. 2024; Wang et al. 2024; Zhang et al. 2025; Zhao et al. 2026; Ye et al. 2026; Hu, Lu, and Wang 2026; Mu et al. 2026; Ding et al. 2026), without ex-plicitly adapting decoding to user-level weak risk inferred from observed interaction histories. Output-side approaches such as GUIDER and UGR use generation uncertainty for reranking, diversity adjustment, rejection, or truncation (Xu et al. 2026; Fan et al. 2026), but do not select a pre-decoding generation policy based on user-level weak risk. Thus, con-necting user-level weak-risk estimation with generation con-trol while retaining dynamic collaborative evidence remains underexplored. This objective poses two challenges. First, proxy devia-tion cannot be reliably identified from individual behavioral cues. A short-term preference shift or repeated interaction may reflect either normal preference evolution or a higher proxy-deviation pattern. The key challenge is therefore to capture user-level deviation patterns from observed interac-tions and estimate their relative proxy-deviation tendency under partial weak supervision. Behavioral evidence alone may be insufficient for this distinction and should be com-plemented by temporal collaborative context. We define the resulting signal as user-level weak risk, which is estimated from a user’s observed interaction history and weakly su-pervised by user-level weak-risk proxy labels derived from review-feedback signals. This signal characterizes deviation from regular interaction patterns rather than verified mali-cious status or a calibrated attack probability. Second, the estimated weak risk should inform generation rather than remain an isolated auxiliary prediction, while avoiding un-necessary intervention for users with lower proxy deviation. This calls for a lightweight mechanism that adjusts how his-torical evidence is used before decoding. To address these challenges, we propose ReliGRec, a weakly supervised risk-aware generative recommendation framework. ReliGRec uses a Behavior Token and temporal Graph Tokens to encode ordered interactions and evolving collaborative structure, respectively. Their fusion in a Dual-View Weak-Risk Estimator mitigates the ambiguity of single-view evidence. The resulting user-level weak-risk score se-lects either a Simple Prompt or a Cautious Prompt for each user. The Simple Prompt directly uses the available history and collaborative context, whereas the Cautious Prompt is designed to discourage overreliance on isolated, transient, or excessively repetitive evidence and to prioritize temporally stable and collaboratively supported patterns. The aggregated Graph Token also conditions next-item Semantic ID gener-ation, enabling dynamic collaborative evidence to support both user-level weak-risk estimation and recommendation generation. Our main contributions are threefold: 
+
+• We investigate user-level weak-risk-aware generation con-trol based on observed interaction histories, using weak risk to select a prompting policy before decoding and distinguishing it from training-time risk weighting and output-side uncertainty handling. 
+
+• We develop ReliGRec by integrating behavioral and tem-poral collaborative representations, dual-view user-level weak-risk estimation, Simple/Cautious Prompt routing, and Graph Token-conditioned Semantic ID generation. 
+
+• We evaluate ReliGRec on Beauty and Yelp, reporting rec-ommendation and weak-risk proxy-label prediction and characterizing the quality–efficiency behavior of weak-risk-guided prompt routing. 
+
+## Problem Definition 
+
+Let U and I denote the user and item sets, respectively. For user u, the observed interaction prefix up to position t is 
+
+H(t) 
+
+> u
+
+= ( iu, 1, . . . , i u,t ), (1) with iu,t +1 as the next-item prediction target. Each item i
+
+is represented by a length-L Semantic ID: 
+
+SID( i) = ( ci, 1, . . . , c i,L ), (2) following the item-identifier formulation of generative re-trieval (Rajput et al. 2023). We study user-level weak-risk estimation with partially labeled users, using weak supervision derived from review-feedback signals. Let UL ⊂ U denote the labeled user set. For u ∈ U L, yu ∈ { 0, 1}, where yu = 0 and yu = 1 denote the lower- and higher-proxy-deviation groups, respectively; the remaining users are unlabeled. These labels character-ize deviations from regular interaction patterns rather than verified malicious identities. 
+
+## Methodology 
+
+As shown in Figure 2, ReliGRec integrates hierarchical Se-mantic IDs, a Behavior Token, and temporal Graph To-kens. The two user representations estimate weak risk for Simple/Cautious Prompt routing. The selected prompt and projected Graph Token then condition next-item generation, while the Behavior Token influences generation through risk estimation and routing. 
+
+Semantic ID Construction 
+
+Raw item IDs serve only as indices and do not reflect seman-tic or collaborative relationships among items. Following the Semantic ID paradigm in generative recommendation (Ra-jput et al. 2023; Wang et al. 2024), we employ RQ-VAE (Lee et al. 2022) as an offline item tokenizer. Given a semantic feature xi extracted from the title and description of item i
+
+and a collaborative embedding ecf  
+
+> i
+
+learned from user–item interactions, the tokenizer is optimized by 
+
+Lsid = Lrecon + λq Lquant + λcf Lcf , (3) where Lrecon and Lquant are the reconstruction and residual-quantization losses, respectively, and Lcf aligns the quantized representation with the collaborative embedding; 
+
+λq and λcf weight the two corresponding terms. RQ-VAE successively quantizes residuals, and the resulting codebook indices constitute the hierarchical Semantic ID defined in Equation 2. Valid Semantic IDs and their associated items are stored in a lookup table and used to represent both his-torical items and next-item generation targets. …
+
+Raw User–Item Interactions (user_id, item_id,time) 
+
+... 
+
+User-specific Historical Item Sequence 
+
+Dynamic Graph Snapshots 
+
+sort by time 
+
+Preprocess 
+
+sliding time window 
+
+> 𝐀 𝐀
+
+... 
+
+> 𝐀 𝐀
+
+... 
+
+> 𝐀 𝐀
+
+... …Shared GAT Encoder 
+
+> Set of user representations Mean pooled item representation
+> Window 1
+> concat
+> 𝐀 𝐀 (𝐀)
+> 𝐀 𝐀 (𝐀)
+> Window 2
+> concat
+> 𝐀 𝐀 (𝐀)
+> 𝐀 𝐀 (𝐀)
+> Window K
+> concat
+> 𝐀 𝐀 (𝐀)
+> 𝐀 𝐀 (𝐀)
+> 𝐀 (𝐀)
+> 𝐀 (𝐀)
+> 𝐀 (𝐀)
+
+Graph Token Sequence for target user u  
+
+> 𝐀 (𝐀) , 𝐀 (𝐀) , . . . , 𝐀 (𝐀)
+> 𝐀 𝐀 =𝐀 (𝐀)
+> 𝐀 (𝐀)
+> 𝐀 (𝐀)
+> …
+
+Zero padding for missing windows 
+
+sort by time 
+
+Preprocess 
+
+group by user 
+
+Leave-one-out split 
+
+truncate /pad 
+
+Transformer-based Behavior Encoder 
+
+> Item Embedding Positional Embedding SASRec Encoder Point-Wise Feed-Forward Network Next-Item Prediction (training)
+
+Last Valid Hidden State 
+
+ℎ𝐀 
+
+Behavior Token 
+
+𝐀 𝐀 ∈ 𝐀 𝐀 
+
+> Item text
+> （title/description
+
+）
+
+> SASRec item embedding
+
+... 
+
+> RQ-VAE
+
+... 
+
+> <a_1> <b_2> <c_3> <d_4>... Semantic Item IDs
+> Behavior Token
+> 𝐀 𝐀
+> Graph Alignment Behavior Alignment Concatenate
+
+... 
+
+Risk MLP 
+
+Risk Score 
+
+> Cautious Prompt
+> Simple Prompt Graph Projector
+
+... 
+
+> Inject <graph_token>
+
+Qwen2.5-1.5B-Instruct +LoRA 
+
+Trie-Constrained Beam Search 
+
+Next-item Semantic ID Ranking 
+
+> <a_1> <b_2> <c_3> <d_4>... SID
+
+SID Item ID 
+
+... 
+
+Hit@K/NDCG@K 
+
+> Predicated anomaly labels Compare with labels Anomaly detection Graph Token
+> 𝐀 𝐀
+> SID_1, SID_2, SID_3... Historical Semantic IDs
+
+Graph Token 𝐀 𝐀 
+
+(a) Semantic-ID Representation (b) User-Risk Estimation and Prompt Routing (c) Graph-Conditioned Semantic ID Generation Figure 2: Overall framework of ReliGRec. The Behavior Token and temporal Graph Tokens jointly support user-level weak-risk estimation, whose output controls prompt routing. The aggregated Graph Token further provides dynamic collaborative information for next-item Semantic ID generation. 
+
+Dual-Path User Representation 
+
+ReliGRec constructs temporal Graph Tokens and a Behavior Token in parallel to represent the user’s dynamic collabora-tive environment and ordered behavior, respectively. 
+
+Temporal Graph Token Encoding Interaction sequences preserve behavioral order but do not explicitly model evolv-ing collaborative relations. ReliGRec therefore divides the training interactions into K overlapping windows, constructs a user–item bipartite graph for each, and employs a shared graph encoder to obtain user states h(k)
+
+u and item states h(k)
+
+i
+
+(Fan et al. 2021; Zhang, Liu, and Gulla 2023; Tao et al. 2026). The Graph Token for window k is defined as 
+
+m(k) = 1
+
+|I (k)|
+
+X
+
+i∈I (k)
+
+h(k)
+
+i ,
+
+g(k)
+
+u = [ h(k)
+
+u ; m(k)].
+
+(4) Here, I(k) is the item set in window k, and m(k) is its aggregated item context. Thus, g(k)
+
+u retains both the user’s structural state and window-level collaborative information. The window representations are then chronologically or-ganized as Gu = ( g(1) 
+
+u , . . . , g(K)
+
+u ). Missing windows are zero-padded. A temporal Transformer aggregates the fixed-length sequence, and its output at the final window position is used as the user representation: 
+
+¯gu = LN  [Tr temp (Gu + P)] K
+
+ . (5) Here, P denotes temporal position embeddings. The re-sulting ¯gu summarizes the temporal evolution of collabo-rative structures, providing dynamic evidence for weak-risk estimation and next-item generation. 
+
+Behavior Token Encoding Temporal Graph Tokens cap-ture evolving collaborative relations but may obscure the fine-grained order of a user’s own interactions. ReliGRec therefore retains the most recent Lu items from the user’s training history: 
+
+Su = ( iu, 1, . . . , i u,L u ). (6) After adding item and positional embeddings, the input sequence is represented as 
+
+Eu = [ eiu, 1 + p1, . . . , eiu,Lu + pLu ]. (7) A Transformer with a padding mask then encodes the se-quence, with the last valid hidden state taken as the Behavior Token: 
+
+Hu = Tr beh (Eu; Mpad 
+
+u ), Bu = Hu, last . (8) Here, eiu,j and pj denote item and positional embeddings, while Mpad 
+
+u excludes padded positions from attention. The resulting Bu summarizes the recent interaction sequence, providing behavioral evidence complementary to the collab-orative representation for weak-risk estimation. 
+
+Weak-Risk Estimation and Weak-Risk-Guided Prompt Routing 
+
+ReliGRec fuses behavioral and collaborative representations into a user-level weak-risk score and converts the score into a prompt-routing policy before decoding. 
+
+Dual-View Weak-Risk Estimator Behavioral and tem-poral collaborative representations may provide different signals associated with proxy deviation. ReliGRec there-fore combines the Behavior Token and aggregated tem-poral Graph Token by projecting them into a shared dp-dimensional space: 
+
+g′ 
+
+> u
+
+= LN g (Wg ¯gu), B′ 
+
+> u
+
+= LN b(WbBu). (9) Here, Wg and Wb are projection matrices, and LN de-notes layer normalization. The projected features are con-catenated and passed through a two-layer MLP to obtain the user-level weak-risk score: 
+
+au = MLP risk ([ B′
+
+> u
+
+; g′
+
+> u
+
+]) , su = σ(au). (10) Here, su ∈ (0 , 1) measures the agreement between the user features and the proxy deviation pattern, rather than a calibrated attack probability or a confirmed malicious judg-ment. Let Drisk ⊆ D rec contain the recommendation training instances whose users have weak-risk labels. Consistent with the implementation, each such instance inherits its user’s label, and the estimator is optimized using positive-class-weighted binary cross-entropy: 
+
+Lrisk = 1
+
+|D risk |
+
+X
+
+> (u,t )∈D risk
+
+ℓWBCE (au, y u), (11) Here, the weighted binary cross-entropy is defined as 
+
+ℓWBCE (a, y ) = −ω+y log σ(a) − (1 − y) log(1 − σ(a)) .
+
+where ω+ = N−/N + is computed from the labeled train-ing instances. Unlabeled users are excluded from the weak-risk loss but remain available for recommendation training. During inference, su determines the prompt policy. 
+
+Weak-Risk-Guided Prompt Routing During training, the weak-risk proxy labels determine prompt assignment: users in the higher-proxy-deviation group receive the Cautious Prompt, whereas all remaining users receive the Simple Prompt. At inference, routing is based on the predicted weak-risk score su and a fixed threshold τ :
+
+Ptrain  
+
+> u
+
+=
+
+Pcau , u ∈ U L, y u = 1 ,
+
+Psimple , otherwise ,
+
+Ptest  
+
+> u
+
+=
+
+Pcau , su ≥ τ, 
+
+Psimple , su < τ. 
+
+(12) Here, τ = 0 .5 is a fixed operational cutoff rather than a calibrated posterior threshold. Prompt assignment is discrete: training instances use their weak-label-assigned prompts, whereas inference uses the predicted score. Consequently, the recommendation loss does not optimize the weak-risk estimator through the hard routing decision. The Simple template asks the model to recommend di-rectly from the history and Graph Token. The Cautious tem-plate marks the input as potentially unreliable and instructs the model to identify stable and repeated patterns, use the Graph Token as supplementary context, exclude candidates supported mainly by short-term or noisy signals, and select one item aligned with longer-term interests. These instruc-tions specify an intended evidence-use policy rather than an empirically verified reasoning process or a judgment of ma-licious identity. Both prompts impose the same output con-straint: exactly one valid Semantic ID is generated without intermediate analysis. 
+
+Graph-Conditioned Semantic ID Generation 
+
+To inject dynamic collaborative information into the genera-tor, a two-layer projector maps the aggregated Graph Token into the LLM hidden space: 
+
+zgu = W2 GELU( W1 ¯gu + b1) + b2. (13) The projected representation zgu replaces a reserved Graph Token placeholder in the input embedding sequence. The selected prompt, the Semantic IDs of the historical items, and zgu are jointly supplied to an instruction-tuned LLM. The generator is parameter-efficiently fine-tuned with LoRA and autoregressively predicts the discrete codes at each level, producing the complete Semantic ID of the next item. 
+
+Training Objectives and Constrained Inference 
+
+The Semantic ID tokenizer is first trained offline using the objective in Equation 3. For the main model, given the target Semantic ID sequence 
+
+cu,t +1 = SID( iu,t +1 ) = ( ciu,t +1 ,1, . . . , c iu,t +1 ,L ), (14) we append the end-of-sequence token ceos during teacher forcing and define the generation context as 
+
+xu,t =
+
+
+
+SID( H(t) 
+
+> u
+
+), zgu, Ptrain 
+
+> u
+
+
+
+. (15) Here, SID( H(t) 
+
+> u
+
+) denotes the ordered Semantic ID se-quences of the observed items, and zgu is the projected Graph Token actually inserted into the LLM input. The recommen-dation loss is the mean cross-entropy over all unmasked target tokens: 
+
+Lrec = − 1
+
+Nrec 
+
+X
+
+> (u,t )∈D rec
+> L+1
+
+X
+
+> ℓ=1
+
+log pθ
+
+ ˜cu,t +1 ,ℓ |
+
+xu,t , ˜cu,t +1 ,<ℓ 
+
+.
+
+(16) where Drec denotes the recommendation training in-stances, ˜cu,t +1 = ( cu,t +1 , c eos ) is the supervised response, and Nrec is the number of its unmasked target tokens in the Dataset #Users #Items #Interactions Avg. Length Sparsity Beauty 22,363 12,101 198,502 8.88 99.93% Yelp 30,545 34,139 1,387,627 45.43 99.87% 
+
+Table 1: Statistics of the processed datasets. batch. The generation model and the weak-risk estimator are jointly optimized using 
+
+L = Lrec + λrisk Lrisk , (17) where λrisk controls the contribution of weak-risk estima-tion to the overall training objective. At inference, the model first computes the user-level weak-risk score and selects a prompt. A prefix Trie is then con-structed from the valid Semantic ID sequences of the can-didate items (Cao et al. 2022). At each decoding step, only tokens that form valid Semantic ID prefixes are retained, and completed sequences are ranked by the sums of their token log-probabilities. The generated Semantic IDs are mapped back to concrete items, after which previously interacted items are filtered to obtain the final recommendation list. 
+
+## Experiments 
+
+We evaluate ReliGRec on Beauty and Yelp. Overall recom-mendation and weak-risk estimation are reported on both datasets, while controlled component and routing analyses are conducted on Beauty. The experiments answer the fol-lowing research questions: 
+
+• RQ1: How does ReliGRec perform compared with rep-resentative graph-based, sequential, generative, and risk-aware recommendation methods for next-item prediction? 
+
+• RQ2: How accurately does ReliGRec estimate user-level weak-risk proxy labels, and how do behavioral and tem-poral collaborative signals contribute to the estimation? 
+
+• RQ3: How does weak-risk-guided prompt routing affect recommendation quality and inference efficiency? 
+
+• RQ4: To what extent does aggregated Graph Token con-ditioning contribute to next-item generation? 
+
+Experimental Settings 
+
+Datasets. We use Amazon Beauty (McAuley et al. 2015) and Yelp2018 released with LightGCN (He et al. 2020). Beauty is processed with 5-core filtering, while for Yelp we remove interactions without valid timestamps and apply 10-core filtering. Interactions are chronologically ordered and evaluated under leave-one-out splitting. Dataset statistics are reported in Table 1. For weak-risk estimation, review-level voting ra-tios are defined as helpful/total for Beauty and use-ful/(useful+funny+cool) for Yelp. Reviews without votes are unlabeled; ratios above 0.85 for Beauty (at least 0.85 for Yelp) indicate lower deviation, while ratios below 0.40 indicate higher deviation. Users with at least three labeled reviews are assigned by majority evidence; otherwise, they remain unla-beled. Labeled users are split 8:2 into user-disjoint training          
+
+> Dataset Lower Higher Unlabeled Beauty 6,980 (31.21%) 1,852 (8.28%) 13,531 (60.51%) Yelp 9,968 (32.63%) 2,390 (7.82%) 18,187 (59.54%)
+
+Table 2: Distribution of user-level weak-risk proxy labels. Lower and Higher denote the lower- and higher-proxy-deviation groups, respectively. Percentages are computed over all users in each dataset. and test sets. Unlabeled users participate only in recommen-dation training. Table 2 reports the resulting distribution. 
+
+Baselines. We compare ReliGRec with six representative baselines. LightGCN (He et al. 2020) captures collaborative relations through simplified graph propagation, while SAS-Rec (Kang and McAuley 2018) models sequential dependen-cies using self-attention. LETTER-LC-Rec and LETTER-TIGER combine the LETTER tokenizer (Wang et al. 2024) with LC-Rec (Zheng et al. 2024) and TIGER (Rajput et al. 2023), respectively, representing Semantic-ID-based gener-ative recommendation. GraphRfi (Zhang et al. 2020) and PGT4Rec (Nguyen et al. 2025) jointly perform recommen-dation and user anomaly detection. To ensure task consis-tency, we adapt their original recommendation objectives to next-item prediction while retaining their anomaly-detection components. Their recommendation outputs are included in RQ1, and their protocol-matched continuous scores for the weak-risk proxy task are included in RQ2. All baselines are tuned on the validation set under the same experimental pro-tocol. 
+
+Evaluation Metrics. For next-item recommendation, we report Hit@1, Hit@5, Hit@10, NDCG@5, and NDCG@10. For user-level weak-risk estimation, we report AUPRC, AU-ROC, and F1, with AUPRC treated as the primary metric because of label imbalance. F1 is calculated using the fixed routing threshold ( τ = 0 .5). We further evaluate routing efficiency using the average number of input tokens, aver-age inference latency per test instance, and the proportion of users routed to the Cautious Prompt. All methods use the same data split, test users, candidate catalog, history-aware filtering rule, and evaluation procedure. 
+
+Implementation Details. ReliGRec uses Qwen2.5-1.5B-Instruct (Qwen Team 2024) with LoRA (Hu et al. 2022) (rank 16, scaling factor 32, and dropout 0.05). The two-layer Behavior Encoder has a hidden size of 32 and encodes up to 50 interactions. Temporal graphs use window/stride sizes of 20,000/10,000 for Beauty and 50,000/25,000 for Yelp. Cached 128-dimensional Graph Tokens are obtained using a fixed two-head GAT for Beauty and mean aggregation for Yelp, and are further aggregated by a two-layer tem-poral Transformer. The weak-risk estimator is trained with positive-class-weighted binary cross-entropy, with λrisk = 1 
+
+and routing threshold τ = 0 .5. The item tokenizer is a four-level RQ-VAE with 256 entries per codebook and 32-dimensional codes. The generator is trained using AdamW, cosine decay, BF16, and a per-device batch size of 8. The maximum training budgets are five epochs for Beauty and six epochs for Yelp; checkpoints are selected on the validation set. Learning rates are 7 × 10 −4 for Beauty and 3 × 10 −4 for Yelp. During inference, the 20 most recent interactions are re-tained, and catalog-constrained beam search with a beam size of 50 is combined with seen-item filtering. All experiments are conducted on two NVIDIA RTX PRO 5000 Blackwell GPUs. All reported model results are point estimates ob-tained with seed 42; we do not use the small cross-method differences to claim statistical significance. 
+
+Overall Performance (RQ1) 
+
+Table 3 compares the next-item recommendation perfor-mance of ReliGRec and the baselines under the unified eval-uation protocol. As shown in Table 3, ReliGRec achieves the best re-sults across all five metrics on Beauty. Compared with the strongest baseline, LETTER-TIGER, it improves H@1, H@5, H@10, N@5, and N@10 by 54.67%, 19.24%, 8.93%, 27.28%, and 19.29%, respectively. On Yelp, ReliGRec ob-tains an H@1 of 0.00540, tying with LETTER-TIGER for the best result, and ranks second on the other four metrics. Its gaps from the corresponding best results range from only 0.12% to 1.87%. Overall, ReliGRec shows a clear advan-tage on Beauty while remaining comparable to the strongest baseline on Yelp under the reported protocol. Because Ta-ble 3 compares complete systems, these results do not isolate the effects of routing, graph conditioning, or tokenizer and backbone differences. 
+
+Weak-Risk Estimation (RQ2) 
+
+Table 4(a) compares ReliGRec with GraphRfi and PGT4Rec on the user-disjoint weak-risk test sets. ReliGRec achieves the best AUPRC, AUROC, and F1 on both datasets. Com-pared with the strongest baseline for each ranking metric, its AUPRC improves from 0.2187 to 0.2633 on Beauty and from 0.1990 to 0.2990 on Yelp, while its AUROC improves from 0.4897 to 0.5818 and from 0.5311 to 0.6550, respec-tively. Panel (b) compares single-view and fused weak-risk inputs on Beauty. Behavior-only improves AUPRC and AU-ROC over Graph-only (0.2484 and 0.5586 versus 0.2090 and 0.5126), whereas Graph-only yields a higher F1 at the fixed cutoff (0.3471 versus 0.3318). Combining both views achieves the best AUPRC, AUROC, and F1 (0.2631, 0.5817, and 0.3651), supporting their complementarity. All metrics quantify agreement with user-level weak-risk proxy labels rather than verified fraud-detection performance. 
+
+Prompt-Routing Analysis (RQ3) 
+
+We compare four routing policies on Beauty using the same checkpoint, users, candidate catalog, and decoding configu-ration. All-Simple and All-Cautious apply one prompt to ev-ery request. Random matched-ratio assigns exactly the same number of requests to the Cautious Prompt as Weak-Risk-Guided, and is repeated 500 times using cached per-user predictions. Proxy-deviation groups contain only held-out labeled users. For Random routing, the 95% confidence intervals are [0.0616, 0.0633] for H@10, [0.0362, 0.0370] for N@10, [0.0309, 0.0343] for lower-proxy-deviation N@10, and [0.0377, 0.0448] for higher-proxy-deviation N@10. The weak-risk-guided policy is numerically higher than All-Cautious in NDCG@10 (0.0370 versus 0.0360), but All-Simple remains stronger at 0.0379. Its overall NDCG@10 and the NDCG@10 for the higher-proxy-deviation group also fall within the 95% intervals of matched-ratio ran-dom routing. The measured end-to-end wall-clock costs are 0.460, 0.548, and 0.479 seconds per user for All-Simple, All-Cautious, and the weak-risk-guided policy, respectively. Thus, the current evidence establishes weak-risk-guided prompt selection, but does not show that the estimated risk yields a recommendation improvement over the strongest uniform policy or non-informative matched routing. Because the score is learned with positive-class weighting and is not calibrated, the 66.9% Cautious-route rate should not be in-terpreted as the prevalence of higher proxy deviation. 
+
+Graph-Conditioning and Temporal-Aggregation Ablation (RQ4) 
+
+To isolate the contribution of temporal Graph Tokens to generation, we compare the graph-conditioned model with a history-only generator while keeping the Seman-tic IDs, language-model backbone, training budget, beam size, prompt policy, and evaluation procedure unchanged. As shown in Table 6, temporal graph conditioning improves all four metrics on Beauty. Relative to the history-only gener-ator, Hit@5 and Hit@10 increase by 2.78% and 1.58%, while NDCG@5 and NDCG@10 increase by 4.65% and 3.84%, respectively. We further replace the temporal sequence with a one-snapshot static Graph Token and retrain the model un-der the same protocol. Under this seed, the static variant also exceeds History-only, attaining the best Hit@5, NDCG@5, and NDCG@10, while the temporal variant attains the best Hit@10. Thus, both graph-conditioned variants improve on the history-only generator in this controlled run, but temporal aggregation does not uniformly dominate the static represen-tation on ranking metrics. For user-level weak-risk estima-tion, the temporal variant yields higher AUPRC (0.2631 ver-sus 0.2313), AUROC (0.5817 versus 0.5299), and F1 (0.3651 versus 0.2826), suggesting that time-resolved collaborative evidence is more informative for proxy-label prediction in this run. 
+
+## Related Work 
+
+LLM-based Generative Recommendation 
+
+Semantic-ID-based generative recommendation represents items as discrete codes. TIGER predicts tuple-structured Semantic IDs, while LC-Rec and LETTER enhance item tokenization through semantic–collaborative alignment and hierarchical regularization (Rajput et al. 2023; Zheng et al. 2024; Wang et al. 2024). CoLLM, CLLM4Rec, GraphLoRA, and TCA4Rec further incorporate collaborative signals through input projection, vocabulary expansion, parameter adaptation, or token-level alignment (Zhang et al. 2025; Zhu et al. 2024; Mu et al. 2026; Lin et al. 2026). SASRec and TGSRec provide foundations for sequential and temporal collaborative modeling (Kang and McAuley 2018; Fan et al. Amazon Beauty Yelp Method H@1 H@5 H@10 N@5 N@10 H@1 H@5 H@10 N@5 N@10 LightGCN 0.00742 0.02759 0.04396 0.01738 0.02262 0.00429 0.01738 0.03091 0.01075 0.01507 SASRec 0.00782 0.02942 0.04914 0.01869 0.02503 0.00380 0.01686 0.02979 0.01028 0.01444 LETTER-LC-Rec 0.01082 0.02705 0.03926 0.01903 0.02297 0.00284 0.00998 0.01724 0.00638 0.00871 LETTER-TIGER 0.01145 0.03716 0.05755 0.02441 0.03100 0.00540 0.02043 0.03392 0.01283 0.01714     
+
+> GraphRfi 0.00284 0.01335 0.02557 0.00805 0.01193 0.00285 0.01113 0.01964 0.00700 0.00972 PGT4Rec 0.00410 0.01858 0.03030 0.01121 0.01497 0.00275 0.01107 0.01935 0.00694 0.00958 ReliGRec 0.01771 0.04431 0.06269 0.03107 0.03698 0.00540 0.02010 0.03388 0.01259 0.01701
+
+Table 3: Overall next-item recommendation performance. The best result is shown in bold, and the second-best result is underlined.                                     
+
+> (a) Overall weak-risk estimation
+> Dataset Method AUPRC AUROC F1 Beauty GraphRfi 0.2187 0.4778 0.3096 PGT4Rec 0.2068 0.4897 0.2908 ReliGRec 0.2633 0.5818 0.3653
+> Yelp GraphRfi 0.1975 0.5124 0.3202 PGT4Rec 0.1990 0.5311 0.2010 ReliGRec 0.2990 0.6550 0.3645
+> (b) Weak-risk-input analysis on Beauty
+> Weak-risk input AUPRC AUROC F1 Behavior only 0.2484 0.5586 0.3318 Graph only 0.2090 0.5126 0.3471 Graph + Behavior 0.2631 0.5817 0.3651
+
+Table 4: User-level weak-risk proxy prediction. (a) Overall comparison on protocol-matched weak-risk test users. (b) Weak-risk-input analysis on Beauty. AUPRC is the primary metric; F1 uses the fixed cutoff τ = 0 .5. The best result is shown in bold and the second-best is underlined. 2021). These methods mainly improve item representation and collaborative conditioning, but rarely adapt the genera-tion policy to user-level risk before decoding. 
+
+Robust and Risk-Aware Recommendation 
+
+Robust recommenders incorporate risk signals through joint recommendation and detection, graph aggregation, user reweighting, or representation rectification, as exemplified by GraphRfi, PGT4Rec, Trust-GRS, LoRec, and DITaR (Zhang et al. 2020; Nguyen et al. 2025; Mu et al. 2025; Zhang et al. 2024; Qin et al. 2026). These methods mainly intervene dur-ing training. By contrast, GUIDER and UGR exploit gener-ation uncertainty for reranking, diversity control, rejection, or truncation (Xu et al. 2026; Fan et al. 2026), operating dur-ing or after generation. ReliGRec instead estimates user-level weak risk from sequential behavior and temporal collabora-tive context before decoding, using it to route users between Simple and Cautious Prompts while preserving Graph Token conditioning.         
+
+> Policy H@10 N@10 Lower N@10 Higher N@10 Cautious (%) All-Simple 0.0642 0.0379 0.0337 0.0462 0.0 All-Cautious 0.0616 0.0360 0.0322 0.0384 100.0 Random 0.0625 0.0366 0.0327 0.0411 66.9 Weak-Risk 0.0627 0.0370 0.0321 0.0417 66.9
+
+Table 5: Prompt-routing results on Beauty. Weak-Risk de-notes weak-risk-guided routing. Lower and Higher refer to the held-out lower- and higher-proxy-deviation groups. Bold and underlined values indicate the best and second-best re-sults, respectively.                 
+
+> Generator H@5 H@10 N@5 N@10 History only 0.0432 0.0632 0.0301 0.0365 + Static Graph Token 0.0449 0.0634 0.0324 0.0384
+> + Temporal Graph Token 0.0444 0.0642 0.0315 0.0379
+
+Table 6: Effect of graph conditioning and temporal aggrega-tion on Beauty (seed 42). 
+
+## Conclusion 
+
+In this paper, we propose ReliGRec, a risk-aware genera-tive recommendation framework that integrates collabora-tive modeling, user-level weak-risk estimation, and weak-risk-guided prompt routing. To capture evolving collabora-tive relations, ReliGRec constructs temporal Graph Tokens from interaction snapshots and uses their aggregated rep-resentation to condition next-item Semantic ID generation. The temporal Graph Tokens and a Behavior Token encoding sequential preferences provide complementary collaborative and behavioral evidence for user-level weak-risk estimation with partially labeled users. Based on the predicted weak-risk score, ReliGRec selects between the Simple and Cautious Prompts before generation. The reported results show com-petitive recommendation and proxy-label prediction, while the controlled Beauty analysis supports the contribution of graph conditioning. The routing results characterize group-dependent changes in recommendation quality and inference cost, but do not establish an advantage over All-Simple or matched-ratio random routing. References 
+
+Cao, N. D.; Wu, L.; Popat, K.; Artetxe, M.; Goyal, N.; Plekhanov, M.; Zettlemoyer, L.; Cancedda, N.; Riedel, S.; and Petroni, F. 2022. Multilingual Autoregressive Entity Linking. Transactions of the Association for Computational Linguistics , 10: 274–290. Ding, Y.; Li, J.; McAuley, J.; and Hou, Y. 2026. Inductive Generative Recommendation via Retrieval-based Specula-tion. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 14675–14683. Fan, C.; Gao, C.; Gong, Y.; Liu, H.; Feng, F.; and He, X. 2026. Uncertainty-aware Generative Recommendation. 
+
+arXiv preprint arXiv:2602.11719 .Fan, Z.; Liu, Z.; Zhang, J.; Xiong, Y.; Zheng, L.; and Yu, P. S. 2021. Continuous-Time Sequential Recommendation with Temporal Graph Collaborative Transformer. In Proceedings of the 30th ACM International Conference on Information and Knowledge Management , 433–442. ACM. He, X.; Deng, K.; Wang, X.; Li, Y.; Zhang, Y.; and Wang, M. 2020. LightGCN: Simplifying and Powering Graph Convo-lution Network for Recommendation. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval , 639–648. ACM. Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.; Wang, L.; and Chen, W. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations .Hu, P.; Lu, W.; and Wang, J. 2026. From IDs to Semantics: A Generative Framework for Cross-Domain Recommendation with Adaptive Semantic Tokenization. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 14874–14882. Kang, W.-C.; and McAuley, J. 2018. Self-Attentive Sequen-tial Recommendation. In 2018 IEEE International Confer-ence on Data Mining , 197–206. Lee, D.; Kim, C.; Kim, S.; Cho, M.; and Han, W. 2022. Au-toregressive Image Generation Using Residual Quantization. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 11523–11532. Lin, F.; Hu, B.; Zheng, Z.; Zhu, X.; Liu, Z.; Zhang, Z.; Zhou, J.; and Xu, T. 2026. Token-level Collaborative Alignment for LLM-based Generative Recommendation. In Proceedings of the ACM Web Conference 2026 , 6909–6919. ACM. McAuley, J. J.; Targett, C.; Shi, Q.; and van den Hengel, A. 2015. Image-Based Recommendations on Styles and Substi-tutes. In Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval , 43–52. ACM. Mu, L.; Liu, Z.; Zhu, Z.; and Lin, Z. 2025. Trust-GRS: A Trustworthy Training Framework for Graph Neural Network Based Recommender Systems Against Shilling Attacks. In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 39, 12408–12416. Mu, L.; Wang, G.; Ni, L.; Sang, L.; Wu, Z.; Jin, P.; and Zhang, Y. 2026. GraphLoRA: Structure-Aware Low-Rank Adapta-tion for Large Language Model Recommendation. In Find-ings of the Association for Computational Linguistics: ACL 2026 , 13208–13218. Association for Computational Linguis-tics. Nguyen, T. T.; Nguyen, T. T.; Weidlich, M.; Jo, J.; Nguyen, Q. V. H.; Yin, H.; and Liew, A. W. 2025. Handling Low Ho-mophily in Recommender Systems With Partitioned Graph Transformer. IEEE Transactions on Knowledge and Data Engineering , 37(1): 334–350. Qin, Q.; Li, Y.; Wang, H.; Wang, C.; Zhang, R.; and Li, R. 2026. Unbiased Rectification for Sequential Recommender Systems Under Fake Orders. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 15644– 15652. Qwen Team. 2024. Qwen2.5 Technical Report. arXiv preprint arXiv:2412.15115 .Rajput, S.; Mehta, N.; Singh, A.; Keshavan, R. H.; Vu, T.; Heldt, L.; Hong, L.; Tay, Y.; Tran, V. Q.; Samost, J.; Kula, M.; Chi, E. H.; and Sathiamoorthy, M. 2023. Recommender Systems with Generative Retrieval. In Advances in Neural Information Processing Systems , volume 36. Tao, Z.; Jiang, X.; Feng, Q.; Zhang, H.; Du, L.; Fang, Y.; Miao, H.; Xie, B.; and Sun, Q. 2026. Task-Aware Retrieval Augmentation for Dynamic Recommendation. In Proceed-ings of the AAAI Conference on Artificial Intelligence , vol-ume 40, 15779–15787. Wang, W.; Bao, H.; Lin, X.; Zhang, J.; Li, Y.; Feng, F.; Ng, S.; and Chua, T. 2024. Learnable Item Tokenization for Generative Recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowl-edge Management , 2400–2409. ACM. Xu, C.; Wang, X.; Guan, Z.; Zhao, W.; and Yan, M. 2026. GUIDER: Uncertainty Guided Dynamic Re-ranking for Large Language Models Based Recommender Systems. In Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 40, 16049–16057. Ye, W.; Sun, M.; Chen, S.; Wu, W.; and Jiang, P. 2026. Align 3GR: Unified Multi-Level Alignment for LLM-based Generative Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 16154– 16162. Zhang, K.; Cao, Q.; Wu, Y.; Sun, F.; Shen, H.; and Cheng, X. 2024. LoRec: Combating Poisons with Large Language Model for Robust Sequential Recommendation. In Proceed-ings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval , 1733– 1742. ACM. Zhang, L.; Liu, P.; and Gulla, J. A. 2023. Recommending on Graphs: A Comprehensive Review from a Data Perspective. 
+
+User Modeling and User-Adapted Interaction , 33: 803–888. Zhang, S.; Yin, H.; Chen, T.; Nguyen, Q. V. H.; Huang, Z.; and Cui, L. 2020. GCN-Based User Representation Learning for Unifying Robust Recommendation and Fraudster Detec-tion. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval , 689–698. ACM. Zhang, Y.; Feng, F.; Zhang, J.; Bao, K.; Wang, Q.; and He, X. 2025. CoLLM: Integrating Collaborative Embeddings Into Large Language Models for Recommendation. IEEE Transactions on Knowledge and Data Engineering , 37(5): 2329–2340. Zhao, Y.; Shi, L.; Zhong, Y.; Kou, F.; Zhang, P.; Zhang, J.; Xu, M.; and Liu, Y. 2026. MusicRec: Multi-modal Semantic-Enhanced Identifier with Collaborative Signals for Genera-tive Recommendation. In Proceedings of the AAAI Confer-ence on Artificial Intelligence , volume 40, 16459–16467. Zheng, B.; Hou, Y.; Lu, H.; Chen, Y.; Zhao, W. X.; Chen, M.; and Wen, J. 2024. Adapting Large Language Models by Integrating Collaborative Semantics for Recommenda-tion. In 2024 IEEE 40th International Conference on Data Engineering , 1435–1448. IEEE. Zhu, Y.; Wu, L.; Guo, Q.; Hong, L.; and Li, J. 2024. Collabo-rative Large Language Model for Recommender Systems. In 
+
+Proceedings of the ACM Web Conference 2024 , 3162–3172. ACM.
