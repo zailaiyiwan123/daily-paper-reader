@@ -6,40 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-20
-- 运行时间：2026-09-20 21:23:58 UTC
+- 最新运行日期：2026-09-21
+- 运行时间：2026-09-21 22:45:59 UTC
 - 运行状态：成功
-- 本次总论文数：6
+- 本次总论文数：5
 - 精读区：1
-- 速读区：5
+- 速读区：4
 
 ### 今日简报（AI）
-今天完成6篇论文筛选，精读1篇、速读5篇，主线集中在个性化学习与LLM落地应用。
-最值得看的是8.0分的CIDERS，用加速双层优化实现云边LLM协同学习，其次是7.0分用全局知识蒸馏加本地头适配做个性化联邦学习的那篇。
-普通读者可先读这两篇的摘要与实验部分，重点看个性化效果与通信/计算开销之间怎么权衡。
-- 详情：[/202609/20/README](/202609/20/README)
+今日日报成功收录5篇，精读1篇、速读4篇，主线聚焦“个性化AI”如何进入信息抽取、健康叙事、长期记忆与EMG语音解码。
+最值得先看8.0分精读《One Prompt Does Not Fit All》，它用自元进化做个性化信息抽取；速读可关注老年健康故事共情与潜在神经符号长期记忆。
+普通读者建议先读精读摘要，再按兴趣扫速读，重点看个性化是否真提升效果、校准是否够轻量。
+- 详情：[/202609/21/README](/202609/21/README)
 
 ### 精读区论文标签
-1. [CIDERS: Cloud-Edge LLM Collaborative Learning via Accelerating Personalized Bilevel Optimization](/202609/20/2609.15664v1-ciders-cloud-edge-llm-collaborative-learning-via-accelerating-personalized-bilevel-optimization)  
+1. [One Prompt Does Not Fit All: Self-Meta-Evolve for Personalized Information Extraction](/202609/21/2609.21626v1-one-prompt-does-not-fit-all-self-meta-evolve-for-personalized-information-extraction)  
    标签：评分：8.0/10、query:pers-gen
-   evidence：边缘侧个性化的双层优化
+   evidence：面向每个用户的提示词自适应
 
 ### 速读区论文标签
-1. [Personalized Federated Learning through Global Knowledge Distillation and Local Head Adaptation](/202609/20/2609.17284v1-personalized-federated-learning-through-global-knowledge-distillation-and-local-head-adaptation)  
+1. [When a Story Feels Like Mine: How Personalized Narratives and Humor Shape Older Adults' Empathy toward LLM-Generated Peer Health Stories](/202609/21/2609.16374v2-when-a-story-feels-like-mine-how-personalized-narratives-and-humor-shape-older-adults-empathy-toward-llm-generated-peer-health-stories)  
    标签：评分：7.0/10、query:pers-gen
-   evidence：通过客户端专属头部实现个性化模型适配
-2. [Auto-HSI: Personalized human control of a robot swarm on demand by using LLMs for online automatic code generation](/202609/20/2609.16346v1-auto-hsi-personalized-human-control-of-a-robot-swarm-on-demand-by-using-llms-for-online-automatic-code-generation)  
+   evidence：面向老年人的个性化LLM叙事生成
+2. [Disentangling Long-Term Memory via Latent Neuro-Symbolic Reasoning](/202609/21/2609.18461v2-disentangling-long-term-memory-via-latent-neuro-symbolic-reasoning)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：个性化智能体对长期记忆进行推理
+3. [Multi-Subject Pretraining Enables Short-Calibration Personalization for Closed-Corpus Surface EMG Speech Decoding](/202609/21/2609.21288v1-multi-subject-pretraining-enables-short-calibration-personalization-for-closed-corpus-surface-emg-speech-decoding)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：多被试预训练实现短校准个性化
+4. [Do Personality-Tuned LLMs Make Better Social Agents?](/202609/21/2609.21857v1-do-personality-tuned-llms-make-better-social-agents)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：按需生成个性化接口与状态机代码
-3. [ReliGRec: Reliability-Oriented LLM-Based Generative Recommendation via User-Risk-Aware Prompt Routing](/202609/20/2609.16560v1-religrec-reliability-oriented-llm-based-generative-recommendation-via-user-risk-aware-prompt-routing)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：面向个性化生成式推荐的用户风险感知路由
-4. [Enhancing Procedural Writing Through Personalized Example Retrieval: A Case Study on Cooking Recipes](/202609/20/2609.17118v1-enhancing-procedural-writing-through-personalized-example-retrieval-a-case-study-on-cooking-recipes)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：面向内容生成的个性化示例检索
-5. [Reproducing Transparent and Scrutable Recommendations: Exploring Open-Weight Models via Natural-Language User Profiles](/202609/20/2609.19831v1-reproducing-transparent-and-scrutable-recommendations-exploring-open-weight-models-via-natural-language-user-profiles)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：利用大模型生成的用户画像实现个性化
+   evidence：面向个性化对话生成的人格微调
 
 
 <div class="dpr-home-promo-card">
