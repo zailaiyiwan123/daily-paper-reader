@@ -1,0 +1,392 @@
+Title: LoRA-generating hypernetworks for efficient on-device LLM generative personalization
+
+URL Source: https://arxiv.org/pdf/2609.24979v1
+
+Published Time: Tue, 22 Sep 2026 03:12:33 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# LoRA-generating hypernetworks for efficient on-device LLM generative personalization 
+
+Sean Augenstein ∗ † Li Ding † Jihwan Lee ‡ Keith Rush † Andrey Zhmoginov ‡
+
+# Abstract 
+
+On-device large language models (‘LLMs’), e.g. running on mobile phones, are ripe for improvement via personalization. The limited compute resources of mobile devices impose limits on model scale and thus model quality, making any realizable quality gains highly impactful. At the same time, their personal nature (i.e., the close coupling to a particular user) means that a given on-device LLM tends to be used in similar, predictable patterns over the course of time. This paper presents a novel method for personalizing on-device LLMs. It trains a hypernetwork to map a user’s context tokens to a low-rank adaptation (‘LoRA’) well-suited to that user. Once the trained common artifacts are deployed to users’ devices, each user uses the hypernetwork to synthesize (entirely on device) a personalized LoRA. This approach blends the benefits while avoiding the drawbacks of two existing approaches to LLM customization: in-context learning (‘ICL’) and parameter-efficient fine-tuning (‘PEFT’). Like ICL (and unlike PEFT), the on-device phase of our approach is computationally feasible, requiring only forward passes through neural networks. Like PEFT (and unlike ICL), our approach modifies the ‘target’ base LLM via weights (the LoRA), avoiding negative consequences (e.g. increased latency) associated with extending the input sequence. Our approach is particularly well-suited to the mobile device regime. Apart from the on-device compute and latency benefits mentioned, it also requires minimal additional storage, as internally its architecture partly leverages the same LLM weights as belong to the target LLM to be personalized. We demonstrate the benefits of LoRA-generating hy-pernetworks on several representative personalization datasets, comparing against baselines like ICL and PEFT. Of note, our personalization experiments focus on more challenging and less studied long-form text generation tasks. 
+
+# 1 Introduction 
+
+As transformer-based large language models (‘LLMs’) have revolutionized the field of natural language processing (‘NLP’) in general, so too have they revolutionized mobile device-based NLP. Mobile device ecosystems now include APIs for accessing ‘on-device’ LLMs (Android Developers, 2023; Apple Inc., 2024; Microsoft Inc., 2025) enabling mobile applications to include generative AI features. To fit within the compute- and space-constraints of mobile phones, such on-device LLMs necessarily have fewer parameters and thus are acutely capacity-constrained in the capabilities they can be imbued with during training. This presents a challenge to mobile generative AI developers. A mobile phone is typically used by only a single user, making a mobile device’s usage patterns deeply personal and thus relatively consistent over longer periods of time, i.e., reflecting the device user’s usual writing style, tone, etc. This presents an opportunity to mobile generative AI developers;  
+
+> ∗Corresponding author: saugenst@google.com .
+> †Google.
+> ‡Formerly at Google, work done while at Google. Preprint. arXiv:2609.24979v1 [cs.LG] 21 Sep 2026
+
+Table 1: Comparative strengths of LLM personalization methods. LoRA-generating hypernetworks offer the most attractive cumulative performance on the dimensions that matter the most for on-device LLM-based generative AI, namely, per-user compute cost (which will be performed on device) and 
+
+per-query inference latency and quality (both key to a satisfactory user experience). Hypernetworks do involve more up-front training cost (effectively, parameter-efficient backpropagation through two LLMs instead of one, see Section 4), but this computation is only performed once, off device. method compute to compute to latency of quality of make common make personal inference inference artifacts artifacts response response (Phase 1, (Phase 2, (Phase 3, (Phase 3, once overall) once per-user ) per-query ) per-query )(NON -PERSONALIZED ) low N/A lowest (see Sec. 5) 
+
+per-user ICL low negligible highest 
+
+per-user LORA S
+
+(VIA PEFT) low highest lowest 
+
+per-user LORA S
+
+(VIA HYPERNETWORK ) highest low lowest if capable techniques existed for personalizing an on-device LLM to a user’s medium-to-long-term usage patterns, this would alleviate the scale-related challenges of mobile LLMs mentioned above. On-device LLM personalization is an instance of ‘downstream’ LLM customization, whereby a LLM is adapted to a novel task or user without adjusting the LLM’s parameters. There are two predominant approaches. The first is parameter-efficient fine-tuning (‘PEFT’), which augments the LLM with additional parameters and trains them such that the augmented LLM performs well for the given task or user. An example in widespread use is low-rank adaptation (‘LoRA’) (Hu et al., 2021). The second common approach to LLM customization is in-context learning (‘ICL’) (Brown et al., 2020), where the LLM is provided with examples from the given task or user in its input sequence. PEFT and ICL each have drawbacks, particularly when applied to on-device LLM personalization. PEFT requires gradient descent to personalize a LoRA, a computationally prohibitive exercise on a mobile device. ICL increases input sequence length and thus inference latency, which is typically undesirable for interactive generative AI features. ICL also suffers worse quality as context length grows 4 (Liu et al., 2023; Li et al., 2024a). Considering that an LLM’s input sequence will also serve other uses (e.g., as a conversation record during multi-turn chatbot interaction), it may be preferable to utilize alternative manners of personalizing the on-device LLM to its user’s long-term characteristics. In this work we present just such an alternative form of personalization, via LoRA-generating hypernetworks . Entirely on device, the hypernetwork takes representative examples of a user as input and produces a personalized LoRA as output, which is then attached to the on-device LLM. Like ICL, it has the desirable property that personalization only involves forward passes, so is computationally realizable on device. Like PEFT, the outputs are neural parameters (a LoRA), so we avoid increasing the LLM input sequence, leaving its capacity preserved for other uses. Table 1 provides a comparison of various methods of LLM personalization. We distinguish between three phases in a personalization pipeline: common artifact creation (‘Phase 1’, performed once overall for the population), personal artifact creation (‘Phase 2’, performed once per-user), and personalized inference (‘Phase 3’, performed per-query). Given this framing, LoRA-generating hypernetworks are desirable for on-device LLM personalization because they upstream compute cost into Phase 1 (which is the least constrained, as well as amortizable) and out of Phases 2 and 3 (which are the most constrained, as they must take place on device). Table 1 indicates the advantages of LoRA-generating hypernetworks in both per-user computational cost and per-query latency; what remains to be determined are the relative quality of the personalized inference responses when comparing to PEFT or ICL. We undertake this comparative evaluation in this paper, showing via experiments on representative generative NLP tasks that hypernetwork-generated LoRAs deliver responses that measure as well or better on quality as the alternatives. 
+
+> 4The phrase ‘context rot’ (Workaccount2, 2025) has been coined to describe this degradation as context length grows.
+
+2The contributions of this paper are as follows: • The first study (to our knowledge) of LoRA-generating hypernetworks for on-device LLM personalization, considering its advantages over alternatives to the constraints of the mobile device environment, and presenting an architecture tailored to maximize reuse of already-present on-device neural artifacts and allow personalized LoRA generation to take place entirely on-device. • Experiments performing personalization of representative on-device LLMs on representative generative tasks, providing empirical evidence that hypernetworks perform equal or better at quality , as compared to alternative methods of LLM personalization. 
+
+Some Context on ‘Context’ NLP personalization can be considered to be of two distinct flavors (both of which may be necessary or helpful to the success of a generative AI product). One flavor is longer-term, persona-related personalization which adapts a model to a user’s usage style and traits, as they hold in the medium-to-long term over many queries made to the model (e.g., a user writes to friends in the vernacular of a particular region/language, and writes to work colleagues in formal English). The other flavor is query-related personalization which adapts a model to the immediate needs of the user for a particular query in the moment, often involving retrieval-augmented generation or ‘RAG’ (e.g., the user is writing to a friend to share the details of a particular party invitation they’ve received). This paper considers the former flavor of personalization, i.e., how to best tailor an on-device LLM to a user’s persona and long-term traits. Our position is that LoRA-generating hypernetworks are useful for longer-term personalization, with advantages over PEFT and ICL. We do not claim that hypernetworks are indicated for immediate/query-related personalization. Indeed, our belief is that hypernetworks should be adopted for long-term personalization in part so that input sequence capacity can be preserved for use for immediate/query-related personalization. 
+
+# 2 Related Work 
+
+Parameter-Efficient Fine-Tuning (‘PEFT’) PEFT freezes a ‘base’ LLM’s parameters and aug-ments it with new trainable parameters (much fewer in number than the base). Optimizing the PEFT parameters still requires backpropagation through the base LLM, but parameter storage burdens are greatly reduced. Notable PEFT flavors include adapters (Houlsby et al., 2019), prompt tuning (Lester et al., 2021), and ‘LoRA’ (Hu et al., 2021). Personalizing LLMs by per-user PEFT has been studied (Collins et al., 2023; Khan et al., 2024; Tan et al., 2025), but in general PEFT is computationally infeasible to perform on mobile phones for state-of-the-art on-device LLMs. Such LLMs are sized to just fit inference within a high-end mobile phone’s RAM budget 5, and “[m]emory requirements for fine-tuning ... models are drastically higher than for standard inference” (Google Inc., 2026). 
+
+In-context Learning (‘ICL’) ICL (Brown et al., 2020; Dong et al., 2024) involves prepending representative task examples to a query; the LLM then uses this context to formulate a response conditioned to the task. ICL is desirable for task customization as a means of avoiding parameter fine-tuning (and its attendant burdensome requirements for parameter-level model access, training data, and compute resources). However, ICL is not without its own weaknesses. ICL has been shown to struggle qualitatively as context length grows (Li et al., 2024a; Du et al., 2025), and be biased towards examples at the start and end of input sequences (Liu et al., 2023). As mentioned, ICL’s increased input sequence lengths also bring increased latency. 
+
+PEFT vs. ICL, PEFT for ICL PEFT and ICL are distinctly different methods of LLM customiza-tion, and comparative analyses of the two have been performed, e.g. Liu et al. (2022); Mosbach et al. (2023). ICL works well at larger model scales (Wei et al., 2022) but lags behind fine-tuning approaches at smaller model scales (e.g. 2-10B parameters) (He et al., 2026). To address this, a thread of research has looked at meta-fine-tuning as a means of enhancing a model’s ICL capability (Min et al., 2022; Chen et al., 2022; He et al., 2026). As we are motivated by on-device settings with smaller scale LLMs, in this paper we represent ICL with such a ‘PEFT-for-ICL’ approach, i.e. we fine-tune a single LoRA on ICL-prepended examples to achieve best possible ICL performance.  
+
+> 5At time of writing, high-end phones have 12-16 GB of RAM, to support all on-device computation (operating system, applications, and graphics, as well as carveout for the on-device LLM). The weights alone of one representative on-device LLM occupy 3.2 GB ( after 4-bit quantization)(Google Inc., 2026); there are context window-related memory burdens as well.
+
+3Hypernetworks Ha et al. (2017) coined the phrase ‘hypernetwork’ to refer to neural networks which synthesize parameters of other neural networks, but the concept dates even earlier, to work on ‘fast’ weights and context-dependent weight changes (Schmidhuber, 1992). NLP research has studied hypernetworks for customizing LLMs to ad hoc tasks (Deb et al., 2022; Ivison et al., 2023; Phang et al., 2023; Li et al., 2024b; Lv et al., 2024; Chen et al., 2024). Some recent works (Charakorn et al., 2025, 2026; Liu et al., 2026) stand out for the quality of their demonstrations of LoRA-generating hypernetworks for realistic tasks. Unfortunately, none of these works address or are directly applicable to the mobile device setting. In a mobile generative AI platform like Android AICore (Android Developers, 2023), the base LLM available on device is an instruction-tuned, decoder-only model and LoRAs are the supported adaptation modality. The previous works listed either consider architectures with models not already present on device, or at parameter scales infeasible to deploy to device, or they don’t use LoRA. With the exception of Chen et al. (2024), none consider personalization. 
+
+On-Device Personalization and Federated Learning In our scenario, the data is decentralized over a population of users’ mobile devices. Federated learning (‘FL’) (McMahan et al., 2017) studies how to learn over such datasets. FL allows for meta-training a common artifact to be used in on-device personalization (i.e. ‘Phase 1’ of personalization, above). In this vein, Shamsian et al. (2021) proposed FL for hypernetwork training, but didn’t consider LLMs. FL has traditionally involved computing gradients on device, which is infeasible for LLMs. A newer variant of FL shifts computations to instead take place in a trusted execution environment (‘TEE’) at a server (Eichner et al., 2025), which decouples FL from the computational limitations of mobile devices. The hypernetwork training algorithm presented in this paper is realizable in production via such ‘TEE-based’ FL. 
+
+LLM Personalization Datasets Studying personalization requires a user-partitioned dataset, i.e., a ‘dataset of per-user datasets’ containing a wide spectrum of users, each with examples that evince their particular traits. With the motivation of accelerating research on LLM personalization, several high-quality user-partitioned datasets like LaMP (Salemi et al., 2024) and LongLaMP (Kumar et al., 2024) have been released in recent years. We leverage these public datasets in our experiments. 
+
+LoRAs Reuse; User Embeddings Some previous work relates to sub-components of our hypernet-work architecture. LoraHub (Huang et al., 2024) customizes a LoRA via a combination of pre-existing LoRAs. EigenLoRAx (Kaushik et al., 2025) goes further and performs an ‘eigendecomposition’ to ‘principal’ LoRAs, for use as building blocks. LoRA-generating hypernetworks (as in this paper) can be considered as a step even further: learning via gradient descent the ‘principal’ LoRAs along with a neural mapping from user context to ‘principal’ coefficients. On the other hand, Ning et al. (2024) focus solely on learning this user context neural mapping; the mapping outputs are not LoRA coefficients but rather embeddings to be cross-attended by an encoder-decoder LLM. We share their use of user embeddings to encode personal traits into a latent space. However, our methods must work with on-device LLMs which are decoder-only and not setup for cross-attention, so we instead convert the user embedding to a LoRA inside the hypernetwork (as described next). 
+
+# 3 Hypernetwork Architecture 
+
+Our goal is a personalization approach that can be performed entirely within the compute and storage of a mobile device (apart from Phase 1, which only happens once overall for the user population). As such, our hypernetwork involves minimal new parameters and maximal reuse of pretrained artifacts already present on the device. We present the architecture and how it is used for personal artifact creation and inference (Phases 2 and 3), and then present how it is trained (Phase 1) in Section 4. The inputs to the hypernetwork are a group of examples providing context about a task and a user’s desired manner of satisfying that task, i.e., each example is a pair of query/desired response sequences. The hypernetwork can take this set of example sequences either as a batch (i.e., fed and processed in parallel) or as a single concatenated sequence (like ICL); we find the latter to be more effective, and use that approach in all experiments presented here. The output of the hypernetwork is a set of LoRA matrices. That is, for every weight matrix in the ‘target’ LLM that should be modified with a low-rank adaptation, the hypernetwork produces an ‘A’ and ‘B’ pair of low-rank adaptation matrices. Put together, the LoRA-generating hypernetwork can be considered a form of personalization which resembles ICL on the input side, in that the context is fed as input tokens to a neural network, and resembles PEFT on the output side, in that the product is a set of LoRA matrices. 4Figure 1: Hypernetwork personal artifact creation ( left ) and personalized inference ( right ), Phases 2 and 3 of the personalization pipeline (respectively). Both take place entirely on device . On a given user’s device, Phase 2 is only performed once (or infrequently), to generate and store the personal artifacts (a personalized LoRA). Afterwards, anytime a query is issued by the user (Phase 3), the personalized LoRA is attached to the base LLM to induce a personalized response. There is already a trained, frozen LLM located on device: the ‘target’ LLM that is the object of personalization. To save the need for additional parameters, we make use of this LLM in the hypernetwork. It serves as the base of an embedder which maps user context tokens to an embedding vector (encoding the user in a latent user space). The task and the population of users require a custom latent space, and since the on-device LLM cannot be modified, we attach a learnable ‘embedder LoRA’ to the frozen base LLM to convert the LLM into a bespoke text encoder (as in BehnamGhader et al. (2024)). The rank of the embedder LoRA ( r) is a hyperparameter. The pooling method for aggregating the embedding vector from the LLM’s output sequence is discussed in Appendix A. The second part of the hypernetwork are the ‘embedding-to-matrix’ MLPs, a bank of parallel 2-layer feed-forward blocks. Each 2-layer MLP takes the embedding vector as input and produces as output the weights of a single ‘A’ or ‘B’ LoRA matrix for a particular layer and module of the target LLM. In totality an entire set of LoRAs is produced, augmenting all relevant weight matrices in the target LLM. See Figure 1, left .The 2-layer feed-forward blocks are ‘bottlenecked’, i.e., the intermediate vector between the layers is of much smaller dimension than the embedding vector (the input to the feed-forward blocks) or than an ‘A’ or ‘B’ LoRA matrix (the output of a feed-forward block). One interpretation, which aligns with EigenLoRAx (Kaushik et al., 2025), is that the intermediate vector is a vector of coefficients, with the second (or ‘top’) layer of the 2-layer feed-forward block serving as a learned set of ‘principal’ or ‘eigen’-low-rank-matrices. The first (or ‘bottom’) layer of the 2-layer feed-forward block is a mapping from a user’s representation to the corresponding coefficients for the ‘principal’ matrices which create the best LoRA matrix for the user in question. The width of the bottleneck is a hyperparameter ( k), and selection of its value can be interpreted as roughly analogous to selecting the number of top values to retain in a low-rank singular value decomposition problem. Table 2 gives representative parameter counts, for the base LLM and other parts of the hypernetwork. Once a LoRA is generated, the hypernetwork additional parameters can be deleted from device. 
+
+# 4 Hypernetwork Training 
+
+The hypernetwork is trained in two phases; a pretraining of just the embedder LoRA parameters of the hypernetwork, and then an end-to-end training updating all trainable parameters of the hypernetwork. 
+
+LLM2Vec-style Pretraining The embedder LoRA is pretrained via unsupervised contrastive learning. This teaches the embedder portion of the hypernetwork to distinguish users based on language characteristics present in their context examples, so that distinct users produce distinct embedding vectors that are distant from each other in the latent user space. The technique used is a straightforward application of the contrastive learning step of LLM2Vec (BehnamGhader et al. (2024), which is itself inspired by the SimCSE algorithm, Gao et al. (2022)). 5Figure 2: Hypernetwork common artifact creation, Phase 1 of the personalization pipeline. Performed once overall, and then the common artifacts generated (the weights of the embedder LoRA and embedding-to-matrix MLPs, in green) are distributed to all devices in the inference population. 
+
+End-to-end Training Following pretraining, we train all trainable parameters (both the embedder LoRA and the embedding-to-matrix MLPs) via an end-to-end loss. See Figure 2 and Algorithm 1. At each step of training, a cohort of users is sampled. For each user, two disjoint batches of data are formed, one a batch of contextual examples to be used as the hypernetwork’s input and the other a batch to be used as the target LLM’s input and desired output. For each user, a LoRA is generated (with the former batch) and attached to the target LLM, and then a token cross-entropy loss is calculated with the predictions of this augmented target LLM (using the latter batch). Loss is minimized with respect to the hypernetwork’s trainable parameters. In this way, parameters are learned which produce the best LoRAs for a wide variety of users. While training is more computationally intensive in that it involves backpropagation through two LLMs (the target LLM and the hypernetwork) instead of one, recall that this phase of the personalization pipeline takes place off device and only happens once. See Appendix A for further details on hypernetwork training. 
+
+Distillation An additional aspect that proved highly beneficial at end-to-end training time: using ICL as a teacher and distilling it into the hypernetwork. In this manner we are effectively performing context distillation (Snell et al., 2022), except instead of a fixed context, we continually show the ICL and the student hypernetwork different (users’) contexts, so that the hypernetwork learns to personalize to various contexts following the soft labels of the teacher ICL. We explore replacing this distillation with an alternative approach in Appendix E. 
+
+# 5 Experiments 
+
+We measure the capabilities of LoRA-generating hypernetworks on several representative personaliza-tion tasks, with several different model configurations, and with comparisons to alternative methods of LLM personalization. 
+
+5.1 Personalization Tasks (Datasets) 
+
+We consider three representative personalization tasks, selected because they are challenging gen-eration tasks which have been understudied for personalization (Kumar et al., 2024), and (to our knowledge) understudied via hypernetwork-based approaches. The tasks are described next, with additional details in Appendix B. Each is a ‘dataset of datasets’, consisting of many users (with varied traits) each having multiple examples (reflecting the particular user’s traits). In our experiments we use disjoint sets of users for train and test, to gauge generalization of personalization ability. 6Personalized Amazon Review Writing (LongLaMP-3) LongLaMP Kumar et al. (2024) intro-duced several challenging long-text generation tasks, with the objective of seeing them studied for personalization. LongLaMP-3 is a dataset of Amazon reviews (Ni et al., 2019); each example consists of a product summary (written by Amazon) and a description, score, and in-depth review (written by an Amazon user) for that product. The task is to generate a user-personalized in-depth review, given the other information. 
+
+Personalized Reddit Post Writing (LongLaMP-4) In this dataset (based on Völske et al. (2017)), the users are Reddit contributors, and each example is content from a Reddit post along with a summary of the post. The task is to generate content for a post that is personalized (i.e., reflecting the user’s writing style and general interests), given the post’s summary. 
+
+Personalized Scholarly Title Writing (LaMP-5) This is from an earlier set of LaMP datasets (Salemi et al., 2024), and involves shorter sequence generation than the aforementioned LongLaMP datasets. In this dataset the users are researchers and the examples are scholarly articles and their titles (based on the Citation Network Dataset of Tang et al. (2008)). The task is to generate the title for a given scholarly article, personalized to reflect the researcher’s academic interests. 
+
+5.2 Comparison Baselines 
+
+We compare LoRA-generating hypernetworks to a number of relevant baselines. The common aspect to all the approaches considered is that they never modify the base LLM’s weights; they only learn parameter-efficient adaptations to the weights (e.g. LoRAs) or adjust LLM inputs (e.g. ICL prefixes). 
+
+Single common LoRA (‘N ON -PERSONAL BASELINE ’) A single LoRA is trained across all the users in the training dataset, and evaluated on all users in the test dataset, to measure the best non-personalized baseline. The expectation is that a useful personalization method should in general exceed this baseline. 
+
+Single common LoRA, tuned for per-user ICL (‘ICL’) Like above, a single common LoRA is learned; however, at training time it is shown examples with user-specific ICL prefixes attached, so that it ‘learns’ to customize to user via ICL. At test time, the LLM is fed ICL-modified input examples, to personalize behavior accordingly. This is essentially the approach of MetaICL (Min et al., 2022), except here we only fine-tune via LoRA (we don’t fine-tune the base LLM’s weights). 
+
+Per-user LoRAs via PEFT (‘PEFT’) Each user trains its own individual LoRA via gradient descent, as in Tan et al. (2025); Khan et al. (2024). The gradient descent is initialized from the single common LoRA mentioned above. The optimization is performed with Adam (Kingma & Ba, 2017), with all users using a common learning rate (selected as best via hyperparameter sweep). 
+
+Per-user LoRAs via hypernetwork (‘H YPERNETWORK ’) The method of Sections 3 and 4. Hyperparameter settings and other details are presented in Appendix C. 
+
+5.3 Evaluation Metrics 
+
+As our focus is on text generation tasks, we follow previous works (Salemi et al., 2024; Kumar et al., 2024) and use ROUGE scores (Lin, 2004) for evaluating quality of generated text. Calculating ROUGE score (or any other generative metric) involves the added complexity of sampling/decoding from the personalized LLM to generate full prediction sequences. The decoding process involves a temperature T hyperparameter, affecting the ‘novelty’ of sequences produced. ROUGE score varies significantly with T . Consequently, for each personalization method and dataset, we performed a sweep over T to determine the best ROUGE score in that scenario. We determined that a T = 1 .0
+
+resulted in best ROUGE scores for LongLaMP-3 and LongLaMP-4 (for all personalization methods), and T = 0 .0 (i.e. ‘greedy’ decoding) worked best for LaMP-5. At temperatures greater than 0, for a given query the ROUGE score can vary significantly from one prediction to the next. To reduce noise in measurement, for LongLaMP-3 and LongLaMP-4 (where 
+
+T = 1 .0), in every test scenario, for every individual example query in the test set, we generated 7Figure 3: Average (over users) ROUGE-1 score for different personalization methods (ICL/PEFT/Hypernetwork), under various personalizations scenarios (datasets × base LLM models 
+
+× rank of modifying LoRA). Hypernetworks consistently achieve highest average ROUGE-1. 10 predictions and computed the average ROUGE score over the predictions. This gave us a lower variance, tighter measure of a given user’s ROUGE score (under a particular scenario). To assess personalization quality, we considered ROUGE score in two ways over the population of users. The first was the ROUGE score averaged over users. The second is the percentage of users who see an improvement in ROUGE score when comparing against what they’d experience with a single common LoRA (the best non-personal baseline). Both are important when evaluating personalization approaches; the mean conveys improvement depth and the improvement percentage conveys improvement breadth .
+
+5.4 Setup 
+
+We evaluate generative personalization performance with two different base LLMs and two different LoRA ranks. We use G EMMA 3-1B-IT (Gemma Team, 2025) and G EMMA 1-2B-IT (Gemma Team, 2024), both ‘smaller’ LLMs at scales representative of those used on mobile devices. As a means of comparing things as equivalently as possible, we compare personalization methods where the LoRA used at personalized inference time is of identical rank. E.g., we compare the non-personal baseline LoRA at rank=4, the ICL-trained LoRA at rank=4, and have PEFT and the hypernetwork both creating per-user LoRAs that are of rank=4. In our experiments, we used ‘attention LoRA’, i.e., we generated and applied low-rank adaptations for only the attention-related matrices of the base LLM. This was merely an implementation choice for experimentation (hypernetworks are equally capable of generating LoRAs that modify feedforward-related matrices). 
+
+5.5 Results 
+
+Figures 3 and 4 summarize the results of personalization experiments on the LongLaMP-3, LongLaMP-4, and LaMP-5 datasets. The hypernetwork-generated LoRAs exhibit the best ROUGE-1 score performance (or nearly so) in all scenarios. With LongLaMP-3 and LongLaMP-4, for almost all the configurations, hypernetworks improved the ROUGE-1 score for more than three quarters of users. The LaMP-5 dataset (Table 6) is challenging to personalize, not just for hypernetworks but for all the other methods as well. For a more detailed breakdown of results, see Tables 4, 5, and 6 in Appendix D. We also studied a few ablations, namely, changes in how the hypernetwork is changed, and swapping of context examples to validate that the hypernetwork is actually using context information. See Appendix E. Interestingly, while ICL did the best job of minimizing cross-entropy (shown in Appendix D), it did the poorest job at maximizing ROUGE-1 score. This could in part be indicative that the predictive distribution of ICL is more peaked than the hypernetworks, but increasing the decoding temperature beyond T = 1 .0 (which should further flatten out this predictive distribution) did not result in any further increase in ROUGE-1 score. 8Figure 4: % of users who’s personal ROUGE-1 score improves if switching from the best non-personalized baseline to a given personalization method (ICL/PEFT/Hypernetwork). Hypernetworks consistently improve ROUGE-1 scores for the most users. 
+
+# 6 Conclusions and Future Work 
+
+This paper has presented the concept of using LoRA-generating hypernetworks for on-device LLM personalization, described an architecture that leverages already-present on-device networks, and demonstrated performance of the hypernetwork that equals or surpasses other personalization ap-proaches, under several challenging generative tasks. We chose what we believe are a challenging set of personalization datasets. While we observe positive results with LoRA-generating hypernetworks, further study would aid in determining if there are particular types of personalization scenarios where hypernetworks perform poorly for some users. For example, hypernetworks (like ICL) rely in some sense on ‘wisdom of the crowd’, that a particular user (at test time, i.e. Phases 2 and 3 in Table 1) has traits that are similar to (or an interpolation between) users that contributed at training time (i.e., Phase 1). An iconoclastic test-time user would be underserved by hypernetwork-based personalization (or ICL-based personalization, for that matter). For such an ‘out-of-distribution’ user, only a parameter fine-tuning-based approach would be reasonably expected to yield significant quality improvement. In the same vein, production usage of hypernetworks should involve the data of actual users at hypernetwork training time (Phase 1), to minimize chances that a test-time user will be ‘out-of-distribution’. The participation of these real users would need to include privacy protections. As mentioned in Section 2, the Phase 1 training of a personalizing hypernetwork is performed via federated learning (‘FL’) (McMahan et al., 2017) leveraging trusted execution environments (‘TEEs’) Eichner et al. (2025). FL can be composed with differential privacy (‘DP’) (McMahan et al., 2018) to provide anonymization to training-time participants, but the inclusion of DP brings additional complexities (e.g., hyperparameter selection to balance useful quality with meaningful privacy). The study of hypernetwork training under DP would be a meaningful next step in advancing hypernetwork-based personalization to production readiness. The potentialities of hypernetworks for on-device computing are exciting, as they portend a “cognitive core" future (Karpathy, 2025) where base LLMs are stripped down to minimal size necessary to focus exclusively on general ‘capability’, with user/task-specific facets, e.g. useful ‘encyclopedic knowledge’ or stylistic preferences, handled via cloud look-ups (if short-term/query-specific) or via swappable modular hypernetwork-generated LoRAs (if holding over many queries). We are excited by this vision, and we fervently encourage additional research on hypernetworks for mobile device computing in order to make it a reality. 
+
+Acknowledgments 
+
+The authors thank Zachary Garrett, Brendan McMahan, and Zachary Charles for generous support and feedback at various stages of the research presented here. 9References 
+
+Android Developers. A new foundation for AI on Android. Android Developers Blog, December 2023. URL https://android-developers.googleblog.com/2023/12/ a-new-foundation-for-ai-on-android.html . Accessed: 2026-04-21. Apple Inc. Introducing Apple intelligence for iPhone, iPad, and Mac. Apple Newsroom, June 2024. URL https://www.apple.com/newsroom/2024/06/ introducing-apple-intelligence-for-iphone-ipad-and-mac/ . Accessed: 2026-04-21. Parishad BehnamGhader, Vaibhav Adlakha, Marius Mosbach, Dzmitry Bahdanau, Nicolas Chapados, and Siva Reddy. Llm2vec: Large language models are secretly powerful text encoders, 2024. URL 
+
+https://arxiv.org/abs/2404.05961 .Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language models are few-shot learners, 2020. URL https: //arxiv.org/abs/2005.14165 .Rujikorn Charakorn, Edoardo Cetin, Yujin Tang, and Robert Tjarko Lange. Text-to-lora: Instant transformer adaption, 2025. URL https://arxiv.org/abs/2506.06105 .Rujikorn Charakorn, Edoardo Cetin, Shinnosuke Uesaka, and Robert Tjarko Lange. Doc-to-lora: Learning to instantly internalize contexts, 2026. URL https://arxiv.org/abs/2602.15902 .Tong Chen, Hao Fang, Patrick Xia, Xiaodong Liu, Benjamin Van Durme, Luke Zettlemoyer, Jianfeng Gao, and Hao Cheng. Generative adapter: Contextualizing language models in parameters with a single forward pass, 2024. URL https://arxiv.org/abs/2411.05877 .Yanda Chen, Ruiqi Zhong, Sheng Zha, George Karypis, and He He. Meta-learning via language model in-context tuning, 2022. URL https://arxiv.org/abs/2110.07814 .Liam Collins, Shanshan Wu, Sewoong Oh, and Khe Chai Sim. Profit: Benchmarking personalization and robustness trade-off in federated prompt tuning, 2023. URL https://arxiv.org/abs/ 2310.04627 .Budhaditya Deb, Guoqing Zheng, and Ahmed Hassan Awadallah. Boosting natural language generation from instructions with meta-learning, 2022. URL https://arxiv.org/abs/2210. 11617 .Qingxiu Dong, Lei Li, Damai Dai, Ce Zheng, Jingyuan Ma, Rui Li, Heming Xia, Jingjing Xu, Zhiyong Wu, Tianyu Liu, Baobao Chang, Xu Sun, Lei Li, and Zhifang Sui. A survey on in-context learning, 2024. URL https://arxiv.org/abs/2301.00234 .Yufeng Du, Minyang Tian, Srikanth Ronanki, Subendhu Rongali, Sravan Bodapati, Aram Galstyan, Azton Wells, Roy Schwartz, Eliu A Huerta, and Hao Peng. Context length alone hurts llm performance despite perfect retrieval, 2025. URL https://arxiv.org/abs/2510.05381 .Hubert Eichner, Daniel Ramage, Kallista Bonawitz, Dzmitry Huba, Tiziano Santoro, Brett McLarnon, Timon Van Overveldt, Nova Fallen, Peter Kairouz, Albert Cheu, Katharine Daly, Adria Gascon, Marco Gruteser, and Brendan McMahan. Confidential federated computations, 2025. URL 
+
+https://arxiv.org/abs/2404.10764 .Tianyu Gao, Xingcheng Yao, and Danqi Chen. Simcse: Simple contrastive learning of sentence embeddings, 2022. URL https://arxiv.org/abs/2104.08821 .Gemma Team. Gemma, 2024. URL https://arxiv.org/abs/2403.08295 .Gemma Team. Gemma 3, 2025. URL https://arxiv.org/abs/2503.19786 .10 Google Inc. Gemma 4 model overview. Google AI for Developers, May 2026. URL https: //ai.google.dev/gemma/docs/core . Accessed: 2026-05-06. David Ha, Andrew M. Dai, and Quoc V. Le. Hypernetworks. In 5th International Conference on Learning Representations, ICLR 2017, Toulon, France, April 24-26, 2017, Conference Track Proceedings , 2017. Wenchong He, Liqian Peng, Zhe Jiang, and Alex Go. You only fine-tune once: Many-shot in-context fine-tuning for large language models, 2026. URL https://arxiv.org/abs/2506.11103 .Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna Morrone, Quentin de Laroussilhe, Andrea Gesmundo, Mona Attariyan, and Sylvain Gelly. Parameter-efficient transfer learning for nlp, 2019. Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of large language models, 2021. Chengsong Huang, Qian Liu, Bill Yuchen Lin, Tianyu Pang, Chao Du, and Min Lin. Lorahub: Efficient cross-task generalization via dynamic lora composition, 2024. URL https://arxiv. org/abs/2307.13269 .Hamish Ivison, Akshita Bhagia, Yizhong Wang, Hannaneh Hajishirzi, and Matthew Peters. HINT: Hypernetwork instruction tuning for efficient zero- and few-shot generalisation. In Anna Rogers, Jordan Boyd-Graber, and Naoaki Okazaki (eds.), Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 11272–11288, Toronto, Canada, July 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.acl-long. 631. URL https://aclanthology.org/2023.acl-long.631/ .Andrej Karpathy. The race for llm "cognitive core" - a few billion param model that maximally sacrifices encyclopedic knowledge for capability. It lives... [X Post], Jun 2025. URL https: //x.com/karpathy/status/1938626382248149433 .Prakhar Kaushik, Ankit Vaidya, Shravan Chaudhari, and Alan Yuille. Eigenlorax: Recycling adapters to find principal subspaces for resource-efficient adaptation and inference, 2025. URL 
+
+https://arxiv.org/abs/2502.04700 .Rana Muhammad Shahroz Khan, Pingzhi Li, Sukwon Yun, Zhenyu Wang, Shahriar Nirjon, Chau-Wai Wong, and Tianlong Chen. Portllm: Personalizing evolving large language models with training-free and portable model patches, 2024. URL https://arxiv.org/abs/2410.10870 .Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization, 2017. URL 
+
+https://arxiv.org/abs/1412.6980 .Ishita Kumar, Snigdha Viswanathan, Sushrita Yerra, Alireza Salemi, Ryan A. Rossi, Franck Der-noncourt, Hanieh Deilamsalehy, Xiang Chen, Ruiyi Zhang, Shubham Agarwal, Nedim Lipka, Chien Van Nguyen, Thien Huu Nguyen, and Hamed Zamani. Longlamp: A benchmark for personalized long-form text generation, 2024. URL https://arxiv.org/abs/2407.11016 .Brian Lester, Rami Al-Rfou, and Noah Constant. The power of scale for parameter-efficient prompt tuning, 2021. Tianle Li, Ge Zhang, Quy Duc Do, Xiang Yue, and Wenhu Chen. Long-context llms struggle with long in-context learning, 2024a. URL https://arxiv.org/abs/2404.02060 .Yichuan Li, Xiyao Ma, Sixing Lu, Kyumin Lee, Xiaohu Liu, and Chenlei Guo. Mend: Meta demonstration distillation for efficient and effective in-context learning, 2024b. URL https: //arxiv.org/abs/2403.06914 .Chin-Yew Lin. ROUGE: A package for automatic evaluation of summaries. In Text Summarization Branches Out , pp. 74–81, Barcelona, Spain, July 2004. Association for Computational Linguistics. URL https://aclanthology.org/W04-1013/ .Haokun Liu, Derek Tam, Mohammed Muqeeth, Jay Mohta, Tenghao Huang, Mohit Bansal, and Colin Raffel. Few-shot parameter-efficient fine-tuning is better and cheaper than in-context learning, 2022. URL https://arxiv.org/abs/2205.05638 .11 Nelson F. Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. Lost in the middle: How language models use long contexts, 2023. URL 
+
+https://arxiv.org/abs/2307.03172 .Yewei Liu, Xiyuan Wang, Yansheng Mao, Yoav Gelbery, Haggai Maron, and Muhan Zhang. Shine: A scalable in-context hypernetwork for mapping context to lora in a single pass, 2026. URL 
+
+https://arxiv.org/abs/2602.06358 .Chuancheng Lv, Lei Li, Shitou Zhang, Gang Chen, Fanchao Qi, Ningyu Zhang, and Hai-Tao Zheng. HyperLoRA: Efficient cross-task generalization via constrained low-rank adapters generation. In Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen (eds.), Findings of the Association for Computational Linguistics: EMNLP 2024 , pp. 16376–16393, Miami, Florida, USA, November 2024. Association for Computational Linguistics. doi: 10.18653/v1/2024.findings-emnlp.956. URL https://aclanthology.org/2024.findings-emnlp.956/ .H. Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Agüera y Arcas. Communication-efficient learning of deep networks from decentralized data, 2017. URL https: //arxiv.org/abs/1602.05629 .H. Brendan McMahan, Daniel Ramage, Kunal Talwar, and Li Zhang. Learning differentially private recurrent language models, 2018. URL https://arxiv.org/abs/1710.06963 .Microsoft Inc. Empowering innovation: The next generation of the phi family. Mi-crosoft Azure Blog, February 2025. URL https://azure.microsoft.com/en-us/blog/ empowering-innovation-the-next-generation-of-the-phi-family/ . Accessed: 2026-04-21. Sewon Min, Mike Lewis, Luke Zettlemoyer, and Hannaneh Hajishirzi. Metaicl: Learning to learn in context, 2022. URL https://arxiv.org/abs/2110.15943 .Marius Mosbach, Tiago Pimentel, Shauli Ravfogel, Dietrich Klakow, and Yanai Elazar. Few-shot fine-tuning vs. in-context learning: A fair comparison and evaluation, 2023. URL https: //arxiv.org/abs/2305.16938 .Jianmo Ni, Jiacheng Li, and Julian McAuley. Justifying recommendations using distantly-labeled reviews and fine-grained aspects. In Kentaro Inui, Jing Jiang, Vincent Ng, and Xiaojun Wan (eds.), 
+
+Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP) , pp. 188–197, Hong Kong, China, November 2019. Association for Computational Linguistics. doi: 10.18653/v1/D19-1018. URL https://aclanthology.org/D19-1018/ .Lin Ning, Luyang Liu, Jiaxing Wu, Neo Wu, Devora Berlowitz, Sushant Prakash, Bradley Green, Shawn O’Banion, and Jun Xie. User-llm: Efficient llm contextualization with user embeddings, 2024. URL https://arxiv.org/abs/2402.13598 .Jason Phang, Yi Mao, Pengcheng He, and Weizhu Chen. Hypertuning: Toward adapting large language models without back-propagation. In Andreas Krause, Emma Brunskill, Kyunghyun Cho, Barbara Engelhardt, Sivan Sabato, and Jonathan Scarlett (eds.), International Conference on Machine Learning, ICML 2023, 23-29 July 2023, Honolulu, Hawaii, USA , volume 202 of 
+
+Proceedings of Machine Learning Research , pp. 27854–27875. PMLR, 2023. Alireza Salemi, Sheshera Mysore, Michael Bendersky, and Hamed Zamani. Lamp: When large language models meet personalization, 2024. URL https://arxiv.org/abs/2304.11406 .Jürgen Schmidhuber. Learning to control fast-weight memories: An alternative to dynamic recurrent networks. Neural Computation , 4(1):131–139, 1992. Aviv Shamsian, Aviv Navon, Ethan Fetaya, and Gal Chechik. Personalized federated learning using hypernetworks, 2021. URL https://arxiv.org/abs/2103.04628 .Charlie Snell, Dan Klein, and Ruiqi Zhong. Learning by distilling context, 2022. URL https: //arxiv.org/abs/2209.15189 .12 Zhaoxuan Tan, Qingkai Zeng, Yijun Tian, Zheyuan Liu, Bing Yin, and Meng Jiang. Democratizing large language models via personalized parameter-efficient fine-tuning, 2025. URL https: //arxiv.org/abs/2402.04401 .Jie Tang, Jing Zhang, Limin Yao, Juanzi Li, Li Zhang, and Zhong Su. Arnetminer: extraction and mining of academic social networks. In Proceedings of the 14th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , KDD ’08, pp. 990–998, New York, NY, USA, 2008. Association for Computing Machinery. ISBN 9781605581934. doi: 10.1145/1401890. 1402008. URL https://doi.org/10.1145/1401890.1402008 .Michael Völske, Martin Potthast, Shahbaz Syed, and Benno Stein. Tl;dr: Mining reddit to learn automatic summarization. In NFiS@EMNLP , 2017. URL https://api.semanticscholar. org/CorpusID:2204603 .Jason Wei, Yi Tay, Rishi Bommasani, Colin Raffel, Barret Zoph, Sebastian Borgeaud, Dani Yogatama, Maarten Bosma, Denny Zhou, Donald Metzler, Ed H. Chi, Tatsunori Hashimoto, Oriol Vinyals, Percy Liang, Jeff Dean, and William Fedus. Emergent abilities of large language models, 2022. URL https://arxiv.org/abs/2206.07682 .Workaccount2. Is there a half-life for the success rates of ai agents?: Hacker news, Jun 2025. URL 
+
+https://news.ycombinator.com/item?id=44308711#44310054 .13 Table 2: Parameter counts of parts of the hypernetwork, for particular experiment configurations (LLM and rank of generated LoRA) applied in Section 5. The base LLM is the already-present on-device LLM. The additional parameters complete the hypernetwork.                                
+
+> configuration: GEMMA 3-1B-IT GEMMA 3-1B-IT GEMMA 1-2B-IT GEMMA 1-2B-IT LORA RANK =4 LORA RANK =32 LORA RANK =4 LORA RANK =32 base LLM 999885952 999885952 2506434560 2506434560 embedder LoRA 630272 630272 778752 778752 (r= 4 )embedding-to-13507072 87961088 16694784 108817920 matrix MLPs (k= 16 )total additional 14137344 88591360 17473536 109596672 generated LoRA 630272 5009920 778752 6197760 (hypernetwork output )
+
+# A Further Details on Hypernetwork Architecture and Training 
+
+Algorithm 1: Hypernetwork training algorithm with end-to-end loss. 
+
+Input: LLM base params θ; starting hypernetwork params ψ(0) ; users each with train dataset Di;hypernetwork function ϕ = H(x, θ, ψ ); loss function l = L(x, θ, ϕ ); total steps T ;per-step user cohort size I; hypernetwork input count NH ; loss input batch size NL;hypernetwork params optimizer f and initial optimizer state o(0) 
+
+for step t ∈ { 1, . . . , T } do 
+
+Sample a subset S(t) of I users; 
+
+for user i ∈ S (t) in parallel do 
+
+Sample (WOR) a batch BH of NH examples and a batch BL of NL examples from Di;Concatenate examples in BH into single sequence: xH = [ x0, x 1, · · · , x NH −1]
+
+Generate user’s LoRA: ϕi = H(xH , θ, ψ (t−1) )
+
+Compute gradient gi of loss w.r.t. hypernetwork params: gi = ∇ψ L(BL, θ, ϕ i)
+
+Compute average gradient: g = 1
+
+> I
+
+P 
+
+> i
+
+gi
+
+Update hypernetwork params: ψ(t), o (t) = f (g, ψ (t−1) , o (t−1) )
+
+return ψ(T )
+
+Pooling We reduce the sequence representation vectors down to a single embedding vector via mean pooling, including only the sequence positions that were not padded in the input. 
+
+# B Further Details on Datasets 
+
+As discussed in Section 5, we used three personalization datasets: LongLaMP-3 and LongLaMP-4 from Kumar et al. (2024) and LaMP-5 from Salemi et al. (2024). Table 3 provides the processing parameters we used in configuring these datasets for experiments. When evaluating on the test set, each user’s examples where partitioned into two disjoint sets. One set, consisting of 8 examples, was used as the user’s ‘context’, while the remaining examples where used for evaluation. To ensure fair and accurate comparisons, the context examples and evaluation examples were held consistent across all experiments and methods, i.e., so that the exact same context examples used in the input sequence with ICL were also used to form batches for fine-tuning with PEFT (and also used as the examples concatenated and fed to the hypernetwork). 14 Table 3: Information on datasets.                                  
+
+> prefix target # train # examples # test # context examples # eval examples seq. len. seq. len. users per train user users per test user per test user LongLaMP-3 512 1024 14745 12 512 16 12 LongLaMP-4 256 1024 11442 12 640 16 12 LaMP-5 512 64 9682 32 2496 16 16
+
+# C Hyperparameter Settings for Experiments 
+
+We provide more details on hyperparameter selections for the experiments discussed in Section 5. In general, the computational resources used to train via these various methods consisted of clusters of accelerators, of sizes between 32 and 128 devices, each with 32GiB of memory. Experiments typically ran for several hours, with computation length depending in part on the dataset used (as sequence length is a major factor in processing time). 
+
+C.1 NON -PERSONAL BASELINE 
+
+A single common LoRA is trained for all users. For all models and datasets, we use a cohort size of 32 and a batch size of 4. At a given step, each user in the cohort computes a gradient with their batch, which was then averaged across the cohort, clipped, and used to calculate a parameter update via Adam. The learning rate was swept to achieve the lowest evaluation cross-entropy. For the experiments with G EMMA 3-1B-IT, the best learning rate was determined to be 1e − 3 with a cosine decay over 20000 steps. For the experiments with G EMMA 1-2B-IT, the best learning rate was determined to be 5e − 4 with a cosine decay over 20000 steps. With this baseline, the context examples go unused, as no personalization is occurring. 
+
+C.2 ICL 
+
+This setup is largely analogous to the above, except for the fact that user-specific ICL prefixes were pre-appended, so that the LoRA is trained to be good at per-user ICL. For the experiments with GEMMA 3-1B-IT, the best learning rate was determined to be 1e − 3 with a cosine decay over 20000 steps. For the experiments with G EMMA 1-2B-IT, the best learning rate was determined to be 5e − 4
+
+with a cosine decay over 20000 steps. For each batch of data, the ICL prefix is constructed as follows. A limit of 3200 tokens is set. Candidate context examples are appended to an input sequence if they do not cause the total input sequence length to exceed this limit. The maximum number of context examples that will be appended is 8. Note that we also undertook to test ICL with only the base LLM, i.e. without any LoRA modifying the LLM’s behavior. As discussed in Section 2, ICL is an emergent property that larger LLMs demonstrate very effectively but smaller LLMs struggle at (e.g. as conveyed in Figure 1.2 in Brown et al. (2020)), so the expectation is that ‘pure’ ICL would perform worse than ‘LoRA-modified ICL’. This is indeed confirmed by our experiments. See Tables 4, 5, and 6. 
+
+C.3 PEFT 
+
+For each user in the test set, their 8 context examples are formed into two batches of batch size 4, and then used to perform two steps of fine-tuning with the Adam optimizer. All users used a common learning rate (of 1e-4). We initialize the per-user optimizations from the checkpoint of the single common LoRA (i.e., the LoRA that we’re using as our best non-personal baseline). Note that while the limited number of fine-tuning examples renders PEFT at somewhat of a dis-advantage here, having limited amounts of previous examples is typically the norm in mobile AI applications, so this is faithful to the on-device setting that we focus this paper on. 15 Table 4: LongLaMP-3 (Amazon review writing) experiments summary. 
+
+ROUGE-1 ( ↑) TOKEN X -ENTROPY (↓) 
+
+> MEAN
+
+% OF USERS MEAN % OF USERS OVER IMPROVED VS . OVER IMPROVED VS . 
+
+> USERS
+
+SINGLE LORA USERS SINGLE LORA GEMMA 3-1B-IT  
+
+> NO
+
+BASE LLM ( NON -PERSONALIZED ) 23 .12 – 3.566 –LORA BASE LLM + per-user ICL 23 .34 – 3.947 –SINGLE LORA ( NON -PERSONALIZED ) 33 .06 – 2.883 –LORA SINGLE LORA + per-user ICL 32 .57 37% 2.841 98% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 33 .27 60% 2.878 100% HYPERNETWORK per-user LORA S 34.08 77% 2.885 40% SINGLE LORA ( NON -PERSONALIZED ) 33 .41 – 2.833 –LORA SINGLE LORA + per-user ICL 33 .81 61% 2.786 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 33 .51 56% 2.830 100% HYPERNETWORK per-user LORA S 34.79 87% 2.839 37% GEMMA 1-2B-IT  
+
+> NO
+
+BASE LLM ( NON -PERSONALIZED ) 22 .13 – 3.379 –LORA BASE LLM + per-user ICL 10 .72 – 3.243 –SINGLE LORA ( NON -PERSONALIZED ) 33 .39 – 2.685 –LORA SINGLE LORA + per-user ICL 33 .86 57% 2.638 99% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 33 .59 57% 2.676 100% HYPERNETWORK per-user LORA S 34.12 70% 2.648 98% SINGLE LORA ( NON -PERSONALIZED ) 33 .67 – 2.639 –LORA SINGLE LORA + per-user ICL 34 .23 61% 2.589 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 33 .85 59% 2.632 99% HYPERNETWORK per-user LORA S 34.58 77% 2.616 91% 
+
+C.4 HYPERNETWORK 
+
+We trained the hypernetwork with the Adam optimizer and learning rate of 3e − 4. As discussed in Section 4, we used context distillation from the ICL LoRA in training, with a distillation temperature of 1.0 and multiplier of 1.0. As mentioned in Section 3, the hypernetwork introduces a few additional hyperparameters, namely the rank of the embedder LoRA and the bottleneck width of the embedding-to-matrix MLPs. We uses a rank of 4 for the former, and a bottleneck dimension of 16 for the latter (for all experiments). 
+
+# D Experiments: Detailed Results 
+
+Tables 4, 5, and 6 present the results of personalization experiments on the LongLaMP-3, LongLaMP-4, and LaMP-5 datasets, respectively. Bolded numbers indicate the best value in a column for a given experiment configuration (dataset and LoRA rank). In general, the hypernetwork-generated LoRAs exhibit the best ROUGE-1 score performance (or nearly so) in virtually all scenarios. We also consider token cross-entropy on evaluation examples. Cross-entropy is more typically of interest in classification tasks, but we include it for completeness, and because it relates to the cross-entropy loss used at training time (and thus is indicative of generalization of training objectives). 
+
+# E Experiments: Ablations 
+
+E.1 Regularization vs. Distillation 
+
+As mentioned in Section 4, training the hypernetwork with distillation from an ICL-trained LoRA is beneficial to hypernetwork training. We also experimented with an alternative training modification: applying L1-regularization to the values at the bottleneck of the embedding-to-matrix MLPs. Recall 16 Table 5: LongLaMP-4 (Reddit post writing) experiments summary. 
+
+ROUGE-1 ( ↑) TOKEN X -ENTROPY (↓) 
+
+> MEAN
+
+% OF USERS MEAN % OF USERS OVER IMPROVED VS . OVER IMPROVED VS . 
+
+> USERS
+
+SINGLE LORA USERS SINGLE LORA GEMMA 3-1B-IT  
+
+> NO
+
+BASE LLM ( NON -PERSONALIZED ) 22 .91 – 3.720 –LORA BASE LLM + per-user ICL 18 .97 – 4.134 –SINGLE LORA ( NON -PERSONALIZED ) 26 .68 – 3.031 –LORA SINGLE LORA + per-user ICL 23 .06 3% 3.001 99% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 26 .84 60% 3.028 98% HYPERNETWORK per-user LORA S 27.70 79% 3.047 19% SINGLE LORA ( NON -PERSONALIZED ) 26 .86 – 3.000 –LORA SINGLE LORA + per-user ICL 26 .66 41% 2.966 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 26 .94 50% 2.999 94% HYPERNETWORK per-user LORA S 28.23 83% 3.034 5% GEMMA 1-2B-IT  
+
+> NO
+
+BASE LLM ( NON -PERSONALIZED ) 20 .10 – 3.736 –LORA BASE LLM + per-user ICL 11 .70 – 3.481 –SINGLE LORA ( NON -PERSONALIZED ) 27 .08 – 2.861 –LORA SINGLE LORA + per-user ICL 24 .96 12% 2.826 99% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 27 .28 59% 2.855 99% HYPERNETWORK per-user LORA S 27.84 76% 2.839 96% SINGLE LORA ( NON -PERSONALIZED ) 27 .37 – 2.824 –LORA SINGLE LORA + per-user ICL 27 .41 50% 2.785 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 27 .53 59% 2.819 100% HYPERNETWORK per-user LORA S 28.13 79% 2.844 11% 
+
+Table 6: LaMP-5 (scholarly title writing) experiments summary. 
+
+ROUGE-1 ( ↑) TOKEN X -ENTROPY (↓) 
+
+> MEAN
+
+% OF USERS MEAN % OF USERS OVER IMPROVED VS . OVER IMPROVED VS . 
+
+> USERS
+
+SINGLE LORA USERS SINGLE LORA GEMMA 3-1B-IT  
+
+> NO
+
+BASE LLM ( NON -PERSONALIZED ) 5.43 – 6.293 –LORA BASE LLM + per-user ICL 6.00 – 6.944 –SINGLE LORA ( NON -PERSONALIZED ) 41 .23 – 1.952 –LORA SINGLE LORA + per-user ICL 41 .03 47% 1.907 75% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 41 .29 50% 1.949 69% HYPERNETWORK per-user LORA S 41.74 55% 1.906 81% SINGLE LORA ( NON -PERSONALIZED ) 41 .85 – 1.900 –LORA SINGLE LORA + per-user ICL 41 .69 48% 1.850 75% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 41 .91 49% 1.897 66% HYPERNETWORK per-user LORA S 42.29 53% 1.844 73% GEMMA 1-2B-IT  
+
+> NO
+
+BASE LLM ( NON -PERSONALIZED ) 7.57 – 3.596 –LORA BASE LLM + per-user ICL 3.62 – 3.811 –SINGLE LORA ( NON -PERSONALIZED ) 43 .46 – 1.791 –LORA SINGLE LORA + per-user ICL 42 .69 43% 1.750 76% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 43 .53 50% 1.787 4% HYPERNETWORK per-user LORA S 43.93 55% 1.757 70% SINGLE LORA ( NON -PERSONALIZED ) 44 .11 – 1.758 –LORA SINGLE LORA + per-user ICL 43 .38 43% 1.713 77% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 44.18 49% 1.753 72% HYPERNETWORK per-user LORA S 44 .16 51% 1.712 60% 
+
+17 Table 7: LongLaMP-3, Hypernetworks trained via distillation vs. via regularization. 
+
+ROUGE-1 ( ↑) TOKEN X -ENTROPY (↓) 
+
+> MEAN
+
+% OF USERS MEAN % OF USERS OVER IMPROVED VS . OVER IMPROVED VS . 
+
+> USERS
+
+SINGLE LORA USERS SINGLE LORA GEMMA 3-1B-IT SINGLE LORA ( NON -PERSONALIZED ) 33 .06 – 2.883 –LORA SINGLE LORA + per-user ICL 32 .57 37% 2.841 98% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 33 .27 60% 2.878 100% HYPERNETWORK (via distillation ) 34.08 77% 2.885 40% HYPERNETWORK (via regularization ) 34 .03 78% 2.853 98% SINGLE LORA ( NON -PERSONALIZED ) 33 .41 – 2.833 –LORA SINGLE LORA + per-user ICL 33 .81 61% 2.786 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 33 .51 56% 2.830 100% HYPERNETWORK (via distillation ) 34.79 87% 2.839 37% HYPERNETWORK (via regularization ) 34 .28 74% 2.815 90% 
+
+Table 8: LongLaMP-4, Hypernetworks trained via distillation vs. via regularization. 
+
+ROUGE-1 ( ↑) TOKEN X -ENTROPY (↓) 
+
+> MEAN
+
+% OF USERS MEAN % OF USERS OVER IMPROVED VS . OVER IMPROVED VS . 
+
+> USERS
+
+SINGLE LORA USERS SINGLE LORA GEMMA 3-1B-IT SINGLE LORA ( NON -PERSONALIZED ) 26 .68 – 3.031 –LORA SINGLE LORA + per-user ICL 23 .06 3% 3.001 99% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 26 .84 60% 3.028 98% HYPERNETWORK (via distillation ) 27.70 79% 3.047 19% HYPERNETWORK (via regularization ) 27 .10 65% 3.011 96% SINGLE LORA ( NON -PERSONALIZED ) 26 .86 – 3.000 –LORA SINGLE LORA + per-user ICL 26 .66 41% 2.966 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 26 .94 50% 2.999 94% HYPERNETWORK (via distillation ) 28.23 83% 3.034 5% HYPERNETWORK (via regularization ) 27 .70 73% 2.985 91% 
+
+from Section 3 the interpretation that the values of this bottleneck represent the coefficients of ‘principal’ matrices that will be linearly combined to form output LoRA matrices. Ideally, we’d like the hypernetwork to be rewarded for involving the fewest principal matrices (to encourage learning the most relevant matrices). Unfortunately, the L0-regularization that would achieve this is non-differentiable, so we instead apply something similar (but differentiable) in the form of 
+
+L1-regularization. Tables 7 and 8 show the performance of this regularized version (on LongLaMP-3 and LongLaMP-4, respectively) alongside the other personalization methods. As can be seen, while the distillation-trained hypernetwork still generally achieves the best ROUGE-1 performance, the regularization-trained is close. It also beats the other personalization methods at ROUGE-1 (both in mean over users as well as percentage of users improved). Interestingly, it performs much better at cross-entropy then the distillation-trained hypernetwork. 
+
+E.2 Mismatching User Contexts 
+
+As a general check that the hypernetwork is actually making use of users’ contexts, we ran an experiment where at test time we mismatched the data so that every user had their own evaluation examples, but had the context examples of a different user. If the hypernetwork is accurately ‘locking on to signal’ in the context, then this should result in every user receiving a LoRA that is not well-suited to them, and the ROUGE-1 scores should drop noticeably. We ran this experiment on LongLaMP-3 with G EMMA 3-1B-IT (Table 9), and this indeed exactly what we see. When 18 Table 9: LongLaMP-3, Hypernetworks with mismatching user contexts. 
+
+ROUGE-1 ( ↑) TOKEN X -ENTROPY (↓) 
+
+> MEAN
+
+% OF USERS MEAN % OF USERS OVER IMPROVED VS . OVER IMPROVED VS . 
+
+> USERS
+
+SINGLE LORA USERS SINGLE LORA GEMMA 3-1B-IT SINGLE LORA ( NON -PERSONALIZED ) 33 .06 – 2.883 –LORA SINGLE LORA + per-user ICL 32 .57 37% 2.841 98% 
+
+> RANK
+
+=4 FINE -T UNED per-user LORA S 33 .27 60% 2.878 100% HYPERNETWORK per-user LORA S 34.08 77% 2.885 40% HYPERNETWORK mismatched contexts 31 .93 26% 2.974 0% SINGLE LORA ( NON -PERSONALIZED ) 33 .41 – 2.833 –LORA SINGLE LORA + per-user ICL 33 .81 61% 2.786 99% 
+
+> RANK
+
+=32 FINE -T UNED per-user LORA S 33 .51 56% 2.830 100% HYPERNETWORK per-user LORA S 34.79 87% 2.839 37% HYPERNETWORK mismatched contexts 33 .10 43% 2.943 0% 
+
+contexts get mismatched, the personalization quality drops below all other methods (including the non-personalized baseline). 19
