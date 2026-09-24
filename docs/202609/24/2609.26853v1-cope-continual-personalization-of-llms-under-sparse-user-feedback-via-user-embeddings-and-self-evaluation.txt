@@ -1,0 +1,969 @@
+Title: COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+URL Source: https://arxiv.org/pdf/2609.26853v1
+
+Published Time: Thu, 24 Sep 2026 00:06:44 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+> 2026-9-24
+
+# COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation 
+
+Ruike Cao 1,2 , Fugen Yao 2,* , Liang Dong 2, Jian Xu 2, Guanjun Jiang 2 and Li Xiao 1 
+
+> 1University of Science and Technology of China, 2Qwen Business Unit of Alibaba
+> *Corresponding author.
+
+While Large Language Models (LLMs) have achieved remarkable results across various benchmarks, their alignment with normative values often results in homogenized responses that fail to address diverse user preferences. Existing training-free methods often occupy valuable context windows through prompt engineering, while training-based methods typically remain static post-training, failing to support the continual optimization required in real-world settings. To address these challenges, we propose COPE (Continual Optimization with Personalized embedding and self-Evaluation), a novel optimization framework tailored for real-world-motivated interaction settings with sparse user feedback. Our framework assigns learnable personalized embeddings to each user and synergistically integrates preference capture, self-evaluation calibration, and personalized response optimization within a single update step. A key innovation of our method is the use of self-evaluation to generate proxy rewards, enabling continuous model updates even when explicit user feedback is unavailable. Experiments show that COPE consistently outperforms strong training-free and training-based baselines under sparse feedback, and remains complementary to Retrieval-Augmented Prompting (RAP). Further analyses confirm COPE’s reliable self-evaluation, meaningful preference patterns, stable general capabilities, and robustness under shifting preferences and alternative evaluators. 1
+
+## 1. Introduction 
+
+In recent years, Large Language Models (LLMs) have achieved rapid advances across challenging bench-marks [34, 31, 7] and are increasingly used as every-day assistants [20]. Beyond general capabilities in knowledge answering and reasoning, user adoption also depends on whether responses reflect individual preferences [10]. However, existing LLMs are com-monly aligned through Reinforcement Learning from Human Feedback (RLHF) [23] on carefully curated normative preferences, implicitly assuming a shared value system across users [2, 29]. As a result, they tend to produce homogenized responses that reflect the “average” of group preferences and may under-represent minority preferences [24, 4]. To address this limitation, prior work has explored both training-free and training-based personalization. Training-free methods mainly rely on in-context signals, such as retrieved dialogue histories in Retrieval-Augmented Prompting (RAP) [26, 30], summarized user profiles  
+
+> 1Code, data, and prompts are available at
+
+https://github .com/Quark-Medical/COPE .
+
+> *Corresponding author: Fugen Yao (
+
+fugen.yfg@alibaba-inc.com ). 
+
+in Profile-Augmented Prompting (PAP) [18, 25], or user-specified preferences [15]. Although these meth-ods avoid model updates, they consume valuable con-text space and may suffer from retrieval noise or in-formation loss during summarization [16]. Training-based approaches learn personalization through op-timization, including Multi-Objective Reinforcement Learning (MORL) over predefined preference dimen-sions [33, 40], user-specific PEFT modules [35, 17], and reinforcement learning based interaction model-ing such as RLPA [37]. However, MORL and RLPA rely on predefined preference dimensions or discrete user types, PEFT-style methods face data and scaling con-straints, and most remain static after offline training, limiting adaptation to evolving user preferences [16]. To overcome these limitations, we consider a real-world-motivated personalized interaction setting in which a diverse population of users queries an as-sistant and expects responses aligned with their in-dividual preferences, while providing explicit feed-back only sparsely. We propose COPE (Continual 
+
+Optimization with Personalized embedding and self-
+
+Evaluation), which assigns each user a learnable per-sonalized embedding to guide user-specific response generation. COPE optimizes the assistant through a arXiv:2609.26853v1 [cs.LG] 22 Sep 2026 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation 
+
+unified update step that integrates three complemen-tary objectives: Supervised Fine-Tuning for Prefer-ence Capture , which uses available feedback to en-code user preferences into personalized embeddings; 
+
+Reinforcement Learning for Self-Evaluation Cali-bration , which aligns the model’s own feedback pre-diction with real user feedback and learns proxy re-wards; and Reinforcement Learning for Personalized Response Optimization , which improves response generation using real feedback when available and proxy rewards otherwise. Executed as the optimiza-tion phase of the “Interact-Collect-Optimize” loop, this update enables continuous model optimization un-der sparse feedback. Appendix A further discusses how COPE relates to and differs from recent user-embedding, prefix-based, and feedback-driven person-alization methods [22, 13, 14, 19]. Our contributions are summarized as follows: 1. We establish a real-world-motivated setting for continual personalization under sparse user feed-back and instantiate it on PersonaLens with a controlled chronological traversal protocol, bridg-ing static personalization benchmarks with con-trolled evaluation of continual model optimiza-tion. 2. We propose COPE, a continual optimization framework that maintains learnable personalized embeddings as compact user-specific preference representations and updates these embeddings together with the assistant model in the “Interact-Collect-Optimize” loop. Calibrated self-evaluation supplies proxy rewards for interactions without explicit feedback, allowing the optimization loop to keep using collected data when real user feed-back is sparse. 3. Experiments show that COPE outperforms several strong training-free and training-based baselines across feedback probabilities and remains comple-mentary to retrieval-based prompting. Analyses further show that the self-evaluation aligns with user feedback, the learned embeddings capture meaningful preference patterns, the optimized model largely preserves general capabilities and remains effective under preference shifts, and the gains hold under alternative evaluators. 
+
+## 2. Setup 
+
+To effectively evaluate and optimize the personaliza-tion capabilities of the assistant model, we define a real-world-motivated interaction scenario for contin-ual personalization. As shown in Figure 1, a person-alized assistant 𝜋 𝜃 interacts with a group of 𝑁 users  
+
+> 𝑈
+
+= {𝑢 1, 𝑢 2, . . . , 𝑢 𝑁 }, each with distinct preferences. Each user engages in a total of 𝑇 dialogue sessions with the assistant, where each session consists of a single-turn interaction. Appendix D details how the same framework can be extended to multi-turn ses-sions with session-level feedback. Specifically, for the 
+
+> 𝑡
+
+-th session, we denote the current model parame-ters as 𝜃 𝑡 , and user 𝑢 𝑖 poses a query 𝑞 𝑡 𝑖 to request task completion, where the task associated with the query belongs to a specific domain in the domain set X. The assistant then generates a response 𝑎 𝑡 𝑖 = 𝜋 𝜃 𝑡 (𝑞 𝑡 𝑖 ).A key aspect of this scenario is the modeling of la-tent user preferences and sparse user feedback. Each user 𝑢 𝑖 is associated with a latent preference profile 
+
+> 𝜂 𝑖
+
+, hidden from the assistant, which can be expressed as a concise description of user preferences across do-mains. When the response 𝑎 𝑡 𝑖 does not fully align with 
+
+> 𝜂 𝑖
+
+, the user experiences a reduced level of satisfaction. To reflect the sparsity of real-world feedback, we intro-duce a feedback probability 𝑝 : after each interaction, users provide explicit feedback only with probability 
+
+> 𝑝
+
+. When provided, feedback consists of textual feed-back 𝑓 𝑡 𝑖 , which provides a qualitative evaluation of the response with respect to the user’s preferences, including both positive aspects and deficiencies, and a numerical score 𝑠 𝑡 𝑖 indicating the overall degree of satisfaction. The goal of this scenario is to support continuous personalized optimization. At early stages, the assistant lacks knowledge of user preferences and produces weakly personalized responses. By collecting interaction tuples (𝑞 𝑡 𝑖 , 𝑎 𝑡 𝑖 ) along with sparse feedback 
+
+( 𝑓 𝑡 𝑖 , 𝑠 𝑡 𝑖 ) when available, we apply the optimization pro-cedure described in Section 3 to update the assistant from 𝜋 𝜃 𝑡 to 𝜋 𝜃 𝑡 +1 . Over time, the assistant is expected to internalize user preferences and generalize them across related tasks. 
+
+## 3. Methodology 
+
+In this section, we elaborate on the optimization phase within the “Interact-Collect-Optimize” loop, detailing how the interaction data collected in each session is leveraged to continuously optimize the assistant’s personalization performance. Formally, we associate each user 𝑢 𝑖 with a learnable personalized embed-ding v𝑖 ∈ ℝ𝑙 ×𝑑 , where 𝑙 corresponds to the number of virtual tokens allocated to capture user-specific prefer-ences and 𝑑 denotes the dimensionality of the model’s token embeddings. These embeddings constitute a dynamically maintained collection of user-specific pa-rameters iteratively updated through the “Interact-Collect-Optimize” loop, where the set at the beginning of the 𝑡 -th session is denoted as V𝑡 = {v𝑡  
+
+> 1,
+
+v𝑡  
+
+> 2, . . . ,
+
+v𝑡 𝑁 },with the initial set V1 randomly initialized prior to the first session. Specifically, for session 𝑡 , given the current model parameters 𝜃 𝑡 and the personalized em-
+
+> 2
+
+COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation User Group         
+
+> 𝑈 = {𝑢 !, 𝑢 ", … , 𝑢 #}
+> 𝑢 $
+> Query 𝑞 $%:I plan to go out and look for some delicious food this weekend, please recommend some food that suits my taste.
+> Hidden Preferences
+> 𝜂 $
+> Response 𝑎 $%:I recommend the “Bistro A” restaurant. Try their signature dish: Crispy Nut Chicken.
+> Assistant
+> 𝜋 &!
+> Textual Feedback 𝑓 $%: The response included nuts, but I’m allergic to nuts.
+> Numerical Feedback 𝑠 $%: 0 Feedback Probability
+> 𝑝 Unsatisfied but Without Feedback
+
+(a) Interaction & Sparse Feedback (Session 𝑡 )  
+
+> Data collection
+> 𝒟 !%= {(𝑞 $%, 𝑎 $%)} $∈( "!
+> 𝒟 "%= {(𝑞 $%, 𝑎 $%, 𝑓 $%, 𝑠 $%)} $∈( #!
+> Optimization Pipeline
+
+(b) Data Collection & Optimization     
+
+> 𝑢 )
+> Query 𝑞 $%*+ :Please help me arrange a family dinner event.
+> Assistant
+> 𝜋 &!$%
+> Response 𝑎 $%*+ :Good. Considering your nut allergy, I recommend “The Green Table”, their menu is safe.
+
+(c) Subsequent Interaction & Improvement (Session 𝑡 + 𝑘 )    
+
+> 𝜋 &!→ 𝜋 &!$"
+> 𝒱 %= {𝐯 !%, 𝐯 "%, … 𝐯 #%}
+> Personalized Embeddings
+> 𝒱 %→ 𝒱 %*!
+
+Figure 1 | Illustration of the dynamic interaction scenario and the iterative “Interact-Collect-Optimize” loop. (a) 
+
+Interaction & Sparse Feedback: During session 𝑡 , for each user, the assistant 𝜋 𝜃 𝑡 generates a response to the query, guided by the user-specific personalized embedding. If it fails to align with the user’s hidden preferences 
+
+𝜂 𝑖 , explicit feedback (textual 𝑓 𝑡 𝑖 and numerical 𝑠 𝑡 𝑖 ) is provided sparsely with probability 𝑝 . (b) Data Collection & Optimization: Interaction data D𝑡 
+
+1 (without feedback) and D𝑡 
+
+2 (with feedback) are collected to iteratively optimize the model. (c) Subsequent Interaction & Improvement: When encountering a query involving the similar preference in subsequent sessions 𝑡 + 𝑘 , the updated assistant 𝜋 𝜃 𝑡 +𝑘 successfully incorporates learned preferences to provide a personalized response. beddings V𝑡 , the assistant interacts with users and generates responses. We denote Ω𝑡 
+
+1 as users without feedback and Ω𝑡 
+
+2 as users with feedback, such that 
+
+|Ω𝑡 
+
+1 | + | Ω𝑡 
+
+2 | = 𝑁 , yielding datasets D𝑡 
+
+1 = {( 𝑞 𝑡 𝑖 , 𝑎 𝑡 𝑖 )} 𝑖 ∈Ω𝑡 
+
+> 1
+
+and D𝑡 
+
+2 = {( 𝑞 𝑡 𝑖 , 𝑎 𝑡 𝑖 , 𝑓 𝑡 𝑖 , 𝑠 𝑡 𝑖 )} 𝑖 ∈Ω𝑡  
+
+> 2
+
+. Subsequently, we lever-age this collected data to update both the model pa-rameters and the personalized embeddings by simul-taneously optimizing three distinct objectives within a unified optimization step. 
+
+3.1. Supervised Fine-Tuning for Preference Cap-ture 
+
+To effectively capture the personalized preferences of user 𝑢 𝑖 while saving context space, we utilize the corresponding personalized embedding v𝑡 𝑖 to capture the user’s implicit preferences 𝜂 𝑖 . When valid feedback is available (i.e., for dataset D𝑡 
+
+2), we treat the textual feedback 𝑓 𝑡 𝑖 as a glimpse into the user’s implicit pref-erences 𝜂 𝑖 , manifested as the user’s evaluation of the model’s response 𝑎 𝑡 𝑖 to the query 𝑞 𝑡 𝑖 . Formally, given the query 𝑞 𝑡 𝑖 and the response 𝑎 𝑡 𝑖 , we prepend the personal-ized embedding v𝑡 𝑖 to the sequence of text embeddings and train the personalized embedding to maximize the likelihood of generating the textual feedback 𝑓 𝑡 𝑖 .The goal of this supervised fine-tuning objective is to minimize the following loss: 
+
+LSFT = −𝔼 𝑖 ∈Ω𝑡 
+
+> 2
+
+" | 𝑓 𝑡 𝑖 |∑︁ 
+
+> 𝑘
+
+=1
+
+log 𝜋 𝜃 𝑡 
+
+  𝑓 𝑡 𝑖,𝑘 | v𝑡 𝑖 , 𝑞 𝑡 𝑖 ,𝑎 𝑡 𝑖 , 𝑓 𝑡 𝑖,<𝑘 
+
+#
+
+,
+
+(1) where 𝑓 𝑡 𝑖,𝑘 denotes the 𝑘 -th token of the textual feed-back 𝑓 𝑡 𝑖 . In this objective, we exclusively calculate gradients for the personalized embedding v𝑡 𝑖 , while treating the model parameters 𝜃 𝑡 as frozen. This forces the preference information contained in the textual feedback to flow into the personalized embedding. 
+
+3.2. Reinforcement Learning for Self-Evaluation Calibration 
+
+The primary obstacle in optimizing personalization is the sparsity of user feedback in real-world scenarios. When explicit feedback is absent, the lack of super-visory signals prevents optimizing the model’s per-sonalized responses, resulting in underutilization of valuable interaction data. To address this, we train the assistant model to act as a self-evaluator. Specif-ically, we perform self-evaluation on the model’s re-sponse 𝑎 𝑡 𝑖 given 𝑞 𝑡 𝑖 , with the personalized embedding 
+
+v𝑡 𝑖 prepended to the text embeddings to guide this process. The model first generates the self-reflection, speculating on the user’s textual feedback, and sub-sequently predicts the numerical feedback score ˆ 𝑠 𝑡 𝑖 .
+
+3COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation 
+
+To facilitate learning, we introduce a teacher-forcing strategy: with a probability 𝑞 , we include the textual feedback 𝑓 𝑡 𝑖 in the input context. This exposure al-lows the model to adjust its evaluation logic to align with the user’s actual standards. We design a com-posite reward function 𝑅 eval (·) consisting of a sparse binary match reward 𝑟 𝑡 𝑖, bin and a normalized dense distance-based reward 𝑟 𝑡 𝑖, dist :
+
+𝑅 eval (ˆ𝑠 𝑡 𝑖 , 𝑠 𝑡 𝑖 ) = 𝑟 𝑡 𝑖, bin + 𝑟 𝑡 𝑖, dist , (2) where the two components are calculated as: 
+
+𝑟 𝑡 𝑖, bin =
+
+(
+
+1, if ˆ 𝑠 𝑡 𝑖 = 𝑠 𝑡 𝑖 
+
+0, otherwise 
+
+𝑟 𝑡 𝑖, dist = 𝐶 max − | ˆ𝑠 𝑡 𝑖 − 𝑠 𝑡 𝑖 |
+
+𝐶 max 
+
+.
+
+(3) Here, 𝐶 max denotes the maximum possible score value (i.e., the upper bound of the score range). We incor-porate 𝑟 𝑡 𝑖, dist alongside the binary reward because the binary signal alone is too sparse, especially early in training when predictions are inaccurate, providing little learning signal for effective policy optimization. The distance-based term, normalized by 𝐶 max to align its scale with 𝑟 𝑡 𝑖, bin , supplies a dense reward signal that guides the predicted score toward the true score, while 
+
+𝑟 𝑡 𝑖, bin encourages precise alignment once predictions are sufficiently close. The goal of this reinforcement learning objective is to maximize the expected reward defined as: 
+
+Jeval = 𝔼 𝑖 ∈Ω𝑡 
+
+> 2
+
+𝑅 eval (ˆ𝑠 𝑡 𝑖 , 𝑠 𝑡 𝑖 ) − 𝛽 KL (𝜋 𝜃 𝑡 || 𝜋 ref ) , (4) where 𝜋 ref is the original policy without any optimiza-tion (i.e., 𝜋 𝜃 1 ). In this objective, we compute gradi-ents for both the personalized embeddings and the assistant model: backpropagation refines v𝑡 𝑖 to bet-ter capture user preferences, while simultaneously calibrating the model to score its own responses ac-cording to user standards. As a result, for users whose prior feedback has helped calibrate self-evaluation, the model can generate proxy rewards via self-evaluation when explicit feedback is unavailable in subsequent interactions, mitigating feedback sparsity, maximizing the utilization of all interaction data, and improving learning efficiency. 
+
+3.3. Reinforcement Learning for Personalized Re-sponse Optimization 
+
+This objective focuses on optimizing the generation of response 𝑎 𝑡 𝑖 given the query 𝑞 𝑡 𝑖 under the guidance of personalized embeddings, addressing sparse feed-back by leveraging the self-evaluation capabilities es-tablished in the preceding “Interact-Collect-Optimize” 
+
+loop. To prevent the degradation of the model’s general capabilities, we define a composite reward composed of two distinct factors: completeness and 
+
+personalization . First, to assess whether the assis-tant’s response fulfills the task requirements speci-fied by the user query, we employ an extra evalua-tor (implemented via Qwen-Flash Alibaba Cloud [1]). This evaluator provides a binary completeness reward 
+
+𝑟 𝑡 𝑖, comp ∈ { 0, 1}, where 1 indicates that the response is sufficiently comprehensive to be considered complete and 0 indicates missing key points. This evaluation focuses strictly on task completion and is independent of user preference alignment. Second, for the per-sonalization component, we utilize the hybrid signal derived from real or proxy feedback. We denote this personalization score as 𝑟 𝑡 𝑖, pers :
+
+𝑟 𝑡 𝑖, pers =
+
+(
+
+ˆ𝑠 𝑡 𝑖 , if 𝑖 ∈ Ω𝑡  
+
+> 1
+
+(Proxy Feedback )
+
+𝑠 𝑡 𝑖 , if 𝑖 ∈ Ω𝑡  
+
+> 2
+
+(Real Feedback ) . (5) The final reward 𝑟 𝑡 𝑖 is the product: 𝑟 𝑡 𝑖 = 𝑟 𝑡 𝑖, comp · 𝑟 𝑡 𝑖, pers ,ensuring the model prioritizes completeness as a pre-requisite for personalization, as responses that fail the task receive no policy reward even if they match user preferences, reducing the incentive to trade off task completion for personalized style. We then define the goal of this reinforcement learning objective as maximizing the following expected reward: 
+
+Jpolicy = 𝔼 𝑖 ∈Ω𝑡 
+
+> 1∪Ω𝑡
+> 2
+
+𝑟 𝑡 𝑖 − 𝛽 KL (𝜋 𝜃 𝑡 || 𝜋 ref ) , (6) where 𝜋 ref is the original policy without any optimiza-tion (i.e., 𝜋 𝜃 1 ). In this objective, we calculate gradients exclusively for the model parameters 𝜃 𝑡 , treating the personalized embedding v𝑡 𝑖 as frozen. This encour-ages the model to utilize the preference representa-tions captured in personalized embedding to generate personalized responses. 
+
+3.4. Synergistic Updating 
+
+Having established the three optimization objectives above, to prevent off-policy issues caused by sequen-tial optimization of these objectives, we aggregate the gradients from all three objectives to update the model and personalized embedding parameters si-multaneously. Specifically, the gradients for Prefer-ence Capture (SFT) are derived via backpropagation from the loss in Eq. 1. Meanwhile, the gradients for Self-Evaluation Calibration (RL) and Personalized Re-sponse Optimization (RL) are derived by maximiz-ing the objectives shown in Eq. 4 and Eq. 6, respec-tively, via the Proximal Policy Optimization (PPO) al-gorithm Schulman et al. [28] (detailed in Appendix B). Finally, we aggregate the gradients of these three ob-jectives to perform the parameter updates. This en-
+
+> 4COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+sures that both Self-Evaluation Calibration and Per-sonalized Response Optimization are optimized us-ing data sampled from the current policy (on-policy), thereby stabilizing the learning process. For clarity, the overall optimization process is summarized in Al-gorithm 1, with a schematic illustration of the person-alized embedding integration and objective computa-tion provided in Appendix E. 
+
+## 4. Experiments and Results 
+
+4.1. Experimental Setup 
+
+Considering user privacy protection and the difficulty of collecting real-world interaction data, we employ the PersonaLens Zhao et al. [38] dataset to instantiate the personalized interaction scenario defined in Sec-tion 2. PersonaLens is a public personalization bench-mark covering 20 domains (i.e., |X| = 20), where each domain contains 4 to 5 tasks centered on the user’s preferences within that domain, and all preference types can be fully exposed through a Minimal Task Set (MTS) of no more than 3 tasks. PersonaLens also pre-defines a set of interested domains per user (ranging from 9 to 20), reflecting that users are not necessar-ily interested in all domains. To balance domain and user diversity, we select 256 users, each interested in exactly 17 domains, which together cover all 20 domains. We further standardize task configurations by fix-ing the number of tasks per domain to 4, randomly discarding one non-MTS task in 5-task domains to preserve complete preference exposure. The inter-action order is strictly controlled: for each user, the assistant traverses interested domains in alphabeti-cal order, and within each domain, tasks are sampled without replacement with MTS tasks prioritized before the remaining ones. This design guarantees that (1) all preference types within a domain are exposed after the first three traversals, and (2) during the fourth traversal, the remaining task involves only previously observed preferences (illustrated in Appendix F). Ac-cordingly, we perform continual optimization during the first three traversals, updating the model after each of the 51 interactions (3 tasks across 17 domains), and reserve the fourth traversal for evaluation. This chronological split ensures that test queries involve al-ready exposed preferences but unseen tasks, enabling a controlled assessment of continual personalization. Performance is measured by averaging the product of the personalization score and a binary complete-ness score over all users, domains, and interactions, reported as mean ±std over three runs; Appendix G reports the two component scores separately. Table 1 | Scores (personalization score × binary com-pleteness score, out of 10) of models optimized by different methods under varying user feedback proba-bilities (mean ± std). † indicates methods that involve training. 
+
+Methods User Feedback Probability  
+
+> 𝑝
+
+= 0.25 𝑝 = 0.50 𝑝 = 0.75 Base 2.36 ±0.00 2.36 ±0.00 2.36 ±0.00 SR 3.08 ±0.03 3.09 ±0.01 3.11 ±0.04 DR 3.07 ±0.05 3.15 ±0.03 3.25 ±0.02 Q-DR 3.15 ±0.07 3.36 ±0.06 3.47 ±0.06 PAP 3.57 ±0.03 3.65 ±0.02 3.69 ±0.01 T-PAP † 4.45 ±0.04 4.47 ±0.01 4.69 ±0.02 COPE † 4.58 ±0.06 4.69 ±0.05 4.74 ±0.02 T-PAP †+SR 4.76 ±0.02 4.83 ±0.04 4.98 ±0.03 COPE †+SR 5.08 ±0.03 5.23 ±0.05 5.36 ±0.02 
+
+4.2. Comparison Methods 
+
+To validate the effectiveness of our proposed COPE method, we compare it against several representative baselines. We first include Base , where the assistant directly interacts with the user without additional optimization. For training-free personalization, we compare with Profile-Augmented Prompting ( PAP )and Retrieval-Augmented Prompting ( RAP ), includ-ing Sparse Retrieval ( SR ), Dense Retrieval ( DR ), and a query-expansion variant of dense retrieval ( Q-DR ). For training-based personalization, we include Training Profile-Augmented Prompting ( T-PAP ), which serves to isolate the effect of training from the use of learn-able personalized embeddings. In addition, to exam-ine whether COPE is complementary to training-free methods, we report the performance of the COPE-optimized model integrated with SR, denoted as 
+
+COPE+SR . We also integrate T-PAP with the same SR module ( T-PAP+SR ) to control for the contribu-tion of retrieval. We evaluate all methods under three feedback probability settings ( 𝑝 ∈ { 0.25 , 0.50 , 0.75 }). Implementation details of COPE and the comparison methods are provided in Appendix H. The experimen-tal results are presented in Table 1. 
+
+4.3. Main Results 
+
+As presented in Table 1, performance generally im-proves from training-free to training-based person-alization, while combining training with retrieval yields the strongest results, indicating that both richer inference-time context and training-based adaptation improve personalization. Among training-free meth-ods, approaches using stronger inference-time signals perform better: DR generally improves over SR, Q-
+
+> 5COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+DR further benefits from query expansion, and PAP achieves the best training-free results by summariz-ing user history into a coherent profile, though at the cost of additional context and latency. COPE substan-tially improves over these baselines; for example, at  
+
+> 𝑝
+
+= 0.75, it reaches 4 .74 compared with 3 .69 for PAP. Its advantage over T-PAP, which uses the same reinforcement learning objectives but no learnable personalized embeddings, shows that the gain is not merely due to training but also to the personalized em-bedding representation. Finally, COPE+SR achieves the best scores in all settings, peaking at 5 .36 when  
+
+> 𝑝
+
+= 0.75, confirming that learned implicit preferences and retrieved explicit histories provide complementary personalization signals. Adding SR improves T-PAP by 0 .29–0 .36 points, but improves COPE by a larger 0.50–0 .62 points. This suggests that T-PAP’s textual summary partially overlaps with retrieved histories, whereas COPE’s compact latent preferences are more complementary to explicit retrieved evidence; accord-ingly, COPE+SR consistently outperforms T-PAP+SR by 0 .32–0 .40 points. (a) (b) (c) (d) 
+
+Figure 2 | Analysis of COPE performance. (a-b) Com-parison of personalization and completeness scores against Base across 20 domains. (c-d) Training dynam-ics of personalization and completeness scores over interaction sessions. 
+
+4.4. Ablation and Analysis Performance Dynamics. Figure 2(a-b) compares COPE with Base on personalization and completeness across all 20 domains, showing consistent gains and completeness scores near 1.0. Across sessions (Fig-ure 2(c-d)), completeness rises rapidly within the first 20 sessions and then stabilizes, whereas personaliza-tion improves more gradually before tapering off as additional history provides diminishing marginal infor-mation. To examine whether the self-evaluation signal (a)  (b) 
+
+Figure 3 | (a) Visualization of personalized embedding clusters. (b) Impact of personalized embedding length  
+
+> 𝑙
+
+on COPE. Table 2 | Ablation of optimization objectives in COPE (𝑝 = 0.5). 
+
+LSFT Jeval Jpolicy Scores 
+
+✗ ✗ ✓ 3.36 ± 0.06 
+
+✗ ✓ ✓ 4.57 ± 0.04 
+
+✓ ✓ ✓ 4.69 ± 0.05 aligns with user feedback, we evaluate the assistant-estimated and user-provided personalization scores at two granularities. At the population level, the Pear-son correlation between user-averaged trajectories reaches 𝑟 = 0.81 during training and 𝑟 = 0.71 ± 0.06 on three held-out runs. At the instance level, a pair-wise ranking analysis on the validation tasks (Ap-pendix J) shows that the proxy ranks consistently with the user on 72 .63% of pairs where both pro-duce a directional judgment. These results indicate that the self-evaluation signal tracks user feedback at both the population and individual interaction level. Appendix J.1 provides mechanistic intuition and qual-itative examples. 
+
+Embedding Visualization. To interpret the learned embeddings, we cluster V50 using UMAP McInnes et al. [21] and HDBSCAN Campello et al. [3] (Figure 3(a)). Two adjacent clusters, G1 and G2, illustrate how spatial relation aligns with preference patterns: both contain high-income users who prefer business or first-class travel, yet they separate by finer sub-preferences, with G1 favoring modern aesthetics (e.g., electronic music, competitive gaming) and G2 leaning toward traditional tastes (e.g., classical music, chess). This example suggests that the embeddings organize users according to preference patterns beyond coarse demographics. 
+
+Embedding Length. The capacity of personalized embeddings is governed by their length 𝑙 . Figure 3(b) illustrates the performance of COPE ( 𝑝 = 0.5) across different 𝑙 values. While performance improves with 𝑙 ,it exhibits diminishing marginal returns beyond 𝑙 = 4. Balancing performance maximization with parameter 
+
+> 6COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+Table 3 | Ablation of trainable parameter configura-tions for each objective in COPE ( 𝑝 = 0.5). 
+
+LSFT Jeval Jpolicy Scores 
+
+v, 𝜃 v, 𝜃 𝜃 4.18 ± 0.07 
+
+v v, 𝜃 v, 𝜃 4.45 ± 0.08 
+
+v 𝜃 𝜃 4.49 ± 0.07 
+
+v v 𝜃 4.53 ± 0.05 
+
+v v, 𝜃 𝜃 4.69 ± 0.05 efficiency, we select 𝑙 = 10 as the final configuration. Under this setting, the user-specific parameters intro-duce an overhead of only approximately 1 .2 × 10 −5 of the total LLM (Qwen3-1.7B Yang et al. [34]) parame-ters 𝜃 per user, ensuring the method remains highly efficient for large-scale deployment. 
+
+Objective Ablation. We analyze the contribution of each optimization objective in Table 2. Removing either LSFT or Jeval degrades performance, with the omission of Jeval having the most pronounced impact. Without LSFT and Jeval , the model fails to explicitly leverage textual and numerical feedback, respectively. Consequently, the personalized embeddings fail to effectively capture user preferences, and the model is constrained to learning exclusively from the subset of data containing explicit feedback ( D2), thereby substantially curtailing learning efficiency. 
+
+Trainable parameter configuration Ablation. Ta-ble 3 explores the impact of updating different parame-ter sets (personalized embeddings v and LLM weights 
+
+> 𝜃
+
+) for each objective. For LSFT , additionally updating  
+
+> 𝜃
+
+degrades performance (4 .18), since this objective focuses on injecting textual preference knowledge into 
+
+v, and updating 𝜃 likely disrupts the LLM’s general capabilities. For Jeval , jointly updating v and 𝜃 is opti-mal, as this objective must simultaneously compress preferences into v and calibrate the scoring capability within 𝜃 , and updating only one leads to suboptimal alignment. For Jpolicy , training only 𝜃 is most effec-tive, since the model here utilizes the captured per-sonalized information to generate responses; forcing updates on v causes overfitting as no new preference information is introduced, leading to a performance drop (4 .45). 
+
+## 5. Discussion 
+
+General Capability Retention. Since continual per-sonalization updates the shared model parameters, a natural concern is whether it degrades the model’s gen-eral capabilities. To examine this issue, we evaluate the model after the full optimization phase, i.e., after updating the model across the 51 interactions from the 
+
+> (a) Personalization score.
+> (b) Completeness score.
+
+Figure 4 | Within-domain preference shift evaluation. The vertical dashed line marks the simulated prefer-ence shift. Personalized embeddings are carried over rather than re-initialized after the shift. first three traversals (3 tasks across 17 domains), and compare it with the original Qwen3-1.7B Yang et al. [34]. As shown in Appendix K, the optimized model maintains general capabilities after continual person-alization. These results indicate that COPE improves personalization without sacrificing the model’s gen-eral capability, suggesting that the proposed continual optimization does not induce catastrophic forgetting over the evaluated training horizon. 
+
+Adaptation to Preference Shifts. In realistic de-ployments, user preferences may evolve rather than remain fixed. To examine whether COPE can adapt under such distribution shifts, we conduct two simu-lated preference-shift experiments in which the per-sonalized embeddings are carried over across the shift rather than re-initialized. The first simulates shifted preferences within previously seen domains, while the second imposes a more stringent shift to non-overlapping new domains. As shown in Fig-ures 4 and 5, COPE maintains or quickly recovers both personalization and completeness under the within-domain preference shift, and it also rapidly adapts under the more challenging new-domain preference shift despite an immediate post-shift drop. Experimen-tal details are provided in Appendix L. 
+
+Scaling to Larger Models. To examine whether COPE scales beyond the Qwen3-1.7B backbone used in our main experiments, we conduct additional ex-periments with Qwen3-4B, Qwen3-8B, and Llama-3.1-8B-Instruct Grattafiori et al. [9] under 𝑝 = 0.5. 
+
+> 7COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+> (a) Personalization score.
+> (b) Completeness score.
+
+Figure 5 | New-domain preference shift evaluation. The vertical dashed line marks the simulated prefer-ence shift. Personalized embeddings are carried over rather than re-initialized after the shift. Table 4 | Model-scaling results with 𝑝 = 0.5. Base denotes the corresponding unoptimized model, and COPE denotes the model after continual personaliza-tion training.                           
+
+> Backbone Base COPE Qwen3-1.7B 2.36 ±0.00 4.69 ±0.05 Qwen3-4B 3.17 ±0.00 5.26 ±0.04 Qwen3-8B 3.60 ±0.01 5.49 ±0.03 Llama-3.1-8B-Instruct 3.20 ±0.04 5.16 ±0.06
+
+Table 4 retains the original Qwen3-1.7B result for ref-erence. COPE consistently improves over Base across all backbones, while its score within the Qwen3 family increases monotonically from 4 .69 at 1.7B to 5 .49 at 8B, demonstrating improved performance with greater backbone capacity. The improvement on Llama-3.1-8B-Instruct shows that COPE remains effective with a non-Qwen assistant, thereby alleviating concerns about same-family coupling between the assistant and the Qwen-Flash simulator and completeness evaluator. 
+
+Robustness to Evaluator Choice. To examine whether COPE’s gains depend on the Qwen-family pipeline shared by the user simulator and the rubric-based scoring across training and evaluation, we con-duct two complementary checks. First, swapping the user simulator with DeepSeek-V3 DeepSeek-AI et al. [6] under 𝑝 = 0.5 and 𝑞 = 0.5 yields lower absolute scores but preserves the relative ordering, with COPE still achieving the best performance (Appendix M). Second, we conduct a blinded pairwise comparison between COPE and T-PAP on 204 aligned validation re-sponse pairs using a human annotator; the annotator does not receive the simulator’s rubrics or numerical scores. Results show that the human annotator consis-tently prefers COPE over T-PAP (Figure 9; Appendix N). Both checks indicate that COPE remains effective un-der different user-model judging styles and that the observed gains are not driven by closed-loop bias. 
+
+## 6. Conclusion 
+
+In this work, we proposed COPE, a unified framework that enables continual personalization optimization with learnable embeddings and self-evaluation. Ex-periments demonstrate that COPE improves personal-ization under sparse feedback, remains complemen-tary to retrieval-based prompting, and learns personal-ized embeddings that capture meaningful preference patterns. Additional analyses show that COPE’s self-evaluation aligns with user feedback, the optimized model largely preserves general capabilities and re-covers from preference shifts within seen domains and across new domains, and the gains remain robust under alternative evaluators, suggesting that COPE is a practical step toward continually adaptive per-sonalized assistants. Thanks to the complementarity between COPE and retrieval-augmented prompting, a deployment with millions of users can update one user subset at a time while supporting the remaining users through retrieval over their interaction histories, without sacrificing personalization support for users awaiting parametric updates. Future work will aim to extend the framework to more complex multi-domain multi-turn tasks and privacy-preserving evaluations in real-user scenarios. 
+
+## Limitations 
+
+Due to user-privacy considerations and the limited availability of longitudinal real user–assistant inter-action data, our current evaluation uses benchmark-derived simulated users from PersonaLens. This de-sign enables controlled and reproducible evaluation under sparse feedback without collecting sensitive real-user interaction traces. Future work can complement this controlled evidence with privacy-preserving real-user evaluation and additional datasets. Our chrono-logical protocol already spans 51 interactions per user during optimization; evaluating COPE over still longer 
+
+> 8COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+horizons would provide a valuable further stress test. The current evaluation is also limited to single-turn sessions. Appendix D provides a concrete extension of COPE to multi-turn sessions with session-level feed-back, while empirical validation on privacy-preserving multi-turn data remains future work. 
+
+## Acknowledgments 
+
+This work was supported by Qwen Business Unit through Alibaba Research Intern Program. 
+
+## References 
+
+[1] Alibaba Cloud. Alibaba cloud model studio: Models. https://www.alibabacloud.c om/help/en/model-studio/models , 2026. Accessed: 2026-05-15. Qwen-Flash commercial model documentation. [2] Y. Bai, S. Kadavath, S. Kundu, A. Askell, J. Kernion, A. Jones, A. Chen, A. Goldie, A. Mirhoseini, C. McKinnon, C. Chen, C. Olsson, C. Olah, D. Hernandez, D. Drain, D. Ganguli, D. Li, E. Tran-Johnson, E. Perez, and 32 others. Constitutional ai: Harmlessness from ai feed-back, 2022. URL https://arxiv.org/abs/ 2212.08073 .[3] R. J. Campello, D. Moulavi, and J. Sander. Density-based clustering based on hierarchical density estimates. In Pacific-Asia conference on knowledge discovery and data mining , pages 160– 172. Springer, 2013. [4] D. Chen, Y. Chen, A. Rege, Z. Wang, and R. K. Vinayak. PAL: Sample-efficient personalized re-ward modeling for pluralistic alignment. In The Thirteenth International Conference on Learning Representations , 2025. [5] K. Cobbe, V. Kosaraju, M. Bavarian, M. Chen, H. Jun, L. Kaiser, M. Plappert, J. Tworek, J. Hilton, R. Nakano, C. Hesse, and J. Schulman. Training verifiers to solve math word problems. 
+
+arXiv preprint arXiv:2110.14168 , 2021. [6] DeepSeek-AI, A. Liu, B. Feng, B. Xue, B. Wang, B. Wu, C. Lu, C. Zhao, C. Deng, C. Zhang, C. Ruan, D. Dai, D. Guo, D. Yang, D. Chen, D. Ji, E. Li, F. Lin, F. Dai, and 181 others. Deepseek-v3 technical report, 2025. URL https://arxiv. org/abs/2412.19437 .[7] DeepSeek-AI, A. Liu, A. Mei, B. Lin, B. Xue, B. Wang, B. Xu, B. Wu, B. Zhang, C. Lin, C. Dong, C. Lu, C. Zhao, C. Deng, C. Xu, C. Ruan, D. Dai, D. Guo, D. Yang, and 245 others. Deepseek-v3.2: Pushing the frontier of open large language mod-els, 2025. URL https://arxiv.org/abs/25 12.02556 .[8] L. Gao, J. Tow, B. Abbasi, S. Biderman, S. Black, A. DiPofi, C. Foster, L. Golding, J. Hsu, A. Le Noac’h, H. Li, K. McDonell, N. Muennighoff, C. Ociepa, J. Phang, L. Reynolds, H. Schoelkopf, A. Skowron, L. Sutawika, and 5 others. The lan-guage model evaluation harness, 07 2024. URL 
+
+https://zenodo.org/records/1260860 2.[9] A. Grattafiori, A. Dubey, A. Jauhri, A. Pandey, A. Kadian, A. Al-Dahle, A. Letman, A. Mathur, A. Schelten, A. Vaughan, A. Yang, A. Fan, A. Goyal, A. Hartshorn, A. Yang, A. Mitra, A. Sra-vankumar, A. Korenev, A. Hinsvark, and 540 oth-ers. The llama 3 herd of models, 2024. URL 
+
+https://arxiv.org/abs/2407.21783 .[10] J. Guan, J. Wu, J.-N. Li, C. Cheng, and W. Wu. A survey on personalized alignment–the missing piece for large language models in real-world applications. arXiv preprint arXiv:2503.17003 ,2025. [11] D. Hendrycks, C. Burns, S. Basart, A. Critch, J. Li, D. Song, and J. Steinhardt. Aligning ai with shared human values. Proceedings of the Inter-national Conference on Learning Representations (ICLR) , 2021. [12] D. Hendrycks, C. Burns, S. Basart, A. Zou, M. Mazeika, D. Song, and J. Steinhardt. Measur-ing massive multitask language understanding. 
+
+Proceedings of the International Conference on Learning Representations (ICLR) , 2021. [13] B. Huber, G. Fazelnia, A. Damianou, S. Peleato, M. Lefarov, P. Chandar, M. De Nadai, M. Lalmas, and P. N. Bennett. Embedding-to-prefix: Contin-ual personalization with large language models. In AI That Keeps Up: NeurIPS 2025 Workshop on Continual and Compatible Foundation Model Updates , 2025. [14] S. Kim and J. Kim. Spring: Continual llm person-alization via selective parametric adaptation and retrieval-interpolated generation. arXiv preprint arXiv:2601.09974 , 2026. [15] S. Lee, S. H. Park, S. Kim, and M. Seo. Aligning to thousands of preferences via system message generalization. Advances in Neural Information Processing Systems , 37:73783–73829, 2024. 
+
+> 9COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+[16] J. Liu, Z. Qiu, Z. Li, Q. Dai, W. Yu, J. Zhu, M. Hu, M. Yang, T.-S. Chua, and I. King. Asurvey of personalized large language models: Progress and future directions. arXiv preprint arXiv:2502.11528 , 2025. [17] J. Liu, W. Yu, Q. Dai, Z. Li, J. Zhu, M. Yang, T.-S. Chua, and I. King. Exploring personalization shifts in representation space of llms. In Knowl-edgeable Foundation Models at ACL 2025 , 2025. [18] Q. Liu, N. Chen, T. Sakai, and X.-M. Wu. Once: Boosting content-based recommendation with both open-and closed-source large language models. In Proceedings of the 17th ACM Interna-tional Conference on Web Search and Data Mining ,pages 452–461, 2024. [19] X. Ma, L. Zhao, W. Yao, H. Di, W. Wang, and J. Li. Personalizing llms with binary feedback: A preference-corrected optimization framework. 
+
+arXiv preprint arXiv:2605.10043 , 2026. [20] B. T. McDaniel, F. F. Nova, and J. A. Pater. Artifi-cial intelligence in everyday family life: Issues, applications, and implications. Family Relations ,74(3):1049–1055, 2025. [21] L. McInnes, J. Healy, and J. Melville. Umap: Uniform manifold approximation and projec-tion for dimension reduction. arXiv preprint arXiv:1802.03426 , 2018. [22] L. Ning, L. Liu, J. Wu, N. Wu, D. Berlowitz, S. Prakash, B. Green, S. O’Banion, and J. Xie. User-llm: Efficient llm contextualization with user embeddings. In Companion Proceedings of the ACM on Web Conference 2025 , pages 1219– 1223, 2025. [23] L. Ouyang, J. Wu, X. Jiang, D. Almeida, C. Wain-wright, P. Mishkin, C. Zhang, S. Agarwal, K. Slama, A. Ray, J. Schulman, J. Hilton, F. Kel-ton, L. Miller, M. Simens, A. Askell, P. Welin-der, P. F. Christiano, J. Leike, and R. Lowe. Training language models to follow instructions with human feedback. In S. Koyejo, S. Mo-hamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, editors, Advances in Neural Information Processing Systems , volume 35, pages 27730– 27744. Curran Associates, Inc., 2022. doi: 10.52202/068431-2011. URL https://pr oceedings.neurips.cc/paper_files/p aper/2022/file/b1efde53be364a73914 f58805a001731-Paper-Conference.pdf .[24] S. Poddar, Y. Wan, H. Ivison, A. Gupta, and N. Jaques. Personalizing reinforcement learning from human feedback with variational prefer-ence learning. Advances in Neural Information Processing Systems , 37:52516–52544, 2024. [25] Y. Qiu, X. Zhao, Y. Zhang, Y. Bai, W. Wang, H. Cheng, F. Feng, and T.-S. Chua. Measur-ing what makes you unique: Difference-aware user modeling for enhancing llm personalization. 
+
+arXiv preprint arXiv:2503.02450 , 2025. [26] A. Salemi, S. Mysore, M. Bendersky, and H. Za-mani. Lamp: When large language models meet personalization. In Proceedings of the 62nd An-nual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 7370– 7392, 2024. [27] J. Schulman, P. Moritz, S. Levine, M. Jordan, and P. Abbeel. High-dimensional continuous control using generalized advantage estimation. arXiv preprint arXiv:1506.02438 , 2015. [28] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 ,2017. [29] A. Siththaranjan, C. Laidlaw, and D. Hadfield-Menell. Distributional preference learning: Un-derstanding and accounting for hidden context in rlhf. arXiv preprint arXiv:2312.08358 , 2023. [30] M. Tavakoli, A. Salemi, C. Ye, M. Abdalla, H. Zamani, and J. R. Mitchell. Beyond a million tokens: Benchmarking and enhanc-ing long-term memory in llms. arXiv preprint arXiv:2510.27246 , 2025. [31] K. Team, Y. Bai, Y. Bao, Y. Charles, C. Chen, G. Chen, H. Chen, H. Chen, J. Chen, N. Chen, R. Chen, Y. Chen, Y. Chen, Y. Chen, Z. Chen, J. Cui, H. Ding, M. Dong, A. Du, and 181 others. Kimi k2: Open agentic intelligence, 2026. URL 
+
+https://arxiv.org/abs/2507.20534 .[32] A. Trotman, A. Puurula, and B. Burgess. Im-provements to bm25 and language models ex-amined. In Proceedings of the 19th Australasian Document Computing Symposium , pages 58–65, 2014. [33] Z. Wu, Y. Hu, W. Shi, N. Dziri, A. Suhr, P. Am-manabrolu, N. A. Smith, M. Ostendorf, and H. Hajishirzi. Fine-grained human feedback gives better rewards for language model train-ing. Advances in Neural Information Processing Systems , 36:59008–59033, 2023. 
+
+> 10 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+[34] A. Yang, A. Li, B. Yang, B. Zhang, B. Hui, B. Zheng, B. Yu, C. Gao, C. Huang, C. Lv, C. Zheng, D. Liu, F. Zhou, F. Huang, F. Hu, H. Ge, H. Wei, H. Lin, J. Tang, and 41 others. Qwen3 technical report, 2025. URL https: //arxiv.org/abs/2505.09388 .[35] Y. Zhang, J. Wang, L.-C. Yu, D. Xu, and X. Zhang. Personalized lora for human-centered text un-derstanding. Proceedings of the AAAI Conference on Artificial Intelligence , 38(17):19588–19596, 2024. [36] Y. Zhang, M. Li, D. Long, X. Zhang, H. Lin, B. Yang, P. Xie, A. Yang, D. Liu, J. Lin, F. Huang, and J. Zhou. Qwen3 embedding: Advancing text embedding and reranking through foundation models, 2025. URL https://arxiv.org/ab s/2506.05176 .[37] W. Zhao, X. Sui, Y. Hu, J. Guo, H. Liu, B. Li, Y. Zhao, B. Qin, and T. Liu. Teaching language models to evolve with users: Dynamic profile modeling for personalized alignment. arXiv preprint arXiv:2505.15456 , 2025. [38] Z. Zhao, C. Vania, S. Kayal, N. Khan, S. B. Cohen, and E. Yilmaz. PersonaLens: A benchmark for personalization evaluation in conversational AI assistants. In Findings of the Association for Com-putational Linguistics: ACL 2025 , pages 18023– 18055, 2025. [39] J. Zhou, T. Lu, S. Mishra, S. Brahma, S. Basu, Y. Luan, D. Zhou, and L. Hou. Instruction-following evaluation for large language models, 2023. URL https://arxiv.org/abs/2311 .07911 .[40] Z. Zhou, J. Liu, J. Shao, X. Yue, C. Yang, W. Ouyang, and Y. Qiao. Beyond one-preference-fits-all alignment: Multi-objective direct prefer-ence optimization. In Findings of the Association for Computational Linguistics: ACL 2024 , pages 10586–10613, 2024. 
+
+> 11 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+## A. Related Work and Positioning 
+
+Recent work has explored user embeddings as a com-pact interface between user histories and LLMs. User-LLM [22] generates user embeddings from interaction histories and integrates them with LLMs through cross-attention, improving efficiency over text-only user-context prompts. Embedding-to-Prefix [13] maps dy-namically updated user embeddings into a soft prefix for a frozen LLM, providing a lightweight mechanism for continual personalization without updating the LLM backbone. These methods show that compact user representations can reduce context overhead and provide useful personalization signals. COPE shares this motivation but differs in how the user represen-tation is acquired and used: rather than relying on precomputed user encoders or frozen-backbone pre-fix injection, COPE learns per-user embeddings from sparse textual and numerical feedback inside the in-teraction loop and uses them together with policy optimization. Other recent methods study continual or feedback-based personalization. SPRInG [14] combines selec-tive parametric adaptation with retrieval-interpolated generation to handle preference drift and mitigate for-getting in continual personalization. C-BPO [19] stud-ies binary-signal preference optimization by treating target-user histories as positive signals and other users’ histories as implicit negatives under a preference-corrected objective. These directions are comple-mentary to COPE: they focus on drift-aware semi-parametric adaptation or binary-signal preference op-timization, while COPE focuses on sparse-feedback user–assistant interactions where missing feedback is addressed through a self-evaluation-based proxy re-ward and a unified update step for preference capture, self-evaluation calibration, and personalized response optimization. 
+
+## B. Preliminaries on Proximal Policy Optimization (PPO) 
+
+In this work, we employ Proximal Policy Optimization (PPO) [28], a widely adopted policy gradient method, to optimize both the Self-Evaluation Calibration and Personalized Response Optimization objectives. PPO operates within the Actor-Critic framework, consist-ing of a policy network (Actor) 𝜋 𝜃 that generates ac-tions (responses) and a value network (Critic) 𝑉 𝜙 that estimates the expected return of a given state (query and context). 
+
+Importance Sampling. PPO is an on-policy algo-rithm that alternates between data collection and pol-icy optimization. In each iteration, a batch of trajecto-ries is first collected using the current policy, referred to as the old policy 𝜋 𝜃 old . To enable multiple epochs of optimization over the same batch while accounting for the discrepancy between the updated policy and the data-collecting policy, PPO employs importance sampling. We define the probability ratio (importance weight) as: 
+
+𝑟 𝑡 (𝜃 ) = 𝜋 𝜃 (𝑎 𝑡 |𝑠 𝑡 )
+
+𝜋 𝜃 old (𝑎 𝑡 |𝑠 𝑡 ) . (7) 
+
+Generalized Advantage Estimation (GAE). To re-duce the variance of policy gradient estimates, PPO uses the Critic 𝑉 𝜙 to estimate the advantage using Generalized Advantage Estimation (GAE) [27]. The advantage ˆ 𝐴 𝑡 measures how much better an action is compared to the average expectation. It is calculated as: ˆ𝐴 𝑡 =
+
+> ∞
+
+∑︁ 
+
+> 𝑘 =0
+
+(𝛾𝜆 )𝑘 𝛿 𝑡 +𝑘 ,
+
+where 𝛿 𝑡 = 𝑟 𝑡 + 𝛾𝑉 𝜙 (𝑠 𝑡 +1) − 𝑉 𝜙 (𝑠 𝑡 ).
+
+(8) Here, 𝑟 𝑡 denotes the scalar reward at timestep 𝑡 , 𝛾 is the discount factor, 𝜆 is the GAE smoothing parameter, and 𝛿 𝑡 represents the temporal difference (TD) error. 
+
+Value Network Training. In our implementation, we maintain two separate critics: 𝑉 𝜙 eval for Self-Evaluation Calibration and 𝑉 𝜙 resp for Personalized Re-sponse Optimization. They are initialized from the same assistant model but trained independently using the returns of their corresponding PPO objective. For 
+
+𝑜 ∈ { eval , resp }, the critic minimizes the value loss 
+
+L𝑜 𝑉 (𝜙 𝑜 ) = 12 𝔼 𝑡 
+
+(𝑉 𝜙 𝑜 (𝑠 𝑡 ) − ˆ𝑅 𝑜 𝑡 )2 , (9) where ˆ 𝑅 𝑜 𝑡 is the return estimated by GAE; in our terminal-reward setting with 𝛾 = 𝜆 = 1, it equals the corresponding final reward, i.e., 𝑅 eval (ˆ𝑠 𝑡 𝑖 , 𝑠 𝑡 𝑖 ) for Self-Evaluation Calibration and 𝑟 𝑡 𝑖 for Personalized Re-sponse Optimization. Critic gradients are optimized separately and are not included in the joint update of the assistant model and personalized embeddings. 
+
+Optimization Objective. The core of PPO is to max-imize a surrogate objective while constraining the policy update to avoid excessive deviation from the behavior policy. In addition to the clipping mecha-nism, and following standard practice in RLHF-style optimization, we further incorporate a KL divergence penalty with respect to a fixed reference policy 𝜋 ref to prevent the learned policy from drifting too far from the pretrained model. The overall objective is defined 
+
+> 12 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+as: 
+
+JPPO (𝜃 ) = 𝔼 𝑡 
+
+h
+
+J CLIP  
+
+> 𝑡
+
+(𝜃 )− 𝛽 KL  𝜋 𝜃 (·| 𝑠 𝑡 ) ∥ 𝜋 ref (·| 𝑠 𝑡 )i
+
+.
+
+(10) Specifically, the clipped surrogate objective is given by: 
+
+J CLIP  
+
+> 𝑡
+
+(𝜃 ) = min 
+
+
+
+𝑟 𝑡 (𝜃 ) ˆ𝐴 𝑡 ,
+
+clip (𝑟 𝑡 (𝜃 ), 1 − 𝜖, 1 + 𝜖 ) ˆ𝐴 𝑡 
+
+
+
+,
+
+(11) where 𝜖 is a hyperparameter (e.g., 0 .2) controlling the trust region, and 𝛽 determines the strength of the KL regularization. 
+
+## C. Optimization Algorithm 
+
+Algorithm 1 summarizes the complete “Interact-Collect-Optimize” loop of COPE, including sparse feed-back collection, the computation of the three opti-mization objectives, and the joint update of model parameters and personalized embeddings. The two PPO objectives use separate critics initialized from the assistant model. Each critic is trained on the re-turns of its corresponding trajectories and provides the advantages for that objective’s policy update; critic gradients are optimized separately from the joint actor and personalized-embedding gradients. 
+
+## D. Extension to Multi-Turn Sessions 
+
+Our experiments use single-turn sessions because lon-gitudinal multi-turn personalization data are difficult to obtain under user-privacy constraints. Neverthe-less, COPE can be extended to multi-turn interactions with session-level feedback without changing its three-objective design. For user 𝑢 𝑖 in session 𝑡 , we replace the single-turn tuple (𝑞 𝑡 𝑖 , 𝑎 𝑡 𝑖 ) with a dialogue trajectory 
+
+ℎ𝑡 𝑖 = {( 𝑞 𝑡 𝑖,𝑘 , 𝑎 𝑡 𝑖,𝑘 )} 𝐾 𝑘 =1, (12) where 𝐾 is the number of turns in the session. At turn 
+
+𝑘 , the assistant generates 
+
+𝑎 𝑡 𝑖,𝑘 ∼ 𝜋 𝜃 𝑡 
+
+
+
+· | v𝑡 𝑖 , ℎ 𝑡 𝑖,<𝑘 , 𝑞 𝑡 𝑖,𝑘 
+
+
+
+, (13) where ℎ𝑡 𝑖,<𝑘 is the preceding dialogue history. The same personalized embedding v𝑡 𝑖 is used across all turns to represent preferences accumulated across sessions, while ℎ𝑡 𝑖,<𝑘 provides the local context within the cur-rent session. After the final turn, the user provides one textual feedback message 𝑓 𝑡 𝑖 and one overall satisfac-tion score 𝑠 𝑡 𝑖 with probability 𝑝 . The collected datasets become D𝑡  
+
+> 1
+
+= {ℎ𝑡 𝑖 }𝑖 ∈Ω𝑡  
+
+> 1
+
+for sessions without feedback and D𝑡  
+
+> 2
+
+= {( ℎ𝑡 𝑖 , 𝑓 𝑡 𝑖 , 𝑠 𝑡 𝑖 )} 𝑖 ∈Ω𝑡  
+
+> 2
+
+for sessions with feedback. For preference capture, the complete dialogue re-places the single query–response pair as the context for predicting the session-level textual feedback: 
+
+Lmulti SFT = − 𝔼 𝑖 ∈Ω𝑡 
+
+> 2
+
+" | 𝑓 𝑡 𝑖 |∑︁ 
+
+> 𝑗 =1
+
+log 𝜋 𝜃 𝑡 
+
+
+
+𝑓 𝑡 𝑖, 𝑗 |
+
+v𝑡 𝑖 , ℎ 𝑡 𝑖 , 𝑓 𝑡 𝑖,< 𝑗 
+
+#
+
+.
+
+(14) As in the single-turn formulation, this objective up-dates only the personalized embedding. For self-evaluation calibration, the model predicts an overall score ˆ 𝑠 𝑡 𝑖 from (v𝑡 𝑖 , ℎ 𝑡 𝑖 ), optionally conditioned on 𝑓 𝑡 𝑖 un-der the same teacher-forcing strategy, and is optimized against 𝑠 𝑡 𝑖 using the reward in Eq. 2. Thus, the self-evaluator learns to assess the personalization quality of the complete session rather than a single response. For personalized response optimization, an evalua-tor first assigns a session-level completeness reward 
+
+𝑟 𝑡 𝑖, comp . The personalization reward is the real session score when feedback is available and the predicted session score otherwise: 
+
+𝑟 𝑡 𝑖, pers =
+
+(
+
+ˆ𝑠 𝑡 𝑖 , 𝑖 ∈ Ω𝑡 
+
+> 1
+
+,𝑠 𝑡 𝑖 , 𝑖 ∈ Ω𝑡 
+
+> 2
+
+.𝑟 𝑡 𝑖, sess = 𝑟 𝑡 𝑖, comp · 𝑟 𝑡 𝑖, pers .
+
+(15) The complete dialogue is treated as one trajectory, with 𝑟 𝑡 𝑖, sess serving as its terminal reward. For brevity, let 𝑐 𝑡 𝑖,𝑘 = (v𝑡 𝑖 , ℎ 𝑡 𝑖,<𝑘 , 𝑞 𝑡 𝑖,𝑘 ) denote the personalized context at turn 𝑘 , and define 
+
+𝑑 𝑡 𝑖,𝑘 = KL 
+
+
+
+𝜋 𝜃 𝑡 (· | 𝑐 𝑡 𝑖,𝑘 )∥ 𝜋 ref (· | 𝑐 𝑡 𝑖,𝑘 )
+
+
+
+. (16) The corresponding policy objective is 
+
+J multi policy = 𝔼 𝑖 ∈Ω𝑡 
+
+> 1∪Ω𝑡
+> 2
+
+"
+
+𝑟 𝑡 𝑖, sess − 𝛽 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑑 𝑡 𝑖,𝑘 
+
+#
+
+. (17) The three objectives can then be aggregated in the same unified update described in Section 3. There-fore, the main change is the optimization unit: acomplete dialogue session replaces a single interac-tion, while COPE’s personalized embedding, sparse-feedback mechanism, and joint optimization remain unchanged. 
+
+## E. Illustration of Personalized Embed-ding Integration and Optimization Flow 
+
+Figure 6 illustrates the optimization stage of COPE, showing how personalized embeddings are prepended 
+
+> 13 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+Algorithm 1 “Interact-Collect-Optimize” Loop of COPE 
+
+Require: User set 𝑈 , Initial Model Parameters 𝜃 1, Number of Sessions 𝑇 , Feedback Probability 𝑝  
+
+> 1:
+
+Initialize personalized embeddings V1 randomly  
+
+> 2:
+
+Initialize critics 𝑉 𝜙 eval and 𝑉 𝜙 resp from the assistant model  
+
+> 3:
+
+for session 𝑡 = 1 to 𝑇 do  
+
+> 4:
+
+// Interaction & Collection  
+
+> 5:
+
+Collect queries {𝑞 𝑡 𝑖 }𝑁 𝑖 =1 
+
+> 6:
+
+Generate responses 𝑎 𝑡 𝑖 ∼ 𝜋 𝜃 𝑡 (·| v𝑡 𝑖 , 𝑞 𝑡 𝑖 ) for all users  
+
+> 7:
+
+Receive sparse feedback: 𝑓 𝑡 𝑖 , 𝑠 𝑡 𝑖 with probability 𝑝 for all users  
+
+> 8:
+
+Construct datasets D𝑡  
+
+> 1
+
+(𝑖 ∈ Ω𝑡 
+
+> 1
+
+, no feedback) and D𝑡  
+
+> 2
+
+(𝑖 ∈ Ω𝑡 
+
+> 2
+
+, with feedback), such that |Ω𝑡  
+
+> 1
+
+| + | Ω𝑡  
+
+> 2
+
+| = 𝑁  
+
+> 9:
+
+// Unified Optimization Step  
+
+> 10:
+
+Step 1: Compute Gradients for Preference Capture (SFT)  
+
+> 11:
+
+Calculate ∇v LSFT via Eq. 1 (for 𝑖 ∈ Ω𝑡 
+
+> 2
+
+) 
+
+> 12:
+
+Step 2: Compute Gradients for Self-Evaluation Calibration (RL)  
+
+> 13:
+
+Generate self-reflection and score ˆ 𝑠 𝑡 𝑖 using 𝜋 𝜃 𝑡 and v𝑡 𝑖 for 𝑖 ∈ Ω𝑡  
+
+> 1
+
+∪ Ω𝑡  
+
+> 2
+> 14:
+
+Compute reward 𝑅 eval (ˆ𝑠 𝑡 𝑖 , 𝑠 𝑡 𝑖 ) for 𝑖 ∈ Ω𝑡  
+
+> 2
+> 15:
+
+Compute returns and advantages using 𝑉 𝜙 eval ; update 𝜙 eval via Eq. 9  
+
+> 16:
+
+Calculate ∇𝜃, v Jeval via PPO (for 𝑖 ∈ Ω𝑡 
+
+> 2
+
+) 
+
+> 17:
+
+Step 3: Compute Gradients for Personalized Response Optimization (RL)  
+
+> 18:
+
+Evaluate completeness 𝑟 𝑡 𝑖, comp and personalization 𝑟 𝑡 𝑖, pers for 𝑖 ∈ Ω𝑡  
+
+> 1
+
+∪ Ω𝑡  
+
+> 2
+> 19:
+
+Compute final reward 𝑟 𝑡 𝑖 = 𝑟 𝑡 𝑖, comp · 𝑟 𝑡 𝑖, pers for 𝑖 ∈ Ω𝑡  
+
+> 1
+
+∪ Ω𝑡  
+
+> 2
+> 20:
+
+Compute returns and advantages using 𝑉 𝜙 resp ; update 𝜙 resp via Eq. 9  
+
+> 21:
+
+Calculate ∇𝜃 Jpolicy via PPO (for 𝑖 ∈ Ω𝑡  
+
+> 1
+
+∪ Ω𝑡 
+
+> 2
+
+) 
+
+> 22:
+
+Step 4: Joint Parameter Update  
+
+> 23:
+
+Update 𝜃 𝑡 → 𝜃 𝑡 +1 using aggregated gradients ∇𝜃 Jeval + ∇ 𝜃 Jpolicy  
+
+> 24:
+
+Update v𝑡 𝑖 → v𝑡 +1 
+
+> 𝑖
+
+using aggregated gradients ∇v LSFT + ∇ v Jeval  
+
+> 25:
+
+end for 
+
+to text embeddings and how the three objectives are computed and optimized. 
+
+## F. Chronological Traversal Protocol 
+
+Figure 7 illustrates the chronological traversal process used in our experimental setup. 
+
+## G. Decomposed Main Results 
+
+Table 5 reports the completeness and personalization components underlying the product scores in Table 1. The decomposed results show that optimization improves both task completion and preference align-ment. Compared with Base, all personalization meth-ods achieve higher completeness and personalization scores, and training-based methods further strengthen both components. COPE obtains the highest complete-ness across all feedback probabilities, while COPE+SR achieves the strongest personalization scores and re-mains close to COPE in completeness. These trends indicate that learned user embeddings and retrieved histories provide complementary signals for improving both dimensions of personalized response quality. 
+
+## H. Implementation Details 
+
+H.1. COPE Implementation Details 
+
+We use Qwen3-1.7B Yang et al. [34] as the assistant model and Qwen-Flash Alibaba Cloud [1] as the user simulator in the main experiments. We pre-generate the initial query and rubrics for each user-task instance from the user’s true preferences 𝜂 𝑖 ; fixing these arti-facts before interaction reduces simulator randomness and ensures that both user behavior and feedback cri-teria consistently reflect the hidden preferences. We manually inspect the pre-generated query-rubric pairs to check that they reflect the underlying user prefer-ences. Thus, during interaction, the user simulator poses the pre-generated query and, with probability 
+
+𝑝 , provides evaluative feedback on the assistant’s re-sponse. Appendix H.2 further discusses the rationale for this simulator-based protocol. During evaluation, we use the pre-generated rubrics to assess the assis-tant’s response. Each rubric item specifies a condition the response should satisfy and an associated score. Since the rubrics are fixed in advance and manually in-spected for consistency with the user’s preferences, the user model only needs to judge the response against these rubrics, enabling more stable feedback that re-mains aligned with the user’s preferences. The simu-
+
+> 14
+
+COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation Decoder                  
+
+> …
+> 𝑙 virtual tokens of personalized embedding
+> Embedding Layer
+> <system prompt> <user query>
+> ……
+> tokens of text embeddings
+> <response>
+> Decoder
+> …
+> 𝑙 virtual tokens of personalized embedding
+> Embedding Layer
+> <system prompt> <user query>
+> ……
+> tokens of text embeddings
+> <response>
+> …
+> <textual feedback>
+> ………
+> 01n-1 n12n
+> ℒ!"#
+> Decoder
+> …
+> 𝑙 virtual tokens of personalized embedding
+> Embedding Layer
+> <system prompt> <user query>
+> ……
+> tokens of text embeddings
+> …tokens of response
+> 𝒥 $%&'()
+> tokens of textual feedback
+> <textual feedback> Teacher-forcing probability 𝑞
+> ……tokens of self-reflection and predicted score
+> 𝒥 *+,&
+
+(a) (b) (c) : forward : backward (gradients) 
+
+Figure 6 | Schematic illustration of personalized embedding integration and the forward computation and backward optimization of the three objectives in the optimization stage of COPE. Personalized embeddings are implemented as 𝑙 virtual tokens and prepended to the text embeddings to provide user-specific guidance. For clarity, the assistant model is conceptually decomposed into an embedding layer and a decoder to explicitly visualize the embedding of textual inputs and their concatenation with personalized embeddings, although both components belong to the same assistant model. Two different system prompts are used: a response-generation prompt (pink) and a self-evaluation prompt (green), both of which are provided in our code repository. Trainable parameters under each objective are marked with spark icons, while frozen parameters are indicated by snowflake icons. Table 5 | Decomposed completeness and personaliza-tion scores under varying user feedback probabilities (mean ± std). † indicates methods that involve train-ing. 
+
+Methods User Feedback Probability 
+
+𝑝 = 0.25 𝑝 = 0.50 𝑝 = 0.75 
+
+Completeness 
+
+Base 0.78 ±0.00 0 .78 ±0.00 0 .78 ±0.00 SR 0.87 ±0.01 0 .87 ±0.00 0 .87 ±0.00 DR 0.85 ±0.00 0 .86 ±0.01 0 .86 ±0.00 Q-DR 0.85 ±0.01 0 .85 ±0.00 0 .85 ±0.01 PAP 0.90 ±0.01 0 .91 ±0.00 0 .91 ±0.00 T-PAP † 0.95 ±0.00 0 .95 ±0.00 0 .96 ±0.00 COPE † 0.98 ±0.01 0.99 ±0.00 0.99 ±0.00 COPE †+SR 0 .97 ±0.00 0 .98 ±0.00 0 .98 ±0.00 
+
+Personalization 
+
+Base 2.69 ±0.01 2 .69 ±0.01 2 .69 ±0.01 SR 3.35 ±0.04 3 .37 ±0.01 3 .40 ±0.03 DR 3.36 ±0.03 3 .44 ±0.02 3 .55 ±0.02 Q-DR 3.51 ±0.06 3 .70 ±0.04 3 .82 ±0.04 PAP 3.85 ±0.01 3 .93 ±0.02 3 .96 ±0.00 T-PAP † 4.59 ±0.03 4 .62 ±0.03 4 .83 ±0.01 COPE † 4.62 ±0.06 4 .73 ±0.05 4 .78 ±0.02 COPE †+SR 5.20 ±0.02 5.31 ±0.05 5.43 ±0.03 
+
+lator evaluates the response against these rubrics to generate textual feedback 𝑓 𝑡 𝑖 , summarizing satisfied or violated criteria, and a numerical score 𝑠 𝑡 𝑖 , com-puted as the sum of scores for all satisfied items. A concrete example of the interaction, feedback, and rubrics, is provided in Appendix I. To reflect the coarse granularity of real-world feedback, we compress the raw integer feedback (0-10) into a coarser four-point scale (0-3). Specifically, original scores {0, 1, 2} are mapped to 0, {3, 4, 5} to 1, {6, 7, 8} to 2, and {9, 10 }
+
+to 3. Consequently, the self-evaluation mechanism predicts these mapped scores to compute matching rewards, and the mapped scores subsequently serve as the reward signal for personalized response opti-mization. However, when evaluating model perfor-mance, we still report results using the original (pre-mapping) scores. Regarding hyperparameters, we set the learning rate to 1 × 10 −3 for personalized em-beddings and 1 × 10 −6 for model parameters, with a KL penalty weight 𝛽 of 0 .01. Each personalized em-bedding consists of 10 learnable virtual tokens (i.e., 
+
+𝑙 = 10) and is randomly initialized prior to the training process. The two critics are independently initialized from the assistant model’s weights and warmed up for 5 steps. The teacher-forcing probability 𝑞 during self-evaluation calibration is set to 0 .25. Our algo-rithm is implemented based on the VeRL framework, with corresponding adaptations to enable efficient in-ference using SGLang with personalized embedding prefixes. Our implementation, associated datasets, and all prompts used in this study are available at 
+
+https://github.com/Quark-Medical/COPE .
+
+H.2. Rationale for Simulator-Based Evaluation 
+
+Although our experimental setting is motivated by real user–assistant interactions, recruiting a large number of users to participate in the full continual optimiza-tion loop would be costly and would require careful privacy protection, especially when persistent user representations are updated over 51 chronological in-teractions. For reproducible and efficient algorithm development, we therefore follow the common prac-
+
+15 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation Continual Optimization Phase 
+
+> 75% Training: MTS Coverage (Preferences Exposed)
+> Traversal 1
+> Domain A Task 1 Domain B Task 1 Domain T Task 1
+> Traversal 2
+> Domain A Task 2 Domain B Task 2 Domain T Task 2
+> Traversal 3
+> Domain A Task 3 Domain B Task 3 Domain T Task 3
+> Traversal 4
+> Domain A Task 4 Domain B Task 4 Domain T Task 4
+> TimeLine Interaction Stream
+> (The Global View)
+
+Testing Phase 
+
+> 25% Testing: Unseen Tasks (Preferences Known)
+> Zoom-in Detail
+> (The Book Domain Example)
+> Accumulated User Preference Knowledge
+> Book Domain
+> Task 1 : General Recommendations Reveal Genres & Authors Preference
+> Book Domain
+> Task 2 : Start a New Series Reveal Reading Format Preference
+> Book Domain
+> Task 3 : Quick Read for Free Time Reveal Time & Frequency Preference
+> Book Domain
+> Task 4 : Long Travel Read Solve Using Preference Knowledge
+
+Figure 7 | Chronological traversal and preference coverage. The experiment proceeds through four traversals: Traversals 1-3 continually expose user preferences via MTS tasks across 17 domains, while Traversal 4 evaluates generalization on a hold-out task. The illustration shows one user for clarity; all users follow the same protocol in parallel. tice of using LLM-based user simulation. Specifically, we instantiate users from PersonaLens [38], a public benchmark designed for personalization evaluation in task-oriented conversational assistants, with diverse profiles, domain-specific preferences, interaction his-tories, situational contexts, and validation of profile consistency, preference distributions, lexical diversity, and user-agent quality. Our simulator is also constrained by pre-generated and manually inspected query-rubric pairs. During interaction, the user simulator only presents the fixed query and judges the response against the fixed rubric when feedback is sampled, rather than freely invent-ing new preferences or criteria. This makes feedback generation a more stable instruction-following and rubric-checking task, while keeping the evaluation cri-teria aligned with the hidden profile and comparable across methods. Simulator-based user interaction is also common in recent personalized alignment work such as RLPA [37]. We therefore view this setting as a controlled benchmark-derived approximation of sparse personalized interaction, while leaving real-user validation to future privacy-preserving studies. 
+
+H.3. Artifacts, Licenses, and Compute 
+
+We use PersonaLens as a public research benchmark for evaluating personalization, rather than as de-ployed user data. PersonaLens is released under the CC-BY-NC-4.0 license, contains English-language task-oriented conversational data, and provides rich user profiles, interaction histories, and 20 domains with 4 to 5 tasks per domain. We use Qwen3-1.7B under its Apache-2.0 license. Qwen-Flash and DeepSeek-V3 are accessed through their respective API services for simulation and robustness evaluation. All artifacts are used for research and evaluation purposes in accor-dance with their documented access conditions. The public repository is intended for research-use repro-ducibility and will follow release terms compatible with the upstream non-commercial artifacts. We do not collect new real-user interaction data or recruit human participants. Our experiments use benchmark-derived user profiles and simulator-generated interactions. We manually inspect the gen-erated query-rubric pairs for consistency with the un-derlying preferences and for obvious personally iden-tifying information and unsafe or offensive content. No additional anonymization is applied beyond using benchmark-provided user identifiers and simulator-generated interaction artifacts. Our implementation uses VeRL 0.6.0, SGLang 0.4.9, 
+
+rank-bm25 for BM25 retrieval, and lm-eval v0.4.3 for general capability evaluation. 
+
+H.4. Comparison Method Implementation Details 
+
+For PAP , a separate model (Qwen-Flash Alibaba Cloud [1]) first summarizes the user’s interaction history from the first three domain traversals to build a user profile; the profile is then concatenated with the prompt to guide the assistant model in generating the response. RAP enhances personalization by re-trieving historical interactions relevant to the user’s 
+
+16 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation 
+
+current query. In our experiments, we retrieve the top-6 historical interactions. SR uses BM25 Trotman et al. [32] for sparse retrieval, while DR uses Qwen3-Embedding Zhang et al. [36] to encode both the inter-action history and the user’s query and then performs retrieval based on embedding similarity. Q-DR is a query-expansion variant of dense retrieval, where the assistant model first generates an auxiliary interme-diate response conditioned on the initial query; this intermediate response is then embedded and used to retrieve the top-6 relevant historical interactions. For T-PAP , we follow PAP by incorporating the user profile summarized by Qwen-Flash Alibaba Cloud [1] as part of the prompt. To ensure a fair comparison with COPE, T-PAP employs the same optimization ob-jectives as COPE, namely Self-Evaluation Calibration (RL) and Personalized Response Optimization (RL), both guided by the summarized user profiles. Since T-PAP does not include learnable personalized embed-dings, it omits the Preference Capture (SFT) objective. 
+
+COPE+SR combines the COPE-optimized model with the same SR module described above, allowing the model to use both learned personalized embeddings and retrieved historical interactions during response generation. 
+
+## I. Interaction Case 
+
+In this section, we provide an example comprising a single interaction turn between the user simula-tor (Qwen-Flash Alibaba Cloud [1]) and the assistant (Qwen3-1.7B Yang et al. [34]), along with the corre-sponding pre-generated initial query and rubrics and the user-generated feedback, in Figure 8. 
+
+## J. Instance-Level Self-Evaluation Relia-bility 
+
+The Pearson correlation reported in Section 4 is com-puted from step-level aggregates and could in princi-ple hide instance-level disagreements. To examine re-liability at the level of individual interactions, we con-duct an additional pairwise ranking analysis. Specif-ically, we randomly select a subset of the held-out validation interactions and run the assistant on each twice, yielding 1 ,133 pairs of responses where the user provides real feedback on both runs. Both sides are compared in the same 0–3 grade space: the user’s raw 0–10 score is mapped via the same discretization the assistant is trained against. We discard pairs where the user assigns the same grade to both runs, since these pairs have no ground-truth ordering. The remaining user-ranked pairs are classified into three categories: Query                       
+
+> I'm in Brussels, Belgium, and I'm using my tablet on a quiet Saturday evening. Could you recommend some new books based on my usual taste?
+> Response
+> Of course! I recommend The Sleepwalkers by Christopher Clark. This book aligns with your preference for non-fiction, history, and biography genres. It provides a compelling account of the history leading up to World War I, blending detailed historical analysis with biographical insights into the leaders of that era. It’s a perfect fit for your interests. Enjoy!
+> Feedback Textual: Genre: You succeeded here. The focus on history and biography perfectly matches my interests.
+> Favorite Authors: You missed this criterion. The recommendation didn't reflect the style of my favorites, such as Erik Larson, David McCullough, or Yuval Noah Harari.
+> Favorite Books: This book lacks the narrative depth of Dead Wake and the broad historical scope of Sapiens . It doesn't resonate with the themes or accessibility I enjoy.
+> Favorite Book Series: You failed to suggest a series. I was looking for something immersive and multi-volume like The Century Trilogy .
+> Numerical:
+> 4 (out of 10)
+> Rubrics 1. Genre
+> ØCriterion: The response must include book recommendations that align with the user's preference fo r non-fiction, history, and biography genres.
+> ØScore: 4
+> 2. Favorite Authors
+> ØCriterion: The response must suggest books by or similar to the user's favorite authors, such as Erik Larson, David McCullough, and Yuval Noah Harari.
+> ØScore: 3
+> 3. Favorite Books
+> ØCriterion: The response must recommend books that are similar to the user's favorite titles, such as
+> Dead Wake: The Last Crossing of the Lusitania ,The Path Between the Seas , and Sapiens: A Brief H istory of Humankind .
+> ØScore: 2
+> 4. Favorite Book Series
+> ØCriterion: The response must include book series recommendations that are similar to the user's fav orite, The Century Trilogy by Ken Follett, and should be well-researched and immersive historical fiction.
+> ØScore: 1
+
+Figure 8 | An illustrative example of the interaction between the user simulator and the assistant. The figure shows the pre-generated user query, the assis-tant’s response, the rubrics, and the user feedback. The feedback includes textual feedback summarizing satisfied or violated criteria, and a numerical feedback computed as the sum of scores for all satisfied items. • Concordant : the proxy ranks the two runs in the same direction as the user. • Discordant : the proxy ranks them in the opposite direction. • Proxy silent : the proxy assigns the same grade to both runs (the user can rank, the proxy cannot). Among the 1 ,133 pairs, 710 are discarded as user-tied, leaving 423 user-ranked pairs (207 concordant, 78 discordant, 138 proxy-silent). The proxy gives a directional judgment on 67 .4% of these pairs; the remaining 32 .6% are proxy-silent and reflect the in-herent granularity loss of the four-grade discretization. Among the 285 pairs where the proxy does produce a ranking, its direction agrees with the user’s 72 .63% of the time. This indicates that, in the cases where the proxy is decisive, it carries non-trivial directional signal at the instance level. 
+
+J.1. Why Self-Evaluation Calibration Works 
+
+Self-evaluation calibration combines preference rep-resentation and score calibration. Preference Capture SFT encodes textual feedback into each personalized embedding, teacher forcing grounds response prop-erties in user judgments, and PPO jointly updates the embedding and LLM against numerical feedback. Thus, the embedding represents what the user val-
+
+17 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation 
+
+ues, while the LLM maps response quality under those preferences to a user-specific score. Supporting this interpretation, adding Jeval and then LSFT improves performance from 3 .36 to 4 .57 and 4 .69 (Table 2); within Jeval , updating only the LLM or embedding yields 4 .49 and 4 .53, versus 4 .69 when both are up-dated (Table 3). To complement the aggregate results, we analyze two held-out self-evaluation outputs for which the cur-rent textual feedback is unavailable. In one shopping interaction, the self-evaluator recognizes that the re-sponse covers the user’s preferred product categories and attributes such as recycled materials, ethical pro-duction, and cruelty-free products, and assigns the same highest coarse grade as the mapped user feed-back. In a merchandise interaction, it detects that the response recommends San Lorenzo products despite the user’s established preference for Club Universi-dad de Chile, and assigns the same lowest grade as the mapped feedback. These examples illustrate how the self-evaluator identifies both preference matches and conflicts, showing how training-time feedback and accumulated user preferences can support self-evaluation on unseen interactions. 
+
+## K. General Capability Evaluation 
+
+To evaluate whether continual personalization causes catastrophic forgetting of general capabilities, we as-sess the optimized model after the 51-interaction optimization phase described in Section 4. We use 
+
+lm-eval Gao et al. [8] to evaluate instruction follow-ing with IFEval Zhou et al. [39], mathematical reason-ing with GSM8K Cobbe et al. [5], and multi-domain knowledge understanding with MMLU Hendrycks et al. [12, 11]. Table 6 compares the optimized model with the original Qwen3-1.7B Yang et al. [34]. The optimized model shows small numerical in-creases on IFEval and GSM8K, while the MMLU overall score decreases only marginally from 60 .12 to 59 .93. However, these changes are all within one standard deviation of the corresponding benchmark results, so we interpret them as comparable performance rather than evidence of broad general-capability improve-ment or degradation. Overall, COPE’s continual per-sonalization improves personalized behavior while maintaining general instruction-following, reasoning, and knowledge understanding capabilities in this set-ting, suggesting that it does not induce catastrophic forgetting over the evaluated training horizon. 
+
+## L. Preference Shift Adaptation Evalua-tion 
+
+Real-world users may change their preferences over time. We therefore evaluate COPE under two sim-ulated preference-shift settings. Both settings use the same 256 users as in the main experiments: the within-domain shift splits these users into two groups while keeping the domain coverage fixed, and the new-domain shift samples its two 64-user groups from non-overlapping domain sets. In both settings, the model continues training after the simulated shift, and the personalized embedding associated with each user slot is carried over and further updated rather than re-initialized. This tests whether the existing user representation can be revised when the underlying preference distribution changes. For the curves, check-points before the shift are evaluated on the validation tasks of the pre-shift users, while checkpoints after the shift are evaluated on the validation tasks of the post-shift users. Each checkpoint is evaluated three times, and the plotted point and error bar report the mean and standard deviation across these validation runs. In the within-domain shift setting, we randomly split the users into two groups of 128 users. During the first phase, COPE is trained for 51 interactions using tasks from the first user group. After this point, each user slot is switched to a user from the second group to simulate a shift in the underlying preference distribution, and training continues with the same personalized embedding. As shown in Figure 4, the personalization score decreases slightly after the shift, but quickly recovers and continues to improve with further training. In contrast, the completeness score is largely unaffected by the shift and remains at a high level throughout the second phase. These results indicate that COPE can revise the carried-over person-alized embeddings without losing task completeness when preferences shift within the seen domain cover-age. In the new-domain shift setting, we further stress-test adaptation to new preference domains. We first randomly choose 8 domains and sample 64 users in-terested in these domains. We then choose another 8 domains that do not overlap with the first set and sam-ple another 64 users interested in the new domains. COPE is trained for 24 interactions on the first group and then continues training on the second group us-ing the carried-over personalized embedding for each user slot. As shown in Figure 5, both the personaliza-tion and completeness scores decrease after the shift, which is expected because the model is exposed to a new set of domains. As training proceeds, both scores consistently increase, showing that COPE can adapt 
+
+> 18 COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation
+
+Table 6 | General capability evaluation before and after continual personalization. Benchmark Metric Qwen3-1.7B Optimized model IFEval inst_level_loose_acc 73 .50 74 .58 inst_level_strict_acc 70 .50 71 .10 prompt_level_loose_acc 65 .43 ±2.05 67 .47 ±2.02 prompt_level_strict_acc 61 .74 ±2.09 62 .66 ±2.08 GSM8K flexible-extract 68 .69 ±1.28 69 .37 ±1.27 strict-match 68 .31 ±1.28 69 .14 ±1.27 MMLU humanities 52 .73 ±0.70 52 .50 ±0.70 other 64 .15 ±0.84 64 .11 ±0.84 social sciences 68 .28 ±0.82 67 .99 ±0.83 stem 59 .21 ±0.85 59 .02 ±0.85 overall 60 .12 ±0.40 59 .93 ±0.40 not only to preference changes within the same broad environment, but also to shifts involving substantially different domains. The recovery after the shift further suggests that COPE can adapt to new preferences even when the relevant domains change substantially. 
+
+## M. Cross-Family User Model Evalua-tion 
+
+To test whether the observed gains are tied to the Qwen-family user simulator, we conduct an addi-tional evaluation by replacing the user model with DeepSeek-V3 DeepSeek-AI et al. [6]. The assistant model, chronological traversal protocol, and compari-son methods remain unchanged. We use the setting  
+
+> 𝑝
+
+= 0.5 and 𝑞 = 0.5, where 𝑝 is the probability of re-ceiving user feedback and 𝑞 is the teacher-forcing prob-ability in self-evaluation calibration. Initial queries and rubrics are still pre-generated from user prefer-ences, while DeepSeek-V3 provides user feedback dur-ing interaction and evaluates both personalization and task completeness. Table 7 | Cross-family user model evaluation with DeepSeek-V3 as the user simulator ( 𝑝 = 0.5, 𝑞 = 0.5). Scores are personalization score × binary complete-ness score, out of 10 (mean ±std). † indicates methods that involve training. Methods Scores Base 2.16 ±0.02 SR 3.00 ±0.01 DR 3.08 ±0.03 Q-DR 3.30 ±0.01 PAP 3.31 ±0.03 T-PAP † 4.06 ±0.02 COPE † 4.23 ±0.06 Compared with the Qwen-Flash Alibaba Cloud [1] user setting, DeepSeek-V3 yields lower absolute scores across methods, which is attributable to its stricter cri-teria when judging task completeness and preference alignment. Nevertheless, the overall ordering is pre-served: retrieval and profile-based prompting improve over the base assistant, training-based personalization further improves performance, and COPE obtains the highest score. These results indicate that COPE re-mains effective under different user-model judging styles. 
+
+## N. Independent Blinded Pairwise Eval-uation 
+
+To address the concern that COPE’s gains may reflect fitting the Qwen-family simulator and its rubric-based scoring rather than genuine preference adaptation, we conduct an independent, blinded pairwise evalua-tion of COPE and T-PAP responses ( 𝑝 = 0.5) using a human annotator. We randomly sample 12 aligned COPE/T-PAP response pairs from each of the 17 held-out validation steps in the fourth traversal, yielding 204 pairs in total. For each pair, we randomize the presentation order of the two responses to mitigate position bias and ask the human annotator to select the response that better matches the user. The anno-tator sees only the user’s demographics, the affinities relevant to the queried domain, the query, and the two responses; the simulator’s rubrics and numerical scores are withheld. Across the 204 pairs, the human evaluation prefers COPE on 120 pairs and T-PAP on 36, with 48 ties. Thus, COPE wins 76 .92% of the decisive comparisons. The consistent preference for COPE in the blinded, rubric-free human evaluation demonstrates that COPE adapts to human preferences rather than merely learning the 
+
+> 19
+
+COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation 58.8% 23.5% 17.6%        
+
+> 020 40 60 80 100
+> Human evaluation COPE Tie T-PAP
+
+Figure 9 | Blinded pairwise preferences between COPE and T-PAP from human evaluation. Percentages are computed over all 204 randomly sampled validation interactions. simulator’s scoring behavior. 
+
+20

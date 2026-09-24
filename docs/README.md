@@ -6,26 +6,26 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-23
-- 运行时间：2026-09-23 22:25:35 UTC
+- 最新运行日期：2026-09-24
+- 运行时间：2026-09-24 22:18:47 UTC
 - 运行状态：成功
 - 本次总论文数：2
 - 精读区：1
 - 速读区：1
 
 ### 今日简报（AI）
-今日精读1篇、速读1篇，重点聚焦扩散模型隐藏行为解锁与对话长期记忆两项研究。最值得看的是8.0分的《LoRango》，用双LoRA组合解锁扩散模型隐藏行为；速读的《AutoViewMem》则以正交视图自配置应对对话长期记忆。普通读者可优先了解双LoRA如何触发模型潜在能力，再按需关注记忆机制。
-- 详情：[/202609/23/README](/202609/23/README)
+今日精选 2 篇个性化推荐论文：1 篇精读（9.0）、1 篇速读（6.0）。最值得看的是 COPE 如何用用户嵌入与自评估，在稀疏反馈下实现大模型持续个性化。普通读者可先读 COPE 了解思路，再按兴趣浏览时尚匹配那篇。
+- 详情：[/202609/24/README](/202609/24/README)
 
 ### 精读区论文标签
-1. [LoRango: It Takes Two LoRAs to Unlock Hidden Behaviors in Diffusion Models](/202609/23/2609.25884v1-lorango-it-takes-two-loras-to-unlock-hidden-behaviors-in-diffusion-models)  
-   标签：评分：8.0/10、query:pers-gen
-   evidence：组合多个LoRA适配器实现个性化图像生成
+1. [COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation](/202609/24/2609.26853v1-cope-continual-personalization-of-llms-under-sparse-user-feedback-via-user-embeddings-and-self-evaluation)  
+   标签：评分：9.0/10、query:pers-gen
+   evidence：稀疏反馈下基于用户嵌入与自评估的LLM持续个性化
 
 ### 速读区论文标签
-1. [AutoViewMem: Self-Configuring Orthogonal Views for Conversational Long-Term Memory](/202609/23/2609.21940v1-autoviewmem-self-configuring-orthogonal-views-for-conversational-long-term-memory)  
+1. [Adaptive Preference Modeling via Explicit Indirect Relational Learning for Personalized Fashion Matching](/202609/24/2609.21475v1-adaptive-preference-modeling-via-explicit-indirect-relational-learning-for-personalized-fashion-matching)  
    标签：评分：6.0/10、query:pers-gen
-   evidence：面向LLM个性化的长期记忆
+   evidence：面向个性化匹配的自适应偏好建模
 
 
 <div class="dpr-home-promo-card">
