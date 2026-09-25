@@ -6,26 +6,28 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-24
-- 运行时间：2026-09-24 22:18:47 UTC
+- 最新运行日期：2026-09-25
+- 运行时间：2026-09-25 22:12:05 UTC
 - 运行状态：成功
 - 本次总论文数：2
 - 精读区：1
 - 速读区：1
 
 ### 今日简报（AI）
-今日精选 2 篇个性化推荐论文：1 篇精读（9.0）、1 篇速读（6.0）。最值得看的是 COPE 如何用用户嵌入与自评估，在稀疏反馈下实现大模型持续个性化。普通读者可先读 COPE 了解思路，再按兴趣浏览时尚匹配那篇。
-- 详情：[/202609/24/README](/202609/24/README)
+今日推荐日报：2篇论文上榜，1篇9.0分精读、1篇7.0分速读。  
+最值得看的是LLM个性化如何从静态个人价值观走向情境化对齐，以及LLM用户画像在生产流式推荐中何时真正加值。  
+普通读者建议先读9.0分精读建立主线，再按需浏览7.0分速读补应用视角。
+- 详情：[/202609/25/README](/202609/25/README)
 
 ### 精读区论文标签
-1. [COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation](/202609/24/2609.26853v1-cope-continual-personalization-of-llms-under-sparse-user-feedback-via-user-embeddings-and-self-evaluation)  
+1. [From Static Personal Values to Contextualized Personalization: Bayesian Personalized Value Alignment for LLMs](/202609/25/2609.28942v1-from-static-personal-values-to-contextualized-personalization-bayesian-personalized-value-alignment-for-llms)  
    标签：评分：9.0/10、query:pers-gen
-   evidence：稀疏反馈下基于用户嵌入与自评估的LLM持续个性化
+   evidence：面向大模型的上下文感知个性化价值对齐
 
 ### 速读区论文标签
-1. [Adaptive Preference Modeling via Explicit Indirect Relational Learning for Personalized Fashion Matching](/202609/24/2609.21475v1-adaptive-preference-modeling-via-explicit-indirect-relational-learning-for-personalized-fashion-matching)  
-   标签：评分：6.0/10、query:pers-gen
-   evidence：面向个性化匹配的自适应偏好建模
+1. [When LLM-Based User Profiling Adds Value in Production Streaming Recommendation](/202609/25/2609.27183v1-when-llm-based-user-profiling-adds-value-in-production-streaming-recommendation)  
+   标签：评分：7.0/10、query:pers-gen
+   evidence：基于LLM的用户画像生成用于个性化推荐
 
 
 <div class="dpr-home-promo-card">
