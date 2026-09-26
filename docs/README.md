@@ -6,28 +6,24 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-25
-- 运行时间：2026-09-25 22:12:05 UTC
+- 最新运行日期：2026-09-26
+- 运行时间：2026-09-26 21:42:29 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：1
+- 本次总论文数：1
+- 精读区：0
 - 速读区：1
 
 ### 今日简报（AI）
-今日推荐日报：2篇论文上榜，1篇9.0分精读、1篇7.0分速读。  
-最值得看的是LLM个性化如何从静态个人价值观走向情境化对齐，以及LLM用户画像在生产流式推荐中何时真正加值。  
-普通读者建议先读9.0分精读建立主线，再按需浏览7.0分速读补应用视角。
-- 详情：[/202609/25/README](/202609/25/README)
+今日仅速读 1 篇，精读挂零，聚焦生成式用户界面设计流程。唯一值得看的是《GUIDE》（6.0/10）：让设计师参与把关，使生成出的 UI 更符合规范。若你对 AI 生成界面感兴趣，可先浏览它的设计者参与机制，暂不必精读全文。
+- 详情：[/202609/26/README](/202609/26/README)
 
 ### 精读区论文标签
-1. [From Static Personal Values to Contextualized Personalization: Bayesian Personalized Value Alignment for LLMs](/202609/25/2609.28942v1-from-static-personal-values-to-contextualized-personalization-bayesian-personalized-value-alignment-for-llms)  
-   标签：评分：9.0/10、query:pers-gen
-   evidence：面向大模型的上下文感知个性化价值对齐
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [When LLM-Based User Profiling Adds Value in Production Streaming Recommendation](/202609/25/2609.27183v1-when-llm-based-user-profiling-adds-value-in-production-streaming-recommendation)  
-   标签：评分：7.0/10、query:pers-gen
-   evidence：基于LLM的用户画像生成用于个性化推荐
+1. [GUIDE: Designer-in-the-loop Authoring of Conformant Generative User Interfaces](/202609/26/2609.21285v1-guide-designer-in-the-loop-authoring-of-conformant-generative-user-interfaces)  
+   标签：评分：6.0/10、query:pers-gen
+   evidence：生成式界面依据用户需求与上下文自适应，并通过提示优化适配
 
 
 <div class="dpr-home-promo-card">
