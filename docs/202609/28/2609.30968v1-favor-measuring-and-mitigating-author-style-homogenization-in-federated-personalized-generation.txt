@@ -1,0 +1,1985 @@
+Title: FAVoR: Measuring and Mitigating Author-Style Homogenization in Federated Personalized Generation
+
+URL Source: https://arxiv.org/pdf/2609.30968v1
+
+Published Time: Mon, 28 Sep 2026 00:45:15 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# FAVoR: Measuring and Mitigating Author-Style Homogenization in Federated Personalized Generation 
+
+Lu Han *, Jingyao Zhang *, Katy Ilonka Gero, Nguyen H. Tran 
+
+School of Computer Science, The University of Sydney Sydney, NSW 2006, Australia  
+
+> *Corresponding authors: {lhan0123,jzha0544}@sydney.edu.au
+
+Abstract 
+
+Large language models are increasingly used as personalized writing assistants, but adapt-ing a model across many authors can compro-mise individual writing style by pulling author-specific signals toward a shared register. Fed-erated parameter-efficient fine-tuning (PEFT) offers a data-local setting for this multi-author adaptation problem: clients keep author text local while sharing compact adapter updates. However, we show that standard aggregation can preserve continuation utility while making different authors’ generations less distinguish-able in style space, a failure mode we define as author-style homogenization . We evaluate author-style retention with Angular Style Clas-sification Encoder (ASCE)-based diagnostics on our main BlogText benchmark and ASCE-independent external authorship verification. Using this protocol, we find that common feder-ated PEFT baselines can preserve semantic util-ity while averaging out author-specific signals. To address this homogenization, we instanti-ate FAVoR (Federated Authorial Voice Reten-tion), an author-style residual mechanism for federated PEFT. FAVoR uses a shared–private adapter design: clients upload shared-adapter updates while retaining author-specific residual corrections locally. Across BlogText and exter-nal Mythos-Reddit validation, FAVoR improves author-style retention over standard and person-alized federated PEFT baselines. These gains come with small continuation-utility trade-offs and are supported by component ablations, ex-ternal verification, and cold-start transfer. 
+
+1 Introduction 
+
+Personalized writing support often asks a large lan-guage model (LLM) to continue unseen prompts while preserving an author’s characteristic writ-ing style. In collaborative adaptation, however, improvements in general continuation competence can reduce the stylistic distinctions that personaliza-tion is meant to preserve. We call this failure mode 
+
+author-style homogenization : continuations re-main fluent and semantically plausible, but lose author-specific stylistic signals. This problem is especially sharp under author-level non-identically distributed (non-IID) data. Clients differ in lexical choice, syntax, pacing, rhetorical structure, and register, not merely in sam-ple distribution. Naïvely pooling author data, or av-eraging all parameter-efficient fine-tuning (PEFT) updates in federated learning (FL), can mix author-specific correction directions with unrelated or op-posing directions from other authors, shifting gen-erations toward a shared register. Keeping raw text local is therefore insufficient by itself (Lin et al., 2022); standard FL still needs a mechanism for deciding which adaptation directions should be shared and which should remain client-specific. We study this issue in personalized held-out continuation : each client corresponds to one au-thor, and the model must continue held-out prompts in that author’s style. This setting makes homog-enization directly testable, because collaboration should improve continuation quality without eras-ing cross-author stylistic distinctions, and evalua-tion must separate author signal from topical con-tent. We introduce an author-style retention evalua-tion protocol based on an Author-Style Signature Space. For BlogText, we instantiate this space with an author-disjoint Angular Style Classification En-coder (ASCE). To test whether this space captures the author signal rather than the topic alone, we use the topic as a coarse content proxy and the au-thor labels as an operational proxy for author style. Figure 1 shows that the learned signature space increases author-within-topic separability and re-duces the topic–author origin-fit slope from 0.72 
+
+to 0.47 relative to raw computational-linguistic fea-tures. To mitigate homogenization, we introduce FA-VoR, an author-style residual mechanism on a arXiv:2609.30968v1 [cs.CL] 25 Sep 2026 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 Origin fit: y=0.72x x=y      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Origin fit: y=0.47x x=y
+> 0.25x 0.5x 1x 2x 4x
+> Author/topic ratio (log2)
+> Author-within-topic discriminability Topic discriminability
+
+Figure 1: Coordinate-level author/topic discriminabil-ity. Each point is one scalar coordinate: a hand-crafted stylometric feature on the left or an ASCE embedding dimension on the right. Lower-right and greener points carry more author-than-topic signal; marker size scales with distance from the origin. ASCE shifts the distribu-tion toward stronger author signal and a lower topic-on-author origin-fit slope. 
+
+shared–private federated PEFT pattern. The shared adapter carries transferable continuation updates, while client-local residual adapters retain author-specific corrections outside aggregation. We sum-marize the contributions of this work as follows: • We define author-style homogenization as a utility-preserving loss of cross-author stylistic distinguishability in federated held-out contin-uation. • We introduce an author-style retention eval-uation protocol combining author-disjoint ASCE diagnostics, ASCE-independent gen-to-source verification, and source-space topic controls. • We propose FAVoR , an author-style resid-ual mechanism for federated PEFT. FAVoR separates shared continuation competence from client-local style residuals, optimizes the residual with local author-style targets, and keeps it outside aggregation. • Across BlogText and Mythos-Reddit, we show that FAVoR improves author-style reten-tion over standard and personalized federated PEFT baselines while maintaining a favorable retention–utility trade-off. 
+
+2 Related Work 
+
+Federated Personalization and PEFT for LLMs. 
+
+Federated learning enables decentralized model av-eraging without sharing raw client data, but statisti-cal heterogeneity can cause a single global model to underfit client-specific behavior (McMahan et al., 2017; Lin et al., 2022). Personalized FL addresses this issue through client-specific objectives, proxi-mal regularization, or shared/client-specific adap-tation structures, including pFedMe, Ditto, Fed-Prox, and recent federated adapter variants (T. Dinh et al., 2020; Li et al., 2021, 2020; Qi et al., 2024; Yang et al., 2024). Recent federated LLM work combines FL with parameter-efficient adaptation, commonly through low-rank adapters (LoRA), to reduce communication and memory cost (Hu et al., 2022; Wang et al., 2024; Bai et al., 2024). FAVoR uses this global–local adapter pattern as a com-munication design rather than claiming it as the architectural novelty. Its contribution is to study author-style homogenization in federated held-out continuation and to define the local component as an author-style residual, trained with local author targets and kept outside aggregation. 
+
+Authorship-Conditioned Generation and Eval-uation. Mythos constructs author profiles from multiple writings and evaluates whether the gener-ated stories resemble held-out author-written sto-ries (Ashok Kumar et al., 2025), motivating author-conditioned generation rather than federated collab-oration among private authors. Style transfer and rewriting are related but distinct: formality-transfer benchmarks transform a given input while preserv-ing content (Rao and Tetreault, 2018), whereas held-out continuation requires open-ended gener-ation that preserves coherence, distributional fit, and author-specific style. We use MAUVE and BERTScore as continuation-utility metrics (Pillutla et al., 2023; Zhang* et al., 2020), but additionally evaluate author-style retention, inter-author sepa-rability, and collapse because fluent continuations can still converge to a shared register. Human–AI writing studies report related homogenization ef-fects under model assistance (Padmakumar and He, 2024; Agarwal et al., 2025). 
+
+Style and Authorship Representation Learn-ing. Authorship encoders such as LUAR and STAR learn representations for authorship verifi-cation and cross-domain transfer, while also re-vealing domain entanglement in learned author fea-tures (Rivera-Soto et al., 2021; Huertas-Tato et al., 2024). Style-specific embedding work shows that naturally occurring contrastive examples can leak topic; StyleDistance addresses this with content-controlled style comparisons (Patel et al., 2025). Our normalized author/style space also connects to ArcFace-style metric learning for identity separa-tion (Deng et al., 2019). We build on this line of work by using author/style representations both as evaluation spaces and as local alignment targets. 3 Method 
+
+We study data-local federated personalized held-out continuation under author-non-IID data. There are N clients, where each client i ∈ { 1, . . . , N }
+
+corresponds to one author with a local training corpus Dtrain  
+
+> i
+
+. The goal is to improve shared continuation competence across clients while pre-serving author-specific style, so that collabora-tion does not homogenize outputs across authors. Each client also keeps a local author-reference set 
+
+Dref  
+
+> i
+
+⊆ D train  
+
+> i
+
+for style estimation. FAVoR im-poses a shared–private aggregation boundary: the shared adapter is the only federated component, whereas private residual packs remain local and are never aggregated. Figure 2 gives the workflow; Algorithm 1 summarizes one round. 
+
+3.1 Mechanism Constraint: Shared Competence and Private Style 
+
+FAVoR stores the private adapter as a residual pack relative to the shared endpoint (Eq. (2)) and trains it against a local author target. Together with this residual structure, the shared–private boundary sep-arates shared continuation competence from author-specific stylistic variation, limiting author-style ho-mogenization. Starting from a frozen base language model with parameters θ, FAVoR uses two PEFT artifacts with asymmetric communication roles: • a shared adapter A(g), which is communi-cated and aggregated across clients to learn transferable continuation competence; and • a private residual pack ∆A(p) 
+
+> i,τ i
+
+, where τi is client i’s latest private-update round; it re-mains local and stores the author-specific cor-rection from the shared endpoint. Throughout, A denotes any serialized LoRA adapter-shaped state—including shared, personal-ized, and residual/delta states—i.e., a set of factor tensors (Uℓ, V ℓ) for each layer ℓ, not the LoRA factor conventionally called A. With LoRA rank 
+
+r and scaling α, the effective per-layer update is 
+
+∆Wℓ(A) = ( α/r )VℓUℓ. The personalized model for client i at its latest private update τi is 
+
+pi(y | x) = LM 
+
+
+
+y | x; θ ⊕
+
+
+
+A(g) 
+
+> i,τ i
+
++ ∆ A(p)
+
+> i,τ i
+
+ 
+
+,
+
+(1) where LM( y | x; ·) denotes the autoregressive likelihood of response tokens y conditioned on 
+
+x, ⊕ attaches an adapter to the frozen base, and 
+
+A(g) + ∆ A(p) denotes factor-wise reconstruction of the LoRA adapter state. The private residual pack is defined at the LoRA-factor level, relative to the client’s shared endpoint: 
+
+∆A(p) 
+
+> i,τ i
+
+=
+
+n
+
+∆U (p)
+
+> i,τ i,ℓ
+
+, ∆V (p)
+
+> i,τ i,ℓ
+
+o 
+
+> ℓ
+
+,
+
+∆U (p) 
+
+> i,τ i,ℓ
+
+= U (p) 
+
+> i,τ i,ℓ
+
+− U (g)
+
+> i,τ i,ℓ
+
+,
+
+∆V (p) 
+
+> i,τ i,ℓ
+
+= V (p) 
+
+> i,τ i,ℓ
+
+− V (g)
+
+> i,τ i,ℓ
+
+.
+
+(2) At inference, reconstructing the LoRA factors as 
+
+U (g) 
+
+> ℓ
+
++ ∆ U (p) 
+
+> ℓ
+
+and V (g) 
+
+> ℓ
+
++ ∆ V (p) 
+
+> ℓ
+
+exactly recovers the locally trained rank-r adapter A(p) 
+
+> i,τ i
+
+, so the per-sonalized rank is preserved by construction. Thus, Eq. (2) defines how the personalized adapter is stored locally and reconstructed, rather than assum-ing a linear decomposition of the effective LoRA weight update. We do not assume effective-weight additivity ( ∆Wℓ(A(g) + ∆ A(p))̸ = ∆ Wℓ(A(g)) + ∆Wℓ(∆ A(p)) in general); cross terms remain lo-cal during reconstruction. The operative shared– private boundary lies in the aggregation policy and the shared-endpoint coupling of Sec. 3.3: only A(g)
+
+updates are uploaded, so aggregation never aver-ages residual packs across authors. 
+
+3.2 Angular Style Classification Encoder 
+
+To make author preservation trainable and mea-surable, FAVoR uses a fixed style encoder, which we call the Angular Style Classification Encoder 
+
+(ASCE). ASCE maps a text x to a normalized style embedding: 
+
+z(x) = norm( Eϕ(x)) . (3) Here Eϕ is the ASCE text encoder and norm( v) = 
+
+v/ ∥v∥2.ASCE is trained to make texts from the same author compact and texts from different authors separable. Concretely, we train it with an angular-margin authorship classification objective, inspired by angular-margin metric learning in face recogni-tion (Deng et al., 2019). Let KASCE be the num-ber of ASCE-training authors, a the author index of text x, and {wk}KASCE  
+
+> k=1
+
+the learned normalized classifier prototypes, with wa selecting the positive-author prototype. These prototypes are discarded with the classifier head after ASCE training. We first define the positive-author angle θa(x) and log-its sa(x) and sk(x) as 
+
+θa(x) = arccos 
+
+
+
+w⊤ 
+
+> a
+
+z(x)
+
+
+
+,sa(x) = γ cos( θa(x) + ms) ,sk(x) = γw ⊤ 
+
+> k
+
+z(x), k̸ = a. 
+
+(4) The ASCE training loss is the cross-entropy loss 2a) Local Shared-stage update        
+
+> 1) Client-side model state
+> 2b) Local Private-stage style alignment
+> Reference
+> Subset Author
+> target
+> Projected style
+> representation
+> Private Residual Pack
+> Frozen
+> component
+> Local-only
+> artifact
+> broadcast
+> upload only
+> Parameters Compose
+> Client
+> Style embedding Private Residual Pack
+> shared-adapter delta
+> Update shared branch
+> Local corpus
+> Local
+> minibatch
+> Shared Adapter
+> Encoder
+> Local-only Upload to server
+> 4) Weighted Aggregation
+> 3) Collect uploads from sampled clients
+> Server
+> Base LLM
+> 5) Update shared adapter
+
+Figure 2: FAVoR workflow. Clients upload only shared-adapter deltas for aggregation; author targets, hidden states, and private residual packs remain local. Private updates use task loss plus style alignment. 
+
+over these logits: 
+
+LASCE (x, a ) = −sa(x) + log Za(x)
+
+where Za(x) = exp( sa(x)) + X 
+
+> k̸=a
+
+exp( sk(x)) .
+
+(5) Here sa is the margin-adjusted target-author logit, 
+
+sk are non-target logits, Za is the softmax normal-izer, ms is the angular margin, and γ rescales nor-malized cosine logits. After ASCE training, the classification head is discarded and the encoder Eϕ
+
+is fixed. 
+
+Training-time status. ASCE is trained once be-fore the federated procedure, and its encoder Eϕ
+
+is then frozen. During FL, clients use this fixed encoder only as a local style-measurement module: each client computes its author target from its local reference set and computes private-stage alignment signals from local minibatches on the device. For each client i, FAVoR constructs the local author target in Eq. (6) from the deterministic local author-reference set Dref  
+
+> i
+
+:
+
+qi = norm 
+
+ 1
+
+|D ref  
+
+> i
+
+|
+
+X
+
+> x∈D ref
+> i
+
+z(x)
+
+ . (6) This target remains local and serves as the client’s private style anchor in the private-stage alignment loss in Eq. (11). 
+
+3.3 Local Shared and Private Updates 
+
+Each sampled client performs a shared-stage up-date followed by a private-stage update, as shown in Algorithm 1, lines 3–4. For a local minibatch Bi, both the shared-stage update and the private-stage update use the same task loss: 
+
+Ltask  
+
+> i
+
+(Bi) = − 1
+
+|Bi|
+
+X
+
+> (x,y )∈Bi
+
+log pi(y | x). (7) In Eq. (7), pi is evaluated under the adapter being updated: the local shared copy (the client’s copy of the broadcast shared adapter) in the shared stage and the composed personalized model in Eq. (1) in the private stage. The local shared copy is trained with the ob-jective in Eq. (8), combining the task loss with a proximal stabilization term around the current server adapter: 
+
+Lshared  
+
+> i
+
+= Ltask  
+
+> i
+
++ λprox A(g) 
+
+> i
+
+− A(g) 
+
+> t
+> 22
+
+. (8) This term discourages local shared updates from drifting too far from the round-t global adapter; the norm sums squared Frobenius norms over LoRA factor tensors. Because the shared-stage update produces the communicated adapter delta, the ex-plicit style-alignment signal is not applied here; it is reserved for the local private-stage update. The private-stage update uses an additional style-alignment objective. Rather than sam-pling generations during training, FAVoR uses teacher-forced hidden states from the personal-ized model. Let Hi(Bi) ∈ R|Bi|× L×d denote the final-layer hidden states produced on minibatch 
+
+Bi. Let Mi(Bi) ∈ { 0, 1}|Bi|× L be the supervised-response-token mask, set to 1 at positions whose label is not the ignore index and 0 otherwise (i.e., prompt and padding positions are excluded). The pooled style state in Eq. (9) is the mask-weighted mean of Hi over response tokens: 
+
+hi(Bi) = 
+
+P 
+
+> b,ℓ
+
+Mi,b,ℓ Hi,b,ℓ 
+
+P 
+
+> b,ℓ
+
+Mi,b,ℓ 
+
+. (9) The projected style representation in Eq. (10) is then obtained with a lightweight projection head 
+
+Pψ:
+
+ˆzi(Bi) = norm( Pψ(hi(Bi))) . (10) 
+
+Pψ is a lightweight 2-layer MLP from the LM hid-den size to the ASCE embedding dimension. It is randomly initialized at the start of each client’s private stage, optimized jointly with the private adapter under Lalign  
+
+> i
+
+, and discarded afterwards. It is therefore per-client and per-round, is never up-loaded or aggregated, and is not used at inference; because it is discarded after training, only gradi-ents propagated through it to the private adapter can have a persistent effect. The private-stage style-alignment loss in Eq. (11) measures cosine distance to the local author target from Eq. (6): 
+
+Lalign  
+
+> i
+
+= 1 − cos(ˆ zi(Bi), q i) . (11) The private-stage objective in Eq. (12) combines the task loss from Eq. (7) with the style-alignment loss from Eq. (11): 
+
+Lprivate  
+
+> i
+
+= Ltask  
+
+> i
+
++ λalign κtLalign  
+
+> i
+
+, (12) where λalign controls the strength of style align-ment and κt ∈ [0 , 1] is a warmup coefficient. In our experiments, κt linearly ramps from 0 to 1 over the first 5% of private-stage steps in each round and is held at 1 thereafter. We set λalign = 0 .3. In the private stage, forward passes use the composed per-sonalized model in Eq. (1); gradients are stopped through the shared endpoint A(g) 
+
+> i,t
+
+and applied only to the private adapter/residual parameters. This isolates the author-specific correction as a residual relative to the shared endpoint rather than as an-other contribution to the public aggregation space. The resulting personalized adapter is stored as the private residual pack via Eq. (2). 
+
+3.4 Federated Aggregation 
+
+At communication round t, the server samples a subset of clients St and broadcasts the current shared adapter A(g) 
+
+> t
+
+. Each sampled client performs its local shared update and uploads only the shared-adapter delta in Eq. (13): 
+
+∆A(g) 
+
+> i,t
+
+= A(g) 
+
+> i,t
+
+− A(g) 
+
+> t
+
+. (13) Only ∆A(g) 
+
+> i,t
+
+is uploaded; all residuals, author tar-gets, hidden states, references, and style-control 
+
+Algorithm 1 FAVoR Round Summary                               
+
+> Require: Current shared adapter A(g)
+> t; sampled clients St;fixed ASCE encoder Eϕ
+> 1: Server broadcasts A(g)
+> tto clients in St
+> 2: for all clients i∈ S tin parallel do
+> 3: Train a local shared copy with Lshared
+> i, yielding A(g)
+> i,t
+> 4: Train the local private adapter from A(g)
+> i,t with Lprivate
+> i
+> 5: Store {A(g)
+> i,t ,∆A(p)
+> i,t }locally and upload only ∆A(g)
+> i,t
+> 6: end for
+> 7: Server aggregates uploaded shared deltas and updates
+> A(g)
+> t+1
+> Full pseudocode in Algorithm 2.
+
+signals remain local. The server aggregates sampled client deltas us-ing Eq. (14): 
+
+∆A(g) 
+
+> t
+
+= X
+
+> i∈S t
+
+ω(t) 
+
+> i
+
+∆A(g) 
+
+> i,t
+
+, X
+
+> i∈S t
+
+ω(t) 
+
+> i
+
+= 1 .
+
+(14) Because each client represents one author, we use uniform sampled-client weighting in the main ex-periments, i.e., ω(t) 
+
+> i
+
+= 1 /|S t|. The shared adapter is then updated according to Eq. (15): 
+
+A(g) 
+
+> t+1
+
+= A(g) 
+
+> t
+
++ ηg∆A(g) 
+
+> t
+
+, (15) where ηg is the server learning rate. 
+
+Data-locality boundary. FAVoR follows the standard federated-learning data-locality bound-ary (Figure 2, Algorithms 1–2). The server re-ceives and aggregates only shared-adapter deltas 
+
+∆A(g) 
+
+> i,t
+
+. Client training corpora Dtrain  
+
+> i
+
+, local author-reference sets Dref  
+
+> i
+
+, author targets qi, private resid-ual packs ∆A(p) 
+
+> i,t
+
+, style-alignment hidden states, and local style-control signals remain on device and outside aggregation. This is a data-locality claim rather than a formal privacy guarantee: shared-adapter deltas may still encode memorized text or author-identifying information, and we do not implement secure aggregation, differential privacy, or update-level leakage auditing. The fixed ASCE encoder in Eq. (3) is a centralized pre-training ar-tifact, frozen during FL. For BlogText, its training authors are disjoint from the FL roster, and dur-ing FL, client data are used only to compute local style-control signals. 
+
+Inference. At inference, client i composes the frozen base model with A(g) 
+
+> i,τ i
+
++ ∆ A(p) 
+
+> i,τ i
+
+as in Eq. (1). Because the residual is tied to the shared endpoint that produced it, unsampled clients retain their lat-est personalized endpoint rather than recomposing that residual with a later global adapter. 4 Experiment 
+
+Data preprocessing and metrics. Our main benchmark, BlogText, is a filtered held-out contin-uation split of the Blog Authorship Corpus (Schler et al., 2006) based on Tatman’s Kaggle redistri-bution (Tatman, n.d.). We retain authors with at least 30K tokenizer tokens, split each author’s docu-ments into 80/10/10 train/validation/test partitions, and sample a style-diverse 50-author roster. Each federated client is one author, so raw author text remains client-local. Evaluation prompts are 96-token prefixes of held-out posts (192 tokens on Mythos-Reddit), and generations are capped at 220 new tokens. We filter predefined degenerate out-puts: empty or short generations with fewer than 20 whitespace-delimited tokens, and repetition-collapsed generations with a distinct-bigram ratio below 0.15 . Appendix B.18 reports the coverage check. External validation uses 50 Mythos-Reddit r/WritingPrompts authors and 300 balanced held-out continuations (Ashok Kumar et al., 2025; Fan et al., 2018). We evaluate author-style retention using ASCE-space separability, geometry, and collapse met-rics, plus external gen →source verification with StyleDistance, MiniLM, and stylometric author-ship features (Patel et al., 2025; Wang et al., 2020; Stamatatos, 2009). Unless otherwise noted, re-sult tables report author accuracy (Acc.), macro-F1, receiver-operating-characteristic area under the curve (AUC), and equal error rate (EER). Seman-tic similarity is abbreviated as SemSim. We run a small human two-alternative forced-choice (2AFC) audit in which annotators choose which of two author profiles better matches a candidate contin-uation, used as a perceptual sanity check rather than a full preference or authenticity evaluation (see Appendix B.10). 
+
+Experimental setup. The experiments test whether collaborative PEFT homogenizes author style, whether FAVoR mitigates this effect with-out degrading continuation quality, and whether its author-style-retention advantage over collabo-rative baselines transfers beyond BlogText. The main BlogText evaluation uses three seeds on a frozen 50-client medium non-IID long-tail split (target/realized Gini: 0.25 /0.196 ; 904 ,378 allo-cated word units defined by a fixed English-word regular expression; FL schedule: (R, C, ¯p) =(6 , 12 , 1.44) ). Table 2 focuses on collaborative federated meth-ods (i.e., FedAvg, FedProx, pFedMe, Ditto, Fed-DPA, and FAVoR) while pooled PEFT is reported as a centralized non-federated reference in Table 3. FedDPA is included as the closest-family global– local adapter baseline. Local-only adaptation is treated as a strong non-collaborative style-retention reference, so base-only and local-only references are reserved for diagnostic and appendix tables and excluded from Table 2. We ablate ASCE alignment and the shared– private residual decomposition. Appendices B.4– B.20 report prompting/retrieval-style baselines, source-space controls, sensitivity checks, external-verifier breakdowns, communication costs, and full statistical tests. Training objectives and local losses are specified in Section 3. Final backbone, adapter, batching, learning-rate, communication, storage, and runtime settings are reported in Appendix B.19. 
+
+ASCE instantiation and evaluator boundary. 
+
+For BlogText, the ASCE encoder used for local style alignment and ASCE-space author-style eval-uation is trained once before FL on 50 BlogText au-thors disjoint from the 50-author FL roster. It does not observe FL training texts, held-out prompts, generated continuations, or any main-roster author identity. We discard its classifier head and use the frozen encoder to define style targets and evalua-tion embedding. Appendix B.13 gives the training and evaluation details. ASCE-independent veri-fiers provide a complementary check in Table 3 and Appendix B.12. 
+
+4.1 Signature-Space Validity 
+
+Before using ASCE for author-style retention mea-surement, we test whether the author-style signal is recoverable under topic controls. Table 1 re-ports the compact source-space diagnostic against RoBERTa, StyleDistance, LUAR, and STAR base-lines (Liu et al., 2019; Patel et al., 2025; Rivera-Soto et al., 2021; Huertas-Tato et al., 2024). Ap-pendix B.5 gives the expanded version.                             
+
+> Representation Acc. ↑F1 ↑AUC ↑EER ↓
+> RoBERTa 0.635 0.677 0.629 0.421 StyleDist. 0.628 0.660 0.716 0.344 LUAR 0.633 0.677 0.797 0.277 STAR 0.648 0.715 0.856 0.229 ASCE 0.651 0.692 0.863 0.211
+> Table 1: Compact source-space representation diagnos-tics. Coordinate-level author/topic discriminability is reported as an appendix diagnostic in Table 8.
+
+4.2 Main Results and Ablations Main results. Table 2 reports the collaborative-method comparison. Table 4 separates the resid-ual parameterization from the alignment loss. For BlogText, author accuracy, macro-F1, and verifi-cation AUC/EER are all computed in the frozen ASCE space. Verification AUC/EER uses the same-author versus the different-author generated-continuation pairs. Table 3 reports ASCE-independent generated-to-source cosine verification. StyleDist. denotes StyleDistance embeddings, MiniLM denotes all-MiniLM-L6-v2 sentence embeddings, and Sty-lom. denotes classical stylometric features (charac-ter/word n-grams, function-word frequencies, and punctuation/structure statistics). Same-author gen-erated/source pairs are positives and same-topic, different-author pairs are negatives; AUC and EER denote ROC area and equal error rate, respec-tively. Appendix B.13 reports the expanded Blog-Text ASCE results, including source-anchored and generated-text views, and Appendix B.20 reports paired tests. Across both datasets, FAVoR shows the strongest collaborative author-style retention, with small, mixed changes in continuation utility. On BlogText, slight BERTScore decreases against Ditto/FedProx/FedDPA are outweighed by larger retention gains, and FAVoR also improves over pooled PEFT in both author accuracy and BERTScore. Table 3 confirms FAVoR’s author-style-retention advantage over the collaborative baselines under ASCE-independent verifiers, while local-only remains a strong non-collaborative ref-erence. The Mythos-Reddit breakdown appears in Appendix B.16. A method-blinded reference-free Qwen judge found no significant generic-quality difference be-tween FAVoR and any collaborative baseline after Holm correction. In a separate pairwise author-voice test, the judge preferred FAVoR in 61 .2% of non-ties (author-clustered p = 0 .022 ), supporting author-style fidelity rather than generic utility supe-riority; Appendix B.11 gives the protocol and full results. A small human 2AFC audit provides a comple-mentary perceptual check: FAVoR continuations were matched to the intended author more often than Ditto continuations (91.7% vs. 68.3% vote-level accuracy). We use this only as supporting evidence that the retained author signal is human-perceivable, not as a standalone preference or au-thenticity evaluation. Details and qualitative exam-ples appear in Appendices B.10 and B.2. 
+
+Ablations. Table 4 reports FAVoR component ablations and a targeted Ditto+ASCE retrofit. The Ditto+ASCE row keeps Ditto’s personalized proximal branch but adds the same local ASCE alignment loss, testing whether the gains can be explained by simply attaching ASCE to a personalized-FL baseline. The FAVoR w/o ASCE row removes the alignment loss while preserving the shared–private residual decomposition. Thus, the table separates the contribution of style align-ment from the contribution of the residual aggrega-tion constraint. The two components are separable but not inter-changeable. Attaching the same ASCE alignment loss to a personalized-FL baseline (Ditto+ASCE) improves over the shared-only Global ASCE con-trol but recovers only a fraction of FAVoR’s author-accuracy gain, whereas FAVoR without the align-ment loss already attains most of it. The shared– private aggregation protocol, not the alignment loss alone, accounts for the bulk of author-style retention. Alignment provides a smaller, metric-dependent change on top. The main-text ta-ble reports seed mean. Appendix B.18 reports the mean ±standard-deviation version, paired ab-lation tests, external-verifier tests, and configu-ration checks. These tests support the author-style gains while showing that utility differ-ences are small and mixed. Source-anchored ASCE mean ±standard-deviation diagnostics are reported in Appendix B.13, and the 100-author stress test is reported in Appendix B.7. An independently trained ASCE-B post-hoc evalua-tion also preserves the ordering: FAVoR reaches source-prototype accuracy/AUC of 0.403 /0.771 ,versus 0.214 /0.723 for Ditto. Controlled text-volume, author-imbalance, and ASCE evaluator-scale checks retain FAVoR’s relative author-retention advantage within the tested ranges; Ap-pendices B.8, B.14, and B.15 report these diagnos-tics. 
+
+Adapter-space diagnostic. Figure 3 shows that personalized FAVoR adapters concentrate LoRA update energy in multilayer perceptron (MLP) pro-jections rather than distributing it uniformly across target modules, consistent with the private residual pack storing structured corrections on top of the shared endpoint (details in Appendix B.3). Dataset Method Author Acc. ↑
+
+Macro-F1 ↑
+
+Verif. AUC ↑
+
+EER 
+
+↓
+
+BERTScore 
+
+↑
+
+SemSim 
+
+↑
+
+BlogText FedAvg 0.199 0.164 0.680 0.371 0.819 0.359 FedProx 0.174 0.161 0.674 0.365 0.817 0.353 pFedMe 0.271 0.252 0.739 0.321 0.817 0.372 Ditto 0.278 0.255 0.763 0.297 0.815 0.366 FedDPA † 0.294 0.271 0.749 0.313 0.818 0.376 FAVoR 0.403 0.365 0.824 0.245 0.815 0.380 
+
+Mythos-Reddit FedAvg 0.134 0.115 0.658 0.386 0.823 0.482 FedProx 0.141 0.113 0.663 0.377 0.823 0.478 pFedMe 0.324 0.290 0.762 0.305 0.823 0.477 Ditto 0.392 0.359 0.818 0.253 0.825 0.487 FedDPA † 0.357 0.317 0.803 0.268 0.825 0.488 FAVoR 0.561 0.521 0.900 0.175 0.826 0.494 
+
+Table 2: Main federated held-out continuation results. †FedDPA is trained with the dynamic-gate setup; reported continuations use the exported per-client mean validation gate, audited in Appendix B.17. 
+
+Method StyleDist AUC ↑
+
+StyleDist EER ↓
+
+MiniLM AUC ↑
+
+Stylom. AUC ↑
+
+FedProx 0.724 0.334 0.631 0.651 Pooled PEFT 0.736 0.327 0.650 0.660 Ditto 0.748 0.318 0.650 0.683 FedDPA † 0.747 0.318 0.659 0.692 Local-only + ASCE 0.768 0.301 0.685 0.708 FAVoR 0.771 0.295 0.675 0.714 
+
+Table 3: Main BlogText results with external authorship verification. 
+
+Variant Author Acc. ↑
+
+Macro-F1 ↑
+
+BERTScore 
+
+↑
+
+StyleDist. AUC ↑
+
+Global ASCE 0.161 0.140 0.818 0.728 Ditto + ASCE 0.318 0.286 0.816 0.746 FAVoR w/o ASCE 0.377 0.331 0.814 0.767 FAVoR 0.403 0.365 0.815 0.771 
+
+Table 4: Core BlogText component ablations with StyleDistance gen →source verification. 
+
+4.3 Cold-Start Transfer to Unseen Authors 
+
+We use cold-start transfer as a supplementary test of whether the federated shared adapter provides a reusable writing initialization. The shared adapter is trained on 40 federated authors and transferred to 10 held-out authors. Each held-out author then trains a lightweight private residual from only K
+
+local examples and is evaluated on disjoint con-tinuations. To avoid author-label evaluator leak-age, cold-start author-separability metrics use a separate ASCE-style encoder trained without the 10 held-out authors and classify generations us-ing nearest-prototype matching to held-out-author prototypes built only from the same K adaptation examples. Table 5 reports the compact K = 8 q_proj k_proj v_proj o_proj gate_proj up_proj down_proj                                     
+
+> LoRA target module
+> L00-05 L06-11 L12-17 L18-23 L24-29 L30-35
+> Layer block
+> 7.0 1.0 1.4 9.4 31.7 36.7 12.9 5.9 0.7 1.0 7.1 34.3 40.7 10.2 6.0 0.8 1.0 7.4 35.1 39.2 10.5 6.1 0.8 1.0 7.8 36.3 37.8 10.3 5.8 0.8 1.0 7.5 35.8 38.5 10.7 5.3 0.7 1.2 10.2 33.4 36.9 12.4
+> 010 20 30 40 % of layer-block LoRA energy
+
+Figure 3: Adapter-space diagnostic for FAVoR on Blog-Text. Cells show normalized LoRA update energy by layer block and module, averaged over 50 personalized adapters. 
+
+Method Sep. Acc. ↑
+
+Macro-F1 ↑
+
+Target Sim. ↑
+
+Shared only 0.150 0.166 0.191 Random shared init + private 0.308 0.278 0.201 Local-only from base 0.425 0.428 0.259 FAVoR shared init + private 0.641 0.629 0.363 
+
+Table 5: K = 8 cold-start author-separability for unseen authors. FAVoR uses no-ASCE private adaptation. 
+
+no-ASCE private-adaptation variant, isolating the effect of the learned shared initialization. ASCE variants are reported in Appendix B.9. At K = 8 , FAVoR improves over local-only adaptation from the base model in author accu-racy, macro-F1, and target similarity. It also outper-forms the random-shared-initialization and shared-only controls, indicating that the gain depends on both a learned federated initialization and pri-vate adaptation. A nested no-ASCE rerun over K ∈ { 4, 8, 12 , 16 , 24 } confirms that the shared-initialization advantage is clearest at K = 8:with fixed 32-text evaluation prototypes, FAVoR exceeds local-only accuracy by 0.119 (95% CI 
+
+[0 .050 , 0.203] ), while neither method is reliably superior at K = 16 –24 . We therefore interpret federation as most useful in the tested low-resource regime, not as establishing a universal crossover threshold. The full K = 8 and K = 16 evalua-tion and the nested K-sweep are reported in Ap-pendix B.9. 
+
+5 Conclusion 
+
+We studied author-style homogenization as a utility-preserving failure mode in federated personalized continuation and introduced an evaluation protocol that reveals it beyond standard utility metrics such as BERTScore and MAUVE. FAVoR instantiates an author-style residual mechanism on a shared-private PEFT design: shared updates are aggre-gated, while local-style residuals remain outside the aggregation. Empirically, standard federated PEFT can erase cross-author style even when utility metrics remain acceptable. FAVoR mitigates this mainly through the residual aggregation boundary rather than the style-alignment loss alone. Future work should extend the analysis to larger author populations, broader writing domains, and stronger privacy mechanisms for author-specific adaptation. 
+
+Limitations 
+
+Our evaluation treats author style as an opera-tional construct measured through held-out con-tinuation, learned authorship spaces, and external gen →source verification. These metrics capture author-specific stylistic signals, but they do not ex-haust social, pragmatic, or reader-perceived notions of authorial voice; human judgments of perceived authenticity are outside the scope of this work. The BlogText ASCE encoder is trained centrally before FL on authors disjoint from the 50-author FL roster, rather than learned through a federated or differen-tially private procedure. This removes main-roster author overlap for both the local style-alignment target and the ASCE-space evaluator, but learned style spaces can still encode topic, genre, demo-graphic artifacts, and other corpus-specific regular-ities. We therefore pair ASCE-space metrics with ASCE-independent external verifiers and report the ASCE training split explicitly. Our privacy claim is limited to data locality dur-ing the FL procedure. We do not provide formal differential privacy, secure aggregation, or resis-tance to gradient- or adapter-inversion attacks, and we do not upload or release private residual packs. The experiments are also limited to English public writing domains and to a single backbone family. The 7B result is a single-seed sensitivity probe and changes both model scale and instruction-tuning status, from 3B-Instruct to 7B-base, so it should be read as robustness evidence rather than a clean scaling ablation. 
+
+Ethical Considerations 
+
+Consent, licensing, and data use. We use pub-lic research corpora and public evaluation arti-facts only for non-commercial research. The main benchmark is a filtered split of the Blog Author-ship Corpus distributed through Tatman’s Kaggle redistribution. The external validation uses the Reddit/WritingPrompts portion of Mythos-Reddit (Schler et al., 2006; Tatman, n.d.; Ashok Kumar et al., 2025). Public availability should not be treated as blanket consent for author-style mod-elling or imitation. Because author identity and author-specific style are central to the task, the underlying public corpora may contain names, han-dles, author-linkable details, or offensive content. We do not conduct a comprehensive audit of person-ally identifiable information (PII)/offensive-content audit or attempt full de-identification of the source corpora. Instead, for reporting and release, we re-port only aggregate metrics, anonymize handles and signatures in qualitative examples, do not infer protected attributes, and do not publicly redistribute raw author texts, author-reference sets, author tar-gets, user handles, or author-linkable generated continuations. Users of any released code or scripts must obtain the underlying datasets from their orig-inal sources and comply with the corresponding dataset licenses, platform terms, and deletion re-quests where applicable. 
+
+Human annotation. The human 2AFC audit in-volved three annotators who evaluated anonymized author-profile excerpts and candidate continuations. Annotators provided informed consent and were compensated for their time. Annotators did not receive author handles, demographic metadata, source URLs, or author identities, and we collected only their 2AFC choices, confidence ratings, and optional notes. We report only aggregate results. The audit was used as a small perceptual attribu-tion check rather than a preference, authenticity, or quality evaluation. The audit fell under “quality assurance and evaluation activities” according to our institutional human ethics policy and therefore did not require ethics approval. 
+
+Model, evaluator, and release policy. Experi-ments use Qwen2.5-3B-Instruct as the backbone and public evaluator artifacts, including StyleDis-tance, MiniLM, BERTScore, MAUVE, and stylo-metric features (Qwen Team et al., 2025; Patel et al., 2025; Wang et al., 2020; Zhang* et al., 2020; Pil-lutla et al., 2023). Code, configuration files, prepro-cessing/evaluation scripts, and aggregate evaluation outputs are available at https://github.com/ vermouth369/favor-author-style . We do not release the base-model weights, raw or author-linkable generated texts, author targets, private residual packs, or author-specific adapter check-points. If trained shared adapters are released, they will be distributed only when compatible with the base-model license and the relevant data-source terms. Because author-style adaptation can support deceptive imitation, deployment should require au-thor consent, disclosure to affected users, access controls, and safeguards against generating text un-der another person’s identity without permission. 
+
+References 
+
+Dhruv Agarwal, Mor Naaman, and Aditya Vashistha. 2025. Ai suggestions homogenize writing toward western styles and diminish cultural nuances. In 
+
+Proceedings of the 2025 CHI Conference on Human Factors in Computing Systems , CHI ’25, New York, NY, USA. Association for Computing Machinery. Nischal Ashok Kumar, Chau Minh Pham, Mohit Iyyer, and Andrew Lan. 2025. Whose story is it? personal-izing story generation by inferring author styles. In 
+
+Proceedings of the 14th International Joint Confer-ence on Natural Language Processing and the 4th Conference of the Asia-Pacific Chapter of the Asso-ciation for Computational Linguistics , pages 1485– 1540, Mumbai, India. The Asian Federation of Nat-ural Language Processing and The Association for Computational Linguistics. Jiamu Bai, Daoyuan Chen, Bingchen Qian, Liuyi Yao, and Yaliang Li. 2024. Federated fine-tuning of large language models under heterogeneous tasks and client resources. In Advances in Neural Information Processing Systems , volume 37, pages 14457–14483. Curran Associates, Inc. Jiankang Deng, Jia Guo, Niannan Xue, and Stefanos Zafeiriou. 2019. Arcface: Additive angular margin loss for deep face recognition. In 2019 IEEE/CVF Conference on Computer Vision and Pattern Recog-nition (CVPR) , pages 4685–4694. Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. 2023. QLoRA: Efficient finetun-ing of quantized LLMs. In Advances in Neural Infor-mation Processing Systems , volume 36. Angela Fan, Mike Lewis, and Yann Dauphin. 2018. Hierarchical neural story generation. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 889–898. Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-rank adaptation of large language models. In International Conference on Learning Representations .Javier Huertas-Tato, Alejandro Martín, and David Cama-cho. 2024. Understanding writing style in social me-dia with a supervised contrastively pre-trained trans-former. Knowledge-Based Systems , 296:111867. Tian Li, Shengyuan Hu, Ahmad Beirami, and Virginia Smith. 2021. Ditto: Fair and robust federated learn-ing through personalization. In Proceedings of the 38th International Conference on Machine Learning ,volume 139 of Proceedings of Machine Learning Research , pages 6357–6368. PMLR. Tian Li, Anit Kumar Sahu, Manzil Zaheer, Maziar San-jabi, Ameet Talwalkar, and Virginia Smith. 2020. Federated optimization in heterogeneous networks. In Proceedings of Machine Learning and Systems ,volume 2, pages 429–450. Bill Yuchen Lin, Chaoyang He, Zihang Ze, Hulin Wang, Yufen Hua, Christophe Dupuy, Rahul Gupta, Mahdi Soltanolkotabi, Xiang Ren, and Salman Aves-timehr. 2022. FedNLP: Benchmarking federated learning methods for natural language processing tasks. In Findings of the Association for Compu-tational Linguistics: NAACL 2022 , pages 157–175, Seattle, United States. Association for Computational Linguistics. Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Man-dar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. 2019. RoBERTa: A robustly optimized BERT pretraining approach. Preprint , arXiv:1907.11692. Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Arcas. 2017. Communication-Efficient Learning of Deep Net-works from Decentralized Data. In Proceedings of the 20th International Conference on Artificial In-telligence and Statistics , volume 54 of Proceedings of Machine Learning Research , pages 1273–1282. PMLR. Vishakh Padmakumar and He He. 2024. Does writing with language models reduce content diversity? In 
+
+International Conference on Learning Representa-tions , volume 2024, pages 642–669. Ajay Patel, Jiacheng Zhu, Justin Qiu, Zachary Horvitz, Marianna Apidianaki, Kathleen McKeown, and Chris Callison-Burch. 2025. StyleDistance: Stronger content-independent style embeddings with synthetic parallel examples. In Proceedings of the 2025 Con-ference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) ,pages 8662–8685, Albuquerque, New Mexico. Asso-ciation for Computational Linguistics. Krishna Pillutla, Lang Liu, John Thickstun, Sean Welleck, Swabha Swayamdipta, Rowan Zellers, Se-woong Oh, Yejin Choi, and Zaid Harchaoui. 2023. Mauve scores for generative models: Theory and practice. Journal of Machine Learning Research ,24(356):1–92. Jiaxing Qi, Zhongzhi Luan, Shaohan Huang, Carol J. Fung, Hailong Yang, and Depei Qian. 2024. Fdlora: Personalized federated learning of large language model via dual lora tuning. CoRR , abs/2406.07925. Qwen Team, An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, Huan Lin, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jingren Zhou, Junyang Lin, and 24 others. 2025. Qwen2.5 technical report. Preprint ,arXiv:2412.15115. Sudha Rao and Joel Tetreault. 2018. Dear sir or madam, may I introduce the GYAFC dataset: Corpus, bench-marks and metrics for formality style transfer. In 
+
+Proceedings of the 2018 Conference of the North American Chapter of the Association for Computa-tional Linguistics: Human Language Technologies, Volume 1 (Long Papers) , pages 129–140, New Or-leans, Louisiana. Association for Computational Lin-guistics. Rafael A. Rivera-Soto, Olivia Elizabeth Miano, Juanita Ordonez, Barry Y. Chen, Aleem Khan, Marcus Bishop, and Nicholas Andrews. 2021. Learning uni-versal authorship representations. In Proceedings of the 2021 Conference on Empirical Methods in Nat-ural Language Processing , pages 913–919, Online and Punta Cana, Dominican Republic. Association for Computational Linguistics. Jonathan Schler, Moshe Koppel, Shlomo Argamon, and James W. Pennebaker. 2006. Effects of age and gender on blogging. In Computational Approaches to Analyzing Weblogs, Papers from the 2006 AAAI Spring Symposium, Technical Report SS-06-03, Stan-ford, California, USA, March 27-29, 2006 , pages 199–205. AAAI. Efstathios Stamatatos. 2009. A survey of modern au-thorship attribution methods. Journal of the Ameri-can Society for Information Science and Technology ,60(3):538–556. Canh T. Dinh, Nguyen Tran, and Josh Nguyen. 2020. Personalized federated learning with moreau en-velopes. In Advances in Neural Information Process-ing Systems , volume 33, pages 21394–21405. Curran Associates, Inc. Rachael Tatman. n.d. Blog authorship corpus. Kaggle dataset. File used: blogtext.csv. URL: 
+
+https://www.kaggle.com/datasets/rtatman/ blog-authorship-corpus . Accessed 2026-05-18. Wenhui Wang, Furu Wei, Li Dong, Hangbo Bao, Nan Yang, and Ming Zhou. 2020. Minilm: Deep self-attention distillation for task-agnostic compression of pre-trained transformers. In Advances in Neural Information Processing Systems , volume 33, pages 5776–5788. Curran Associates, Inc. Ziyao Wang, Zheyu Shen, Yexiao He, Guoheng Sun, Hongyi Wang, Lingjuan Lyu, and Ang Li. 2024. Flora: Federated fine-tuning large language models with heterogeneous low-rank adaptations. In Ad-vances in Neural Information Processing Systems ,volume 37, pages 22513–22533. Curran Associates, Inc. Yiyuan Yang, Guodong Long, Tao Shen, Jing Jiang, and Michael Blumenstein. 2024. Dual-personalizing adapter for federated foundation models. In Ad-vances in Neural Information Processing Systems ,volume 37, pages 39409–39433. Curran Associates, Inc. Tianyi Zhang*, Varsha Kishore*, Felix Wu*, Kilian Q. Weinberger, and Yoav Artzi. 2020. Bertscore: Eval-uating text generation with bert. In International Conference on Learning Representations .A FAVoR Training Details 
+
+A.1 Complete Training Pseudocode 
+
+Algorithm 2 expands the compact round summary in Algorithm 1. It makes explicit which quantities remain client-local and which updates are uploaded for aggregation. 
+
+Algorithm 2 FAVoR: Federated Shared-Private Training with ASCE Alignment                                                                       
+
+> Require: Frozen base model θ; fixed ASCE encoder Eϕ;initial shared adapter A(g)0
+> Require: Local private residual-pack store; local corpora
+> {D train
+> i}Ni=1 ; local reference sets {D ref
+> i}Ni=1
+> 1: for t= 0 ,1, . . . , T −1do
+> 2: Server samples clients St
+> 3: Server broadcasts shared adapter A(g)
+> tto clients in St
+> 4: for all clients i∈ S tin parallel do
+> 5: Construct local author target qifrom Dref
+> iusing Eq. (6) 6: Initialize local shared model θ⊕A(g)
+> t
+> 7: Update the local shared copy using Lshared
+> iin Eq. (8), yielding A(g)
+> i,t
+> 8: Compute shared-adapter delta ∆A(g)
+> i,t using Eq. (13) 9: Initialize the private adapter from A(g)
+> i,t ; then, hold-ing A(g)
+> i,t fixed, update the private adapter using Lprivate
+> i
+> in Eq. (12) 10: Store the local shared endpoint A(g)
+> i,t and updated private residual pack ∆A(p)
+> i,t using Eq. (2) 11: Upload only ∆A(g)
+> i,t to the server 12: end for
+> 13: Server aggregates shared deltas using Eq. (14) 14: Server updates shared adapter using Eq. (15) 15: end for
+> 16: return Final shared adapter A(g)
+> Tand retained client states
+> {A(g)
+> i,τ i,∆A(p)
+> i,τ i}Ni=1
+
+B Additional Experiments and Diagnostics 
+
+B.1 Experimental Protocol and Metric Definitions 
+
+The cross-dataset comparison tests whether FA-VoR’s author-style-retention advantage over the collaborative baselines replicates beyond BlogText. FedAvg averages sampled-client LoRA deltas us-ing uniform client weighting. FedProx adds a proximal penalty toward the global adapter. Our pFedMe-style baseline optimizes a personalized adapter around a client meta/global anchor and uploads a meta-update. Ditto maintains a global adapter and a locally personalized adapter regular-ized toward it; only the global update is uploaded. FedDPA mixes global and local adapters through a learned gate; reported generations use the client mean validation gate, with dynamic gating audited separately in Appendix B.17. Topic control restricts comparisons rather than making representations topic-free. Author-within-topic effect sizes are computed within metadata-topic strata, while strict source verification and generated-to-source verification use same-author positives and same-topic, different-author nega-tives. Probe accuracy and macro-F1 are global author-classification metrics and are not topic-controlled. Table 2 accuracy and macro-F1 use nearest source-train prototypes, and its AUC/EER use generated-to-generated verification; Table 3 uses generated-to-source verification. Higher AUC and lower EER are better. Each nearest-author prototype is the normalized mean of the permitted normalized source embed-dings, and a generation is assigned to the prototype with highest cosine similarity. The main evaluation uses source-train texts; cold-start evaluation uses only the same K adaptation examples. This proto-type assignment rule is not used for Table 1 or Ta-ble 3. The no-ASCE “Local-only from base” cold-start baseline trains one LoRA adapter per held-out author from the frozen Qwen2.5-3B-Instruct back-bone using the same K adaptation examples and budget, without federated initialization or cross-client aggregation; evaluation continuations are dis-joint from the adaptation examples. BERTScore and SemSim are paired reference-based metrics comparing each generation with its matched human continuation; SemSim is the co-sine similarity between all-MiniLM-L6-v2 embed-dings. MAUVE instead compares aggregate gen-erated and human continuation distributions. The main table reports BERTScore and SemSim, while the appendix tables additionally report MAUVE. 
+
+B.2 Qualitative Error Analysis 
+
+Table 6 reports a matched qualitative comparison referenced from the main text. Examples are sam-pled from the common post-filtering held-out con-tinuation set using a fixed seed (4302026), after matching seed, author, and prompt across all meth-ods in the table. The common intersection contains 190 examples. We use a fixed method order and show shortened raw continuations side by side; no additional training, decoding, or post-hoc ra-tionales are added. The public table uses anony-mous example indices and shortened excerpts. The examples are intended to make the measured ho-mogenization failure mode legible at the text level, while the aggregate conclusions are based on the quantitative metrics. 
+
+B.3 Adapter-Space Diagnostic 
+
+Figure 3 provides an auxiliary parameter-space di-agnostic for the shared–private decomposition. Us-ing 50 personalized adapters from one represen-tative BlogText run, we define update energy as the squared Frobenius norm of the effective LoRA update ∆Wℓ = ( α/r )VℓUℓ. Energies are aggre-gated by six-layer block and target module and summarized as normalized percentage distributions across the seven target modules; each heatmap row sums to approximately 100%, up to round-ing. The pattern is not uniform: most updated energy is concentrated in MLP projections, espe-cially gate_proj and up_proj , while k_proj and 
+
+v_proj receive comparatively little energy. This is a supportive parameter-space diagnostic rather than causal mechanism evidence; the main mechanism evidence comes from the component ablations in Table 4. 
+
+B.4 Prompting and Retrieval Baselines 
+
+Table 7 compares FAVoR with non-training person-alization baselines inspired by Mythos-style author artifacts. These baselines test whether raw author history, retrieval-augmented generation (RAG), or distilled author sheets can recover author style without federated optimization. They serve as supplementary non-training controls; the primary collaborative-learning comparison is reported in Ta-bles 2 and 3. Because the prompting baselines were run on a fixed prompting-aligned subset, Table 7 reports a source-anchored author-disjoint ASCE rescore of those generated outputs. The proto-type and gen →source columns follow the source-anchored view in Table 21, but are computed only on this imported prompting-baseline subset; they are not the generated-text Author Acc. values re-ported in Table 2. 
+
+B.5 Source-Space Controls 
+
+Table 8 reports the native-dimensional version of the source-space diagnostic introduced in Sec-tion 4.1. Together with Table 1, it checks whether the internal ASCE space is competitive with ex-ternal authorship/style encoders and whether the author signal remains visible under topic-controlled verification. This diagnostic is a held-out compar-ison of frozen RoBERTa, StyleDistance, LUAR, STAR, and ASCE representations. For each rep-resentation, a class-balanced multinomial logistic-regression probe is fitted on source-train embed-dings, its C is selected by source-validation macro-F1, and accuracy and macro-F1 are reported on source-test. AUC and EER are separate cosine-verification metrics using same-author positives and same-topic, different-author negatives. Author-within-topic ω2 is the variance explained by author within metadata-topic strata, whereas topic ω2 is the variance explained by topic; the A/T ratio is their ratio. The topic–author origin-fit slope in Fig-ure 1 is the origin-constrained slope relating the coordinate-level topic and author effect sizes. 
+
+B.6 7B Base-Model Sensitivity 
+
+Table 9 reports a single-seed backbone-sensitivity probe on the same 50-author medium non-IID BlogText split. This run replaces the main 3B instruction-tuned backbone with a Qwen2.5-7B base model (Qwen Team et al., 2025) and keeps the held-out continuation protocol, LoRA recipe, decoding, ASCE evaluator, and full K = 50 metric pass fixed. Because this changes both parameter scale and instruction-tuning status, and because it uses only one seed, we treat it as robustness evi-dence rather than a main multi-seed result. The ordering matches the main finding. FA-VoR is the strongest collaborative method on every author-style retention column. Relative to FedAvg, FAVoR improves author accuracy by 0.310 and verification AUC by 0.183, while retaining all gen-erated continuations after filtering. 
+
+B.7 100-Author Scale Stress Test 
+
+To check whether the main 50-author results de-pend on a small roster, we ran an additional Blog-Text stress test with 100 authors over three seeds. The roster preserves the original 50 authors and adds 50 authors using the same style-cluster bal-ancing procedure, with the same per-author to-ken caps as the main data construction. This experiment is meant as scaling evidence rather than a new primary significance table: it uses 
+
+(R, C, ¯p) = (20 , 20 , 4.0) rounds, clients per round, and expected participations per author, compared with (6 , 12 , 1.44) in the main 50-author BlogText runs. Table 10 shows that the main ordering largely persists at the larger author scale. Shared-only Fe-dAvg has low author separability, negative silhou-ette, and high verification error, indicating strong Example Method Shortened raw continuation 
+
+1. Prefix cue: “Now I can post about other things. Yes I’m prepared for the hurricane. Had to go back to Lowes today to get some things. My gas . . . ” Gold cue: “They don’t want the kids to get stuck at school and the road flood and then not . . . ” FedAvg “We will be staying home on Monday, Tuesday, Wednesday, and Thursday. Friday is a day off. So we should be fine. . . . ” Pooled PEFT “We will see what happens. I think my mom is going to stay with us until Saturday. She has a lot . . . ” FedProx “We will be staying home on Monday, Tuesday, Wednesday, and Thursday. Friday is a work day but they will probably close . . . ” Ditto “We will see what happens. I am glad you guys made it through ok. It’s nice to hear from you again. . . . ” FAVoR “We will see what happens. I am glad you guys had a good time at the beach. It is nice to . . . ” Local-only + ASCE “We will see what happens. I am going to try to keep up with posting but I know how hard it . . . ” 
+
+2. Prefix cue: “When I started high school I didn’t really know anybody. They had just build HCHS near my house and I was part of the first freshman . . . ” Gold cue: “met Brent, and through Brent I met Mike and Brad. And through Brad I met Hans. Brent lived . . . ” FedAvg “don’t remember what year it was exactly but I think it was either 1986 or 1879. Anyway, when I got there I . . . ” Pooled PEFT “don’t remember how many people were in the freshman class, but it wasn’t very big. We all lived within a mile or . . . ” FedProx “don’t remember what year it was, but I think it was either 1986 or 1879. Anyway, I met a lot of people . . . ” Ditto “think it’s a good school. It has a lot of clubs and activities. There are also some pretty nice teachers. I’m not . . . ” FAVoR “think it’s still called that now. It was a small school with about 100 kids in each grade. There were no sports . . . ” Local-only + ASCE “don’t remember what year it was but I think it was either ’82 or ’83. Anyway, when I got there I met . . . ” 
+
+3. Prefix cue: “omg last night was cotillion ball...omg i fainted!!!lol when me ashleigh brett and sammie were leavin i made it down one step and fainted down two..lol . . . ” Gold cue: “ANG...(ONLY THE OTHER WOR) UVE CHANGED and he had this HUGE grin on his face..anyways one time when . . . ” FedAvg “AMN IT! lol so anyway we got home and i took a nap...then woke up at 10:30 and went to the mall . . . ” Pooled PEFT “ONT SAY ANYTHING TO HER! lol so thats what happened..lol but anyways its over now..i have a test tomorrow on the stuff . . . ” FedProx “AMN IT! lol so anyway we got home and i took a nap...i woke up at 10:30 and then went to the . . . ” Ditto “IDN’T YOU TELL ME THAT LAST YEAR? lol thats so funny...he said that like its a big deal...i mean come on, we’ve . . . ” FAVoR “IDN’T YOU KNOW THAT? lol thats so funny..anyways we got out of the limo and walked in..i think that’s how they do . . . ” Local-only + ASCE “IDNT YOU TELL ME THAT LAST WEEK? lol thats what he said..i think he meant that as a compliment but still..lol anyways . . . ” 
+
+Table 6: Matched qualitative comparison over anonymized held-out continuation examples. Entries are shortened raw generated continuations from the same seed-author-prompt instances across all listed methods. The table shows three examples from the fixed-seed sample. 
+
+author-style homogenization. FAVoR substan-tially mitigates this collapse, recovering roughly 70% of the FedAvg-to-local-only gap in separa-bility accuracy, 74% in macro-F1, 81% in verifi-cation AUC, and 72% in silhouette. The result should still be read conservatively: FAVoR is close to Ditto on verification AUC/EER and stronger on closed-set author separability, while Ditto ob-tains higher MAUVE. Local-only remains the non-collaborative style retention reference. 
+
+B.8 Text-Volume and Author-Imbalance Sensitivity 
+
+We evaluate FAVoR and Ditto over two seeds us-ing balanced nested subsets and fixed per-client compute at 25%, 50%, and 100% of a 904 ,378 -unit BlogText reference budget. Each allocated word unit is defined by a fixed English-word reg-ular expression; tokenizer-token counts are used separately for author filtering. Table 11 shows that FAVoR retains higher Gen–Gen AUC and lower EER across the four-fold budget range, while BERTScore differences remain small. Because these runs use rematerialized balanced subsets and a compute-normalized schedule, they support matched within-sweep comparisons rather than nu-merical reproduction of Table 2. We also construct Balanced, Moderate, and Strong allocations over the same 50 authors, each containing exactly 904 ,378 allocated word units, while keeping evaluation data and the per-client compute budget fixed. Table 12 reports the corresponding two-seed means. FAVoR retains higher AUC and lower EER in all six matched seed-by-condition comparisons; its mean AUC changes from 0.753 to 0.738 , and absolute mean BERTScore differences remain at most 0.0018 .This supports robustness of the relative retention advantage within the tested range, not invariance to imbalance. 
+
+B.9 Cold-Start New-Author Details 
+
+Table 13 reports the full cold-start new-author eval-uation. The shared adapter is trained on 40 fed-erated training authors and evaluated after private 
+
+K-shot adaptation on 10 held-out authors. Author-separability metrics use the leakage-free A train -only ASCE encoder (Section 4.3) and held-out-author prototypes built only from the K adaptation examples. To characterize the transition beyond the orig-inal K = 8 and K = 16 endpoints, we freeze Panel A: Configuration and author-style metrics                                                                                   
+
+> Method FL Train Raw Hist. RAG Distilled Artifact Proto. Acc. ↑
+> Proto. F1 ↑
+> Gen →Src AUC ↑
+> EER
+> ↓
+> Silh.
+> ↑
+> FAVoR ✓✓✗✗✗0.288 0.208 0.760 0.319 -0.045
+> Mythos Avg-Author ✗✗✗✗✗0.093 0.047 0.627 0.394 -0.184 Mythos RAG-Only ✗✗✓✓✗0.131 0.095 0.713 0.372 -0.198 Mythos Sheet + RAG ✗✗✓✓✓0.176 0.126 0.689 0.389 -0.145 Mythos Sheet (no persona) + RAG ✗✗✓✓✓0.130 0.088 0.698 0.365 -0.158 Mythos Sheet Only ✗✗✗✗✓0.150 0.103 0.665 0.378 -0.143
+> Panel B: Continuation-quality metrics
+> Method BERTScore ↑SemSim ↑MAUVE ↑
+> FAVoR 0.815 0.385 0.313
+> Mythos Avg-Author 0.814 0.395 0.013 Mythos RAG-Only 0.819 0.405 0.025 Mythos Sheet + RAG 0.815 0.415 0.093 Mythos Sheet (no persona) + RAG 0.816 0.411 0.030 Mythos Sheet Only 0.812 0.396 0.061
+
+Table 7: Prompting and retrieval baselines on BlogText. Author-style columns use the author-disjoint ASCE source-anchored rescore on the shared prompting-aligned subset for this supplemental comparison. Prototype accuracy/F1 classifies generated continuations by the nearest source-train author prototype, and Gen →Src AUC/EER uses same-author versus different-author generated-to-source pairs. Utility columns report the original generation-quality metrics for the same comparison.                                                
+
+> Representation space Dim. Author Acc. ↑
+> Macro-F1 ↑
+> Author-in-topic
+> ω2↑
+> Topic
+> ω2↓
+> A/T ratio ↑
+> Strict AUC ↑
+> EER
+> ↓
+> RoBERTa-base 768 0.635 0.677 0.1135 0.0557 1.95 0.629 0.421 StyleDistance 768 0.628 0.660 0.2357 0.0577 4.21 0.716 0.344 LUAR-MUD doc1 512 0.633 0.677 0.1257 0.0364 3.52 0.797 0.277 STAR 1024 0.648 0.715 0.1886 0.0478 4.16 0.856 0.229 ASCE Author-Style Signature Space 256 0.651 0.692 0.1916 0.0499 3.64 0.863 0.211
+
+Table 8: Native-dimensional source-space diagnostics. 
+
+one federated shared checkpoint and rerun the no-ASCE FAVoR and local-only variants over nested 
+
+K ∈ {4, 8, 12 , 16 , 24 } support sets with three seeds and the same 10 unseen authors. In addi-tion to the original K-shot prototypes, this diag-nostic uses fixed 32-text author prototypes disjoint from adaptation and test data, separating adapta-tion effects from prototype-quality changes. Let 
+
+∆ = MFAVoR − MLocal , and let m denote target-author similarity minus shard-negative similarity.                           
+
+> KFixed ∆Acc. [95% CI] Fixed ∆m[95% CI] 4+0 .086 [ −0.081 ,0.244] +0 .046 [ −0.017 ,0.103]
+> 8+0 .119 [0 .050 ,0.203] +0 .050 [0 .003 ,0.096]
+> 12 +0 .064 [ −0.017 ,0.150] +0 .036 [0 .006 ,0.065]
+> 16 +0 .053 [ −0.022 ,0.133] +0 .032 [ −0.008 ,0.073]
+> 24 −0.044 [ −0.172 ,0.067] +0 .027 [ −0.027 ,0.076]
+
+Table 14: Nested cold-start K-sweep with fixed 32-text evaluation prototypes. Intervals are nominal author-cluster 95% bootstrap confidence intervals. 
+
+Table 14 shows that both the K-shot and fixed-prototype diagnostics give the clearest FAVoR ad-vantage at K = 8 , diminishing differences by K =16 , and no reliable winner at K = 16 –24 . The result supports a diminishing shared-initialization advantage rather than a universal crossover thresh-old. 
+
+B.10 Human 2AFC Audit 
+
+We conduct a small human two-alternative forced-choice (2AFC) audit as a perceptual sanity check for author-style retention. For each item, annotators are shown two anonymized source-based author profiles and one candidate continuation, and are asked to choose which profile better matches the candidate. Annotators also provide a confidence score from 1 to 5. The task is designed to test whether an author-specific signal in a continuation is human-perceivable under a controlled attribution setting; it is not a preference study and does not ask annotators to judge overall writing quality, fluency, Method Author Acc. ↑
+
+Macro-F1 ↑
+
+Verif. AUC ↑
+
+EER 
+
+↓
+
+Silhouette 
+
+↑
+
+Asst. Score ↓
+
+BERTScore 
+
+↑
+
+SemSim 
+
+↑
+
+MAUVE 
+
+↑
+
+Base only 0.207 0.191 0.695 0.353 -0.141 0.865 0.815 0.353 0.130 FedAvg 0.219 0.170 0.716 0.343 -0.136 0.230 0.811 0.361 0.263 FedProx 0.214 0.177 0.698 0.365 -0.149 0.183 0.808 0.352 0.327 pFedMe 0.293 0.245 0.807 0.263 -0.053 0.625 0.816 0.365 0.327 Ditto 0.368 0.328 0.836 0.243 -0.033 0.424 0.813 0.381 0.417 
+
+FAVoR 0.528 0.487 0.899 0.185 0.134 0.251 0.810 0.378 0.334 
+
+Table 9: Single-seed Qwen2.5-7B base-model sensitivity probe on the full 50-author BlogText held-out continuation split. Bold marks the best listed value; base-only is a non-collaborative reference.                                          
+
+> Method Sep. Acc. ↑
+> Macro-F1 ↑
+> Verif. AUC ↑
+> EER
+> ↓
+> Centroid Dist. ↑
+> Silhouette
+> ↑
+> SemSim
+> ↑
+> MAUVE
+> ↑
+> FedAvg shared 0.177
+> ±0.013
+> 0.150
+> ±0.013
+> 0.729
+> ±0.002
+> 0.331
+> ±0.002
+> 0.677
+> ±0.007
+> -0.176
+> ±0.010
+> 0.385
+> ±0.006
+> 0.272
+> ±0.040
+> Ditto 0.386
+> ±0.022
+> 0.342
+> ±0.017
+> 0.883
+> ±0.012
+> 0.193
+> ±0.008
+> 0.809
+> ±0.007
+> 0.041
+> ±0.020
+> 0.411
+> ±0.008
+> 0.386
+> ±0.105
+> FAVoR 0.441
+> ±0.021
+> 0.417
+> ±0.028
+> 0.889
+> ±0.006
+> 0.186
+> ±0.008
+> 0.821
+> ±0.007
+> 0.062
+> ±0.017
+> 0.413
+> ±0.008
+> 0.308
+> ±0.066
+> Local-only (ref.) 0.555
+> ±0.006
+> 0.509
+> ±0.006
+> 0.926
+> ±0.011
+> 0.147
+> ±0.018
+> 0.886
+> ±0.003
+> 0.154
+> ±0.006
+> 0.412
+> ±0.008
+> 0.406
+> ±0.042
+
+Table 10: K=100 BlogText scale stress test over three seeds. Values are mean ± sample standard deviation. Bold marks the best collaborative method; local-only is a non-collaborative style-retention reference. Verification AUC/EER uses same-author versus different-author generated-continuation pairs in the K=100 ASCE space. 
+
+or authenticity. The audit set contains 50 items randomly sam-pled within source categories: 20 Ditto continu-ations, 20 FAVoR continuations, and 10 held-out author-written continuations. Each item is anno-tated by three annotators, giving 150 total votes. We aggregate results both at the vote level, treating each annotator’s decision as one observation, and at the item level, using the majority decision across the three annotators. 
+
+Participant instructions. The annotation inter-face was a text-only form with two author-profile boxes, one candidate continuation, a forced-choice response, a confidence response, and an optional comment field. No screenshots contained addi-tional instructions beyond the text reproduced here. Annotators were shown the following instructions before the task: 
+
+> This pack is for a 2-author forced-choice style attribution task. Annotator task: 1. Read Author A’s source excerpts. 2. Read Author B’s source excerpts. 3. Read the candidate text. 4. Choose which author the candidate better matches in writ-ing style. 5. Enter confidence from 1 to 5.
+
+Table 15 summarizes the audit results. Overall vote-level accuracy is 82.7%, and item-level major-ity accuracy is 84.0%. On the audited generated continuations, FAVoR continuations are attributed to the intended author more often than Ditto con-tinuations, with 91.7% versus 68.3% vote-level ac-curacy and 95.0% versus 70.0% majority accuracy. Held-out human continuations provide a reference row and reach 93.3% vote-level accuracy. Inter-annotator agreement is moderate for this subjective authorship task: mean raw pairwise agreement is 0.787 and Fleiss’ κ is 0.558. At the item level, all 50 items have a non-tie majority; 34 items have unanimous 3–0 majorities and 16 items have 2–1 majorities. This audit supports the interpretation that FAVoR preserves an author-attributable sig-nal that is perceptible to human annotators in a 2AFC attribution setting. However, it has two limi-tations. First, the audit is small, with 50 items and three annotators. Second, because annotators see author profiles, their decisions may reflect topical, biographical, or content cues in addition to style. We therefore use the audit only as complementary perceptual evidence alongside the main automatic author-retention metrics and ASCE-independent external verifiers, rather than as a standalone hu-man preference or authenticity evaluation. Allocated word-unit budget Gen–Gen AUC FAVoR / Ditto EER FAVoR / Ditto BERTScore FAVoR / Ditto 25% ( 226 ,095 ) 0.755 / 0.685 0.300 / 0.373 0.8141 / 0.8140 50% ( 452 ,189 ) 0.757 / 0.706 0.305 / 0.336 0.8140 / 0.8147 100% ( 904 ,378 ) 0.753 / 0.699 0.316 / 0.360 0.8149 / 0.8153 
+
+Table 11: Compute-normalized text-volume sweep. Values are means over two training seeds.           
+
+> Allocation Gen–Gen AUC FAVoR / Ditto ( ∆)EER FAVoR / Ditto ( ∆)BERTScore FAVoR / Ditto Balanced 0.753 / 0.699 ( +0 .054 )0.316 / 0.360 ( −0.044 )0.8149 / 0.8153 Moderate 0.740 / 0.695 ( +0 .045 )0.340 / 0.364 ( −0.024 )0.8143 / 0.8147 Strong 0.738 / 0.702 ( +0 .036 )0.327 / 0.360 ( −0.033 )0.8154 / 0.8136
+
+Table 12: Controlled author-data imbalance analysis. Values are means over two training seeds and ∆ = FAVoR −
+
+Ditto. 
+
+B.11 Reference-Free Quality and Voice-Match Judges 
+
+We supplement reference-based utility metrics with a method-blinded evaluation using the fixed qwen3.7-plus-2026-05-26 snapshot. For generic quality, the judge receives only a prompt prefix and one continuation—not the gold continua-tion, author history, or method identity—and scores coherence, fluency, specificity, non-repetition, and overall quality from 1 to 5. The matched de-sign uses 50 authors and three generation seeds, with one common prompt for all six collaborative methods in each author–seed group, yielding 150 matched groups and 900 outputs. Each output is judged twice, for 1,800 judgments with no miss-ing or failed calls; the two scores are averaged before paired analysis, and exact repeated-score agreement on overall quality is 92 .1% .Confidence intervals use 10,000 author-cluster bootstrap resamples that resample the 50 authors while retaining all three seeds for each selected au-thor. Two-sided raw p values come from the same bootstrap distribution and are Holm-adjusted across the five FAVoR–baseline comparisons. Table 16 shows that all five confidence intervals include zero and no generic-quality difference is significant after correction. In a separate method-blinded pairwise FAVoR– Ditto author-voice comparison, the judge prefers FAVoR in 61 .2% of non-ties (95% CI 
+
+[0 .518 , 0.702] , author-clustered p = 0 .022 ). Thus, the reference-free evidence does not establish generic-quality superiority or equivalence, but the voice-match result supports FAVoR when author-style retention is the primary objective. 
+
+B.12 External Verifier Robustness 
+
+The ASCE-independent verifiers are StyleDistance embeddings, all-MiniLM-L6-v2 sentence embed-dings, and hand-engineered stylometric features. The stylometric representation includes character and word n-grams, function-word frequencies, and punctuation and structure statistics, following Sta-matatos (2009). Generated-to-source cosine verifi-cation uses generated/source pairs from the same author as positives and source texts from different authors in the same usable metadata-topic bucket as negatives. AUC is the area under the receiver op-erating characteristic curve, and EER is the equal error rate for these same-author versus different-author pairs. Table 3 reports compact external-verification av-erages; Table 17 gives the full evaluator break-down. Table 20 summarizes cross-evaluator agree-ment for the central FAVoR-versus-Ditto compari-son. Table 19 documents topic recovery, the effec-tive generated-pair negative mode, and same-topic hard-negative feasibility for the verification proto-col. Table 18 provides an additional compact Blog-Text metric view. Source AUC is a verifier-validity check on held-out human source-text pairs, while generated-text columns evaluate method outputs under the same-topic cross-author negatives. The 
+
+indUnk metadata bucket is retained in the evalua-tion roster but treated as unavailable for same-topic negative sampling. Bold and underline mark the best and second-best values, with lower better for EER. Method K Sep. Acc. ↑                                                                                                                  
+
+> Macro-F1 ↑
+> Target Sim. ↑
+> Copy-5
+> ↓
+> SemSim
+> ↑
+> BERTScore
+> ↑
+> MAUVE
+> ↑
+> Base model, no adaptation 80.175 0.210 0.115 0.000 0.282 0.806 0.042 FAVoR shared init + private residual (ASCE) 80.538 0.555 0.353 0.154 0.304 0.793 0.071 FAVoR shared init + private residual (no ASCE) 80.641 0.629 0.363 0.128 0.301 0.792 0.078 Local-only + ASCE from base 80.400 0.377 0.261 0.050 0.331 0.807 0.115
+> Local-only from base 80.425 0.428 0.259 0.075 0.319 0.806 0.078 Random shared init + private residual 80.308 0.278 0.201 0.026 0.307 0.809 0.069 Shared only, no private residual 80.150 0.166 0.191 0.000 0.279 0.792 0.085 Base model, no adaptation 16 0.175 0.150 0.106 0.000 0.282 0.806 0.042 FAVoR shared init + private residual (ASCE) 16 0.425 0.403 0.342 0.100 0.305 0.783 0.042 FAVoR shared init + private residual (no ASCE) 16 0.525 0.479 0.386 0.025 0.305 0.785 0.092
+> Local-only + ASCE from base 16 0.474 0.457 0.318 0.000 0.308 0.804 0.065 Local-only from base 16 0.553 0.562 0.326 0.105 0.313 0.806 0.048 Random shared init + private residual 16 0.325 0.320 0.214 0.025 0.299 0.809 0.065 Shared only, no private residual 16 0.150 0.170 0.189 0.000 0.279 0.792 0.085
+
+Table 13: Full cold-start results for unseen authors. The shared adapter is trained on 40 federated training authors and transferred to 10 held-out authors; author-separability metrics use the leakage-free A train -only ASCE encoder and held-out-author prototypes built from the same K adaptation examples.                        
+
+> Source Items Votes Vote acc. Maj. acc. Mean conf. Ditto 20 60 68.3% 70.0% 2.73 FAVoR 20 60 91.7% 95.0% 3.79 Human ref. 10 30 93.3% 90.0% 3.50 Overall 50 150 82.7% 84.0% 3.31
+
+Table 15: Small human 2AFC audit. Vote accuracy is over individual annotator votes; majority accuracy is after three-vote item aggregation. 
+
+B.13 Author-Disjoint ASCE Training and Evaluation Details 
+
+The production BlogText ASCE encoder used for local style alignment and ASCE-space evaluation is trained centrally before FL on 50 BlogText au-thors disjoint from the 50-author FL roster. It uses 4,959 training texts and 742 validation texts, achiev-ing 0.802 validation accuracy and 0.673 macro-F1. It does not observe FL training texts, held-out prompts, generated continuations, or any main-roster author identity, and the manifest records zero author overlap with the FL roster. After training, its classifier head and learned author prototypes are discarded and the encoder is frozen. ASCE-aligned methods use this frozen encoder during training to construct local style-alignment targets, and all BlogText ASCE-space author-style metrics use the same author-disjoint encoder. The encoder backbone is distilroberta-base :a six-layer DistilRoBERTa with hidden size 768, 12 attention heads, and feed-forward intermediate size 3,072. We apply attention-mask mean pooling to its final-layer token embeddings, followed by dropout with rate 0.1, a linear projection from 768 to 256 di-mensions, LayerNorm(256) , and ℓ2 normalization to obtain the 256-dimensional ASCE embedding. During training, this embedding is connected to a normalized ArcFace author-classification head. For completeness, ASCE maps a text x to the unit-normalized embedding 
+
+z(x) = norm( Eϕ(x)) .
+
+For a text from author a, let wa be the normalized target-author classifier prototype and let wk denote a non-target prototype. The angular-margin logits are 
+
+sa(x) = γ cos 
+
+
+
+arccos 
+
+
+
+w⊤ 
+
+> a
+
+z(x)
+
+
+
++ ms
+
+
+
+,sk(x) = γw ⊤ 
+
+> k
+
+z(x), k̸ = a. 
+
+The corresponding softmax normalizer and cross-entropy loss are 
+
+Za(x) = exp( sa(x)) + X 
+
+> k̸=a
+
+exp( sk(x)) ,
+
+LASCE (x, a ) = −sa(x) + log Za(x).
+
+Here γ is the scale applied to normalized cosine logits, ms is the angular margin, and Za(x) is the softmax normalizer. For the authorship ASCE used in our experiments, γ = 30 .0 and ms = 0 .35 
+
+radians. ASCE-A and ASCE-B use the same en-coder backbone, architecture, angular-margin ob-jective, and source domain; ASCE-B differs in its Method Mean quality FAVoR − method Unadjusted 95% CI Holm-adjusted p                             
+
+> FedAvg 2.270 −0.073 [−0.310 ,0.170] 1.000 FedProx 2.213 −0.017 [−0.267 ,0.243] 1.000 pFedMe 2.133 +0 .063 [−0.217 ,0.323] 1.000 Ditto 2.370 −0.173 [−0.443 ,0.103] 1.000 FedDPA 2.337 −0.140 [−0.380 ,0.097] 1.000 FAVoR 2.197 –––
+> Table 16: Reference-free overall-quality judging on the 1–5 scale. Differences are computed from unrounded output-level means.
+
+Method Evaluator Source AUC Gen →Src AUC Gen →Src EER Gen →Gen AUC FedProx StyleDistance 0.705 ± 0.000 0.724 ± 0.011 0.334 ± 0.006 0.654 ± 0.021 FedProx MiniLM 0.635 ± 0.000 0.631 ± 0.002 0.414 ± 0.003 0.532 ± 0.005 FedProx Stylometry 0.619 ± 0.000 0.651 ± 0.003 0.385 ± 0.005 0.573 ± 0.021 Pooled PEFT StyleDistance 0.705 ± 0.000 0.736 ± 0.006 0.327 ± 0.004 0.691 ± 0.016 Pooled PEFT MiniLM 0.635 ± 0.000 0.650 ± 0.001 0.406 ± 0.005 0.574 ± 0.004 Pooled PEFT Stylometry 0.619 ± 0.000 0.660 ± 0.008 0.384 ± 0.008 0.562 ± 0.022 Ditto StyleDistance 0.705 ± 0.000 0.748 ± 0.004 0.318 ± 0.006 0.720 ± 0.009 Ditto MiniLM 0.635 ± 0.000 0.650 ± 0.005 0.401 ± 0.005 0.594 ± 0.013 Ditto Stylometry 0.619 ± 0.000 0.683 ± 0.011 0.363 ± 0.008 0.656 ± 0.034 FedDPA † StyleDistance 0.705 ± 0.000 0.747 ± 0.005 0.318 ± 0.003 0.725 ± 0.011 FedDPA † MiniLM 0.635 ± 0.000 0.659 ± 0.012 0.392 ± 0.012 0.573 ± 0.027 FedDPA † Stylometry 0.619 ± 0.000 0.692 ± 0.008 0.351 ± 0.008 0.652 ± 0.007 Local-only + ASCE StyleDistance 0.705 ± 0.000 0.768 ± 0.006 0.301 ± 0.002 0.768 ± 0.004 Local-only + ASCE MiniLM 0.635 ± 0.000 0.685 ± 0.006 0.374 ± 0.008 0.645 ± 0.023 
+
+Local-only + ASCE Stylometry 0.619 ± 0.000 0.708 ± 0.003 0.344 ± 0.007 0.685 ± 0.010 
+
+FAVoR StyleDistance 0.705 ± 0.000 0.771 ± 0.006 0.295 ± 0.003 0.773 ± 0.007 
+
+FAVoR MiniLM 0.635 ± 0.000 0.675 ± 0.010 0.378 ± 0.006 0.624 ± 0.021 FAVoR Stylometry 0.619 ± 0.000 0.714 ± 0.011 0.342 ± 0.011 0.678 ± 0.020 
+
+> Table 17: External-verifier breakdown.
+
+disjoint training authors and is used only for post-hoc evaluation, as detailed in Appendix B.14. The LoRA/adapter settings for the generation model are reported separately in Appendix B.19. Tables 21 and 22 give two detailed views of the author-disjoint ASCE results behind the main BlogText summary. Table 21 is source-anchored: it compares each generated continuation against source-train author prototypes and gen →source verification pairs. Table 22 is the expanded ver-sion of the BlogText author-style rows in Table 2, adding pooled and diagnostic references such as Local-only + ASCE, Global ASCE, Ditto + ASCE, and FAVoR w/o ASCE. Together, these two views document author-style retention in the same author-disjoint ASCE space used by the BlogText training and evaluation proto-col. In the gen →source view, local-only remains the strongest non-collaborative reference, while FAVoR is the strongest collaborative method: it ranks second overall on prototype recovery and AUC, and best overall on EER. In the expanded generated-text view, FAVoR again leads the collab-orative methods on author recovery and verification EER, and remains close to the local-only reference on F1 and AUC. The FAVoR variant without ASCE is also competitive, indicating that residual person-alization carries substantial author signal; adding ASCE improves recovery and verification while leaving silhouette essentially tied with the local-only reference. Method Author Acc. ↑
+
+Macro-F1 ↑
+
+Centroid 
+
+↑
+
+Silhouette 
+
+↑
+
+Asst. 
+
+↓
+
+BERTScore 
+
+↑
+
+SemSim 
+
+↑
+
+MAUVE 
+
+↑
+
+FedProx 0.174  
+
+> ±0.008
+
+0.161  
+
+> ±0.009
+
+0.431  
+
+> ±0.009
+
+-0.199  
+
+> ±0.004
+
+0.264  
+
+> ±0.041
+
+0.817  
+
+> ±0.002
+
+0.353  
+
+> ±0.005
+
+0.200  
+
+> ±0.005
+
+Pooled PEFT 0.254  
+
+> ±0.021
+
+0.232  
+
+> ±0.027
+
+0.537  
+
+> ±0.005
+
+-0.184  
+
+> ±0.030
+
+0.219  
+
+> ±0.017
+
+0.802  
+
+> ±0.001
+
+0.359  
+
+> ±0.002
+
+0.389  
+
+> ±0.059
+
+Ditto 0.278  
+
+> ±0.011
+
+0.255  
+
+> ±0.002
+
+0.546  
+
+> ±0.004
+
+-0.097  
+
+> ±0.026
+
+0.328  
+
+> ±0.016
+
+0.815  
+
+> ±0.001
+
+0.366  
+
+> ±0.005
+
+0.378  
+
+> ±0.074
+
+Local-only + ASCE 0.402  
+
+> ±0.026
+
+0.366  
+
+> ±0.016
+
+0.643  
+
+> ±0.012
+
+-0.037  
+
+> ±0.025
+
+0.239  
+
+> ±0.015
+
+0.813  
+
+> ±0.001
+
+0.375  
+
+> ±0.009
+
+0.486  
+
+> ±0.053
+
+FAVoR 0.403  
+
+> ±0.004
+
+0.365  
+
+> ±0.009
+
+0.624  
+
+> ±0.006
+
+-0.039  
+
+> ±0.022
+
+0.260  
+
+> ±0.004
+
+0.815  
+
+> ±0.000
+
+0.380  
+
+> ±0.001
+
+0.431  
+
+> ±0.026
+
+Table 18: Additional compact BlogText metric summary. 
+
+Audit item Value Evaluation authors 50 Topic source Original BlogText metadata joined by author ID Topics with ≥ 3 authors 3 usable; 4 including all buckets Largest topic bucket Student: 13/50 (26.0%) indUnk bucket 11/50 (22.0%) Dominant-topic fraction mean 1.0; min 1.0 Effective hard-negative mode Same-topic cross-author Protocol A same-prompt feasible False Protocol A same-topic negatives 2818–2850 Protocol C same-prompt feasible False Protocol C same-topic negatives 1409–1425 External-evaluator agree-ment 3/3 support FAVoR > Ditto 
+
+Table 19: Topic and negative-sampling summary. 
+
+B.14 Independent ASCE-B Re-evaluation 
+
+To reduce same-checkpoint circularity, we train an independent ASCE-B from the same backbone on 50 additional BlogText authors with zero over-lap with either the ASCE-A training authors or the FL roster. ASCE-B uses 6,460 training texts and 982 validation texts and reaches validation accuracy/macro-F1 of 0.844 /0.784 . It is used only for post-hoc evaluation: archived generations and evaluation pairs from the same three seeds are fixed while embeddings, source prototypes, and verifica-tion scores are recomputed. Table 23 shows that FAVoR remains highest un-der ASCE-B, and FAVoR without ASCE alignment exceeds all non-FAVoR collaborative baselines. Thus, same-checkpoint circularity cannot solely ex-plain the gain, although ASCE-B still shares ASCE-A’s architecture, objective, and source domain. 
+
+B.15 ASCE Evaluator-Scale and Cross-Domain Transfer 
+
+We train independent ASCE checkpoints using 
+
+KASCE ∈ { 10 , 25 , 50 } author-disjoint BlogText authors. The sensitivity ASCE-50 is not the produc-tion checkpoint despite using the same 50-author, 4,959/742 train/validation split. Archived FL out-puts, prototype source texts, evaluation splits, and pair construction are fixed, and embeddings and prototypes are recomputed in each checkpoint space. We then apply each frozen checkpoint to 50 Mythos authors unseen during ASCE training. Table 24 shows that, within BlogText, the or-dering FAVoR > Ditto > FedAvg is preserved for both metrics at every KASCE . Across Mythos, all prototype accuracies exceed 50-way chance accu-racy ( 0.020 ), and all AUC intervals exclude 0.5.These results show nontrivial representation trans-fer within the tested settings, not a minimum ASCE author count, prototype-free zero-shot attribution, or universal out-of-domain robustness. 
+
+B.16 External Domain Validation 
+
+Table 25 reports the Mythos-Reddit external com-parison for the collaborative methods. Table 26 reports the diagnostic version of the external evalu-ation, including signed-gap metrics and assistant-phrase diagnostics. The completed validation uses 50 r/WritingPrompts authors with 300 balanced held-out continuations per run. On Mythos-Reddit, FAVoR is again the strongest collaborative feder-ated method on the style-separability columns, sug-gesting that the retention trend is not specific to BlogText. 
+
+B.17 FedDPA Gate Sensitivity Probe 
+
+FedDPA stores prompt-wise dynamic gate refer-ences during training, while the main continu-ation path reports the exported per-client mean Comparison Metric Support Fraction Supporting evaluators FAVoR > Ditto Gen →Src primary AUC 3/3 1.0 minilm, styledistance, stylometry 
+
+> Table 20: Cross-evaluator agreement.
+
+Method Seeds Proto. Acc. 
+
+↑
+
+Proto. F1 
+
+↑
+
+Gen →Src AUC ↑
+
+Gen →Src EER ↓
+
+FedAvg 3 0.140 ± 0.009 0.096 ± 0.001 0.651 ± 0.023 0.379 ± 0.008 FedProx 3 0.157 ± 0.011 0.111 ± 0.005 0.645 ± 0.023 0.387 ± 0.020 pFedMe 3 0.176 ± 0.014 0.120 ± 0.010 0.691 ± 0.019 0.363 ± 0.018 Ditto 3 0.219 ± 0.016 0.169 ± 0.012 0.715 ± 0.014 0.351 ± 0.008 Pooled PEFT 3 0.193 ± 0.008 0.148 ± 0.012 0.689 ± 0.012 0.363 ± 0.016 Local-only + ASCE 3 0.342 ± 0.023 0.292 ± 0.032 0.764 ± 0.006 0.307 ± 0.013 Global ASCE 3 0.149 ± 0.008 0.112 ± 0.007 0.664 ± 0.024 0.378 ± 0.032 Ditto + ASCE 3 0.237 ± 0.006 0.173 ± 0.016 0.699 ± 0.020 0.366 ± 0.021 FAVoR w/o ASCE 3 0.280 ± 0.031 0.223 ± 0.035 0.741 ± 0.023 0.326 ± 0.029 FAVoR 3 0.315 ± 0.022 0.262 ± 0.031 0.752 ± 0.026 0.304 ± 0.016  
+
+> Table 21: Generated-to-source ASCE results with the author-disjoint encoder. The encoder is trained on BlogText authors disjoint from the main 50-author FL roster; its classifier head is not used for this table. Values are the mean
+> ±standard deviation over seeds.
+
+validation gate for generation compatibility. To audit this export, we run a bounded seed probe on 100 matched BlogText held-out continuation prompts, generating one continuation with the ex-ported summary gate and one with prompt-wise dy-namic gates. Prompt-wise dynamic gating changes the gate weights: the mean global-gate weight is 0.350 under dynamic gating versus 0.429 under the exported summary gate, with mean absolute difference 0.083, median absolute difference 0.056, and maximum absolute difference 0.437. Table 27 shows that this gate change leaves author accuracy unchanged and BERTScore nearly identical in the bounded probe. Dynamic gating slightly lowers verification AUC and SemSim in this sample, so reporting the audited summary-gate FedDPA rows does not overstate FedDPA’s author-style retention.                        
+
+> Metric Summary gate Dynamic gate Dynamic −
+> summary Author Acc. 0.350 0.350 +0.000 Macro-F1 0.266 0.283 +0.018 Verif. AUC 0.778 0.763 -0.015 EER 0.299 0.303 +0.004 BERTScore 0.8191 0.8178 -0.0013 SemSim 0.3982 0.3827 -0.0155 Asst. score 0.4035 0.4302 +0.0267
+> Table 27: Bounded FedDPA gate-sensitivity probe.
+
+B.18 Component-Ablation Significance and Run Checks 
+
+Table 28 expands the compact main-text abla-tion table with mean ± sample standard deviation over three seeds. Its Author Acc. and Macro-F1 columns are generated-text ASCE prototype met-rics, while the StyleDistance, MiniLM, and stylom-etry columns are ASCE-independent, same-topic gen →source AUC/EER. Table 29 reports paired tests for the component ablations in Table 4. The tests use matched seed– author–prompt examples. For author accuracy, p
+
+uses McNemar’s exact test; for continuous metrics, 
+
+p uses a Wilcoxon signed-rank test. Directional ∆
+
+is signed, so positive values favour the left variant in each comparison; for the assistant score, this means the left variant has a lower raw assistant score. Confidence intervals are cluster bootstrap intervals over seed–author clusters. Table 30 repeats the ablation comparison using ASCE-independent external gen →source verifica-tion. Under the same-topic cross-author negatives, the external alignment gain over the no-ASCE vari-ant is small and mixed, while both private-residual variants are consistently stronger than the Global ASCE control. Directional ∆ is signed so positive values favour the left variant; for EER, this means lower EER for the left variant. Finally, Table 31 Method Author Acc. 
+
+↑
+
+Macro-F1 
+
+↑
+
+Silhouette 
+
+↑
+
+Gen-Gen AUC 
+
+↑
+
+Gen-Gen EER 
+
+↓
+
+FedAvg 0.199 ± 0.008 0.164 ± 0.015 -0.194 ± 0.014 0.680 ± 0.029 0.371 ± 0.018 FedProx 0.174 ± 0.008 0.161 ± 0.009 -0.199 ± 0.004 0.674 ± 0.003 0.365 ± 0.011 pFedMe 0.271 ± 0.047 0.252 ± 0.033 -0.131 ± 0.005 0.739 ± 0.011 0.321 ± 0.014 Ditto 0.278 ± 0.011 0.255 ± 0.002 -0.097 ± 0.026 0.763 ± 0.025 0.297 ± 0.018 Ditto + ASCE 0.318 ± 0.037 0.286 ± 0.046 -0.115 ± 0.004 0.761 ± 0.010 0.309 ± 0.010 Pooled PEFT 0.254 ± 0.021 0.232 ± 0.027 -0.184 ± 0.030 0.699 ± 0.020 0.344 ± 0.009 Local-only + ASCE 0.402 ± 0.026 0.366 ± 0.016 -0.037 ± 0.025 0.828 ± 0.017 0.252 ± 0.018 Global ASCE 0.161 ± 0.014 0.140 ± 0.012 -0.195 ± 0.010 0.681 ± 0.012 0.368 ± 0.009 FAVoR w/o ASCE 0.377 ± 0.036 0.331 ± 0.033 -0.036 ± 0.008 0.816 ± 0.006 0.247 ± 0.010 FAVoR 0.403 ± 0.004 0.365 ± 0.009 -0.039 ± 0.022 0.824 ± 0.006 0.245 ± 0.007 
+
+Table 22: Expanded BlogText author-style results under the author-disjoint ASCE encoder. This table expands the BlogText author-style rows in Table 2 with pooled and diagnostic references. Accuracy and F1 use source-train prototypes, while Gen-Gen AUC/EER measure same-author versus different-author verification among generated continuations. Values are mean ± standard deviation over seeds.                                            
+
+> Collaborative method Source-prototype Acc. Gen →Src AUC FAVoR 0.403 ±0.017 0.771 ±0.011
+> FAVoR w/o ASCE 0.347 ±0.016 0.766 ±0.009 Ditto 0.214 ±0.022 0.723 ±0.014 FedDPA 0.242 ±0.034 0.713 ±0.018 pFedMe 0.195 ±0.003 0.707 ±0.030 FedAvg 0.137 ±0.028 0.663 ±0.012 FedProx 0.143 ±0.006 0.657 ±0.020
+
+Table 23: Post-hoc evaluation under independently trained ASCE-B. Archived generations and pair con-struction are held fixed; values are mean ± sample stan-dard deviation over three seeds. 
+
+reports a compact configuration check for the ab-lation rows. It verifies whether each run uses a private residual, ASCE alignment, and the shared proximal term. For held-out continuation, the de-terministic quality filter removes generations with fewer than 20 whitespace-delimited tokens, includ-ing empty generations, or a distinct-bigram ratio below 0.15 .          
+
+> Variant Private residual ASCE align. Shared prox. Global ASCE ✗✓✗
+> FAVoR w/o ASCE ✓✗✓
+> FAVoR ✓✓✓
+
+Table 31: Component-ablation configuration check. 
+
+B.19 Hyperparameters, Efficiency, and Communication Cost 
+
+Table 32 summarizes the hyperparameters and the communication and storage footprint of the Blog-Text FAVoR runs. The measurements are taken from the three medium non-IID FAVoR runs used in the main BlogText evaluation. All runs use Qwen2.5-3B-Instruct with 4-bit Quantized Low-Rank Adaptation (QLoRA) (Qwen Team et al., 2025; Dettmers et al., 2023) and train LoRA adapters on the q, k, v, o, gate, up, and down projections with rank 16 , α = 32 , and dropout 
+
+0.05 . The serialized shared adapter is 119,801,528 bytes, corresponding to 114.3 MiB and 29.93M trainable LoRA parameters. These settings were set before the held-out test evaluation; no hyper-parameter was tuned on test continuations. Under the protocol, each sampled client uploads only the shared-adapter delta. With 12 clients per round for six rounds, one seed sends 72 client updates, or 8.03 GiB of client-to-server adapter payloads when counted as serialized fp32 LoRA tensors. Server-to-client broadcasts have the same per-recipient size, so counting both directions gives 16.07 GiB per seed. Private residual packs are not commu-nicated; retaining one final residual per 50-author evaluation roster would require 5.58 GiB if stored as dense fp32 LoRA factor-delta tensors. ASCE training 
+
+KASCE Examples BlogText Proto-Acc. FAVoR / Ditto / FedAvg BlogText Gen →Src AUC FAVoR / Ditto / FedAvg Mythos Proto-Acc. [95% CI] Mythos AUC [95% CI] 10 1,020 0.322 / 0.211 / 0.125 0.726 / 0.696 / 0.648 0.203 [0 .147 , 0.263] 0.647 [0 .618 , 0.677] 
+
+25 2,749 0.378 / 0.241 / 0.147 0.757 / 0.709 / 0.659 0.277 [0 .217 , 0.337] 0.712 [0 .680 , 0.744] 
+
+50 4,959 0.293 / 0.199 / 0.147 0.754 / 0.685 / 0.631 0.220 [0 .160 , 0.283] 0.650 [0 .623 , 0.680] 
+
+Table 24: ASCE evaluator-scale sensitivity on fixed BlogText outputs and evaluation-only transfer to unseen Mythos authors. 
+
+Method Sep. Acc. ↑
+
+Macro-F1 ↑
+
+Centroid 
+
+↑
+
+Silhouette 
+
+↑
+
+AUC 
+
+↑
+
+EER 
+
+↓
+
+BERTScore 
+
+↑
+
+SemSim 
+
+↑
+
+FedAvg 0.134  
+
+> ±0.023
+
+0.115  
+
+> ±0.023
+
+0.455  
+
+> ±0.083
+
+-0.193  
+
+> ±0.024
+
+0.658  
+
+> ±0.024
+
+0.386  
+
+> ±0.026
+
+0.823  
+
+> ±0.000
+
+0.482  
+
+> ±0.009
+
+FedProx 0.141  
+
+> ±0.024
+
+0.113  
+
+> ±0.017
+
+0.463  
+
+> ±0.096
+
+-0.172  
+
+> ±0.016
+
+0.663  
+
+> ±0.029
+
+0.377  
+
+> ±0.026
+
+0.823  
+
+> ±0.000
+
+0.478  
+
+> ±0.008
+
+pFedMe 0.324  
+
+> ±0.010
+
+0.290  
+
+> ±0.015
+
+0.654  
+
+> ±0.040
+
+-0.054  
+
+> ±0.008
+
+0.762  
+
+> ±0.005
+
+0.305  
+
+> ±0.005
+
+0.823  
+
+> ±0.000
+
+0.477  
+
+> ±0.002
+
+Ditto 0.392  
+
+> ±0.022
+
+0.359  
+
+> ±0.029
+
+0.685  
+
+> ±0.030
+
+-0.018  
+
+> ±0.007
+
+0.818  
+
+> ±0.002
+
+0.253  
+
+> ±0.002
+
+0.825  
+
+> ±0.000
+
+0.487  
+
+> ±0.006
+
+FedDPA † 0.357  
+
+> ±0.035
+
+0.317  
+
+> ±0.033
+
+0.667  
+
+> ±0.048
+
+-0.053  
+
+> ±0.021
+
+0.803  
+
+> ±0.013
+
+0.268  
+
+> ±0.010
+
+0.825  
+
+> ±0.000
+
+0.488  
+
+> ±0.005
+
+FAVoR 0.561  
+
+> ±0.024
+
+0.521  
+
+> ±0.029
+
+0.771  
+
+> ±0.021
+
+0.093  
+
+> ±0.017
+
+0.900  
+
+> ±0.012
+
+0.175  
+
+> ±0.011
+
+0.826  
+
+> ±0.000
+
+0.494  
+
+> ±0.005
+
+Table 25: Mythos-Reddit external validation. 
+
+Quantity Value Base model Qwen2.5-3B-Instruct Quantization 4-bit QLoRA, NF4, bfloat16 compute Trainable PEFT params 29.93M Serialized shared adapter 114.3 MiB Rounds 6Clients per round 12 of 50 Local epochs 1 shared, 2 private Batching micro-batch 4, grad. accumulation 8 Learning rate 2 × 10 −4 shared/private Upload per client round 114.3 MiB Aggregate upload per round 1.34 GiB Aggregate upload per seed 8.03 GiB Upload + broadcast per seed 16.07 GiB Final private residual storage 5.58 GiB for 50 clients Runtime per seed 4.40–4.60 hours on 4 RTX 4090 GPUs 
+
+Table 32: Efficiency and communication cost for the main BlogText FAVoR runs. 
+
+B.20 Statistical Testing 
+
+Table 33 reports paired evidence for the main BlogText comparisons over matched seed–author– prompt examples. Table 34 extends the same ques-tion to ASCE-independent external gen →source verification by recomputing AUC and EER un-der seed–author cluster bootstrap resampling. The paired evidence supports the main interpretation: FAVoR’s author-style improvements over Ditto, pooled PEFT, FedProx, and FedDPA are robust, while semantic utility differences are smaller and not uniformly in FAVoR’s favor. Because each comparison is restricted to the method-pair inter-section of quality-passed examples, the FAVoR and baseline columns are recomputed within each com-parison block and need not exactly match the cor-responding full-coverage summary-table means. In these paired-test tables, directional ∆ is signed so positive values favour FAVoR; for assistant score and EER, this means lower raw values for FAVoR. For Table 33, binary author-accuracy p uses McNe-mar’s exact test, while continuous BlogText met-rics use the same seed–author cluster-bootstrap dis-tribution for confidence intervals and two-sided tail-probability p values. For Table 34, AUC/EER confidence intervals and p values likewise both come from the same two-sided cluster-bootstrap tail probability. Method Sep. Acc. ↑
+
+Macro-F1 ↑
+
+Centroid 
+
+↑
+
+Silhouette 
+
+↑
+
+Phrase 
+
+↓
+
+BERTScore 
+
+↑
+
+SemSim 
+
+↑
+
+Gap-Silh. 
+
+↑
+
+Gap-Cent. 
+
+↑
+
+FedAvg 0.134  
+
+> ±0.023
+
+0.115  
+
+> ±0.023
+
+0.455  
+
+> ±0.083
+
+-0.193  
+
+> ±0.024
+
+1.434  
+
+> ±0.367
+
+0.823  
+
+> ±0.000
+
+0.482  
+
+> ±0.009
+
+-0.237  
+
+> ±0.020
+
+-0.322  
+
+> ±0.067
+
+FedProx 0.141  
+
+> ±0.024
+
+0.113  
+
+> ±0.017
+
+0.463  
+
+> ±0.096
+
+-0.172  
+
+> ±0.016
+
+1.857  
+
+> ±0.761
+
+0.823  
+
+> ±0.000
+
+0.478  
+
+> ±0.008
+
+-0.216  
+
+> ±0.011
+
+-0.313  
+
+> ±0.081
+
+pFedMe 0.324  
+
+> ±0.010
+
+0.290  
+
+> ±0.015
+
+0.654  
+
+> ±0.040
+
+-0.054  
+
+> ±0.008
+
+1.848  
+
+> ±0.270
+
+0.823  
+
+> ±0.000
+
+0.477  
+
+> ±0.002
+
+-0.098  
+
+> ±0.013
+
+-0.122  
+
+> ±0.026
+
+Ditto 0.392  
+
+> ±0.022
+
+0.359  
+
+> ±0.029
+
+0.685  
+
+> ±0.030
+
+-0.018  
+
+> ±0.007
+
+1.697  
+
+> ±0.466
+
+0.825  
+
+> ±0.000
+
+0.487  
+
+> ±0.006
+
+-0.062  
+
+> ±0.008
+
+-0.091  
+
+> ±0.014
+
+FedDPA † 0.357  
+
+> ±0.035
+
+0.317  
+
+> ±0.033
+
+0.667  
+
+> ±0.048
+
+-0.053  
+
+> ±0.021
+
+1.511  
+
+> ±0.087
+
+0.825  
+
+> ±0.000
+
+0.488  
+
+> ±0.005
+
+-0.097  
+
+> ±0.016
+
+-0.110  
+
+> ±0.034
+
+FAVoR 0.561  
+
+> ±0.024
+
+0.521  
+
+> ±0.029
+
+0.771  
+
+> ±0.021
+
+0.093  
+
+> ±0.017
+
+1.670  
+
+> ±0.304
+
+0.826  
+
+> ±0.000
+
+0.494  
+
+> ±0.005
+
+0.049  
+
+> ±0.022
+
+-0.006  
+
+> ±0.005
+
+Table 26: Detailed Mythos-Reddit diagnostics. 
+
+Panel A: Component configuration and core metrics 
+
+Variant Shared agg. Personal branch Private residual ASCE align. Author Acc. ↑
+
+Macro-F1 ↑
+
+Asst. Score ↓
+
+BERTScore 
+
+↑
+
+Global ASCE ✓ ✗ ✗ ✓ 0.161  
+
+> ±0.014
+
+0.140  
+
+> ±0.012
+
+0.301  
+
+> ±0.065
+
+0.818  
+
+> ±0.002
+
+Ditto + ASCE ✓ ✓ ✗ ✓ 0.318  
+
+> ±0.037
+
+0.286  
+
+> ±0.046
+
+0.409  
+
+> ±0.040
+
+0.816  
+
+> ±0.002
+
+FAVoR w/o ASCE ✓ ✓ ✓ ✗ 0.377  
+
+> ±0.036
+
+0.331  
+
+> ±0.033
+
+0.306  
+
+> ±0.018
+
+0.814  
+
+> ±0.001
+
+FAVoR ✓ ✓ ✓ ✓ 0.403  
+
+> ±0.004
+
+0.365  
+
+> ±0.009
+
+0.260  
+
+> ±0.004
+
+0.815  
+
+> ±0.000
+
+Panel B: ASCE-independent external verification 
+
+Variant StyleDistance AUC/EER ↑ / ↓
+
+MiniLM AUC/EER ↑ / ↓
+
+Stylometry AUC/EER ↑ / ↓
+
+Global ASCE 0.728/0.326  
+
+> ±0.009 /0.003
+
+0.638/0.407  
+
+> ±0.010 /0.015
+
+0.643/0.392  
+
+> ±0.009 /0.016
+
+Ditto + ASCE 0.746/0.319  
+
+> ±0.015 /0.011
+
+0.662/0.389  
+
+> ±0.005 /0.006
+
+0.707/0.345  
+
+> ±0.013 /0.011
+
+FAVoR w/o ASCE 0.767/0.301  
+
+> ±0.013 /0.016
+
+0.664/0.388  
+
+> ±0.003 /0.007
+
+0.717 /0.335  
+
+> ±0.001 /0.005
+
+FAVoR 0.771 /0.295  
+
+> ±0.006 /0.003
+
+0.675 /0.378  
+
+> ±0.010 /0.006
+
+0.714/0.342  
+
+> ±0.011 /0.011
+
+Table 28: Full component-ablation summary with seed variability. Panel A reports component configurations and core BlogText metrics; Panel B reports ASCE-independent same-topic gen →source AUC/EER. Author Acc. and Macro-F1 are generated-text ASCE prototype metrics. Values are mean ± sample standard deviation over three seeds. 
+
+Comparison Metric Left Right Directional 
+
+∆
+
+Cluster 95% CI p
+
+FAVoR vs. w/o ASCE Author acc. 0.403 0.377 +0.026 [-0.012, 0.064] 0.225 FAVoR vs. w/o ASCE Top-1 cosine 0.642 0.629 +0.013 [0.003, 0.023] 0.011 FAVoR vs. w/o ASCE Asst. score 0.260 0.306 +0.046 [0.012, 0.081] 0.009 FAVoR vs. w/o ASCE BERTScore 0.815 0.814 +0.001 [-0.001, 0.002] 0.410 FAVoR vs. w/o ASCE SemSim 0.380 0.377 +0.003 [-0.006, 0.012] 0.248 FAVoR vs. Global ASCE Author acc. 0.403 0.161 +0.242 [0.194, 0.291] < . 001 
+
+FAVoR vs. Global ASCE Top-1 cosine 0.642 0.678 -0.036 [-0.052, -0.020] < . 001 
+
+FAVoR vs. Global ASCE Asst. score 0.260 0.301 +0.041 [-0.004, 0.085] 0.038 FAVoR vs. Global ASCE BERTScore 0.815 0.818 -0.004 [-0.006, -0.002] 0.004 FAVoR vs. Global ASCE SemSim 0.380 0.364 +0.017 [0.006, 0.027] 0.001 w/o ASCE vs. Global ASCE Author acc. 0.377 0.161 +0.216 [0.170, 0.263] < . 001 
+
+w/o ASCE vs. Global ASCE Top-1 cosine 0.629 0.678 -0.049 [-0.067, -0.031] < . 001 
+
+w/o ASCE vs. Global ASCE Asst. score 0.306 0.301 -0.005 [-0.055, 0.043] 0.874 w/o ASCE vs. Global ASCE BERTScore 0.814 0.818 -0.004 [-0.006, -0.002] 0.002 w/o ASCE vs. Global ASCE SemSim 0.377 0.364 +0.013 [0.002, 0.024] 0.016 
+
+Table 29: Paired component-ablation significance tests. Comparison Evaluator Metric Left Right Directional 
+
+∆
+
+Cluster 95% CI p
+
+FAVoR vs. w/o ASCE StyleDistance AUC 0.771 0.767 +0.004 [-0.007, 0.015] 0.498 FAVoR vs. w/o ASCE StyleDistance EER 0.295 0.301 +0.006 [-0.007, 0.019] 0.438 FAVoR vs. w/o ASCE MiniLM AUC 0.675 0.664 +0.011 [-0.002, 0.025] 0.102 FAVoR vs. w/o ASCE MiniLM EER 0.378 0.388 +0.010 [-0.003, 0.025] 0.129 FAVoR vs. w/o ASCE Stylometry AUC 0.714 0.717 -0.003 [-0.013, 0.006] 0.492 FAVoR vs. w/o ASCE Stylometry EER 0.342 0.334 -0.007 [-0.019, 0.005] 0.233 FAVoR vs. Global ASCE StyleDistance AUC 0.771 0.728 +0.043 [0.026, 0.061] < . 001 
+
+FAVoR vs. Global ASCE StyleDistance EER 0.295 0.327 +0.032 [0.014, 0.048] < . 001 
+
+FAVoR vs. Global ASCE MiniLM AUC 0.675 0.638 +0.037 [0.021, 0.053] < . 001 
+
+FAVoR vs. Global ASCE MiniLM EER 0.378 0.408 +0.030 [0.015, 0.046] < . 001 
+
+FAVoR vs. Global ASCE Stylometry AUC 0.714 0.643 +0.071 [0.049, 0.094] < . 001 
+
+FAVoR vs. Global ASCE Stylometry EER 0.342 0.392 +0.050 [0.031, 0.072] < . 001 
+
+w/o ASCE vs. Global ASCE StyleDistance AUC 0.767 0.728 +0.039 [0.023, 0.056] < . 001 
+
+w/o ASCE vs. Global ASCE StyleDistance EER 0.301 0.327 +0.025 [0.009, 0.044] 0.003 w/o ASCE vs. Global ASCE MiniLM AUC 0.664 0.638 +0.026 [0.009, 0.043] 0.004 w/o ASCE vs. Global ASCE MiniLM EER 0.388 0.408 +0.020 [0.004, 0.035] 0.011 w/o ASCE vs. Global ASCE Stylometry AUC 0.717 0.643 +0.074 [0.054, 0.096] < . 001 
+
+w/o ASCE vs. Global ASCE Stylometry EER 0.334 0.392 +0.057 [0.040, 0.077] < . 001 
+
+Table 30: External-verifier paired tests for component ablations using ASCE-independent same-topic gen →source verification. Directional ∆ is signed so positive values favor the left variant; for EER, positive directional ∆ means lower raw EER for the left variant.                                                                                                                                                   
+
+> Comparison Metric FAVoR Baseline Directional
+> ∆
+> Cluster 95% CI pn
+> FAVoR vs. Ditto Author acc. 0.403 0.279 +0.125 [0.078, 0.170] < . 001 578 FAVoR vs. Ditto Top-1 cosine 0.642 0.655 -0.013 [-0.026, -0.001] 0.037 578 FAVoR vs. Ditto SemSim 0.380 0.366 +0.014 [0.004, 0.024] 0.004 578 FAVoR vs. Ditto BERTScore 0.815 0.815 -0.001 [-0.002, 0.001] 0.405 578 FAVoR vs. Ditto Asst. score 0.260 0.328 +0.068 [0.023, 0.114] 0.002 578 FAVoR vs. Pooled Author acc. 0.408 0.255 +0.153 [0.110, 0.198] < . 001 569 FAVoR vs. Pooled Top-1 cosine 0.643 0.590 +0.052 [0.036, 0.069] < . 001 569 FAVoR vs. Pooled SemSim 0.383 0.359 +0.024 [0.013, 0.036] < . 001 569 FAVoR vs. Pooled BERTScore 0.815 0.802 +0.013 [0.010, 0.015] < . 001 569 FAVoR vs. Pooled Asst. score 0.261 0.219 -0.041 [-0.089, 0.006] 0.083 569 FAVoR vs. FedProx Author acc. 0.403 0.175 +0.228 [0.182, 0.276] < . 001 578 FAVoR vs. FedProx Top-1 cosine 0.642 0.671 -0.029 [-0.046, -0.013] < . 001 578 FAVoR vs. FedProx SemSim 0.380 0.353 +0.027 [0.016, 0.038] < . 001 578 FAVoR vs. FedProx BERTScore 0.815 0.817 -0.002 [-0.004, -0.000] 0.024 578 FAVoR vs. FedProx Asst. score 0.260 0.264 +0.004 [-0.041, 0.050] 0.857 578 FAVoR vs. FedDPA Author acc. 0.403 0.294 +0.109 [0.064, 0.155] < . 001 578 FAVoR vs. FedDPA Top-1 cosine 0.642 0.684 -0.042 [-0.057, -0.028] < . 001 578 FAVoR vs. FedDPA SemSim 0.380 0.376 +0.004 [-0.006, 0.014] 0.400 578 FAVoR vs. FedDPA BERTScore 0.815 0.818 -0.004 [-0.006, -0.002] < . 001 578 FAVoR vs. FedDPA Asst. score 0.260 0.419 +0.159 [0.108, 0.211] < . 001 578
+
+Table 33: Paired tests over matched seed–author–prompt examples. FAVoR and baseline values are recomputed on each method-pair matched subset, so the same method can have slightly different displayed values across comparison blocks and need not exactly equal its full-coverage summary-table mean. Directional ∆ is signed, so positive values favour FAVoR; for the assistant score, lower raw values are better. Confidence intervals are cluster-bootstrap intervals over seed–author clusters. For author accuracy, p uses McNemar’s exact test; for continuous metrics, p
+
+uses the two-sided cluster-bootstrap tail probability. Comparison Evaluator Metric FAVoR Baseline Directional 
+
+∆
+
+Cluster 95% CI p
+
+FAVoR vs. Ditto StyleDistance AUC 0.771 0.748 +0.023 [0.009, 0.038] 0.001 FAVoR vs. Ditto StyleDistance EER 0.295 0.319 +0.024 [0.008, 0.037] 0.002 FAVoR vs. Ditto MiniLM AUC 0.675 0.650 +0.025 [0.009, 0.042] 0.004 FAVoR vs. Ditto MiniLM EER 0.378 0.402 +0.024 [0.005, 0.040] 0.012 FAVoR vs. Ditto Stylometry AUC 0.714 0.683 +0.031 [0.009, 0.055] 0.004 FAVoR vs. Ditto Stylometry EER 0.342 0.362 +0.021 [0.002, 0.043] 0.026 FAVoR vs. Pooled StyleDistance AUC 0.771 0.736 +0.035 [0.020, 0.050] < . 001 
+
+FAVoR vs. Pooled StyleDistance EER 0.295 0.327 +0.032 [0.016, 0.049] < . 001 
+
+FAVoR vs. Pooled MiniLM AUC 0.675 0.649 +0.026 [0.007, 0.045] 0.005 FAVoR vs. Pooled MiniLM EER 0.378 0.406 +0.028 [0.010, 0.046] 0.001 FAVoR vs. Pooled Stylometry AUC 0.714 0.660 +0.054 [0.034, 0.076] < . 001 
+
+FAVoR vs. Pooled Stylometry EER 0.342 0.384 +0.043 [0.024, 0.064] < . 001 
+
+FAVoR vs. FedProx StyleDistance AUC 0.771 0.723 +0.047 [0.031, 0.065] < . 001 
+
+FAVoR vs. FedProx StyleDistance EER 0.295 0.334 +0.039 [0.020, 0.055] < . 001 
+
+FAVoR vs. FedProx MiniLM AUC 0.675 0.631 +0.045 [0.028, 0.061] < . 001 
+
+FAVoR vs. FedProx MiniLM EER 0.378 0.414 +0.036 [0.021, 0.052] < . 001 
+
+FAVoR vs. FedProx Stylometry AUC 0.714 0.650 +0.063 [0.042, 0.086] < . 001 
+
+FAVoR vs. FedProx Stylometry EER 0.342 0.385 +0.043 [0.025, 0.066] < . 001 
+
+FAVoR vs. FedDPA StyleDistance AUC 0.771 0.748 +0.023 [0.009, 0.037] < . 001 
+
+FAVoR vs. FedDPA StyleDistance EER 0.295 0.316 +0.021 [0.006, 0.036] 0.004 FAVoR vs. FedDPA MiniLM AUC 0.675 0.659 +0.016 [0.001, 0.031] 0.035 FAVoR vs. FedDPA MiniLM EER 0.378 0.391 +0.013 [0.000, 0.029] 0.049 FAVoR vs. FedDPA Stylometry AUC 0.714 0.692 +0.022 [0.005, 0.038] 0.008 FAVoR vs. FedDPA Stylometry EER 0.342 0.351 +0.009 [-0.005, 0.026] 0.201 
+
+Table 34: External-verifier paired tests for main BlogText comparisons.
